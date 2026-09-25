@@ -72,6 +72,8 @@ Names and identities of the engineers stay independent of the product brand. Ord
 
 ## 5. Visual direction
 
+> Superseded for the web client by [ADR 0012](../decisions/0012-visual-direction.md): the owner chose a neutral, Buzz-like visual system over the aqua and petrol palette below. The accessibility and truthfulness rules still apply.
+
 ### A daylight workshop
 
 Use a pale aqua navigation surface, a clean paper-white conversation area, deep petrol text/accent, and small golden markers for attention and handoffs. The feeling should be relaxed and purposeful: something you keep open all day, with enough character to recognise in a screenshot.
@@ -307,12 +309,6 @@ Observe real use and record failures. Do not treat polished onboarding, number o
 
 ## 12. Prototype and production handoff
 
-Open [the interactive concept](design-concept.html). It demonstrates the visual system and selected room, overview, machine, and evidence interactions using fictional Atlas and Beacon projects. It is intentionally labelled as a concept. Sending a sample message only modifies the local demonstration; no agent runs or account calls happen.
+The interactive concept that accompanied this document has been removed at the owner's direction, and the visual direction in section 5 is superseded by [ADR 0012](../decisions/0012-visual-direction.md). Behaviour, content, and accessibility requirements here still apply.
 
 Production implementation must add real streaming, persistence, authentication, permission checks, composer mentions, accessible overlays, durable draft/reconnect behaviour, and every acceptance gate in the build specification. Do not reuse the prototype's simplified local state as the application's coordination model.
-
-Concept verification: visually inspected at 390×844, 1024×768, and 1440×960, including day and night appearance. Exercised room navigation, search, engineer profiles, evidence/activity views, ordinary room questions, local message entry, and simulated machine disconnect/reconnect. Checked local links, SVG syntax, script syntax, and absence of external asset dependencies. No browser script errors were observed during these checks. This is not a full accessibility audit or validation of a working agent system.
-
-The concept deliberately simplifies two interactions: its evidence drawer is modal at every width, and sample messages use Cmd/Ctrl+Enter or the send button. Production should implement the responsive contextual drawer, keyboard preference, touch-target sizing, and full focus behaviour specified above. The displayed results are fixtures, not real checks run against Atlas or Beacon.
-
-Revision 1.2 verification: rechecked the yip branding, autonomous review request, finding/revision/approval history, sample PR detail, and return to the source room at desktop and 390px widths; inspected the conversation at 1024px in night appearance. No browser script errors were observed. These checks validate the illustrative concept, not a live forge or agent implementation.

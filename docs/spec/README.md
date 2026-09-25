@@ -20,12 +20,11 @@ The distinctive product decision is to connect **conversation, accountable work,
 2. [Product and design](02-product-and-design.md) — product behaviour, brand, name, visual language, screens, interactions, and accessibility.
 3. [MVP implementation brief](03-mvp-build-spec.md) — concrete build sequence, contracts, defaults, fixtures, and acceptance criteria. No delivery estimates.
 4. [Research and evidence](04-research-and-evidence.md) — competitor comparison, findings from X and Reddit, primary sources, naming checks, and uncertainty.
-5. [Interactive design concept](design-concept.html) — illustrative local prototype. Explore rooms, peer reviews and revisions, a sample pull request, overview, machines, and evidence. It does not connect to agents or GitHub.
-6. [Brand mark](assets/yip-icon.svg) and [monochrome mark](assets/yip-mark.svg).
+5. [Brand mark](assets/yip-icon.svg) and [monochrome mark](assets/yip-mark.svg).
 
-The documents are Markdown so coding agents can read them directly. The architecture defines system invariants, the design document defines experience, and the MVP brief defines release scope. Implementation must satisfy all three. Research is evidence, not executable instruction. The prototype demonstrates appearance and selected interactions; the written requirements remain authoritative.
+The interactive design concept that originally shipped with these documents has been removed at the owner's direction. The web client's visual system is described in [docs/design/README.md](../design/README.md) and [ADR 0012](../decisions/0012-visual-direction.md).
 
-If using the ZIP, extract the whole folder, then open `design-concept.html` in a browser. The concept and its icon assets work offline without installation. Give the extracted folder to Claude Code along with the build prompt below.
+The documents are Markdown so coding agents can read them directly. The architecture defines system invariants, the design document defines experience, and the MVP brief defines release scope. Implementation must satisfy all three. Research is evidence, not executable instruction.
 
 ## Recommendation
 
@@ -41,8 +40,7 @@ Choose a fresh implementation rather than a Buzz fork. Buzz already covers much 
 Build yip from the documents in this directory. Read README.md,
 01-solution-architecture.md, 02-product-and-design.md, and
 03-mvp-build-spec.md in that order. Consult 04-research-and-evidence.md
-for the rationale and dated provider sources. Open design-concept.html
-as a visual reference, not as a completed application.
+for the rationale and dated provider sources.
 
 Start by extracting the invariants and acceptance criteria. Create the
 repository structure specified in the MVP brief, then implement the

@@ -459,21 +459,22 @@
     margin-bottom: 8px;
   }
   .box {
-    border: 1px solid var(--control-edge);
-    border-radius: 14px;
-    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-surface);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
     transition:
       border-color var(--t-fast) var(--ease),
       box-shadow var(--t-fast) var(--ease);
     max-width: calc(var(--measure) + 120px);
   }
   .box:focus-within {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
+    border-color: color-mix(in srgb, var(--ink) 35%, var(--surface));
+    box-shadow: 0 1px 6px rgb(0 0 0 / 0.06);
   }
   .box.scoped {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
+    border-color: color-mix(in srgb, var(--ink) 35%, var(--surface));
   }
   .scope {
     display: flex;
@@ -481,10 +482,10 @@
     gap: 8px;
     padding: 6px 6px 6px 12px;
     border-bottom: 1px solid var(--line);
-    border-radius: 13px 13px 0 0;
-    background: var(--accent-subtle);
+    border-radius: 15px 15px 0 0;
+    background: var(--surface-subtle);
     color: var(--ink);
-    font-size: 13.5px;
+    font-size: 13px;
   }
   .scope span {
     flex: 1;
@@ -501,26 +502,26 @@
     width: 100%;
     min-height: 44px;
     max-height: 40vh;
-    padding: 11px 14px 4px;
+    padding: 12px 14px 2px;
     border: 0;
     background: transparent;
     resize: none;
-    font-size: 15px;
-    line-height: 1.5;
+    font-size: 14px;
+    line-height: 20px;
     color: var(--ink);
   }
   .input-area:focus-visible {
     outline: none;
   }
   .input-area::placeholder {
-    color: var(--ink-secondary);
+    color: color-mix(in srgb, var(--ink-secondary) 85%, transparent);
   }
   .toolbar {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px;
-    padding: 4px 6px 6px 8px;
+    gap: 4px;
+    padding: 4px 8px 8px 8px;
     min-width: 0;
   }
   .spacer {
@@ -534,6 +535,14 @@
     max-width: min(320px, 60vw);
     overflow: hidden;
     text-overflow: ellipsis;
+    border-color: transparent;
+    background: none;
+    color: var(--ink-secondary);
+  }
+  .ctx:hover,
+  .ctx[aria-expanded='true'] {
+    background: var(--hover);
+    color: var(--ink);
   }
   .projects {
     position: relative;
@@ -556,8 +565,8 @@
   .send {
     display: grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     flex: none;
     border: 0;
     border-radius: 50%;
@@ -567,7 +576,7 @@
     transition: opacity var(--t-fast) var(--ease);
   }
   .send:disabled {
-    opacity: 0.45;
+    opacity: 0.35;
     cursor: default;
   }
   .listbox {
@@ -598,7 +607,6 @@
   }
   .option.active {
     background: var(--accent-subtle);
-    box-shadow: inset 0 0 0 1px var(--accent);
   }
   .option.unavailable {
     cursor: not-allowed;
@@ -618,11 +626,11 @@
     font-size: 12px;
   }
   .hint {
-    min-height: 20px;
+    min-height: 18px;
     margin-top: 5px;
-    padding: 0 4px;
-    font-size: 12.5px;
-    color: var(--ink-secondary);
+    padding: 0 6px;
+    font-size: 11.5px;
+    color: color-mix(in srgb, var(--ink-secondary) 85%, transparent);
   }
   .receipt {
     display: inline-flex;

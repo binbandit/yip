@@ -1,51 +1,58 @@
 /* yip design tokens and shared primitives. See docs/design/README.md. */
 
+/*
+ * A Buzz-like system (ADR 0012): one tinted frame painted across the window,
+ * one opaque white work card, a monochrome accent (the ink colour itself),
+ * and hue spent only on status. Components use alpha steps of these tokens
+ * rather than new colours.
+ */
 :root {
   color-scheme: light;
-  /* Spec tokens — day */
-  --canvas: #e9f2f3;
-  --navigation: #d7e9eb;
+  --canvas: #ebe9d8; /* frame gradient, top (warm) */
+  --navigation: #d5dce3; /* frame gradient, bottom (cool) */
   --surface: #ffffff;
-  --surface-subtle: #f3f7f7;
-  --ink: #183a43;
-  --ink-secondary: #526b72;
-  --accent: #176274;
+  --surface-subtle: #f4f4f5;
+  --ink: #1f2328;
+  --ink-secondary: #59636e;
+  --accent: #1f2328; /* monochrome: primary controls are ink */
   --accent-ink: #ffffff;
-  --line: #d7e2e4;
-  --attention-fill: #f6db7c;
-  --attention-ink: #57420d;
-  --success: #236a51;
-  --danger: #aa3944;
+  --line: #e4e5e7;
+  --line-strong: #d3d6da;
+  --attention-fill: #d4a72c;
+  --attention-ink: #7a4f00;
+  --success: #1a7f37;
+  --danger: #cf222e;
+  --info: #0969da;
 
-  /* Derived tokens (contrast-checked in docs/design/README.md) */
-  --accent-subtle: #e3eff1;
-  --success-subtle: #eaf4ef;
-  --danger-subtle: #fbeff0;
-  --attention-subtle: #fdf6dc;
-  --control-edge: #748e95;
+  --accent-subtle: #eff0f2;
+  --success-subtle: #e6f6ea;
+  --danger-subtle: #fdeeee;
+  --attention-subtle: #fdf6d8;
+  --control-edge: #858d97;
   --line-soft: color-mix(in srgb, var(--line) 70%, transparent);
-  --hover: color-mix(in srgb, var(--ink) 5%, transparent);
-  --pressed: color-mix(in srgb, var(--ink) 9%, transparent);
-  --selected: color-mix(in srgb, var(--ink) 8%, transparent);
-  --veil: color-mix(in srgb, #0d2126 22%, transparent);
+  --hover: rgb(0 0 0 / 0.04);
+  --pressed: rgb(0 0 0 / 0.08);
+  --selected: rgb(0 0 0 / 0.07);
+  --veil: rgb(0 0 0 / 0.12);
   --frame: linear-gradient(180deg, var(--canvas) 0%, var(--navigation) 100%);
-  --shadow-pop: 0 1px 1px rgb(12 40 48 / 0.05), 0 4px 12px rgb(12 40 48 / 0.08), 0 12px 28px rgb(12 40 48 / 0.08);
-  --shadow-panel: -1px 0 0 0 var(--line), -16px 0 32px -12px rgb(12 40 48 / 0.18);
-  --shadow-card: 0 0 0 1px color-mix(in srgb, var(--line) 80%, transparent), 0 0 4px rgb(12 40 48 / 0.06);
-  --focus: var(--accent);
-  --hue-l-bg: 90%;
-  --hue-s: 42%;
-  --hue-l-ink: 26%;
+  --shadow-pop: 0 6px 18px rgb(0 0 0 / 0.04), 0 3px 9px rgb(0 0 0 / 0.05), 0 1px 1px rgb(0 0 0 / 0.05);
+  --shadow-panel: -1px 0 0 0 var(--line), -16px 0 32px -12px rgb(0 0 0 / 0.18);
+  --shadow-card: -1px -1px 0 0 rgb(0 0 0 / 0.06), 0 0 4px 0 rgb(0 0 0 / 0.07);
+  --shadow-dialog: 0 24px 48px -12px rgb(0 0 0 / 0.25);
+  --focus: var(--ink);
+  --hue-l-bg: 91%;
+  --hue-s: 34%;
+  --hue-l-ink: 27%;
 
   /* Type */
-  --font-ui: 'Hanken Grotesk Variable', 'Hanken Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-brand: 'Bricolage Grotesque', var(--font-ui);
+  --font-ui: 'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-brand: var(--font-ui);
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
-  --text-meta: 13px;
+  --text-meta: 12px;
   --text-nav: 14px;
-  --text-body: 15px;
-  --text-title: 18px;
-  --text-display: 26px;
+  --text-body: 14px;
+  --text-title: 16px;
+  --text-display: 24px;
 
   /* Space (4px base) */
   --s1: 4px;
@@ -55,100 +62,109 @@
   --s5: 20px;
   --s6: 24px;
   --s8: 32px;
-  --group-gap: 20px;
+  --group-gap: 12px;
 
   /* Radii */
-  --r-control: 8px;
-  --r-artifact: 10px;
+  --r-row: 8px;
+  --r-control: 10px;
+  --r-artifact: 14px;
+  --r-pop: 12px;
   --r-surface: 16px;
   --r-pill: 999px;
 
   /* Layout */
-  --topbar-h: 52px;
-  --sidebar-w: 232px;
-  --drawer-w: 336px;
+  --topbar-h: 52px; /* pane headers inside the card */
+  --sidebar-w: 272px;
+  --drawer-w: 380px;
   --measure: 76ch;
 
   /* Motion */
   --t-fast: 120ms;
-  --t-base: 160ms;
-  --t-slow: 180ms;
+  --t-base: 180ms;
+  --t-slow: 240ms;
   --ease: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='day']) {
     color-scheme: dark;
-    --canvas: #172c32;
-    --navigation: #203b43;
-    --surface: #21343b;
-    --surface-subtle: #29424a;
-    --ink: #edf5f5;
-    --ink-secondary: #afc6cc;
-    --accent: #89cfde;
-    --accent-ink: #173740;
-    --line: #43606a;
-    --attention-fill: #705c24;
-    --attention-ink: #fff0b8;
-    --success: #8fd4b5;
-    --danger: #ffabb1;
-    --accent-subtle: #2a4c55;
-    --success-subtle: #26463d;
-    --danger-subtle: #4a3238;
-    --attention-subtle: #3c3a28;
-    --control-edge: #7b9ba4;
-    --hover: color-mix(in srgb, #ffffff 6%, transparent);
-    --pressed: color-mix(in srgb, #ffffff 10%, transparent);
-    --selected: color-mix(in srgb, #ffffff 11%, transparent);
-    --veil: color-mix(in srgb, #050e10 50%, transparent);
-    --shadow-pop: 0 1px 1px rgb(0 0 0 / 0.2), 0 6px 18px rgb(0 0 0 / 0.3);
-    --shadow-panel: -1px 0 0 0 var(--line), -16px 0 32px -12px rgb(0 0 0 / 0.5);
-    --shadow-card: 0 0 0 1px color-mix(in srgb, var(--line) 70%, transparent);
-    --hue-l-bg: 30%;
-    --hue-s: 28%;
-    --hue-l-ink: 90%;
+    --canvas: #33311d;
+    --navigation: #0e1621;
+    --surface: #1a1a1b;
+    --surface-subtle: #232325;
+    --ink: #e6e8eb;
+    --ink-secondary: #9ba3ad;
+    --accent: #eef0f2;
+    --accent-ink: #151516;
+    --line: #313235;
+    --line-strong: #3d3f43;
+    --attention-fill: #bb8009;
+    --attention-ink: #e3b341;
+    --success: #3fb950;
+    --danger: #f85149;
+    --info: #4493f8;
+    --accent-subtle: #2a2b2e;
+    --success-subtle: #15291d;
+    --danger-subtle: #2f1719;
+    --attention-subtle: #2b2411;
+    --control-edge: #7a828c;
+    --hover: rgb(255 255 255 / 0.06);
+    --pressed: rgb(255 255 255 / 0.1);
+    --selected: rgb(255 255 255 / 0.13);
+    --veil: rgb(0 0 0 / 0.55);
+    --shadow-pop: 0 1px 1px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
+    --shadow-panel: -1px 0 0 0 var(--line), -16px 0 32px -12px rgb(0 0 0 / 0.6);
+    --shadow-card: -1px -1px 0 0 rgb(255 255 255 / 0.05);
+    --shadow-dialog: 0 24px 48px -12px rgb(0 0 0 / 0.7);
+    --hue-l-bg: 26%;
+    --hue-s: 26%;
+    --hue-l-ink: 88%;
   }
 }
 
 :root[data-theme='night'] {
   color-scheme: dark;
-  --canvas: #172c32;
-  --navigation: #203b43;
-  --surface: #21343b;
-  --surface-subtle: #29424a;
-  --ink: #edf5f5;
-  --ink-secondary: #afc6cc;
-  --accent: #89cfde;
-  --accent-ink: #173740;
-  --line: #43606a;
-  --attention-fill: #705c24;
-  --attention-ink: #fff0b8;
-  --success: #8fd4b5;
-  --danger: #ffabb1;
-  --accent-subtle: #2a4c55;
-  --success-subtle: #26463d;
-  --danger-subtle: #4a3238;
-  --attention-subtle: #3c3a28;
-  --control-edge: #7b9ba4;
-  --hover: color-mix(in srgb, #ffffff 6%, transparent);
-  --pressed: color-mix(in srgb, #ffffff 10%, transparent);
-  --selected: color-mix(in srgb, #ffffff 11%, transparent);
-  --veil: color-mix(in srgb, #050e10 50%, transparent);
-  --shadow-pop: 0 1px 1px rgb(0 0 0 / 0.2), 0 6px 18px rgb(0 0 0 / 0.3);
-  --shadow-panel: -1px 0 0 0 var(--line), -16px 0 32px -12px rgb(0 0 0 / 0.5);
-  --shadow-card: 0 0 0 1px color-mix(in srgb, var(--line) 70%, transparent);
-  --hue-l-bg: 30%;
-  --hue-s: 28%;
-  --hue-l-ink: 90%;
+  --canvas: #33311d;
+  --navigation: #0e1621;
+  --surface: #1a1a1b;
+  --surface-subtle: #232325;
+  --ink: #e6e8eb;
+  --ink-secondary: #9ba3ad;
+  --accent: #eef0f2;
+  --accent-ink: #151516;
+  --line: #313235;
+  --line-strong: #3d3f43;
+  --attention-fill: #bb8009;
+  --attention-ink: #e3b341;
+  --success: #3fb950;
+  --danger: #f85149;
+  --info: #4493f8;
+  --accent-subtle: #2a2b2e;
+  --success-subtle: #15291d;
+  --danger-subtle: #2f1719;
+  --attention-subtle: #2b2411;
+  --control-edge: #7a828c;
+  --hover: rgb(255 255 255 / 0.06);
+  --pressed: rgb(255 255 255 / 0.1);
+  --selected: rgb(255 255 255 / 0.13);
+  --veil: rgb(0 0 0 / 0.55);
+  --shadow-pop: 0 1px 1px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
+  --shadow-panel: -1px 0 0 0 var(--line), -16px 0 32px -12px rgb(0 0 0 / 0.6);
+  --shadow-card: -1px -1px 0 0 rgb(255 255 255 / 0.05);
+  --shadow-dialog: 0 24px 48px -12px rgb(0 0 0 / 0.7);
+  --hue-l-bg: 26%;
+  --hue-s: 26%;
+  --hue-l-ink: 88%;
 }
 
 :root[data-density='compact'] {
-  --group-gap: 12px;
+  --group-gap: 6px;
 }
 
 @media (max-width: 1100px) {
   :root {
-    --sidebar-w: 200px;
+    --sidebar-w: 240px;
   }
 }
 
@@ -167,7 +183,8 @@ body {
 body {
   font-family: var(--font-ui);
   font-size: var(--text-body);
-  line-height: 1.55;
+  line-height: 1.43;
+  font-variant-ligatures: no-contextual;
   color: var(--ink);
   background: var(--canvas);
   -webkit-font-smoothing: antialiased;
@@ -186,8 +203,8 @@ h2,
 h3,
 h4 {
   margin: 0;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: -0.015em;
   line-height: 1.25;
 }
 
@@ -196,8 +213,12 @@ p {
 }
 
 a {
-  color: var(--accent);
+  color: var(--ink);
+  text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent);
   text-underline-offset: 2px;
+}
+a:hover {
+  text-decoration-color: currentColor;
 }
 
 button,
@@ -217,14 +238,14 @@ kbd {
 
 kbd {
   display: inline-block;
-  padding: 0 5px;
-  border: 1px solid var(--line);
-  border-bottom-width: 2px;
-  border-radius: 5px;
-  font-size: 12px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
   line-height: 18px;
-  color: var(--ink-secondary);
-  background: var(--surface);
+  color: color-mix(in srgb, var(--ink) 45%, transparent);
+  background: none;
 }
 
 :focus {
@@ -238,7 +259,7 @@ kbd {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--info) 22%, transparent);
 }
 
 .vh {
@@ -260,6 +281,7 @@ kbd {
   z-index: 1000;
   padding: 8px 14px;
   background: var(--surface);
+  color: var(--ink);
   border-radius: var(--r-control);
   box-shadow: var(--shadow-pop);
   transition: top var(--t-fast) var(--ease);
@@ -282,7 +304,7 @@ kbd {
 
 .mono {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .truncate {
@@ -293,7 +315,7 @@ kbd {
 }
 
 .section-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -310,11 +332,11 @@ kbd {
   min-height: 36px;
   padding: 0 14px;
   border-radius: var(--r-control);
-  border: 1px solid var(--control-edge);
+  border: 1px solid var(--line-strong);
   background: var(--surface);
   color: var(--ink);
   font-size: 14px;
-  font-weight: 560;
+  font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -325,10 +347,10 @@ kbd {
     color var(--t-fast) var(--ease);
 }
 .btn:hover {
-  background: color-mix(in srgb, var(--surface) 90%, var(--ink));
+  background: color-mix(in srgb, var(--surface) 95%, var(--ink));
 }
 .btn:active {
-  background: color-mix(in srgb, var(--surface) 84%, var(--ink));
+  background: color-mix(in srgb, var(--surface) 90%, var(--ink));
 }
 .btn[disabled],
 .btn[aria-disabled='true'] {
@@ -341,10 +363,10 @@ kbd {
   color: var(--accent-ink);
 }
 .btn-primary:hover {
-  background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+  background: color-mix(in srgb, var(--accent) 86%, var(--surface));
 }
 .btn-primary:active {
-  background: color-mix(in srgb, var(--accent) 80%, var(--ink));
+  background: color-mix(in srgb, var(--accent) 78%, var(--surface));
 }
 .btn-quiet {
   border-color: transparent;
@@ -355,7 +377,7 @@ kbd {
 }
 .btn-danger {
   color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 70%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--surface));
 }
 .btn-danger:hover {
   background: var(--danger-subtle);
@@ -366,8 +388,9 @@ kbd {
   color: var(--surface);
 }
 .btn-sm {
-  min-height: 30px;
+  min-height: 28px;
   padding: 0 10px;
+  border-radius: var(--r-row);
   font-size: 13px;
 }
 
@@ -379,7 +402,7 @@ kbd {
   flex: none;
   padding: 0;
   border: 0;
-  border-radius: var(--r-control);
+  border-radius: var(--r-row);
   background: transparent;
   color: var(--ink-secondary);
   cursor: pointer;
@@ -401,7 +424,7 @@ kbd {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--accent);
+  color: var(--ink);
   font: inherit;
   cursor: pointer;
   text-decoration: underline;
@@ -440,13 +463,13 @@ kbd {
 .select,
 .textarea {
   width: 100%;
-  min-height: 38px;
-  padding: 8px 11px;
+  min-height: 36px;
+  padding: 7px 11px;
   border: 1px solid var(--control-edge);
   border-radius: var(--r-control);
   background: var(--surface);
   color: var(--ink);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.4;
   transition: border-color var(--t-fast) var(--ease);
 }
@@ -457,9 +480,9 @@ kbd {
 .input:focus-visible,
 .select:focus-visible,
 .textarea:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid color-mix(in srgb, var(--ink) 25%, transparent);
   outline-offset: 0;
-  border-color: var(--accent);
+  border-color: var(--ink);
 }
 .input[aria-invalid='true'],
 .textarea[aria-invalid='true'] {
@@ -514,18 +537,18 @@ kbd {
   max-width: 100%;
   padding: 1px 9px;
   border-radius: var(--r-pill);
-  border: 1px solid var(--line);
-  background: var(--surface-subtle);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
   color: var(--ink);
-  font-size: 13px;
-  font-weight: 520;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.3;
   white-space: nowrap;
   text-decoration: none;
 }
 a.chip:hover,
 button.chip:hover {
-  border-color: var(--control-edge);
+  background: var(--surface-subtle);
 }
 button.chip {
   cursor: pointer;
@@ -540,23 +563,16 @@ button.chip {
   border-radius: var(--r-pill);
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .role-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 7px;
-  height: 20px;
-  border-radius: var(--r-pill);
-  background: var(--surface-subtle);
-  border: 1px solid var(--line);
-  color: var(--ink-secondary);
+  color: color-mix(in srgb, var(--ink-secondary) 90%, transparent);
   font-size: 12px;
-  font-weight: 560;
+  font-weight: 400;
   white-space: nowrap;
 }
 
@@ -567,7 +583,7 @@ button.chip {
   color: var(--danger);
 }
 .tone-accent {
-  color: var(--accent);
+  color: var(--ink);
 }
 .tone-attention {
   color: var(--attention-ink);
@@ -645,7 +661,7 @@ button.chip {
 }
 .screen-inner {
   max-width: 1040px;
-  padding: 24px 32px 48px;
+  padding: 28px 32px 48px;
 }
 .screen-head {
   display: flex;
@@ -657,8 +673,8 @@ button.chip {
 }
 .screen-title {
   font-size: var(--text-display);
-  font-weight: 680;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  letter-spacing: -0.025em;
 }
 .screen-sub {
   color: var(--ink-secondary);
@@ -675,8 +691,9 @@ button.chip {
   margin-bottom: 10px;
 }
 .section-title {
-  font-size: 16px;
-  font-weight: 650;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 @media (max-width: 760px) {
   .screen-inner {
@@ -702,8 +719,8 @@ button.chip {
   border: 0;
   background: none;
   color: var(--ink-secondary);
-  font-size: 14px;
-  font-weight: 560;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -757,19 +774,18 @@ button.chip {
 .prose code {
   padding: 1px 5px;
   border-radius: 5px;
-  background: var(--surface-subtle);
-  border: 1px solid var(--line-soft);
-  font-size: 13px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  font-size: 12px;
 }
 .prose pre {
   margin: 8px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--r-artifact);
-  background: var(--surface-subtle);
+  padding: 8px 12px;
+  border-radius: var(--r-surface);
+  background: color-mix(in srgb, var(--surface-subtle) 60%, var(--surface));
   border: 1px solid var(--line);
   overflow: auto;
-  max-height: 420px;
-  font-size: 13px;
+  max-height: 400px;
+  font-size: 12.5px;
   line-height: 1.5;
 }
 .prose pre code {
@@ -784,16 +800,15 @@ button.chip {
   color: var(--ink-secondary);
 }
 .prose .mention {
-  padding: 0 3px;
-  border-radius: 4px;
-  background: var(--accent-subtle);
-  color: var(--accent);
+  padding: 0 4px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
   font-weight: 600;
 }
 .prose .mention[data-kind='user'] {
   background: var(--attention-subtle);
   color: var(--attention-ink);
-  box-shadow: inset 0 -2px 0 var(--attention-fill);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -807,7 +822,7 @@ button.chip {
   }
 }
 
-/* Squircle engineer avatars where supported (falls back to a 32% radius). */
+/* Squircle engineer avatars where supported (falls back to a 30% radius). */
 @supports (corner-shape: squircle) {
   :root .avatar.engineer {
     border-radius: 50%;

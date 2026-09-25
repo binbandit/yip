@@ -1,9 +1,11 @@
 <script lang="ts">
-  // The frame: aqua chrome (top bar + sidebar) around one bright work card.
-  // Panes inside the card are split by hairlines; the right panel is the one
-  // contextual drawer (inline at ≥1200px, overlaid below, full screen <760px).
+  // The frame: one tinted gradient behind the sidebar, with one opaque work
+  // card inset beside it. Panes inside the card are split by hairlines; the
+  // right panel is the one contextual drawer (inline at ≥1200px, overlaid
+  // below, full screen <760px).
   import { app } from '../lib/state/app.svelte';
   import TopBar from '../components/TopBar.svelte';
+  import Icon from '../components/Icon.svelte';
   import Sidebar from '../components/Sidebar.svelte';
   import Sheet from '../components/Sheet.svelte';
   import PanelHost from '../components/PanelHost.svelte';
@@ -23,6 +25,15 @@
   const panel = $derived(app.loc.panel);
   const mode: PanelMode = $derived(app.narrow ? 'full' : app.viewport >= 1200 ? 'inline' : 'overlay');
   const modal = $derived(!!panel && mode !== 'inline');
+  const connectionText = $derived(
+    app.connection === 'offline' || !app.online
+      ? "Can't reach your workspace"
+      : app.connection === 'reconnecting'
+        ? 'Reconnecting…'
+        : app.connection === 'connecting'
+          ? 'Connecting…'
+          : '',
+  );
 
   $effect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -78,9 +89,11 @@
 
 <a class="skip-link" href="#main">Skip to content</a>
 <div class="shell" class:narrow={app.narrow}>
-  <header class="top" inert={modal || app.sidebarOpen}>
-    <TopBar />
-  </header>
+  {#if app.narrow}
+    <header class="top" inert={modal || app.sidebarOpen}>
+      <TopBar />
+    </header>
+  {/if}
 
   {#if !app.narrow}
     <nav class="side" aria-label="Workspace" inert={modal}>
@@ -89,11 +102,21 @@
   {/if}
 
   <div class="frame">
-    {#if app.data.demo}
-      <p class="demo" role="note" inert={modal}>
-        <span class="marker" aria-hidden="true"></span>
-        Demo workspace — engineers run a deterministic fake provider; no models are called.
-      </p>
+    {#if app.data.demo || connectionText}
+      <div class="notices" inert={modal}>
+        {#if app.data.demo}
+          <p class="demo" role="note">
+            <span class="marker" aria-hidden="true"></span>
+            Demo workspace — engineers run a deterministic fake provider; no models are called.
+          </p>
+        {/if}
+        {#if connectionText}
+          <p class="conn" role="status">
+            <Icon name={app.connection === 'offline' || !app.online ? 'wifiOff' : 'refresh'} size={14} />
+            {connectionText}
+          </p>
+        {/if}
+      </div>
     {/if}
     <main id="main" class="card" bind:this={mainEl} tabindex="-1">
       <div class="content" inert={modal}>
@@ -150,10 +173,8 @@
   .shell {
     display: grid;
     grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-    grid-template-rows: var(--topbar-h) minmax(0, 1fr);
-    grid-template-areas:
-      'top top'
-      'side frame';
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: 'side frame';
     height: 100%;
     background: var(--frame);
   }
@@ -171,15 +192,27 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    padding: 0 8px 8px 0;
+    padding: 8px 8px 8px 0;
   }
-  .demo {
+  .notices {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 26px;
+    padding: 0 8px 6px 6px;
+  }
+  .demo,
+  .conn {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 0 6px 8px 4px;
-    font-size: 13px;
-    color: var(--ink-secondary);
+    font-size: 12px;
+    color: color-mix(in srgb, var(--ink) 72%, transparent);
+  }
+  .conn {
+    margin-left: auto;
+    font-weight: 500;
+    color: var(--ink);
   }
   .card {
     position: relative;
@@ -203,6 +236,7 @@
   }
   .narrow {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas:
       'top'
       'frame';
@@ -213,8 +247,10 @@
   .narrow .card {
     border-radius: var(--r-surface) var(--r-surface) 0 0;
   }
-  .narrow .demo {
+  .narrow .notices {
     padding: 0 12px 6px;
-    font-size: 12.5px;
+  }
+  .narrow .demo {
+    font-size: 12px;
   }
 </style>

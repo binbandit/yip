@@ -98,7 +98,7 @@
 <style>
   .strip {
     flex: none;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
     padding: 4px 8px;
     background: var(--surface);
   }
@@ -123,13 +123,13 @@
     grid-template-columns: auto minmax(120px, 1.2fr) minmax(90px, 1fr) minmax(0, 1.4fr);
     align-items: center;
     gap: 12px;
-    min-height: 38px;
-    padding: 4px 8px;
+    min-height: 36px;
+    padding: 4px 10px;
     border: 0;
-    border-radius: 10px;
+    border-radius: var(--r-row);
     background: none;
     color: var(--ink);
-    font-size: 14px;
+    font-size: 13px;
     text-align: left;
     cursor: pointer;
   }
@@ -140,8 +140,8 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 13px;
-    font-weight: 650;
+    font-size: 12px;
+    font-weight: 600;
     white-space: nowrap;
   }
   .title {
@@ -149,7 +149,7 @@
   }
   .who,
   .last {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--ink-secondary);
   }
   .when {
@@ -159,8 +159,8 @@
     flex: none;
   }
   .steer[aria-pressed='true'] {
-    color: var(--accent);
-    font-weight: 650;
+    color: var(--ink);
+    font-weight: 600;
   }
   .more {
     display: inline-flex;
@@ -174,10 +174,9 @@
       grid-template-columns: auto minmax(0, 1fr);
       grid-template-areas:
         'state title'
-        'who who'
-        'last last';
-      gap: 2px 10px;
-      padding: 6px 8px;
+        'who last';
+      gap: 1px 12px;
+      padding: 6px 10px;
     }
     .state {
       grid-area: state;
@@ -190,6 +189,14 @@
     }
     .last {
       grid-area: last;
+    }
+  }
+  @container room (max-width: 520px) {
+    .open {
+      grid-template-areas:
+        'state title'
+        'who who'
+        'last last';
     }
   }
 </style>

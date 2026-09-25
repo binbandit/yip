@@ -184,7 +184,7 @@
     color: var(--danger);
   }
   .loc {
-    color: var(--accent);
+    color: var(--ink);
   }
   .f-status {
     margin-left: auto;
