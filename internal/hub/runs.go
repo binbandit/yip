@@ -402,8 +402,10 @@ func (h *Hub) onRunAck(ctx context.Context, nodeID string, f protocol.Frame, a p
 				return err
 			}
 			t.kickAfter()
-			return t.emit(ev{Type: "run.updated", Room: run.Destination.RoomID, Job: run.JobID, Run: run.ID,
-				Payload: map[string]any{"run": run.Run, "rejected": a.Reason}})
+			if err := t.audit(protocol.Actor{Kind: protocol.ActorNode, ID: nodeID}, "runner", "run.offer_rejected", run.ID, "rejected", a.Reason); err != nil {
+				return err
+			}
+			return h.runChanged(ctx, t, run.ID)
 		}
 		now := h.now()
 		if err := store.SetRunState(ctx, t.tx, run.ID, protocol.RunPreparing, ""); err != nil {
