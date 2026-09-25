@@ -161,10 +161,11 @@ describe('action flows', () => {
     hub.override('POST', new RegExp(`^/v1/jobs/${codeDetail.job.id}/accept$`), () => ({ body: { ...needsMe.job, state: 'completed', version: 41 } }));
     delete app.data.jobs[codeDetail.job.id];
     app.go({ name: 'room', roomId: roomId('Security') }, { panel: { kind: 'job', id: codeDetail.job.id } });
-    const accept = await waitFor(() => byText('aside button', /Accept revision a9002d3/), 'accept button');
+    const head = codeDetail.job.revision!.head!;
+    const accept = await waitFor(() => byText('aside button', `Accept revision ${head.slice(0, 7)}`), 'accept button');
     accept.click();
     await waitFor(() => hub.last('POST', /\/accept$/), 'accept post');
-    expect(hub.last('POST', /\/accept$/)!.body).toEqual({ revision: 'a9002d31ff16a6cc189bd1bdc2cb5544043f204a', version: 40, note: '' });
+    expect(hub.last('POST', /\/accept$/)!.body).toEqual({ revision: head, version: 40, note: '' });
     await waitFor(() => app.data.jobs[codeDetail.job.id].state === 'completed', 'completed');
     app.closePanel();
   });
@@ -247,6 +248,33 @@ describe('action flows', () => {
     byText('dialog button', 'Done')!.click();
     await settle();
     expect(document.querySelector('dialog[open]')).toBeNull();
+  });
+
+  it('shows an unconfirmed outcome from WorkRow.runState in the strip', async () => {
+    const engRoom = roomId('Engineering');
+    const unk = { ...codeDetail.job, id: 'job-unk', title: 'Refactor gateway retries', state: 'running' as const, currentRunId: 'run-unk', source: { roomId: engRoom } };
+    hub.override('GET', new RegExp(`^/v1/rooms/${engRoom}/work`), (c) => {
+      expect(c.path).toContain('include=replies');
+      return { body: [{ job: unk, lastConfirmed: 'Running gateway tests', runState: 'unknown', nodeName: 'Studio mini' }] };
+    });
+    delete app.data.timelines[engRoom];
+    app.go({ name: 'room', roomId: engRoom });
+    const row = await waitFor(() => byText('.strip .row', 'Refactor gateway retries'), 'strip row');
+    expect(row.textContent).toContain('Not confirmed');
+    expect(row.textContent).toContain("the last attempt's outcome is not confirmed");
+    expect(row.querySelector('button.open')!.getAttribute('aria-label')).toContain('outcome not confirmed');
+  });
+
+  it('opens a decision by id with its provenance', async () => {
+    const d = fixture<{ id: string; title: string; visibleRoomIds: string[] | null }>('decision.json');
+    delete app.data.decisions[d.id];
+    app.openPanel({ kind: 'decision', id: d.id });
+    await waitFor(() => text().includes(d.title), 'decision');
+    expect(hub.calls.some((c) => c.path === `/v1/decisions/${d.id}`)).toBe(true);
+    expect(d.visibleRoomIds).toBeNull();
+    expect(text()).toContain('Visible wherever its scope allows.');
+    expect(text()).toContain('accepted automatically under the project policy');
+    app.closePanel();
   });
 
   it('uses a navigation sheet and full-screen panels on a phone', async () => {

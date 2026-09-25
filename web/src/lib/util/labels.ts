@@ -454,3 +454,23 @@ export function catchupTone(kind: string): Tone {
   }
   return 'neutral';
 }
+
+/**
+ * A short note about the latest attempt when it adds something the job state
+ * doesn't say ("unknown" means the outcome is not confirmed).
+ */
+export function runStateNote(runState: string | undefined): string | undefined {
+  switch (runState) {
+    case 'unknown':
+      return 'Outcome not confirmed';
+    case 'offered':
+      return 'Handing to a machine';
+    case 'preparing':
+      return 'Preparing the workspace';
+    case 'awaiting_input':
+      return 'Waiting for input';
+    case 'stopping':
+      return 'Stopping';
+  }
+  return undefined;
+}

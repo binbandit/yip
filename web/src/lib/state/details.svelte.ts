@@ -5,6 +5,7 @@ import { api } from '../api/endpoints';
 import { ApiError, errorMessage } from '../api/client';
 import type { JobDetail } from '../api/types.gen';
 import { app } from './app.svelte';
+import { mergeRuns } from './data';
 
 export interface Entry<T> {
   data?: T;
@@ -54,7 +55,7 @@ class Details {
       // Keep the shared stores current with what the detail tells us.
       const cur = app.data.jobs[d.job.id];
       if (!cur || d.job.version >= cur.version) app.data.jobs[d.job.id] = d.job;
-      for (const r of d.runs) app.data.runs[r.id] = r;
+      mergeRuns(app.data, d.runs);
       for (const r of d.reviews) {
         const c = app.data.reviews[r.id];
         if (!c || r.updatedAt >= c.updatedAt) app.data.reviews[r.id] = r;
@@ -105,6 +106,31 @@ class Details {
     }
   }
 
+  async ensureQuestion(id: string): Promise<void> {
+    if (app.data.questions[id] || this.loadingOther.has('q:' + id)) return;
+    this.loadingOther.add('q:' + id);
+    try {
+      const q = await api.question(id);
+      app.data.questions[q.id] = q;
+    } catch {
+      /* the message still renders; its answered state is just unknown */
+    } finally {
+      this.loadingOther.delete('q:' + id);
+    }
+  }
+
+  /** Loads one decision; throws with the hub's message when it isn't visible. */
+  async ensureDecision(id: string): Promise<void> {
+    if (app.data.decisions[id] || this.loadingOther.has('d:' + id)) return;
+    this.loadingOther.add('d:' + id);
+    try {
+      const d = await api.decision(id);
+      app.data.decisions[d.id] = d;
+    } finally {
+      this.loadingOther.delete('d:' + id);
+    }
+  }
+
   async ensurePR(id: string, refresh = false): Promise<void> {
     if ((!refresh && app.data.prs[id]) || this.loadingOther.has('p:' + id)) return;
     this.loadingOther.add('p:' + id);
@@ -130,6 +156,7 @@ function normalizeDetail(d: JobDetail): void {
   d.activity = d.activity ?? [];
   d.inputs = d.inputs ?? [];
   d.missing = d.missing ?? [];
+  d.revisions = d.revisions ?? [];
 }
 
 export const details = new Details();

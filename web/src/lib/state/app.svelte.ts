@@ -13,9 +13,10 @@ import {
   emptyState,
   failPending,
   mergeRoomPage,
+  mergeRuns,
   mergeThread,
+  mergeWorkRows,
   setRoomSnapshot,
-  warmupStart,
   type DataState,
   type PendingMessage,
   type TransientStream,
@@ -173,6 +174,16 @@ class AppState {
       this.navigate('/overview', { replace: true });
     }
     this.startStream();
+    void this.loadRuns();
+  }
+
+  /** Active attempts, for "working" indicators; run.* events keep them current. */
+  async loadRuns(): Promise<void> {
+    try {
+      mergeRuns(this.data, await api.runs());
+    } catch {
+      /* indicators fill in from events */
+    }
   }
 
   private startStream(): void {
@@ -255,11 +266,11 @@ class AppState {
       applyBootstrap(next, b);
       next.lastSeq = Math.max(cursor, this.data.lastSeq);
       next.jobs = this.data.jobs;
-      next.runs = this.data.runs;
       next.inputs = this.data.inputs;
       next.pending = keepPending;
       this.data = next;
       this.resetEpoch++;
+      void this.loadRuns();
     } catch (err) {
       this.toast(errorMessage(err), 'error');
     }
@@ -350,13 +361,11 @@ class AppState {
     const tl = this.data.timelines[roomId];
     const [page, work] = await Promise.all([
       tl?.loaded ? null : api.messages(roomId),
-      api.roomWork(roomId).catch(() => []),
+      // Includes live conversational replies for the composer's activity line.
+      api.roomWork(roomId, true).catch(() => []),
     ]);
     if (page) mergeRoomPage(this.data, roomId, page.messages ?? [], page.hasMore, false);
-    for (const row of work) {
-      const cur = this.data.jobs[row.job.id];
-      if (!cur || row.job.version >= cur.version) this.data.jobs[row.job.id] = row.job;
-    }
+    mergeWorkRows(this.data, work);
   }
 
   async loadOlder(roomId: string): Promise<boolean> {

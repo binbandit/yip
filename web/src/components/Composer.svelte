@@ -8,7 +8,7 @@
   import { draftKey, loadDraft, saveDraft, clearDraft } from '../lib/state/drafts';
   import { filterCandidates, findMentionQuery, insertMention, pruneSelected, resolveMentions, type MentionCandidate, type SelectedMention } from '../lib/util/mentions';
   import { deliveryReceipt, jobStateLabel, waitingReasonLabel } from '../lib/util/labels';
-  import { isLiveJob, pendingReplies, workingInRoom } from '../lib/state/data';
+  import { isLiveJob, jobRunState, pendingReplies, workingInRoom } from '../lib/state/data';
   import type { Mention } from '../lib/api/types.gen';
   import Icon from './Icon.svelte';
   import Avatar from './Avatar.svelte';
@@ -80,7 +80,9 @@
     const working = new Set(workingInRoom(app.data, roomId));
     for (const j of replies) {
       const name = app.engineerName(j.ownerId);
-      if (j.state === 'waiting') {
+      if (jobRunState(app.data, j) === 'unknown') {
+        lines.push({ key: j.id, engineerId: j.ownerId, text: `${name}'s reply stopped reporting; its outcome isn't confirmed`, tone: 'attention' });
+      } else if (j.state === 'waiting') {
         lines.push({
           key: j.id,
           engineerId: j.ownerId,

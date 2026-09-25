@@ -29,7 +29,9 @@ import type {
   RevisionRecord,
   Room,
   Run,
+  RunState,
   User,
+  WorkRow,
 } from '../api/types.gen';
 
 export interface Timeline {
@@ -73,8 +75,10 @@ export interface DataState {
   preferences: Preferences;
   /** Highest committed event sequence applied. */
   lastSeq: number;
-  /** Cursor returned by the bootstrap snapshot. */
+  /** Cursor returned by the bootstrap snapshot; the event stream resumes after it. */
   bootCursor: number;
+  /** Latest attempt state per job from work-row snapshots (runs in `runs` are fresher). */
+  workRunState: Record<string, RunState>;
   rooms: Record<string, Room>;
   engineers: Record<string, Engineer>;
   projects: Record<string, Project>;
@@ -117,6 +121,7 @@ export function emptyState(): DataState {
     preferences: { ...defaultPreferences },
     lastSeq: 0,
     bootCursor: 0,
+    workRunState: {},
     rooms: {},
     engineers: {},
     projects: {},
@@ -141,17 +146,6 @@ export function emptyState(): DataState {
   };
 }
 
-/** Event types replayed from before the bootstrap snapshot (see warmupStart). */
-const WARMUP_TYPES = new Set(['job.created', 'job.updated', 'run.created', 'run.updated', 'input.updated']);
-
-/** How many events before the bootstrap cursor to replay so live work (including
- * conversational replies, which no list endpoint returns) is known after a reload. */
-export const WARMUP_WINDOW = 400;
-
-export function warmupStart(bootCursor: number): number {
-  return Math.max(0, bootCursor - WARMUP_WINDOW);
-}
-
 const byId = <T extends { id: string }>(list: T[] | null | undefined): Record<string, T> => {
   const out: Record<string, T> = {};
   for (const item of list ?? []) out[item.id] = item;
@@ -171,7 +165,7 @@ export function applyBootstrap(s: DataState, b: Bootstrap): void {
   s.projects = byId(b.projects);
   s.nodes = byId(b.nodes);
   s.bootCursor = b.cursor;
-  s.lastSeq = Math.max(s.lastSeq, warmupStart(b.cursor));
+  s.lastSeq = Math.max(s.lastSeq, b.cursor);
 }
 
 export function newer(existing: { version: number } | undefined, incoming: { version: number }): boolean {
@@ -218,8 +212,18 @@ export function mergeThread(s: DataState, rootId: string, page: Message[]): void
 function upsertMessage(s: DataState, m: Message): boolean {
   const cur = s.messages[m.id];
   if (cur && m.revision < cur.revision) return false;
-  s.messages[m.id] = normalizeMessage(m);
+  const next = normalizeMessage(m);
+  // A thread reply updates its root without bumping `revision`; never let an
+  // older snapshot of the same revision shrink the thread summary.
+  if (cur && m.revision === cur.revision && cur.thread && olderThread(next.thread, cur.thread)) next.thread = cur.thread;
+  s.messages[m.id] = next;
   return true;
+}
+
+function olderThread(a: Message['thread'], b: NonNullable<Message['thread']>): boolean {
+  if (!a) return true;
+  if (a.replyCount !== b.replyCount) return a.replyCount < b.replyCount;
+  return (a.lastReplyAt ?? '') < (b.lastReplyAt ?? '');
 }
 
 export function normalizeMessage(m: Message): Message {
@@ -234,6 +238,41 @@ export function normalizeMessage(m: Message): Message {
 
 function reconcilePending(s: DataState, m: Message): void {
   if (m.clientKey && s.pending[m.clientKey]) delete s.pending[m.clientKey];
+}
+
+// ---- snapshots of runs and work ----
+
+/** A run that has finished for good; `unknown` can still be reconciled. */
+export function isFinalRun(state: string): boolean {
+  return state === 'succeeded' || state === 'failed' || state === 'cancelled';
+}
+
+/**
+ * Merges runs from a REST snapshot (GET /v1/runs, job detail). Events are
+ * applied in sequence order and always win; a snapshot never turns a run that
+ * events already finished back into a live one.
+ */
+export function mergeRuns(s: DataState, runs: Run[] | null | undefined): void {
+  for (const r of runs ?? []) {
+    const cur = s.runs[r.id];
+    if (cur && isFinalRun(cur.state) && !isFinalRun(r.state)) continue;
+    s.runs[r.id] = r;
+  }
+}
+
+/** Stores work rows (jobs plus their latest attempt state) from a snapshot. */
+export function mergeWorkRows(s: DataState, rows: WorkRow[] | null | undefined): void {
+  for (const w of rows ?? []) {
+    const cur = s.jobs[w.job.id];
+    if (!cur || w.job.version >= cur.version) s.jobs[w.job.id] = w.job;
+    if (w.runState) s.workRunState[w.job.id] = w.runState;
+  }
+}
+
+/** The latest attempt's state for a job: a known run beats the row snapshot. */
+export function jobRunState(s: DataState, j: Job): RunState | undefined {
+  const run = j.currentRunId ? s.runs[j.currentRunId] : undefined;
+  return run?.state ?? s.workRunState[j.id];
 }
 
 // ---- optimistic sends ----
@@ -278,7 +317,6 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
   if (typeof ev.sequence === 'number' && ev.sequence > 0) {
     if (ev.sequence <= s.lastSeq) return { applied: false };
     s.lastSeq = ev.sequence;
-    if (ev.sequence <= s.bootCursor && !WARMUP_TYPES.has(ev.type)) return { applied: false };
   }
   bump(s.touched.jobs, ev.jobId);
   bump(s.touched.rooms, ev.roomId);

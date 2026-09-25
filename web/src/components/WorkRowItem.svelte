@@ -3,7 +3,8 @@
   // update with its time, machine, blocker text, and the origin conversation.
   import { app } from '../lib/state/app.svelte';
   import type { Job } from '../lib/api/types.gen';
-  import { jobShape, jobStateLabel, jobTone, waitingReasonLabel } from '../lib/util/labels';
+  import { jobShape, jobStateLabel, jobTone, runStateNote, waitingReasonLabel } from '../lib/util/labels';
+  import { isLiveJob, jobRunState } from '../lib/state/data';
   import { fullTime, relative } from '../lib/util/time';
   import StateIcon from './StateIcon.svelte';
   import Avatar from './Avatar.svelte';
@@ -13,9 +14,13 @@
     lastConfirmed?: string;
     lastConfirmedAt?: string | null;
     blocker?: string;
+    /** Overrides the latest attempt's state from the store. */
     unknownOutcome?: boolean;
   }
-  let { job, lastConfirmed, lastConfirmedAt, blocker, unknownOutcome = false }: Props = $props();
+  let { job, lastConfirmed, lastConfirmedAt, blocker, unknownOutcome: forced = false }: Props = $props();
+  const runState = $derived(jobRunState(app.data, job));
+  const unknownOutcome = $derived(forced || runState === 'unknown');
+  const note = $derived(isLiveJob(job) ? runStateNote(runState) : undefined);
   const project = $derived(job.projectId ? app.data.projects[job.projectId] : undefined);
   const room = $derived(app.data.rooms[job.source.roomId]);
   const node = $derived(app.nodeName(job.nodeId));
@@ -43,6 +48,7 @@
       {#if project}<span>· {project.name}</span>{/if}
       {#if confirmed}<span>· {confirmed}{#if confirmedAt}<span title={fullTime(confirmedAt)}>, {relative(confirmedAt, app.now)}</span>{/if}</span>{/if}
       {#if node}<span>· on {node}</span>{/if}
+      {#if note && !unknownOutcome}<span>· {note}</span>{/if}
     </span>
   </button>
   {#if room}

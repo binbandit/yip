@@ -30,11 +30,13 @@ import type {
   Preferences,
   Project,
   PullRequest,
+  Question,
   PutGrantRequest,
   PutRepoRequest,
   RetryJobRequest,
   Review,
   Room,
+  Run,
   RunActivity,
   SearchResult,
   SetupRequest,
@@ -69,7 +71,9 @@ export const api = {
     get<MessagePage>(`/v1/rooms/${q(roomId)}/messages?limit=${limit}${before ? `&before=${before}` : ''}`),
   postMessage: (roomId: string, req: PostMessageRequest) => post<PostMessageResponse>(`/v1/rooms/${q(roomId)}/messages`, req),
   markRead: (roomId: string, seq: number) => post<{ ok: boolean }>(`/v1/rooms/${q(roomId)}/read`, { seq }),
-  roomWork: (roomId: string) => get<WorkRow[]>(`/v1/rooms/${q(roomId)}/work`),
+  /** The room's work strip; `includeReplies` adds live conversational replies. */
+  roomWork: (roomId: string, includeReplies = false) =>
+    get<WorkRow[]>(`/v1/rooms/${q(roomId)}/work${includeReplies ? '?include=replies' : ''}`),
   thread: (rootId: string) => get<MessagePage>(`/v1/threads/${q(rootId)}`),
   react: (messageId: string, emoji: string, remove: boolean) =>
     post<Message>(`/v1/messages/${q(messageId)}/reactions`, { emoji, remove }),
@@ -105,6 +109,9 @@ export const api = {
   cancelJob: (jobId: string, req: CancelJobRequest) => post<Job>(`/v1/jobs/${q(jobId)}/cancel`, req),
   retryJob: (jobId: string, req: RetryJobRequest) => post<Job>(`/v1/jobs/${q(jobId)}/retry`, req),
   acceptJob: (jobId: string, req: AcceptJobRequest) => post<Job>(`/v1/jobs/${q(jobId)}/accept`, req),
+  /** Attempts queued or executing in your rooms (for "working" indicators). */
+  runs: () => get<Run[]>('/v1/runs'),
+  question: (id: string) => get<Question>(`/v1/questions/${q(id)}`),
   review: (id: string) => get<Review>(`/v1/reviews/${q(id)}`),
   pullRequest: (id: string, refresh = false) => get<PullRequest>(`/v1/pull-requests/${q(id)}${refresh ? '?refresh=1' : ''}`),
   approval: (id: string) => get<Approval>(`/v1/approvals/${q(id)}`),
@@ -121,8 +128,11 @@ export const api = {
 
   // knowledge, overview, search
   decisions: (status?: string) => get<Decision[]>(`/v1/decisions${status ? `?status=${q(status)}` : ''}`),
+  decision: (id: string) => get<Decision>(`/v1/decisions/${q(id)}`),
   decideDecision: (id: string, req: DecisionActionRequest) => post<Decision>(`/v1/decisions/${q(id)}`, req),
-  overview: (seen = false) => get<Overview>(`/v1/overview${seen ? '?seen=1' : ''}`),
+  overview: () => get<Overview>('/v1/overview'),
+  /** Records the visit that "Since you were here" is measured from. */
+  overviewSeen: () => post<{ ok: boolean }>('/v1/overview/seen'),
   search: (query: string, room?: string, signal?: AbortSignal) =>
     get<SearchResult[]>(`/v1/search?q=${q(query)}${room ? `&room=${q(room)}` : ''}`, { signal }),
   diagnostics: () => get<Diagnostics>('/v1/diagnostics'),

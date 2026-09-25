@@ -1,7 +1,9 @@
 <script lang="ts">
   // A remembered decision with its provenance: scope, status, who proposed
   // and who accepted it, supersession, and links to its sources.
+  import { untrack } from 'svelte';
   import { app } from '../../lib/state/app.svelte';
+  import { details } from '../../lib/state/details.svelte';
   import { api } from '../../lib/api/endpoints';
   import { ApiError, errorMessage } from '../../lib/api/client';
   import { atTime } from '../../lib/util/time';
@@ -17,14 +19,12 @@
   let busy = $state(false);
 
   $effect(() => {
-    if (app.data.decisions[decisionId]) return;
-    api
-      .decisions()
-      .then((ds) => {
-        for (const d of ds) app.data.decisions[d.id] = d;
-        if (!app.data.decisions[decisionId]) error = "This decision doesn't exist or isn't visible from your rooms.";
-      })
-      .catch((e) => (error = errorMessage(e)));
+    const id = decisionId;
+    untrack(() =>
+      details.ensureDecision(id).catch((e) => {
+        error = e instanceof ApiError && (e.status === 404 || e.status === 403) ? "This decision doesn't exist or isn't visible from your rooms." : errorMessage(e);
+      }),
+    );
   });
 
   const d = $derived(app.data.decisions[decisionId]);
@@ -95,10 +95,12 @@
         {/if}
       </section>
       <p class="meta">
-        {#if (d.visibleRoomIds ?? []).length}
-          Visible from: {(d.visibleRoomIds ?? []).map((r) => app.data.rooms[r]?.name ?? 'a private room').join(', ')}.
-        {:else}
+        {#if d.visibleRoomIds == null}
           Visible wherever its scope allows.
+        {:else if d.visibleRoomIds.length === 0}
+          Restricted: not visible from any room.
+        {:else}
+          Visible only from: {d.visibleRoomIds.map((r) => app.data.rooms[r]?.name ?? 'a private room').join(', ')}.
         {/if}
       </p>
       {#if d.status === 'proposed'}

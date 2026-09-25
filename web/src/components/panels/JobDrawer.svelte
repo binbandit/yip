@@ -62,9 +62,33 @@
   const tab: Tab = $derived((TABS as readonly string[]).includes(app.loc.tab ?? '') ? (app.loc.tab as Tab) : 'evidence');
 
   // ---- evidence: diff per revision ----
-  const diffs = $derived(d ? d.artifacts.filter((a) => a.kind === 'diff').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : []);
-  let chosenDiff = $state<string | null>(null);
-  const diff = $derived(diffs.find((a) => a.id === chosenDiff) ?? diffs.find((a) => a.revision === job?.revision?.head) ?? diffs[0]);
+  // Revision records (file and line counts) drive the picker and stats; the
+  // diff artifact is still parsed to render hunks.
+  interface RevOption {
+    head: string;
+    artifactId: string;
+    at: string;
+    stats?: { files: number; ins: number; del: number; summary: string; branch: string };
+  }
+  const revOptions: RevOption[] = $derived.by(() => {
+    if (!d) return [];
+    const byId = new Map(d.artifacts.map((a) => [a.id, a]));
+    if (d.revisions.length) {
+      return [...d.revisions].reverse().map((r) => ({
+        head: r.head,
+        artifactId: r.diffArtifactId,
+        at: byId.get(r.diffArtifactId)?.createdAt ?? '',
+        stats: { files: r.filesChanged, ins: r.insertions, del: r.deletions, summary: r.summary, branch: r.branch },
+      }));
+    }
+    return d.artifacts
+      .filter((a) => a.kind === 'diff')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((a) => ({ head: a.revision ?? '', artifactId: a.id, at: a.createdAt }));
+  });
+  let chosenRev = $state<string | null>(null);
+  const rev = $derived(revOptions.find((o) => o.artifactId === chosenRev) ?? revOptions.find((o) => o.head === job?.revision?.head) ?? revOptions[0]);
+  const diff = $derived(rev && d ? (d.artifacts.find((a) => a.id === rev.artifactId) ?? { id: rev.artifactId, revision: rev.head }) : undefined);
   let diffFiles = $state<DiffFile[] | null>(null);
   let diffError = $state('');
   let diffTruncated = $state(false);
@@ -332,17 +356,26 @@
         <section class="block">
           <div class="block-head">
             <h3>Changes</h3>
-            {#if diffs.length > 1}
+            {#if revOptions.length > 1}
               <label class="rev-pick">
                 <span class="vh">Revision</span>
-                <select class="select" value={diff?.id} onchange={(e) => (chosenDiff = (e.target as HTMLSelectElement).value)}>
-                  {#each diffs as a (a.id)}
-                    <option value={a.id}>{shortSha(a.revision)}{a.revision === job.revision?.head ? ' (current)' : ''} · {clock(a.createdAt)}</option>
+                <select class="select" value={rev?.artifactId} onchange={(e) => (chosenRev = (e.target as HTMLSelectElement).value)}>
+                  {#each revOptions as o (o.artifactId)}
+                    <option value={o.artifactId}
+                      >{shortSha(o.head)}{o.head === job.revision?.head ? ' (current)' : ''}{o.stats ? ` · ${o.stats.files} files +${o.stats.ins} −${o.stats.del}` : o.at ? ` · ${clock(o.at)}` : ''}</option
+                    >
                   {/each}
                 </select>
               </label>
             {/if}
           </div>
+          {#if rev?.stats}
+            <p class="rev-stats">
+              <span class="mono">{shortSha(rev.head)}</span>
+              · {rev.stats.files} {rev.stats.files === 1 ? 'file' : 'files'} <span class="add">+{rev.stats.ins}</span> <span class="del">−{rev.stats.del}</span>
+              {#if rev.stats.summary}· {rev.stats.summary}{/if}
+            </p>
+          {/if}
           {#if !diff}
             <p class="meta">No diff recorded{job.kind === 'code' ? ' yet' : ''}.</p>
           {:else if diffError}
@@ -664,6 +697,19 @@
   }
   .sub-h {
     margin-top: 18px;
+  }
+  .rev-stats {
+    margin: -2px 0 10px;
+    font-size: 13.5px;
+    color: var(--ink-secondary);
+  }
+  .rev-stats .add {
+    color: var(--success);
+    font-weight: 600;
+  }
+  .rev-stats .del {
+    color: var(--danger);
+    font-weight: 600;
   }
   .rev-pick .select {
     min-height: 32px;

@@ -9,7 +9,8 @@ import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
 
 let hub: FakeHub;
 let component: ReturnType<typeof mount>;
-const boot = fixture<{ rooms: { id: string; name: string }[]; engineers: { id: string; name: string; handle: string }[] }>('bootstrap.json');
+const boot = fixture<{ cursor: number; rooms: { id: string; name: string }[]; engineers: { id: string; name: string; handle: string }[] }>('bootstrap.json');
+const bootCursor = boot.cursor;
 const roomId = (name: string) => boot.rooms.find((r) => r.name === name)!.id;
 const eng = (name: string) => boot.engineers.find((e) => e.name === name)!;
 const pipJob = fixture<{ job: { id: string; title: string } }>('job-pip.json').job;
@@ -52,6 +53,9 @@ function key(el: Element, k: string, init: KeyboardEventInit = {}) {
 
 beforeAll(async () => {
   hub = demoHub();
+  // One attempt executing in Security (for the "working" indicators).
+  const run = fixture<{ runs: Record<string, unknown>[] }>('job-code.json').runs[0];
+  hub.override('GET', /^\/v1\/runs$/, () => ({ body: [{ ...run, id: 'run-live', state: 'running' }] }));
   hub.install();
   (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
   history.replaceState(null, '', '/');
@@ -74,14 +78,16 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect(text()).toContain('Recently completed');
     expect(text()).toContain('Atlas uses strict server-side expiry');
     // The visit is recorded only after rendering, and nothing marks rooms read.
-    await waitFor(() => hub.calls.some((c) => c.path === '/v1/overview?seen=1'), 'seen=1');
-    const first = hub.calls.findIndex((c) => c.path === '/v1/overview');
-    const seen = hub.calls.findIndex((c) => c.path === '/v1/overview?seen=1');
+    await waitFor(() => hub.calls.some((c) => c.method === 'POST' && c.path === '/v1/overview/seen'), 'overview/seen');
+    const first = hub.calls.findIndex((c) => c.method === 'GET' && c.path === '/v1/overview');
+    const seen = hub.calls.findIndex((c) => c.method === 'POST' && c.path === '/v1/overview/seen');
     expect(first).toBeGreaterThanOrEqual(0);
     expect(seen).toBeGreaterThan(first);
+    expect(hub.calls.some((c) => c.path.includes('seen=1'))).toBe(false);
     expect(hub.calls.some((c) => /\/read$/.test(c.path))).toBe(false);
-    // Opened the event stream from a warm-up cursor.
-    expect(FakeEventSource.latest().url).toMatch(/^\/v1\/events\?cursor=\d+$/);
+    // The stream resumes exactly at the snapshot cursor; active runs come from GET /v1/runs.
+    expect(FakeEventSource.latest().url).toBe(`/v1/events?cursor=${bootCursor}`);
+    expect(hub.calls.some((c) => c.method === 'GET' && c.path === '/v1/runs')).toBe(true);
   });
 
   it('shows unread by weight and mention counts in the sidebar', () => {
@@ -90,6 +96,8 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect(re.textContent).toContain('1 mention');
     const eng = byText('nav a.row', 'Engineering')!;
     expect(eng.classList.contains('unread')).toBe(false);
+    // Working indicator from GET /v1/runs, without replaying history.
+    expect(byText('nav a.row', 'Security')!.textContent).toContain('Mira working');
     expect(text()).toContain('1 machine connected · work continues when you close this');
   });
 
@@ -101,6 +109,10 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect(byText('button.chip', 'View review')).toBeTruthy();
     await waitFor(() => byText('.result', 'Inspect the work'), 'result card');
     await waitFor(() => byText('.result', 'go test ./...'), 'result checks');
+    // Revision stats come from JobDetail.revisions, not a diff download.
+    expect(byText('.result', '3 files')).toBeTruthy();
+    expect(byText('.result .add', '+28')).toBeTruthy();
+    expect(text()).toContain('Mira is working');
     expect(byText('.result', /Oren\s+approved/)).toBeTruthy();
     expect(byText('.result', 'requested changes on')).toBeTruthy();
     // Work strip: the completed job is listed with its state word.
@@ -116,6 +128,7 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     await waitFor(() => document.querySelector('.diff .line.add'), 'diff lines');
     expect(byText('.diff .path', 'session/refresh.go')).toBeTruthy();
     expect(byText('.diff .path', 'session/refresh_test.go')).toBeTruthy();
+    expect(byText('.rev-stats', 'Use the shared validator in Refresh')).toBeTruthy();
     expect(text()).toContain('Passed');
 
     byText('[role=tab]', 'Review')!.click();
@@ -137,6 +150,10 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     app.go({ name: 'room', roomId: roomId('Reverse engineering') });
     await waitFor(() => text().includes('which repository contains'), 'question');
     expect(text()).toContain('Pip asked you');
+    // The question itself is known (from the Overview or GET /v1/questions/{id}), not its whole job.
+    const qid = fixture<{ id: string }>('question.json').id;
+    await waitFor(() => app.data.questions[qid], 'question state');
+    expect(hub.calls.some((c) => c.path === `/v1/jobs/${pipJob.id}`)).toBe(false);
     expect(byText('button', 'Reply in thread')).toBeTruthy();
     // Beacon work is waiting with its exact blocker in the strip.
     await waitFor(() => byText('.strip', 'Tracing the retry worker needs its repository location'), 'strip blocker');
