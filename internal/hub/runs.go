@@ -324,14 +324,51 @@ func (h *Hub) onCapabilities(ctx context.Context, nodeID string, c protocol.Runn
 		if err := store.SetNodeCapabilities(ctx, t.tx, nodeID, c, "", ""); err != nil {
 			return err
 		}
+		ready := map[string]bool{}
 		for _, p := range c.Providers {
 			if err := h.ensureProfile(ctx, t, p); err != nil {
 				return err
 			}
+			if p.AuthState == protocol.AuthReady {
+				ready[p.Provider] = true
+			}
+		}
+		if err := h.resumeSignInWaits(ctx, t, nodeID, ready); err != nil {
+			return err
 		}
 		t.kickAfter()
 		return h.emitNode(ctx, t, nodeID)
 	})
+}
+
+// resumeSignInWaits continues work that stopped because a provider needed
+// sign-in, once a machine reports that provider signed in again.
+func (h *Hub) resumeSignInWaits(ctx context.Context, t *txn, nodeID string, ready map[string]bool) error {
+	if len(ready) == 0 {
+		return nil
+	}
+	jobs, err := store.ListJobs(ctx, t.tx, store.JobFilter{States: []protocol.JobState{protocol.JobWaiting}, IncludeReply: true})
+	if err != nil {
+		return err
+	}
+	nodeName := h.nodeName(ctx, t.tx, nodeID)
+	for _, j := range jobs {
+		if j.WaitingReason != protocol.WaitProviderSignIn {
+			continue
+		}
+		if _, err := store.ActiveRunForJob(ctx, t.tx, j.ID); err == nil {
+			continue // a queued attempt is picked up by the scheduler
+		}
+		runs, err := store.ListJobRuns(ctx, t.tx, j.ID)
+		if err != nil || len(runs) == 0 || !ready[runs[len(runs)-1].Provider] {
+			continue
+		}
+		if _, err := h.enqueueRun(ctx, t, j, runReason{Purpose: "continue", Cause: j.ID,
+			Note: ProviderLabel(runs[len(runs)-1].Provider) + " is signed in again on " + nodeName + "; continue where you left off."}); err != nil {
+			h.log.Warn("could not resume work after sign-in", "job", j.ID, "err", err)
+		}
+	}
+	return nil
 }
 
 // ensureProfile records an account pool for a provider profile. Fake and
@@ -554,6 +591,9 @@ func (h *Hub) applyRunEvent(ctx context.Context, t *txn, run store.RunRow, e pro
 	case protocol.RunEvStarted:
 		if run.State == protocol.RunPreparing || run.State == protocol.RunOffered {
 			if err := store.SetRunState(ctx, t.tx, run.ID, protocol.RunRunning, ""); err != nil {
+				return err
+			}
+			if err := store.ConsumeStartedInputs(ctx, t.tx, run.ID); err != nil {
 				return err
 			}
 			var d struct {

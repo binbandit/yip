@@ -24,6 +24,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	user := userFrom(r)
+	session := sessionFrom(r)
 	q := s.hub.Store().R()
 	cursor := int64(0)
 	if v := r.Header.Get("Last-Event-ID"); v != "" {
@@ -112,6 +113,11 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		case <-heartbeat.C:
+			// A signed-out or expired session stops receiving events; the
+			// client's reconnect is then refused and it returns to sign-in.
+			if !s.hub.SessionActive(ctx, session.ID) {
+				return
+			}
 			fmt.Fprint(w, ": keepalive\n\n")
 			flusher.Flush()
 		}

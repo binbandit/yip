@@ -57,6 +57,8 @@ type Hub struct {
 	sealer    *auth.Sealer
 	artifacts *ArtifactStore
 	logins    *auth.Limiter
+	clients   *auth.Limiter // per-client sign-in attempts across all handles
+	verifying chan struct{} // bounds concurrent password hashing (64 MiB each)
 
 	orgMu sync.RWMutex
 	org   protocol.Org
@@ -109,7 +111,8 @@ func Open(ctx context.Context, cfg Config) (*Hub, error) {
 	}
 	h := &Hub{
 		cfg: cfg, st: st, bus: events.NewBus(), lim: cfg.Limits, log: cfg.Logger, ca: ca, sealer: sealer,
-		artifacts: arts, logins: auth.NewLimiter(8, 10*time.Minute), nodes: newNodeRegistry(),
+		artifacts: arts, logins: auth.NewLimiter(8, 10*time.Minute),
+		clients: auth.NewLimiter(30, 10*time.Minute), verifying: make(chan struct{}, 2), nodes: newNodeRegistry(),
 		kick: make(chan struct{}, 1), excluded: map[string]time.Time{}, closed: make(chan struct{}),
 	}
 	if org, err := store.FirstOrg(ctx, st.R()); err == nil {

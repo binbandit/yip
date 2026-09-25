@@ -25,10 +25,19 @@ const (
 // MinPasswordLength is enforced at setup and password reset.
 const MinPasswordLength = 10
 
+// MaxPasswordLength bounds hashing work per attempt.
+const MaxPasswordLength = 1024
+
+// MaxHandleLength bounds sign-in handles.
+const MaxHandleLength = 64
+
 // HashPassword returns a PHC-formatted Argon2id hash.
 func HashPassword(password string) (string, error) {
 	if len(password) < MinPasswordLength {
 		return "", fmt.Errorf("password must be at least %d characters", MinPasswordLength)
+	}
+	if len(password) > MaxPasswordLength {
+		return "", fmt.Errorf("password must be at most %d characters", MaxPasswordLength)
 	}
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {

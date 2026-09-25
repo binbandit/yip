@@ -29,6 +29,8 @@ var (
 	editOnly = []string{protocol.ModeEdit}
 	notRO    = []string{protocol.ModeEdit, protocol.ModeConversation}
 	roOnly   = []string{protocol.ModeReadOnly}
+	// workModes are runs with a repository workspace (not conversation replies).
+	workModes = []string{protocol.ModeEdit, protocol.ModeReadOnly}
 )
 
 // Tool names. MCP clients require [a-zA-Z0-9_-] names, so the spec's dotted
@@ -95,12 +97,12 @@ var Tools = []Tool{
 		InputSchema: schema(`{"type":"object","properties":{"number":{"type":"integer"},"url":{"type":"string"}},"additionalProperties":false}`)},
 	{Name: ForgePublishReview, Modes: roOnly, Description: "Publish your recorded review verdict to the linked pull request through the project's authorized forge credential. It is revision-bound and refused if the PR moved, if the credential is not eligible, or if publication is not granted.",
 		InputSchema: schema(`{"type":"object","properties":{"body":{"type":"string"}},"additionalProperties":false}`)},
-	{Name: WorkRunCheck, Modes: all, Local: true, Description: "Run a check command (tests, build, lint) in your workspace. The runner executes it and records the command, exit status, revision, and log as evidence. Use this for any check you want counted.",
+	{Name: WorkRunCheck, Modes: workModes, Local: true, Description: "Run a check command (tests, build, lint) in your workspace. The runner executes it and records the command, exit status, revision, and log as evidence. Use this for any check you want counted. Routine checks run straight away; commands that push, publish, reach the network, or leave the workspace need the owner's approval. Checks run with a scratch home directory and no access to the machine's credentials.",
 		InputSchema: schema(`{"type":"object","required":["command"],"properties":{"name":{"type":"string"},"command":{"type":"string"},"timeoutSeconds":{"type":"integer","minimum":1,"maximum":3600}},"additionalProperties":false}`)},
 	{Name: WorkPublishRev, Modes: editOnly, Local: true, Description: "Commit any outstanding changes in your workspace and publish the result revision: the runner records base/head, the diff, and a portable bundle so reviewers inspect exactly this revision.",
 		InputSchema: schema(`{"type":"object","required":["summary"],"properties":{"summary":{"type":"string","description":"commit message / change summary"}},"additionalProperties":false}`)},
 	{Name: ArtifactPublish, Modes: all, Local: true, Description: "Publish a file from your workspace (report, diagram, document) as an artifact attached to your job.",
-		InputSchema: schema(`{"type":"object","required":["path"],"properties":{"path":{"type":"string","description":"path relative to the workspace root"},"name":{"type":"string"},"kind":{"type":"string","enum":["document","file","log"]}},"additionalProperties":false}`)},
+		InputSchema: schema(`{"type":"object","required":["path"],"properties":{"path":{"type":"string","description":"path relative to the workspace root"},"name":{"type":"string"},"kind":{"type":"string","enum":["document","file"]}},"additionalProperties":false}`)},
 	{Name: PermissionPrompt, Modes: all, Local: true, Description: "Permission prompt handler used by the provider CLI. Do not call directly.",
 		InputSchema: schema(`{"type":"object","properties":{"tool_name":{"type":"string"},"input":{"type":"object"},"tool_use_id":{"type":"string"}},"additionalProperties":true}`)},
 }

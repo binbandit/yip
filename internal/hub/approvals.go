@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"regexp"
 	"strings"
 
 	"github.com/binbandit/yip/internal/domain"
@@ -22,20 +21,10 @@ const (
 	policyAsk // exceptional: needs an exact-action decision from the owner
 )
 
-var (
-	rePush    = regexp.MustCompile(`\bgit\s+push\b`)
-	reOpenPR  = regexp.MustCompile(`\bgh\s+pr\s+create\b`)
-	reMerge   = regexp.MustCompile(`\bgh\s+pr\s+merge\b|\bgit\s+merge\b.*\b(main|master)\b`)
-	reReview  = regexp.MustCompile(`\bgh\s+pr\s+review\b`)
-	reDanger  = regexp.MustCompile(`\bsudo\b|\brm\s+-rf\s+/|\bmkfs\b|\bdd\s+if=|\bchmod\s+-R\s+777\s+/|\bnpm\s+publish\b|\bcargo\s+publish\b|\bdocker\s+push\b|\bkubectl\b|\bterraform\s+apply\b|\bssh\b|\bscp\b`)
-	reNetwork = regexp.MustCompile(`\bcurl\b|\bwget\b|\bnc\b|\bhttp(s)?://`)
-)
-
 // evaluatePolicy maps a provider permission request onto existing grants.
 // Authorized routine actions proceed; actions outside the run's scope are
 // denied or become an exceptional, exact-action request.
 func (h *Hub) evaluatePolicy(ctx context.Context, q store.Q, run store.RunRow, job store.JobRow, a protocol.ApprovalAction) (policyDecision, string, string) {
-	cmd := strings.ToLower(a.Command)
 	var grant protocol.Grant
 	if job.ProjectID != "" {
 		grant, _ = store.GetGrant(ctx, q, job.ProjectID, run.EngineerID)
@@ -71,28 +60,24 @@ func (h *Hub) evaluatePolicy(ctx context.Context, q store.Q, run store.RunRow, j
 		}
 		return policyAsk, "", "publish"
 	case "exec":
-		switch {
-		case rePush.MatchString(cmd):
-			if has("push") {
-				return policyAllow, "the project grant allows pushing", ""
+		// Every part of the command line must be authorized; the most
+		// severe unauthorized part decides.
+		var granted []string
+		for _, c := range classifyCommand(a.Command) {
+			switch c.Class {
+			case classReview:
+				return policyDeny, c.Why, ""
+			case classExec, classNetwork:
+				return policyAsk, c.Why, c.Class
+			case classMerge, classPush, classOpenPR:
+				if !has(c.Class) {
+					return policyAsk, c.Why, c.Class
+				}
+				granted = append(granted, strings.ReplaceAll(c.Class, "_", " "))
 			}
-			return policyAsk, "", "push"
-		case reMerge.MatchString(cmd):
-			if has("merge") {
-				return policyAllow, "the project grant allows merging", ""
-			}
-			return policyAsk, "", "merge"
-		case reOpenPR.MatchString(cmd):
-			if has("open_pr") {
-				return policyAllow, "the project grant allows opening pull requests", ""
-			}
-			return policyAsk, "", "open_pr"
-		case reReview.MatchString(cmd):
-			return policyDeny, "publish reviews through forge_publish_review so they stay revision-bound", ""
-		case reDanger.MatchString(cmd):
-			return policyAsk, "", "exec"
-		case reNetwork.MatchString(cmd):
-			return policyAsk, "", "network"
+		}
+		if len(granted) > 0 {
+			return policyAllow, "the project grant allows " + strings.Join(granted, ", "), ""
 		}
 		if readOnly {
 			return policyAllow, "running read-only checks in the snapshot", ""
@@ -157,7 +142,11 @@ func (h *Hub) onApprovalRequest(ctx context.Context, nodeID, runID string, epoch
 			})
 			return nil
 		}
-		// Exceptional authority: show the exact action inline in the source conversation.
+		// Exceptional authority: show the exact action inline in the source
+		// conversation, with the reason it isn't routine.
+		if why != "" && req.Action.Detail == "" {
+			req.Action.Detail = "Needs your approval because " + why + "."
+		}
 		scope := "this action once, in job " + shortRev(job.ID)
 		if job.ProjectID != "" {
 			if p, err := store.GetProject(ctx, t.tx, job.ProjectID); err == nil {
