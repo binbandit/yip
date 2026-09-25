@@ -17,6 +17,8 @@ Usage:
   yip demo [flags]             Run a labelled demo workspace with the fake provider
   yip runner pair [flags]      Pair this machine with a hub
   yip runner [flags]           Run a paired runner
+  yip runner workspaces        List job workspaces and whether they hold uncommitted work
+  yip runner cleanup           Delete one workspace (explicit selection and confirmation)
   yip doctor [flags]           Check hub or runner health on this machine
   yip backup --out DIR         Write an online, verified backup of the hub
   yip restore --from DIR       Restore a backup into a new data directory
@@ -46,9 +48,14 @@ func main() {
 	case "demo":
 		err = runDemo(args)
 	case "runner":
-		if len(args) > 0 && args[0] == "pair" {
+		switch {
+		case len(args) > 0 && args[0] == "pair":
 			err = runPair(args[1:])
-		} else {
+		case len(args) > 0 && args[0] == "workspaces":
+			err = runWorkspaces(args[1:])
+		case len(args) > 0 && args[0] == "cleanup":
+			err = runCleanup(args[1:])
+		default:
 			err = runRunner(args)
 		}
 	case "bridge":
