@@ -199,6 +199,21 @@ func (h *Hub) ConnectRunner(ctx context.Context, conn *NodeConn, hello protocol.
 	return nil
 }
 
+// DropRunnerConnection closes a runner's live connection (operator action and
+// partition testing). The runner reconnects on its own; its leases continue
+// only if it does so before they expire.
+func (h *Hub) DropRunnerConnection(nodeID string) bool {
+	c := h.nodes.get(nodeID)
+	if c == nil {
+		return false
+	}
+	if c.CloseFn != nil {
+		c.CloseFn("connection dropped by the hub")
+	}
+	h.DisconnectRunner(context.Background(), c)
+	return true
+}
+
 // DisconnectRunner records a dropped connection. Leases are not revoked
 // immediately: a runner that reconnects within its lease continues.
 func (h *Hub) DisconnectRunner(ctx context.Context, conn *NodeConn) {

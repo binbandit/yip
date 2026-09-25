@@ -29,10 +29,15 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	defer cancel()
 
 	finish := func(t protocol.RunTerminal) {
-		if ar.leaseLost.Load() {
+		switch {
+		case ar.leaseLost.Load():
 			t.Outcome = protocol.OutcomeLeaseLost
-		} else if ar.cancelled.Load() && t.Outcome != protocol.OutcomeSucceeded {
+		case ar.cancelled.Load() && t.Outcome != protocol.OutcomeSucceeded:
 			t.Outcome = protocol.OutcomeCancelled
+		case r.shutdown.Load() && t.Outcome != protocol.OutcomeSucceeded:
+			// Not a user cancellation: the runner itself stopped mid-attempt.
+			t.Outcome = protocol.OutcomeFailed
+			t.Error = "the runner on " + r.id.Name + " shut down during this attempt"
 		}
 		if ar.ws != nil && !ar.ws.ReadOnly && !ar.ws.Scratch {
 			if cp := r.checkpoint(context.Background(), ar); cp != nil {

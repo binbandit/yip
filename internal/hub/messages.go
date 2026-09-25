@@ -112,7 +112,7 @@ func (h *Hub) PostMessage(ctx context.Context, userID, roomID string, req protoc
 		if err != nil {
 			return err
 		}
-		resp.Resolved = resolved
+		resp.Resolved = nonNil(resolved)
 
 		// 2. Input to an explicitly selected running job.
 		if req.JobID != "" {
