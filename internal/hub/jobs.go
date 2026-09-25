@@ -87,7 +87,7 @@ func (h *Hub) createJob(ctx context.Context, t *txn, s jobSpec) (store.JobRow, e
 			return j, err
 		}
 	}
-	if s.Source.MessageID != "" && s.Kind != protocol.JobKindReply {
+	if s.Source.MessageID != "" && s.Kind != protocol.JobKindReply && s.Parent == nil {
 		_ = store.AppendMessageRefs(ctx, t.tx, s.Source.MessageID, protocol.Ref{Kind: "job", ID: j.ID})
 		if m, err := store.GetMessage(ctx, t.tx, s.Source.MessageID); err == nil {
 			_ = t.emit(ev{Type: "message.updated", Room: m.RoomID, Payload: m})
@@ -164,7 +164,15 @@ func (h *Hub) enqueueRun(ctx context.Context, t *txn, job store.JobRow, why runR
 		return store.RunRow{}, domain.Conflict("That work is %s.", job.State)
 	}
 	if active, err := store.ActiveRunForJob(ctx, t.tx, job.ID); err == nil {
-		// One attempt at a time; an unknown attempt blocks automatic relaunch.
+		// One attempt at a time. A trigger that arrives while an attempt is
+		// active is deferred and replayed when it ends; an unknown attempt
+		// blocks automatic relaunch until explicitly recovered.
+		if active.State != protocol.RunUnknown && why.Purpose != "" {
+			if err := store.SetPendingWake(ctx, t.tx, job.ID, &store.PendingWake{Purpose: why.Purpose, Cause: why.Cause,
+				Note: why.Note, Automatic: why.Automatic}); err != nil {
+				return store.RunRow{}, err
+			}
+		}
 		return active, nil
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return store.RunRow{}, err

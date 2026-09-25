@@ -745,7 +745,20 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		return h.finishJob(ctx, t, job)
 	}
 	job, _ = store.GetJob(ctx, t.tx, job.ID)
-	if job.State == protocol.JobCompleted || job.State == protocol.JobReviewReady {
+	if job.State == protocol.JobCompleted {
+		return nil
+	}
+	// A trigger that arrived during this attempt (e.g. review feedback) runs next.
+	if pw, err := store.TakePendingWake(ctx, t.tx, job.ID); err != nil {
+		return err
+	} else if pw != nil && domain.JobLive(job.State) {
+		_, err := h.enqueueRun(ctx, t, job, runReason{Purpose: pw.Purpose, Cause: pw.Cause, Note: pw.Note, Automatic: pw.Automatic})
+		if isLimit(err) {
+			return nil
+		}
+		return err
+	}
+	if job.State == protocol.JobReviewReady {
 		return nil
 	}
 	if wait, detail, _ := store.GetRunIntent(ctx, t.tx, run.ID); wait != "" {

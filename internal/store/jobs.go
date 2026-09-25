@@ -392,3 +392,36 @@ func SearchJobs(ctx context.Context, q Q, match string, roomIDs []string, limit 
 		FROM jobs_fts f JOIN jobs j ON j.id = f.job_id WHERE jobs_fts MATCH ? AND j.source_room_id IN `+in+`
 		ORDER BY rank LIMIT ?`, args...)
 }
+
+// PendingWake is a deferred continuation for a job with an active attempt.
+type PendingWake struct {
+	Purpose   string `json:"purpose"`
+	Cause     string `json:"cause"`
+	Note      string `json:"note,omitempty"`
+	Automatic bool   `json:"automatic"`
+}
+
+// SetPendingWake records (or clears, with nil) a deferred continuation.
+func SetPendingWake(ctx context.Context, q Q, jobID string, w *PendingWake) error {
+	var v any
+	if w != nil {
+		v = js(w)
+	}
+	_, err := q.ExecContext(ctx, `UPDATE jobs SET pending_wake = ? WHERE id = ?`, v, jobID)
+	return err
+}
+
+// TakePendingWake returns and clears a job's deferred continuation.
+func TakePendingWake(ctx context.Context, q Q, jobID string) (*PendingWake, error) {
+	var raw sql.NullString
+	if err := q.QueryRowContext(ctx, `SELECT pending_wake FROM jobs WHERE id = ?`, jobID).Scan(&raw); err != nil {
+		return nil, notFound(err)
+	}
+	if !raw.Valid || raw.String == "" {
+		return nil, nil
+	}
+	var w PendingWake
+	unjs(raw.String, &w)
+	_, err := q.ExecContext(ctx, `UPDATE jobs SET pending_wake = NULL WHERE id = ?`, jobID)
+	return &w, err
+}
