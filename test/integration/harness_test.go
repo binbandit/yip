@@ -168,22 +168,27 @@ func (e *env) restartHub() {
 }
 
 func (e *env) startRunner() {
-	dir := filepath.Join(e.dir, "runner")
+	e.stopRun = e.startNamedRunner("runner", "Test mini", e.opts.slots)
+}
+
+// startNamedRunner pairs and starts an independent runner (its own state,
+// replicas, journal, and certificate) and returns a stop function.
+func (e *env) startNamedRunner(sub, name string, slots int) func() {
+	dir := filepath.Join(e.dir, sub)
 	if _, err := runner.LoadIdentity(dir); err != nil {
-		keyPEM, csrPEM, err := auth.NewNodeKeyAndCSR("Test mini")
+		keyPEM, csrPEM, err := auth.NewNodeKeyAndCSR(name)
 		if err != nil {
 			e.t.Fatal(err)
 		}
-		pr, err := e.hub.PairLocal(e.ctx, "Test mini", csrPEM)
+		pr, err := e.hub.PairLocal(e.ctx, name, csrPEM)
 		if err != nil {
 			e.t.Fatal(err)
 		}
-		if _, err := runner.SaveLocalIdentity(dir, runner.Identity{NodeID: pr.NodeID, Name: "Test mini", HubURL: e.runnerURL,
+		if _, err := runner.SaveLocalIdentity(dir, runner.Identity{NodeID: pr.NodeID, Name: name, HubURL: e.runnerURL,
 			Fingerprint: e.hub.CA().Fingerprint()}, keyPEM, []byte(pr.CertPEM), []byte(pr.CAPEM)); err != nil {
 			e.t.Fatal(err)
 		}
 	}
-	slots := e.opts.slots
 	if slots == 0 {
 		slots = 3
 	}
@@ -198,22 +203,23 @@ func (e *env) startRunner() {
 		defer close(done)
 		_ = r.Run(rctx)
 	}()
-	e.stopRun = func() {
+	stop := func() {
 		cancel()
 		select {
 		case <-done:
 		case <-time.After(20 * time.Second):
 		}
 	}
-	e.waitFor("runner connected", 20*time.Second, func() bool {
+	e.waitFor(name+" connected", 20*time.Second, func() bool {
 		nodes, _ := e.hub.ListNodes(e.ctx)
 		for _, n := range nodes {
-			if n.Status == protocol.NodeOnline && len(n.Providers) > 0 {
+			if n.Name == name && n.Status == protocol.NodeOnline && len(n.Providers) > 0 {
 				return true
 			}
 		}
 		return false
 	})
+	return stop
 }
 
 // killRunner stops the runner abruptly (its connection drops).
