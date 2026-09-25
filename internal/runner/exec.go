@@ -116,7 +116,10 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 		if delta.Len() == 0 || (!force && time.Since(lastFlush) < 300*time.Millisecond) {
 			return
 		}
+		// Transient chunks are incremental: clients append them and replace
+		// the preview when the complete message arrives.
 		r.transient(m.RunID, ar.epoch, protocol.RunEvMessageDelta, delta.String())
+		delta.Reset()
 		lastFlush = time.Now()
 	}
 	for ev := range sess.Events() {

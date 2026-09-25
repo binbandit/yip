@@ -1,0 +1,60 @@
+diff --git a/session/refresh.go b/session/refresh.go
+index 80d5e65..32e30e2 100644
+--- a/session/refresh.go
++++ b/session/refresh.go
+@@ -7,11 +7,9 @@ const RefreshWindow = time.Hour
+ 
+ // Refresh exchanges a still-valid token for a new one.
+ func Refresh(t Token, now time.Time) (Token, error) {
+-	if !validSignature(t) {
+-		return Token{}, ErrInvalid
+-	}
+-	if now.After(t.ExpiresAt) {
+-		return Token{}, ErrExpired
++	// Use the shared validator so refresh honours the same strict expiry.
++	if err := Validate(t, now); err != nil {
++		return Token{}, err
+ 	}
+ 	return Sign(t.Subject, now.Add(RefreshWindow)), nil
+ }
+diff --git a/session/refresh_test.go b/session/refresh_test.go
+new file mode 100644
+index 0000000..7b85040
+--- /dev/null
++++ b/session/refresh_test.go
+@@ -0,0 +1,21 @@
++package session
++
++import (
++	"testing"
++	"time"
++)
++
++// Regression: refresh must reject a token at the exact expiry instant.
++func TestRefreshRejectsTokenAtExactExpiry(t *testing.T) {
++	tok := Sign("mira", base)
++	if _, err := Refresh(tok, base); err != ErrExpired {
++		t.Fatalf("refresh at expiry: got %v, want ErrExpired", err)
++	}
++}
++
++func TestRefreshRejectsExpiredToken(t *testing.T) {
++	tok := Sign("mira", base.Add(-time.Second))
++	if _, err := Refresh(tok, base); err != ErrExpired {
++		t.Fatalf("refresh after expiry: got %v, want ErrExpired", err)
++	}
++}
+diff --git a/session/validate.go b/session/validate.go
+index fd7c59e..fff5651 100644
+--- a/session/validate.go
++++ b/session/validate.go
+@@ -7,5 +7,9 @@ func Validate(t Token, now time.Time) error {
+ 	if !validSignature(t) {
+ 		return ErrInvalid
+ 	}
++	// Strict server-side expiry (docs/sessions.md): invalid at and after ExpiresAt.
++	if !now.Before(t.ExpiresAt) {
++		return ErrExpired
++	}
+ 	return nil
+ }

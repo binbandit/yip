@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">yip application icon</title>
+  <desc id="desc">A branching y in aqua and white with a yellow terminal on a deep petrol tile.</desc>
+  <rect width="256" height="256" rx="60" fill="#183A43"/>
+  <path d="M72 64 128 124" fill="none" stroke="#93D2DC" stroke-width="28" stroke-linecap="round"/>
+  <path d="M184 64 72 196" fill="none" stroke="#FFFFFF" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="72" cy="196" r="14" fill="#F6DB7C"/>
+</svg>
