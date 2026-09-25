@@ -5,9 +5,9 @@ package integration
 
 import (
 	"bytes"
-	"database/sql"
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
