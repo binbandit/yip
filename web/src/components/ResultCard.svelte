@@ -1,7 +1,9 @@
 <script lang="ts">
-  // A finished piece of work, with its evidence adjacent to the claim: what
-  // changed, the checks that ran on the exact revision, who reviewed which
-  // revision, the PR's separate facts, and where it ran.
+  // A finished piece of work, posted like an attachment in a chat: one line
+  // that says what changed, whether the checks on the exact revision passed,
+  // and who approved which revision. The full evidence (revision, every
+  // check, earlier verdicts, the PR's separate facts, the machine) is one
+  // click away under Details, and anything missing is always shown.
   import { untrack } from 'svelte';
   import { app } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
@@ -40,28 +42,81 @@
   function inspect(tab = 'evidence') {
     app.openPanel({ kind: 'job', id: jobId }, tab);
   }
+
+  let open = $state(false);
+  const uid = `rc-${Math.random().toString(36).slice(2, 8)}`;
+  const failed = $derived(checks.filter((c) => !c.passed));
+  const verdicts = $derived(
+    (d?.reviews ?? [])
+      .map((r) => ({ r, cur: roundFor(r).current }))
+      .filter((x) => x.cur)
+      .map(({ r, cur }) => {
+        const who = app.engineerName(r.reviewerId);
+        switch (cur!.state) {
+          case 'approved':
+            return { text: `approved by ${who}`, tone: 'success' };
+          case 'changes_requested':
+            return { text: `changes requested by ${who}`, tone: 'danger' };
+          case 'comments_only':
+            return { text: `comments from ${who}`, tone: 'neutral' };
+          case 'unable_to_review':
+            return { text: `${who} couldn't review`, tone: 'attention' };
+          default:
+            return { text: `${who} reviewing`, tone: 'neutral' };
+        }
+      }),
+  );
 </script>
 
-<section class="result panel-box" aria-label="Result: {job?.title ?? 'work'}">
+<section class="result" aria-label="Result: {job?.title ?? 'work'}">
   {#if !job}
-    <p class="meta pad">{entry?.missing ? 'This work is no longer available to you.' : 'Loading the result…'}</p>
+    <p class="meta">{entry?.missing ? 'This work is no longer available to you.' : 'Loading the result…'}</p>
   {:else}
-    <header class="pad head">
-      <span class="state tone-{jobTone(job.state)}"><StateIcon shape={jobShape(job.state)} tone={jobTone(job.state)} />{jobStateLabel(job)}</span>
+    <header class="head">
+      <StateIcon shape={jobShape(job.state)} tone={jobTone(job.state)} />
       <span class="title truncate">{job.title}</span>
+      <span class="state tone-{jobTone(job.state)}">{jobStateLabel(job)}</span>
     </header>
 
+    {#if d}
+      <p class="summary">
+        {#if revision}
+          <span>{revision.filesChanged} {revision.filesChanged === 1 ? 'file' : 'files'} <span class="add">+{revision.insertions}</span> <span class="del">−{revision.deletions}</span></span>
+        {/if}
+        {#if checks.length === 1}
+          <span class="item"><span class="mono">{checks[0].command}</span> <span class={checks[0].passed ? 'tone-success' : 'tone-danger'}>{checks[0].passed ? 'passed' : 'failed'}</span></span>
+        {:else if checks.length}
+          <span class="item {failed.length ? 'tone-danger' : 'tone-success'}">{failed.length ? `${failed.length} of ${checks.length} checks failed` : `${checks.length} checks passed`}</span>
+        {/if}
+        {#each verdicts as v (v.text)}<span class="item tone-{v.tone}">{v.text}</span>{/each}
+        {#if docs.length}<span class="item">{docs.length} {docs.length === 1 ? 'document' : 'documents'}</span>{/if}
+        {#if d.pullRequests.length}<span class="item">PR #{d.pullRequests[0].number}</span>{/if}
+      </p>
+    {/if}
+
     {#if d?.missing.length}
-      <div class="pad">
-        <div class="notice attention">
-          <Icon name="alert" size={16} />
-          <div>
-            {#each d.missing as m (m)}<p>{m}</p>{/each}
-          </div>
+      <div class="notice attention">
+        <Icon name="alert" size={16} />
+        <div>
+          {#each d.missing as m (m)}<p>{m}</p>{/each}
         </div>
       </div>
     {/if}
+    {#if job.requiresHumanReview && job.state === 'review_ready'}
+      <p class="needs">Your review is required before this completes.</p>
+    {/if}
 
+    <footer class="foot">
+      <button class="btn btn-sm" onclick={() => inspect('evidence')}><Icon name="eye" size={15} />Inspect the work</button>
+      {#if d?.reviews.length}
+        <button class="btn btn-sm btn-quiet" onclick={() => inspect('review')}>View review</button>
+      {/if}
+      <button class="btn btn-sm btn-quiet more" aria-expanded={open} aria-controls={uid} onclick={() => (open = !open)}>
+        Details<Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
+      </button>
+    </footer>
+
+    <div id={uid} hidden={!open}>
     <dl class="facts">
       {#if revision}
         <div class="fact">
@@ -153,65 +208,86 @@
           <dd>{app.nodeName(job.nodeId) || 'a paired machine'}</dd>
         </div>
       {/if}
-    </dl>
-
-    <footer class="pad foot">
-      <button class="btn btn-sm" onclick={() => inspect('evidence')}><Icon name="eye" size={15} />Inspect the work</button>
-      {#if d?.reviews.length}
-        <button class="btn btn-sm btn-quiet" onclick={() => inspect('review')}>View review</button>
-      {/if}
-      {#if job.requiresHumanReview && job.state === 'review_ready'}
-        <span class="meta">Your review is required before this completes.</span>
-      {/if}
-    </footer>
+        </dl>
+    </div>
   {/if}
 </section>
 
 <style>
   .result {
-    margin-top: 8px;
-    max-width: 640px;
-    overflow: hidden;
-  }
-  .pad {
-    padding: 10px 14px;
+    display: grid;
+    gap: 6px;
+    margin-top: 6px;
+    max-width: 560px;
+    padding: 10px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-artifact);
+    background: var(--surface);
   }
   .head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface-subtle);
-  }
-  .state {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 650;
-    flex: none;
+    gap: 8px;
+    min-width: 0;
   }
   .title {
+    flex: 1;
     font-weight: 600;
     font-size: 14px;
   }
+  .state {
+    flex: none;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 0;
+    font-size: 13px;
+    color: var(--ink-secondary);
+  }
+  .summary .item::before {
+    content: '·';
+    margin: 0 7px;
+    color: color-mix(in srgb, var(--ink) 35%, transparent);
+  }
+  .summary > :first-child::before {
+    content: none;
+  }
+  .needs {
+    font-size: 13px;
+    color: var(--attention-ink);
+  }
+  .foot {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin: 2px -4px 0;
+  }
+  .more {
+    margin-left: auto;
+    color: var(--ink-secondary);
+  }
   .facts {
-    margin: 0;
-    padding: 4px 14px;
+    margin: 4px 0 0;
+    padding: 4px 0 0;
+    border-top: 1px solid var(--line);
   }
   .fact {
     display: grid;
-    grid-template-columns: 96px minmax(0, 1fr);
+    grid-template-columns: 88px minmax(0, 1fr);
     gap: 12px;
-    padding: 7px 0;
-    font-size: 14px;
+    padding: 6px 0;
+    font-size: 13px;
   }
   .fact + .fact {
     border-top: 1px solid var(--line-soft);
   }
   dt {
     color: var(--ink-secondary);
-    font-size: 13px;
+    font-size: 12px;
     padding-top: 1px;
   }
   dd {
@@ -259,13 +335,6 @@
   }
   .linkish:hover .mono {
     text-decoration: underline;
-  }
-  .foot {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    border-top: 1px solid var(--line);
   }
   @media (max-width: 480px) {
     .fact {

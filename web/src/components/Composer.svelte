@@ -73,33 +73,44 @@
     }
   });
 
-  // ---- live activity near the composer ----
+  // ---- live activity, as a group chat shows it ----
+  // One quiet line under the box: who is typing a reply, who is busy with
+  // work in this room, and anything that is holding a reply up. Engineers'
+  // intermediate output never streams into the conversation.
+  function names(ids: string[]): string {
+    const n = [...new Set(ids)].map((id) => app.engineerName(id));
+    if (n.length <= 2) return n.join(' and ');
+    return `${n[0]}, ${n[1]} and ${n.length - 2} more`;
+  }
   const activity = $derived.by(() => {
-    const lines: { key: string; engineerId: string; text: string; tone: 'accent' | 'attention' }[] = [];
     const replies = pendingReplies(app.data, roomId, threadId ?? undefined);
     const working = new Set(workingInRoom(app.data, roomId));
+    const typing: string[] = [];
+    const next: string[] = [];
+    const held: { text: string; tone: 'attention' }[] = [];
     for (const j of replies) {
       const name = app.engineerName(j.ownerId);
       if (jobRunState(app.data, j) === 'unknown') {
-        lines.push({ key: j.id, engineerId: j.ownerId, text: `${name}'s reply stopped reporting; its outcome isn't confirmed`, tone: 'attention' });
+        held.push({ text: `${name}'s reply stopped reporting; its outcome isn't confirmed`, tone: 'attention' });
       } else if (j.state === 'waiting') {
-        lines.push({
-          key: j.id,
-          engineerId: j.ownerId,
-          text: `${name} will reply when possible — ${j.stateDetail || waitingReasonLabel(j.waitingReason)}`,
-          tone: 'attention',
-        });
+        held.push({ text: `${name} will reply when possible — ${j.stateDetail || waitingReasonLabel(j.waitingReason)}`, tone: 'attention' });
       } else if (j.state === 'running' || working.has(j.ownerId)) {
-        lines.push({ key: j.id, engineerId: j.ownerId, text: `${name} is replying…`, tone: 'accent' });
+        typing.push(j.ownerId);
       } else {
-        lines.push({ key: j.id, engineerId: j.ownerId, text: `${name} will pick this up next`, tone: 'accent' });
+        next.push(j.ownerId);
       }
       working.delete(j.ownerId);
     }
-    if (!threadId) {
-      for (const id of working) lines.push({ key: 'w' + id, engineerId: id, text: `${app.engineerName(id)} is working`, tone: 'accent' });
+    const busy = threadId ? [] : [...working];
+    const parts: { text: string; tone: 'accent' | 'attention'; dots?: boolean }[] = [];
+    if (typing.length) parts.push({ text: `${names(typing)} ${new Set(typing).size > 1 ? 'are' : 'is'} typing`, tone: 'accent', dots: true });
+    if (next.length) parts.push({ text: `${names(next)} will reply shortly`, tone: 'accent' });
+    if (busy.length) {
+      const job = busy.length === 1 ? Object.values(app.data.jobs).find((j) => j.ownerId === busy[0] && j.state === 'running' && j.source?.roomId === roomId && j.kind !== 'reply') : undefined;
+      parts.push({ text: job ? `${names(busy)} is working on ${job.title}` : `${names(busy)} ${busy.length > 1 ? 'are' : 'is'} working`, tone: 'accent' });
     }
-    return lines.slice(0, 3);
+    for (const h of held) parts.push(h);
+    return parts.slice(0, 2);
   });
 
   // ---- mention candidates ----
@@ -290,18 +301,6 @@
 </script>
 
 <div class="composer" class:compact>
-  {#if activity.length}
-    <ul class="activity" aria-label="Engineer activity">
-      {#each activity as a (a.key)}
-        <li>
-          <Avatar actor={{ kind: 'engineer', id: a.engineerId }} size={18} />
-          {#if a.tone === 'attention'}<StateIcon shape="pause" tone="attention" size={12} />{:else}<StateIcon shape="bar" tone="accent" size={12} live />{/if}
-          <span class="truncate">{a.text}</span>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-
   {#if offline}
     <div class="notice attention offline" role="status">
       <Icon name="wifiOff" size={16} />
@@ -386,13 +385,17 @@
       >
       {#if roomProjects.length}
         <div class="projects">
-          <button class="chip ctx" aria-expanded={projectsOpen} aria-controls="{uid}-projects" onclick={() => (projectsOpen = !projectsOpen)}>
-            <Icon name="folder" size={14} />
-            {#if projectIds.length}
-              Context: {projectIds.map((p) => app.data.projects[p]?.name).filter(Boolean).join(', ')}
-            {:else}
-              Add project context
-            {/if}
+          <button
+            class="chip ctx"
+            class:set={projectIds.length > 0}
+            aria-expanded={projectsOpen}
+            aria-controls="{uid}-projects"
+            aria-label={projectIds.length ? undefined : 'Add project context'}
+            title={projectIds.length ? undefined : 'Add project context'}
+            onclick={() => (projectsOpen = !projectsOpen)}
+          >
+            <Icon name="folder" size={15} />
+            {#if projectIds.length}{projectIds.map((p) => app.data.projects[p]?.name).filter(Boolean).join(', ')}{/if}
           </button>
           {#if projectsOpen}
             <fieldset class="project-pop" id="{uid}-projects">
@@ -425,9 +428,15 @@
       <span class="tone-danger">{sendError}</span>
     {:else if note}
       <span class="receipt final"><StateIcon shape="check-filled" tone="success" size={12} />{note}</span>
-    {:else}
-      <span class="keys">{app.data.preferences.sendKey === 'mod-enter' ? '⌘/Ctrl+Enter to send · Enter for a new line' : 'Enter to send · Shift+Enter for a new line'} · @ to mention</span>
+    {:else if activity.length}
+      <span class="activity truncate" aria-label="Engineer activity">
+        {#each activity as a, i (a.text)}
+          {#if i}<span class="sep" aria-hidden="true">·</span>{/if}
+          <span class:tone-attention={a.tone === 'attention'}>{a.text}{#if a.dots}<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>{/if}</span>
+        {/each}
+      </span>
     {/if}
+    <span class="vh">{app.data.preferences.sendKey === 'mod-enter' ? 'Command or Control and Enter sends; Enter adds a new line.' : 'Enter sends; Shift and Enter adds a new line.'} Type @ to mention an engineer.</span>
   </p>
 </div>
 
@@ -441,19 +450,41 @@
     padding: 0 12px calc(10px + env(safe-area-inset-bottom));
   }
   .activity {
-    list-style: none;
-    margin: 0 0 6px;
-    padding: 0 4px;
-    display: grid;
-    gap: 2px;
-  }
-  .activity li {
-    display: flex;
-    align-items: center;
-    gap: 7px;
+    display: block;
     min-width: 0;
-    font-size: 13px;
-    color: var(--ink-secondary);
+  }
+  .sep {
+    margin: 0 6px;
+    opacity: 0.6;
+  }
+  .dots {
+    display: inline-flex;
+    gap: 2px;
+    margin-left: 3px;
+    vertical-align: middle;
+  }
+  .dots i {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: blink 1.2s infinite ease-in-out;
+  }
+  .dots i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .dots i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+  @keyframes blink {
+    0%,
+    80%,
+    100% {
+      opacity: 0.25;
+    }
+    40% {
+      opacity: 1;
+    }
   }
   .offline {
     margin-bottom: 8px;
@@ -543,6 +574,15 @@
   .ctx[aria-expanded='true'] {
     background: var(--hover);
     color: var(--ink);
+  }
+  .ctx:not(.set) {
+    min-width: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+  .ctx.set {
+    color: var(--ink);
+    background: var(--hover);
   }
   .projects {
     position: relative;
@@ -642,9 +682,6 @@
   @media (max-width: 760px) {
     .composer {
       padding: 0 8px calc(8px + env(safe-area-inset-bottom));
-    }
-    .keys {
-      display: none;
     }
     .input-area {
       font-size: 16px;

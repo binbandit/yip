@@ -40,7 +40,7 @@
 
   <div class="facts">
     {#each projects as p (p.id)}
-      <a class="head-btn" href="/projects/{p.id}"><Icon name="folder" size={14} />{p.name}</a>
+      <a class="head-btn project" href="/projects/{p.id}"><Icon name="folder" size={14} />{p.name}</a>
     {/each}
     <span class="head-btn static" title={replyText}>
       <Icon name={room.replyMode === 'steward' ? 'reply' : 'at'} size={14} /><span aria-hidden="true">{replyShort}</span><span class="vh">{replyText}</span>
@@ -82,7 +82,11 @@
     display: inline-flex;
     align-items: baseline;
     gap: 2px;
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-size: var(--text-title);
     font-weight: 600;
     letter-spacing: -0.02em;
@@ -156,7 +160,8 @@
     .room-head {
       padding: 8px 8px 8px 16px;
     }
-    .head-btn.static {
+    .head-btn.static,
+    .head-btn.project {
       display: none;
     }
   }
