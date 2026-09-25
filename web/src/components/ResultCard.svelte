@@ -52,17 +52,18 @@
       .filter((x) => x.cur)
       .map(({ r, cur }) => {
         const who = app.engineerName(r.reviewerId);
+        const id = r.id;
         switch (cur!.state) {
           case 'approved':
-            return { text: `approved by ${who}`, tone: 'success' };
+            return { id, text: `approved by ${who}`, tone: 'success' };
           case 'changes_requested':
-            return { text: `changes requested by ${who}`, tone: 'danger' };
+            return { id, text: `changes requested by ${who}`, tone: 'neutral' };
           case 'comments_only':
-            return { text: `comments from ${who}`, tone: 'neutral' };
+            return { id, text: `comments from ${who}`, tone: 'neutral' };
           case 'unable_to_review':
-            return { text: `${who} couldn't review`, tone: 'attention' };
+            return { id, text: `${who} couldn't review`, tone: 'attention' };
           default:
-            return { text: `${who} reviewing`, tone: 'neutral' };
+            return { id, text: `${who} reviewing`, tone: 'neutral' };
         }
       }),
   );
@@ -80,17 +81,30 @@
 
     {#if d}
       <p class="summary">
+        <!-- Each claim opens its evidence (§8: evidence adjacent to the claim). -->
         {#if revision}
-          <span>{revision.filesChanged} {revision.filesChanged === 1 ? 'file' : 'files'} <span class="add">+{revision.insertions}</span> <span class="del">−{revision.deletions}</span></span>
+          <button class="item claim" title="View the diff" onclick={() => inspect('evidence')}
+            >{revision.filesChanged} {revision.filesChanged === 1 ? 'file' : 'files'} <span class="add">+{revision.insertions}</span> <span class="del">−{revision.deletions}</span></button
+          >
         {/if}
         {#if checks.length === 1}
-          <span class="item"><span class="mono">{checks[0].command}</span> <span class={checks[0].passed ? 'tone-success' : 'tone-danger'}>{checks[0].passed ? 'passed' : 'failed'}</span></span>
+          <button class="item claim" title="View the command, exit status and log" onclick={() => inspect('evidence')}
+            ><span class="mono">{checks[0].command}</span> <span class={checks[0].passed ? 'tone-success' : 'tone-danger'}>{checks[0].passed ? 'passed' : 'failed'}</span></button
+          >
         {:else if checks.length}
-          <span class="item {failed.length ? 'tone-danger' : 'tone-success'}">{failed.length ? `${failed.length} of ${checks.length} checks failed` : `${checks.length} checks passed`}</span>
+          <button class="item claim {failed.length ? 'tone-danger' : 'tone-success'}" title="View the checks and their logs" onclick={() => inspect('evidence')}
+            >{failed.length ? `${failed.length} of ${checks.length} checks failed` : `${checks.length} checks passed`}</button
+          >
         {/if}
-        {#each verdicts as v (v.text)}<span class="item tone-{v.tone}">{v.text}</span>{/each}
-        {#if docs.length}<span class="item">{docs.length} {docs.length === 1 ? 'document' : 'documents'}</span>{/if}
-        {#if d.pullRequests.length}<span class="item">PR #{d.pullRequests[0].number}</span>{/if}
+        {#each verdicts as v (v.id)}
+          <button class="item claim tone-{v.tone}" title="View the review" onclick={() => app.openPanel({ kind: 'review', id: v.id })}>{v.text}</button>
+        {/each}
+        {#if docs.length}
+          <button class="item claim" title="View the files" onclick={() => inspect('evidence')}>{docs.length} {docs.length === 1 ? 'document' : 'documents'}</button>
+        {/if}
+        {#if d.pullRequests.length}
+          <button class="item claim" title="View the pull request's facts" onclick={() => app.openPanel({ kind: 'pr', id: d.pullRequests[0].id })}>PR #{d.pullRequests[0].number}</button>
+        {/if}
       </p>
     {/if}
 
@@ -248,12 +262,30 @@
     color: var(--ink-secondary);
   }
   .summary .item::before {
+    display: inline-block;
     content: '·';
     margin: 0 7px;
     color: color-mix(in srgb, var(--ink) 35%, transparent);
   }
   .summary > :first-child::before {
     content: none;
+  }
+  .claim {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+    transition: text-decoration-color var(--t-fast) var(--ease);
+  }
+  .claim:hover,
+  .claim:focus-visible {
+    text-decoration-color: currentColor;
   }
   .needs {
     font-size: 13px;

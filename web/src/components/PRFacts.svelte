@@ -66,7 +66,7 @@
       <a href={pr.url} target="_blank" rel="noopener noreferrer">{pr.owner}/{pr.name} #{pr.number}</a>
       <span class="meta">{pr.title}</span>
     </p>
-    <p class="meta">{prState} · {pr.head} → {pr.base}{#if pr.lastSyncedAt} · synced {relative(pr.lastSyncedAt, app.now)}{/if}</p>
+    <p class="meta">{prState} · {pr.head} → {pr.base}{#if pr.lastSyncedAt}{' · '}synced {relative(pr.lastSyncedAt, app.now)}{/if}</p>
     <dl>
       <div>
         <dt>Peer review (in yip)</dt>

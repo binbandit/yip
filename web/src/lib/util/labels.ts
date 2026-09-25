@@ -176,7 +176,7 @@ export function reviewShape(state: ReviewState | string): Shape {
     case 'approved':
       return 'check-filled';
     case 'changes_requested':
-      return 'triangle';
+      return 'pause'; // waiting on a revision; an engineering state, not a failure
     case 'reviewing':
       return 'bar';
     case 'requested':
@@ -195,7 +195,7 @@ export function reviewTone(state: ReviewState | string): Tone {
     case 'approved':
       return 'success';
     case 'changes_requested':
-      return 'danger';
+      return 'neutral';
     case 'reviewing':
       return 'accent';
     case 'unable_to_review':

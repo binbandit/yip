@@ -50,7 +50,9 @@
         <span class="faces" aria-hidden="true">
           {#each engineers.slice(0, 3) as e (e.id)}<Avatar actor={{ kind: 'engineer', id: e.id }} size={20} />{/each}
         </span>
-        <span aria-hidden="true">{engineers.length}</span>
+        <!-- Who can answer, by name; a count when the room is narrow. -->
+        <span class="names" aria-hidden="true">{engineers.slice(0, 3).map((e) => e.name).join(', ')}{engineers.length > 3 ? ` +${engineers.length - 3}` : ''}</span>
+        <span class="count" aria-hidden="true">{engineers.length}</span>
       </button>
     {/if}
     {#if room.kind !== 'overview'}
@@ -143,6 +145,23 @@
   }
   .members {
     padding-left: 5px;
+    max-width: 280px;
+  }
+  .names {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .count {
+    display: none;
+  }
+  @container room (max-width: 820px) {
+    .names {
+      display: none;
+    }
+    .count {
+      display: inline;
+    }
   }
   .faces {
     display: inline-flex;

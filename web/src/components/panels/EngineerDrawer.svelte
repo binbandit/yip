@@ -52,7 +52,7 @@
             <li>
               <button class="work" onclick={() => app.openPanel({ kind: 'job', id: j.id })}>
                 <StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} live={j.state === 'running'} />
-                <span class="truncate">{j.title}</span><span class="meta">· {jobStateLabel(j)}</span>
+                <span class="truncate">{j.title}</span>{' '}<span class="meta">· {jobStateLabel(j)}</span>
               </button>
             </li>
           {/each}
