@@ -66,6 +66,7 @@ type Runner struct {
 	sendMu     sync.Mutex
 	bridgeLn   net.Listener
 	caps       atomic.Value // protocol.RunnerCapabilities
+	shutdown   atomic.Bool
 }
 
 type pendingApproval struct {
@@ -439,6 +440,7 @@ func (r *Runner) stopRun(ar *activeRun, reason string) {
 }
 
 func (r *Runner) stopAll(reason string) {
+	r.shutdown.Store(true)
 	r.mu.Lock()
 	var all []*activeRun
 	for _, ar := range r.runs {
