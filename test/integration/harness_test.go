@@ -5,6 +5,7 @@ package integration
 
 import (
 	"bytes"
+	"database/sql"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -403,3 +404,5 @@ func isStatus(err error, status int) bool {
 	var ae *apiError
 	return errors.As(err, &ae) && ae.status == status
 }
+
+type sqlTx = sql.Tx
