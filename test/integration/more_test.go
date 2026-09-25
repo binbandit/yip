@@ -115,7 +115,7 @@ func TestDocumentReviewWithoutForge(t *testing.T) {
 		case m.Review != nil && m.Review.Round == 1:
 			return script(toolStep("work_review", map[string]any{"verdict": "changes_requested", "expectedHead": "", "summary": "Missing rollback.",
 				"findings": []map[string]any{{"severity": "blocking", "body": "The plan has no rollback step.", "evidence": "docs/plan.md has no rollback section"}},
-				"message": "The plan needs a rollback step."}, ""))
+				"message":  "The plan needs a rollback step."}, ""))
 		case m.Review != nil:
 			var resolve []string
 			for _, f := range m.Review.Findings {
