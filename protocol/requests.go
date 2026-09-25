@@ -40,11 +40,11 @@ type UpdateRoomRequest struct {
 
 // MembershipPreview describes what history a new member will be able to see.
 type MembershipPreview struct {
-	RoomID        string `json:"roomId"`
-	EngineerID    string `json:"engineerId"`
-	VisibleCount  int    `json:"visibleMessageCount"`
-	PrivateRoom   bool   `json:"privateRoom"`
-	Explanation   string `json:"explanation"`
+	RoomID       string `json:"roomId"`
+	EngineerID   string `json:"engineerId"`
+	VisibleCount int    `json:"visibleMessageCount"`
+	PrivateRoom  bool   `json:"privateRoom"`
+	Explanation  string `json:"explanation"`
 }
 
 type PostMessageRequest struct {

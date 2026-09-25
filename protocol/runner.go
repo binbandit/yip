@@ -63,15 +63,15 @@ type Hello struct {
 
 // JournalRunState is what the runner's journal knows about a run on reconnect.
 type JournalRunState struct {
-	RunID        string        `json:"runId"`
-	LeaseEpoch   int64         `json:"leaseEpoch"`
-	State        string        `json:"state"` // accepted | preparing | running | awaiting_input | stopping | terminal
-	Terminal     *RunTerminal  `json:"terminal,omitempty"`
-	LastSeq      int64         `json:"lastSeq"`
-	UnackedFrom  int64         `json:"unackedFrom"`
-	Workspace    string        `json:"workspace,omitempty"`
-	Dirty        bool          `json:"dirty"`
-	LastActivity string        `json:"lastActivity,omitempty"`
+	RunID        string       `json:"runId"`
+	LeaseEpoch   int64        `json:"leaseEpoch"`
+	State        string       `json:"state"` // accepted | preparing | running | awaiting_input | stopping | terminal
+	Terminal     *RunTerminal `json:"terminal,omitempty"`
+	LastSeq      int64        `json:"lastSeq"`
+	UnackedFrom  int64        `json:"unackedFrom"`
+	Workspace    string       `json:"workspace,omitempty"`
+	Dirty        bool         `json:"dirty"`
+	LastActivity string       `json:"lastActivity,omitempty"`
 }
 
 type Welcome struct {
@@ -84,17 +84,17 @@ type Welcome struct {
 }
 
 type RunnerCapabilities struct {
-	OS         string                 `json:"os"`
-	Arch       string                 `json:"arch"`
-	CPUs       int                    `json:"cpus"`
-	MemMB      int64                  `json:"memMb"`
-	DiskFreeMB int64                  `json:"diskFreeMb"`
-	Slots      int                    `json:"slots"`
-	Profiles   []ExecutionProfile     `json:"profiles"`
-	Providers  []ProviderInstallation `json:"providers"`
-	Toolchains map[string]string      `json:"toolchains"`
-	Replicas   []string               `json:"replicas"`
-	ServiceState string               `json:"serviceState"`
+	OS           string                 `json:"os"`
+	Arch         string                 `json:"arch"`
+	CPUs         int                    `json:"cpus"`
+	MemMB        int64                  `json:"memMb"`
+	DiskFreeMB   int64                  `json:"diskFreeMb"`
+	Slots        int                    `json:"slots"`
+	Profiles     []ExecutionProfile     `json:"profiles"`
+	Providers    []ProviderInstallation `json:"providers"`
+	Toolchains   map[string]string      `json:"toolchains"`
+	Replicas     []string               `json:"replicas"`
+	ServiceState string                 `json:"serviceState"`
 }
 
 type ActiveRun struct {
@@ -189,23 +189,23 @@ type CommandAck struct {
 
 // RunEventKind values for runner-produced events.
 const (
-	RunEvStarted         = "started"
-	RunEvStatus          = "status"
-	RunEvMessageDelta    = "message_delta"
-	RunEvMessage         = "message"
-	RunEvToolStarted     = "tool_started"
-	RunEvToolFinished    = "tool_finished"
-	RunEvInputDelivered  = "input_delivered"
-	RunEvUsage           = "usage"
-	RunEvWarning         = "warning"
-	RunEvError           = "error"
-	RunEvRateLimited     = "rate_limited"
-	RunEvAuthRequired    = "auth_required"
-	RunEvCheck           = "check"
-	RunEvRevision        = "revision"
-	RunEvCheckpoint      = "checkpoint"
-	RunEvVendorSession   = "vendor_session"
-	RunEvLeaseLost       = "lease_lost"
+	RunEvStarted        = "started"
+	RunEvStatus         = "status"
+	RunEvMessageDelta   = "message_delta"
+	RunEvMessage        = "message"
+	RunEvToolStarted    = "tool_started"
+	RunEvToolFinished   = "tool_finished"
+	RunEvInputDelivered = "input_delivered"
+	RunEvUsage          = "usage"
+	RunEvWarning        = "warning"
+	RunEvError          = "error"
+	RunEvRateLimited    = "rate_limited"
+	RunEvAuthRequired   = "auth_required"
+	RunEvCheck          = "check"
+	RunEvRevision       = "revision"
+	RunEvCheckpoint     = "checkpoint"
+	RunEvVendorSession  = "vendor_session"
+	RunEvLeaseLost      = "lease_lost"
 )
 
 type RunEvent struct {
@@ -323,8 +323,8 @@ type CancelRun struct {
 
 // Ack acknowledges committed runner events so the runner can drop them.
 type Ack struct {
-	RunID  string `json:"runId"`
-	UpToSeq int64 `json:"upToSeq"`
+	RunID   string `json:"runId"`
+	UpToSeq int64  `json:"upToSeq"`
 }
 
 type ArtifactReady struct {
