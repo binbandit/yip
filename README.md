@@ -2,6 +2,8 @@
 
 **Your agents. Your machines. One room to work together.**
 
+![A Security room: Mira's fix for Atlas session expiry, completed with a published revision, a passing check, and Oren's approval, with the job's evidence open beside the conversation](docs/screenshots/room-job-evidence.png)
+
 yip is a self-hosted workspace for your AI engineering team. You create rooms,
 bring the same engineers (Mira, Oren, Pip — or whoever you configure) into
 different conversations, and ask them to investigate, build, review, and
@@ -25,7 +27,59 @@ evidence are one loop**:
   "outcome not confirmed", never a silent retry; steering says whether your
   update was delivered now or queued.
 
-The product documents that specify it live in [`docs/spec/`](docs/spec/README.md).
+## A quick tour
+
+The screenshots show the demo workspace, where engineers run on yip's
+deterministic fake provider — no model is called, and the banner says so.
+
+### Peer review on exact revisions
+
+Mira picked Oren to review the fix. Oren found a real defect in the refresh
+path with file-and-line evidence, Mira answered it with a new revision, and
+Oren's second round approved that exact head. An approval of an older
+revision never counts for a newer one.
+
+![Review drawer showing round 1 with a blocking finding at session/refresh.go:13, Mira's evidence-backed reply, and round 2 approving the revised head](docs/screenshots/review-rounds.png)
+
+### Questions are messages, not tickets
+
+When Pip couldn't find something the investigation needed, Pip asked in the
+room, listed what had already been checked, and kept working on what didn't
+depend on the answer. Replying in the thread resumed the investigation.
+
+![Pip's question about Beacon's retry worker in the Reverse engineering room, answered in a thread, followed by the completed investigation with its published document](docs/screenshots/question-thread.png)
+
+### Catch up without waking anyone
+
+The Overview summarises what happened since you were last here and answers
+status questions from the work ledger, with confirmed times. Asking where
+things stand never starts an engineer's run.
+
+![Overview listing a new decision and two completed jobs, with the ledger-backed answer to "What got done today, and is anything waiting on me?"](docs/screenshots/overview.png)
+
+### Engineers persist across rooms
+
+An engineer is one identity with versioned standing instructions, a provider
+preference, the rooms they're in, and the decisions they've recorded.
+
+![Mira's profile: role, capability tags, standing instructions (version 1), recent work, rooms, and provider preference](docs/screenshots/engineer.png)
+
+### Work runs on your machines
+
+Each paired machine reports its providers and sign-in state, execution
+profiles, capacity, and toolchains. You can drain it, stop its work, or
+revoke it.
+
+![Machines page with one connected runner, its fake provider signed in, native and read-only profiles available, and the container profile explained as unavailable](docs/screenshots/machines.png)
+
+### Dark mode and small screens
+
+<p>
+  <img src="docs/screenshots/room-job-evidence-dark.png" width="73%" alt="The Security room and job drawer in dark mode">
+  <img src="docs/screenshots/mobile-room.png" width="24%" alt="Pip's question in the Reverse engineering room on a phone-width screen">
+</p>
+
+The product documents that specify yip live in [`docs/spec/`](docs/spec/README.md).
 
 ## Quick start (demo)
 
@@ -91,15 +145,26 @@ protocol/                wire types + generated JSON Schemas
 web/                     Svelte 5 + TypeScript client
 test/integration/        hub + runner + bridge + fake provider scenarios
 packaging/               launchd/systemd units, container runner profile
-docs/                    spec, operations, compatibility, API, decisions, checklist
+scripts/screenshots/     demo scenario + WebKit capture for the README images
+docs/                    spec, operations, compatibility, API, decisions, checklist, screenshots
 ```
 
 ## Development
 
 ```sh
 go test ./...            # unit + integration (≈1 min)
+go test -race ./internal/... ./test/integration/
 make schema              # regenerate JSON Schemas and web types from protocol/*.go
 cd web && npm run dev    # client dev server (proxy /v1 to a running hub)
+cd web && npm test       # client unit and smoke tests
+```
+
+To refresh the screenshots (macOS; renders with the system WebKit, so no
+browser download), start a fresh demo and run the capture script:
+
+```sh
+./bin/yip demo --reset --data /tmp/yip-demo-shots --listen 127.0.0.1:7821 --runner-listen 127.0.0.1:7844
+python3 scripts/screenshots/capture.py --credentials /tmp/yip-demo-shots/demo-credentials.txt
 ```
 
 Requirements: Go 1.26, Node 20+ (build only), git on every runner.
