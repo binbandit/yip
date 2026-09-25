@@ -73,6 +73,11 @@ func PrepareCommand(cmd *exec.Cmd) {
 }
 
 // StartProcess starts a prepared command and begins waiting on it.
+//
+// Because Wait starts immediately, never use cmd.StdoutPipe/StderrPipe with
+// it: exec.Cmd.Wait closes those pipes as soon as the process exits, which
+// can drop the final unread lines. Give the command an os.Pipe (or a
+// writer) instead and read the read end to EOF yourself.
 func StartProcess(cmd *exec.Cmd) (*Process, error) {
 	PrepareCommand(cmd)
 	if err := cmd.Start(); err != nil {
