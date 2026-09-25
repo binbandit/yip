@@ -153,8 +153,11 @@ type Manifest struct {
 	Omitted              []string    `json:"omitted,omitempty"`
 	Budget               Budget      `json:"budget"`
 	ScopeFingerprint     string      `json:"scopeFingerprint"`
-	Mode                 string      `json:"mode"`
-	Now                  time.Time   `json:"now"`
+	// RestoreArtifactID is the code bundle this run may fetch to restore a
+	// published revision (the hub serves runners only artifacts named here).
+	RestoreArtifactID string    `json:"restoreArtifactId,omitempty"`
+	Mode              string    `json:"mode"`
+	Now               time.Time `json:"now"`
 }
 
 // Fingerprint hashes the security scope of a run. Provider session reuse is

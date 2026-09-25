@@ -276,6 +276,9 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 			}
 		}
 		x.Repo = spec
+		if spec.CheckpointArtifact != nil {
+			m.RestoreArtifactID = spec.CheckpointArtifact.ID
+		}
 		if p, err := store.GetProject(ctx, q, repo.ProjectID); err == nil {
 			x.Checks = p.Policy.Checks
 		}

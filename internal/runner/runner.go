@@ -58,15 +58,23 @@ type Runner struct {
 	connCtx    context.Context
 	runs       map[string]*activeRun
 	tokens     map[string]string
-	tools      map[string]chan protocol.ToolResult
+	tools      map[string]*pendingCall
 	approvals  map[string]*pendingApproval
 	draining   bool
-	heartbeat  time.Duration
-	stopMargin time.Duration
+	heartbeat  atomic.Int64 // nanoseconds; set by the hub's welcome
+	stopMargin atomic.Int64
 	sendMu     sync.Mutex
 	bridgeLn   net.Listener
 	caps       atomic.Value // protocol.RunnerCapabilities
 	shutdown   atomic.Bool
+}
+
+// pendingCall is a tool call forwarded to the hub and not yet answered. It
+// is re-sent on reconnect; the hub returns the recorded result for a call
+// that already committed.
+type pendingCall struct {
+	frame protocol.Frame
+	ch    chan protocol.ToolResult
 }
 
 type pendingApproval struct {
@@ -81,6 +89,7 @@ type activeRun struct {
 	epoch      int64
 	leaseUntil time.Time
 	started    bool
+	dropped    bool // removed before it started; must never start
 	session    providers.Session
 	ws         *Workspace
 	token      string
@@ -146,8 +155,10 @@ func New(opts Options) (*Runner, error) {
 	}
 	r := &Runner{opts: opts, id: id, paths: p, journal: j, ws: newWorkspaces(p), tlsConf: tlsConf, log: opts.Logger,
 		httpc: &http.Client{Timeout: 10 * time.Minute, Transport: &http.Transport{TLSClientConfig: tlsConf}},
-		runs:  map[string]*activeRun{}, tokens: map[string]string{}, tools: map[string]chan protocol.ToolResult{},
-		approvals: map[string]*pendingApproval{}, heartbeat: 10 * time.Second, stopMargin: 10 * time.Second}
+		runs:  map[string]*activeRun{}, tokens: map[string]string{}, tools: map[string]*pendingCall{},
+		approvals: map[string]*pendingApproval{}}
+	r.heartbeat.Store(int64(10 * time.Second))
+	r.stopMargin.Store(int64(10 * time.Second))
 	r.recoverJournal()
 	return r, nil
 }
@@ -292,10 +303,13 @@ func (r *Runner) session(ctx context.Context) error {
 			_ = r.writeFrame(c, protocol.EvRunTerminal, jr.RunID, jr.Epoch, t)
 		}
 	}
-	// Re-send approval requests still waiting for a decision.
+	// Re-send approval requests and tool calls still waiting for an answer.
 	r.mu.Lock()
 	var pend []protocol.Frame
 	for _, p := range r.approvals {
+		pend = append(pend, p.frame)
+	}
+	for _, p := range r.tools {
 		pend = append(pend, p.frame)
 	}
 	r.mu.Unlock()
@@ -367,14 +381,49 @@ func (r *Runner) sendTyped(typ, runID string, epoch int64, payload any) error {
 }
 
 func (r *Runner) heartbeats(ctx context.Context, c *websocket.Conn) {
-	t := time.NewTicker(r.heartbeat)
+	t := time.NewTicker(time.Duration(r.heartbeat.Load()))
 	defer t.Stop()
-	for {
+	for n := 1; ; n++ {
 		r.sendHeartbeat(c)
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+		}
+		if n%3 == 0 {
+			r.resendUnacked(c)
+		}
+	}
+}
+
+// resendUnacked re-sends finished attempts' events and terminal reports the
+// hub has not committed (for example after a transient hub error), so a
+// result is never stranded until the next reconnect.
+func (r *Runner) resendUnacked(c *websocket.Conn) {
+	jruns, err := r.journal.Runs()
+	if err != nil {
+		return
+	}
+	for _, jr := range jruns {
+		if jr.Terminal == nil || jr.TermAcked {
+			continue
+		}
+		r.mu.Lock()
+		_, active := r.runs[jr.RunID]
+		r.mu.Unlock()
+		if active {
+			continue // still finishing; its own terminal send is in flight
+		}
+		frames, _ := r.journal.Unacked(jr.RunID)
+		for _, f := range frames {
+			if err := r.sendRaw(c, f); err != nil {
+				return
+			}
+		}
+		t := *jr.Terminal
+		t.LastSeq = r.journal.LastSeq(jr.RunID)
+		if err := r.writeFrame(c, protocol.EvRunTerminal, jr.RunID, jr.Epoch, t); err != nil {
+			return
 		}
 	}
 }
@@ -382,15 +431,21 @@ func (r *Runner) heartbeats(ctx context.Context, c *websocket.Conn) {
 func (r *Runner) sendHeartbeat(c *websocket.Conn) {
 	hb := protocol.Heartbeat{DiskFreeMB: diskFreeMB(r.paths.Dir)}
 	r.mu.Lock()
-	for id, ar := range r.runs {
+	all := make([]*activeRun, 0, len(r.runs))
+	for _, ar := range r.runs {
+		all = append(all, ar)
+	}
+	hb.FreeSlots = r.opts.Slots - len(r.runs)
+	r.mu.Unlock()
+	for _, ar := range all {
+		ar.mu.Lock()
 		state := "accepted"
 		if ar.started {
 			state = "running"
 		}
-		hb.ActiveRuns = append(hb.ActiveRuns, protocol.ActiveRun{RunID: id, LeaseEpoch: ar.epoch, State: state, LastActivity: ar.activity})
+		hb.ActiveRuns = append(hb.ActiveRuns, protocol.ActiveRun{RunID: ar.m.RunID, LeaseEpoch: ar.epoch, State: state, LastActivity: ar.activity})
+		ar.mu.Unlock()
 	}
-	hb.FreeSlots = r.opts.Slots - len(r.runs)
-	r.mu.Unlock()
 	_ = r.writeFrame(c, protocol.EvHeartbeat, "", 0, hb)
 }
 
@@ -406,19 +461,26 @@ func (r *Runner) leaseMonitor(ctx context.Context) {
 		case <-t.C:
 		}
 		now := time.Now()
+		margin := time.Duration(r.stopMargin.Load())
 		r.mu.Lock()
-		var lost []*activeRun
+		all := make([]*activeRun, 0, len(r.runs))
 		for _, ar := range r.runs {
-			if now.After(ar.leaseUntil.Add(-r.stopMargin)) && !ar.leaseLost.Load() {
-				lost = append(lost, ar)
-			}
+			all = append(all, ar)
 		}
 		r.mu.Unlock()
-		for _, ar := range lost {
+		for _, ar := range all {
+			ar.mu.Lock()
+			expired := now.After(ar.leaseUntil.Add(-margin))
+			ar.mu.Unlock()
+			if !expired || ar.leaseLost.Load() {
+				continue
+			}
 			r.log.Warn("lease not renewed; stopping run", "run", ar.m.RunID)
 			ar.leaseLost.Store(true)
 			ar.admit.Store(false)
-			r.stopRun(ar, "lease expired")
+			if !r.dropUnstarted(ar, protocol.OutcomeLeaseLost, "the lease expired before this attempt started") {
+				r.stopRun(ar, "lease expired")
+			}
 		}
 	}
 }
@@ -439,6 +501,43 @@ func (r *Runner) stopRun(ar *activeRun, reason string) {
 	}
 }
 
+// dropUnstarted removes an accepted attempt that never started, freeing its
+// slot, and reports it as finished (nothing ran, so the exit is confirmed).
+// It returns false when the attempt already started and must be stopped.
+func (r *Runner) dropUnstarted(ar *activeRun, outcome, reason string) bool {
+	return r.drop(ar, outcome, reason, true)
+}
+
+// drop is dropUnstarted; report=false skips the terminal report (used when a
+// newer offer of the same attempt replaces this one).
+func (r *Runner) drop(ar *activeRun, outcome, reason string, report bool) bool {
+	ar.mu.Lock()
+	if ar.started || ar.dropped {
+		dropped := ar.dropped
+		ar.mu.Unlock()
+		return dropped
+	}
+	ar.dropped = true
+	ar.mu.Unlock()
+	r.mu.Lock()
+	if r.runs[ar.m.RunID] == ar {
+		delete(r.runs, ar.m.RunID)
+	}
+	r.mu.Unlock()
+	close(ar.done)
+	jr, ok := r.journal.Run(ar.m.RunID)
+	if !report || !ok || jr.Epoch != ar.epoch {
+		return true // a newer offer owns (or will own) the journal entry
+	}
+	t := protocol.RunTerminal{Outcome: outcome, ExitConfirmed: true, Error: reason, LastSeq: r.journal.LastSeq(ar.m.RunID)}
+	if err := r.journal.SetTerminal(ar.m.RunID, t); err != nil {
+		r.log.Error("journal terminal failed", "run", ar.m.RunID, "err", err)
+	}
+	_ = r.sendTyped(protocol.EvRunTerminal, ar.m.RunID, ar.epoch, t)
+	r.log.Info("dropped an attempt that never started", "run", ar.m.RunID, "reason", reason)
+	return true
+}
+
 func (r *Runner) stopAll(reason string) {
 	r.shutdown.Store(true)
 	r.mu.Lock()
@@ -449,7 +548,9 @@ func (r *Runner) stopAll(reason string) {
 	r.mu.Unlock()
 	for _, ar := range all {
 		ar.admit.Store(false)
-		r.stopRun(ar, reason)
+		if !r.dropUnstarted(ar, protocol.OutcomeFailed, "the runner stopped before this attempt started") {
+			r.stopRun(ar, reason)
+		}
 	}
 	for _, ar := range all {
 		select {
@@ -466,10 +567,10 @@ func (r *Runner) handle(ctx context.Context, c *websocket.Conn, f protocol.Frame
 		var w protocol.Welcome
 		if json.Unmarshal(f.Payload, &w) == nil {
 			if w.HeartbeatMs > 0 {
-				r.heartbeat = time.Duration(w.HeartbeatMs) * time.Millisecond
+				r.heartbeat.Store(int64(time.Duration(w.HeartbeatMs) * time.Millisecond))
 			}
 			if w.StopMarginMs > 0 {
-				r.stopMargin = time.Duration(w.StopMarginMs) * time.Millisecond
+				r.stopMargin.Store(int64(time.Duration(w.StopMarginMs) * time.Millisecond))
 			}
 			r.mu.Lock()
 			r.draining = w.Draining
@@ -505,7 +606,9 @@ func (r *Runner) handle(ctx context.Context, c *websocket.Conn, f protocol.Frame
 		if ar != nil && ar.epoch == f.LeaseEpoch {
 			ar.cancelled.Store(true)
 			ar.admit.Store(false)
-			r.stopRun(ar, "cancelled")
+			if !r.dropUnstarted(ar, protocol.OutcomeCancelled, "cancelled before it started") {
+				r.stopRun(ar, "cancelled")
+			}
 		}
 		return r.writeFrame(c, protocol.EvCommandAck, f.RunID, f.LeaseEpoch, protocol.CommandAck{CommandID: f.ID, OK: true})
 	case protocol.CmdToolResult:
@@ -514,11 +617,11 @@ func (r *Runner) handle(ctx context.Context, c *websocket.Conn, f protocol.Frame
 			return err
 		}
 		r.mu.Lock()
-		ch := r.tools[res.CallID]
+		p := r.tools[res.CallID]
 		delete(r.tools, res.CallID)
 		r.mu.Unlock()
-		if ch != nil {
-			ch <- res
+		if p != nil {
+			p.ch <- res
 		}
 		return nil
 	case protocol.CmdAck:
@@ -529,8 +632,14 @@ func (r *Runner) handle(ctx context.Context, c *websocket.Conn, f protocol.Frame
 		if err := r.journal.AckEvents(a.RunID, a.UpToSeq); err != nil {
 			return err
 		}
-		if jr, ok := r.journal.Run(a.RunID); ok && jr.Terminal != nil && a.UpToSeq >= jr.Terminal.LastSeq {
-			_ = r.journal.AckTerminal(a.RunID)
+		if a.Terminal {
+			// Only an explicit terminal ack settles the report; an event ack
+			// at the same sequence does not mean the outcome was committed.
+			// The epoch guards against an ack for an older offer landing
+			// after a newer one reused the journal entry.
+			if jr, ok := r.journal.Run(a.RunID); ok && jr.Epoch == f.LeaseEpoch {
+				_ = r.journal.AckTerminal(a.RunID)
+			}
 		}
 		return nil
 	case protocol.CmdLease, protocol.CmdReconcile:
@@ -565,7 +674,9 @@ func (r *Runner) handle(ctx context.Context, c *websocket.Conn, f protocol.Frame
 				r.log.Warn("hub revoked lease; stopping run", "run", l.RunID, "reason", l.Reason)
 				ar.leaseLost.Store(true)
 				ar.admit.Store(false)
-				r.stopRun(ar, l.Reason)
+				if !r.dropUnstarted(ar, protocol.OutcomeLeaseLost, "the hub revoked this attempt before it started") {
+					r.stopRun(ar, l.Reason)
+				}
 				continue
 			}
 			ar.mu.Lock()
@@ -609,6 +720,14 @@ func (r *Runner) onOffer(c *websocket.Conn, f protocol.Frame) error {
 		return r.writeFrame(c, protocol.EvRunAck, f.RunID, f.LeaseEpoch, ack)
 	}
 	r.mu.Lock()
+	prev := r.runs[m.RunID]
+	r.mu.Unlock()
+	if prev != nil && prev.epoch < f.LeaseEpoch {
+		// The hub re-offered this attempt under a newer epoch (the old offer
+		// expired). An old copy that never started is simply replaced.
+		r.drop(prev, protocol.OutcomeLeaseLost, "superseded by a newer offer", false)
+	}
+	r.mu.Lock()
 	draining, busy := r.draining, len(r.runs) >= r.opts.Slots
 	_, exists := r.runs[m.RunID]
 	r.mu.Unlock()
@@ -641,17 +760,25 @@ func (r *Runner) onStart(ctx context.Context, c *websocket.Conn, f protocol.Fram
 	r.mu.Lock()
 	ar := r.runs[f.RunID]
 	r.mu.Unlock()
-	if ar == nil || ar.epoch != f.LeaseEpoch {
+	unknown := func() error {
 		_ = r.journal.RecordCommand(f.ID, protocol.CmdStartRun, f.RunID, protocol.CommandAck{CommandID: f.ID, OK: false, Error: "unknown attempt"})
 		return r.writeFrame(c, protocol.EvCommandAck, f.RunID, f.LeaseEpoch, protocol.CommandAck{CommandID: f.ID, OK: false, Error: "unknown attempt"})
+	}
+	if ar == nil || ar.epoch != f.LeaseEpoch {
+		return unknown()
+	}
+	ar.mu.Lock()
+	dropped, already := ar.dropped, ar.started
+	if !dropped {
+		ar.started = true
+	}
+	ar.mu.Unlock()
+	if dropped {
+		return unknown()
 	}
 	if err := r.journal.RecordCommand(f.ID, protocol.CmdStartRun, f.RunID, protocol.CommandAck{CommandID: f.ID, OK: true}); err != nil {
 		return err
 	}
-	ar.mu.Lock()
-	already := ar.started
-	ar.started = true
-	ar.mu.Unlock()
 	if !already {
 		go r.execute(ctx, ar)
 	}

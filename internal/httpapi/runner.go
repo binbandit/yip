@@ -28,8 +28,10 @@ func NewRunnerServer(h *hub.Hub, logf func(msg string, args ...any)) *RunnerServ
 	s := &RunnerServer{hub: h, mux: http.NewServeMux(), log: logf}
 	s.mux.HandleFunc("POST /v1/nodes/pair", s.pair)
 	s.mux.HandleFunc("GET /v1/runner/connect", s.node(s.connect))
-	s.mux.HandleFunc("PUT /v1/runner/artifacts/{hash}", s.node(s.putArtifact))
-	s.mux.HandleFunc("GET /v1/runner/artifacts/{id}", s.node(s.getArtifact))
+	// The websocket checks the credential in ConnectRunner (and tells a
+	// revoked runner to stop); plain requests check it here.
+	s.mux.HandleFunc("PUT /v1/runner/artifacts/{hash}", s.node(s.current(s.putArtifact)))
+	s.mux.HandleFunc("GET /v1/runner/artifacts/{id}", s.node(s.current(s.getArtifact)))
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
 	return s
 }
@@ -52,6 +54,19 @@ func (s *RunnerServer) node(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		h(w, r.WithContext(context.WithValue(r.Context(), nodeKey{}, nodeIdentity{id, serial})))
+	}
+}
+
+// current refuses a revoked or superseded machine credential.
+func (s *RunnerServer) current(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ident := r.Context().Value(nodeKey{}).(nodeIdentity)
+		if err := s.hub.AuthorizeNode(r.Context(), ident.id, ident.serial); err != nil {
+			de := domain.AsError(err)
+			writeJSON(w, de.Status, de.API(""))
+			return
+		}
+		h(w, r)
 	}
 }
 
@@ -143,6 +158,11 @@ func (s *RunnerServer) connect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *RunnerServer) putArtifact(w http.ResponseWriter, r *http.Request) {
+	ident := r.Context().Value(nodeKey{}).(nodeIdentity)
+	if !s.hub.NodeHoldsRun(r.Context(), ident.id) {
+		writeJSON(w, 403, domain.Forbidden("Uploads are accepted only for a run this machine currently holds.").API(""))
+		return
+	}
 	size, err := strconv.ParseInt(r.Header.Get("X-Yip-Size"), 10, 64)
 	if err != nil {
 		writeJSON(w, 400, domain.Invalid("X-Yip-Size is required.").API(""))

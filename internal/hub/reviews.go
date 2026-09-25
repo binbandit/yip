@@ -202,9 +202,10 @@ func (h *Hub) toolReview(ctx context.Context, t *txn, env toolEnv, a bridge.Work
 	if round.Target.Head != "" && a.ExpectedHead != round.Target.Head && !strings.HasPrefix(round.Target.Head, a.ExpectedHead) {
 		return nil, domain.Conflict("You reviewed %s, but this round is for %s. Review the current revision.", shortRev(a.ExpectedHead), shortRev(round.Target.Head))
 	}
-	// A PR target is re-checked against the forge immediately before recording.
+	// A PR target was re-synchronised with the forge just before this
+	// transaction (see dispatchTool); a moved head supersedes the round.
 	if round.Target.Kind == "pr" {
-		if pr, err := h.refreshPR(ctx, t, round.Target.PullRequestID); err == nil && pr.Head != round.Target.Head {
+		if pr, err := store.GetPR(ctx, t.tx, round.Target.PullRequestID); err == nil && pr.Head != "" && pr.Head != round.Target.Head {
 			return nil, domain.Conflict("The pull request moved to %s during review. Your verdict applies to %s; a new round is needed.", shortRev(pr.Head), shortRev(round.Target.Head))
 		}
 	}

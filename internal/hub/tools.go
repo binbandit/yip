@@ -194,9 +194,21 @@ func (h *Hub) dispatchTool(ctx context.Context, run store.RunRow, call protocol.
 		}
 		return h.toolForgePublishReview(ctx, env, a)
 	}
+	if call.Tool == bridge.WorkReview {
+		// Re-read a PR target from the forge before the verdict is recorded.
+		// The network call happens outside the writer transaction; a moved
+		// head supersedes the round, which the verdict then sees.
+		if _, round, err := store.ReviewByReviewJob(ctx, h.st.R(), run.JobID); err == nil && round.Target.Kind == "pr" {
+			if pr, err := store.GetPR(ctx, h.st.R(), round.Target.PullRequestID); err == nil {
+				if err := h.syncLinkedPR(ctx, pr); err != nil {
+					h.log.Warn("could not re-read the pull request before a verdict", "pr", pr.ID, "err", err)
+				}
+			}
+		}
+	}
 	// Mutating tools run in one transaction with their events.
 	var out any
-	err := h.do(ctx, func(t *txn) error {
+	mutate := func(t *txn) error {
 		env, err := h.loadEnv(ctx, t.tx, run)
 		if err != nil {
 			return err
@@ -302,6 +314,40 @@ func (h *Hub) dispatchTool(ctx context.Context, run store.RunRow, call protocol.
 			return err
 		}
 		return domain.Invalid("Unknown tool %q.", call.Tool)
+	}
+	err := h.do(ctx, func(t *txn) error {
+		// The lease and run state are re-checked under the writer lock: a
+		// cancel or lease expiry that committed after the admission check
+		// must stop the mutation.
+		cur, err := requireLease(ctx, t.tx, run.NodeID, run.ID, run.LeaseEpoch)
+		if err != nil {
+			return domain.Forbidden("This run no longer holds a valid lease; the call was not executed.")
+		}
+		if cur.State == protocol.RunStopping || !domain.RunHoldsLease(cur.State) {
+			return domain.Forbidden("This run is %s; no further tool calls are admitted.", cur.State)
+		}
+		if call.CallID != "" {
+			// A retried call (for example after a reconnect) that already
+			// committed returns its recorded result instead of running twice.
+			if ok, res, found, err := store.GetToolCall(ctx, t.tx, run.ID, call.CallID); err != nil {
+				return err
+			} else if found && ok {
+				out = json.RawMessage(res)
+				return nil
+			}
+		}
+		if err := mutate(t); err != nil {
+			return err
+		}
+		if call.CallID == "" {
+			return nil
+		}
+		b, err := json.Marshal(out)
+		if err != nil {
+			return err
+		}
+		// Recorded atomically with the mutation it describes.
+		return store.InsertToolCall(ctx, t.tx, run.ID, call.CallID, call.Tool, true, string(b))
 	})
 	return out, err
 }

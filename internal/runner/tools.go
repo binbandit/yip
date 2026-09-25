@@ -77,32 +77,42 @@ func (r *Runner) handleBridge(req bridge.LocalRequest) bridge.LocalResponse {
 // for its result.
 func (r *Runner) callHub(ctx context.Context, ar *activeRun, tool string, args json.RawMessage) (json.RawMessage, *protocol.APIError) {
 	callID := domain.NewID()
-	ch := make(chan protocol.ToolResult, 1)
+	payload, _ := json.Marshal(protocol.ToolCall{CallID: callID, Tool: tool, Args: args})
+	p := &pendingCall{frame: protocol.Frame{Type: protocol.EvToolCall, ID: callID, RunID: ar.m.RunID, LeaseEpoch: ar.epoch, Payload: payload},
+		ch: make(chan protocol.ToolResult, 1)}
 	r.mu.Lock()
-	r.tools[callID] = ch
+	r.tools[callID] = p
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
 		delete(r.tools, callID)
 		r.mu.Unlock()
 	}()
-	payload, _ := json.Marshal(protocol.ToolCall{CallID: callID, Tool: tool, Args: args})
-	if err := r.send(protocol.Frame{Type: protocol.EvToolCall, ID: callID, RunID: ar.m.RunID, LeaseEpoch: ar.epoch, Payload: payload}); err != nil {
-		return nil, apiErr("unavailable", "The hub is unreachable right now; try again shortly.")
-	}
-	select {
-	case res := <-ch:
-		if !res.OK {
-			if res.Error == nil {
-				res.Error = apiErr("internal", "The hub rejected the call.")
+	// A failed send is not fatal: the call stays pending and is re-sent when
+	// the connection returns, while the lease still admits it.
+	_ = r.send(p.frame)
+	deadline := time.After(5 * time.Minute)
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case res := <-p.ch:
+			if !res.OK {
+				if res.Error == nil {
+					res.Error = apiErr("internal", "The hub rejected the call.")
+				}
+				return nil, res.Error
 			}
-			return nil, res.Error
+			return res.Result, nil
+		case <-tick.C:
+			if !ar.admit.Load() {
+				return nil, apiErr("forbidden", "This run is stopping (its lease ended or it was cancelled); the call's outcome is unknown.")
+			}
+		case <-ctx.Done():
+			return nil, apiErr("unavailable", "The hub did not answer in time.")
+		case <-deadline:
+			return nil, apiErr("unavailable", "The hub did not answer in time.")
 		}
-		return res.Result, nil
-	case <-ctx.Done():
-		return nil, apiErr("unavailable", "The hub did not answer in time.")
-	case <-time.After(5 * time.Minute):
-		return nil, apiErr("unavailable", "The hub did not answer in time.")
 	}
 }
 

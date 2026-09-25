@@ -152,7 +152,28 @@ func (h *Hub) OpenArtifact(ctx context.Context, userID, id string) (protocol.Art
 	return a, f, nil
 }
 
-// OpenArtifactForNode serves code bundles and checkpoints to paired runners.
+// AuthorizeNode verifies a machine certificate against the hub's current
+// record on every runner HTTP request: a revoked or superseded credential
+// is refused even though its certificate still chains to the hub CA.
+func (h *Hub) AuthorizeNode(ctx context.Context, nodeID, serial string) error {
+	node, err := store.GetNode(ctx, h.st.R(), nodeID)
+	if err != nil {
+		return domain.Unauthorized("Unknown machine.")
+	}
+	if node.RevokedAt != nil {
+		return domain.Unauthorized("This machine's credential was revoked. Pair it again to reconnect.")
+	}
+	if node.CertSerial != serial {
+		return domain.Unauthorized("This machine presented a superseded certificate.")
+	}
+	return nil
+}
+
+// leaseStates are the run states in which a machine holds a run's lease.
+const leaseStatesSQL = `('offered','preparing','running','awaiting_input','stopping')`
+
+// OpenArtifactForNode serves a code bundle or checkpoint to a runner, but
+// only one named in the manifest of a run currently assigned to it.
 func (h *Hub) OpenArtifactForNode(ctx context.Context, nodeID, id string) (protocol.Artifact, *os.File, error) {
 	a, err := store.GetArtifact(ctx, h.st.R(), id)
 	if err != nil {
@@ -161,8 +182,24 @@ func (h *Hub) OpenArtifactForNode(ctx context.Context, nodeID, id string) (proto
 	if a.Kind != "bundle" && a.Kind != "checkpoint" {
 		return a, nil, domain.Forbidden("runners may only fetch code bundles and checkpoints")
 	}
+	var n int
+	if err := h.st.R().QueryRowContext(ctx, `SELECT COUNT(*) FROM runs WHERE node_id = ? AND state IN `+leaseStatesSQL+` AND instr(manifest, ?) > 0`,
+		nodeID, `"`+a.ID+`"`).Scan(&n); err != nil {
+		return a, nil, err
+	}
+	if n == 0 {
+		return a, nil, domain.NotFound("unknown artifact")
+	}
 	f, err := h.artifacts.Open(a.Hash)
 	return a, f, err
+}
+
+// NodeHoldsRun reports whether the machine currently holds any run lease
+// (artifact uploads are only accepted on behalf of a live run).
+func (h *Hub) NodeHoldsRun(ctx context.Context, nodeID string) bool {
+	var n int
+	_ = h.st.R().QueryRowContext(ctx, `SELECT COUNT(*) FROM runs WHERE node_id = ? AND state IN `+leaseStatesSQL, nodeID).Scan(&n)
+	return n > 0
 }
 
 // Export writes the user's visible data in documented JSON formats.
