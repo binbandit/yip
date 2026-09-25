@@ -1,0 +1,3919 @@
+{
+  "$defs": {
+    "APIError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "correlationId": {
+          "type": "string"
+        },
+        "details": {},
+        "message": {
+          "type": "string"
+        },
+        "missingCapability": {
+          "type": "string"
+        },
+        "recoverable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "recoverable"
+      ],
+      "type": "object"
+    },
+    "AcceptJobRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "revision",
+        "version",
+        "note"
+      ],
+      "type": "object"
+    },
+    "ActivityItem": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "type": "array"
+        },
+        "roomId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "actor",
+        "type",
+        "text",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "Actor": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "type": "object"
+    },
+    "AnswerQuestionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "clientKey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "body",
+        "clientKey"
+      ],
+      "type": "object"
+    },
+    "Approval": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ApprovalAction"
+        },
+        "argsDigest": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "decidedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decidedBy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Actor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "engineerId": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/Destination"
+        },
+        "status": {
+          "type": "string"
+        },
+        "targetRev": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "runId",
+        "jobId",
+        "engineerId",
+        "action",
+        "argsDigest",
+        "scope",
+        "status",
+        "expiresAt",
+        "source",
+        "version",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "ApprovalAction": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "ApprovalDecisionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "decision",
+        "version",
+        "note"
+      ],
+      "type": "object"
+    },
+    "Artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "contentType": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "roomId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "hash",
+        "name",
+        "contentType",
+        "size",
+        "kind",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "Bootstrap": {
+      "additionalProperties": false,
+      "properties": {
+        "csrfToken": {
+          "type": "string"
+        },
+        "cursor": {
+          "type": "integer"
+        },
+        "demo": {
+          "type": "boolean"
+        },
+        "engineers": {
+          "items": {
+            "$ref": "#/$defs/Engineer"
+          },
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/Node"
+          },
+          "type": "array"
+        },
+        "org": {
+          "$ref": "#/$defs/Org"
+        },
+        "preferences": {
+          "$ref": "#/$defs/Preferences"
+        },
+        "projects": {
+          "items": {
+            "$ref": "#/$defs/Project"
+          },
+          "type": "array"
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/ProviderSummary"
+          },
+          "type": "array"
+        },
+        "rooms": {
+          "items": {
+            "$ref": "#/$defs/Room"
+          },
+          "type": "array"
+        },
+        "serverTime": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "user": {
+          "$ref": "#/$defs/User"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "user",
+        "org",
+        "rooms",
+        "engineers",
+        "projects",
+        "nodes",
+        "cursor",
+        "csrfToken",
+        "preferences",
+        "serverTime",
+        "version",
+        "demo",
+        "providers"
+      ],
+      "type": "object"
+    },
+    "CancelJobRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "includeChildren": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "includeChildren"
+      ],
+      "type": "object"
+    },
+    "CatchupItem": {
+      "additionalProperties": false,
+      "properties": {
+        "actorId": {
+          "type": "string"
+        },
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "eventSeq": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "messageId": {
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "type": "array"
+        },
+        "roomId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "title",
+        "detail",
+        "at",
+        "refs",
+        "eventSeq"
+      ],
+      "type": "object"
+    },
+    "Check": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer"
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "logArtifactId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "jobId",
+        "runId",
+        "nodeId",
+        "name",
+        "command",
+        "exitCode",
+        "passed",
+        "revision",
+        "durationMs",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "ChecksSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "failed": {
+          "type": "integer"
+        },
+        "passed": {
+          "type": "integer"
+        },
+        "pending": {
+          "type": "integer"
+        },
+        "state": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "state",
+        "passed",
+        "failed",
+        "pending",
+        "total"
+      ],
+      "type": "object"
+    },
+    "CreateEngineerRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilityTags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "handle": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderPreference"
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "handle",
+        "role",
+        "description",
+        "instructions",
+        "capabilityTags",
+        "provider"
+      ],
+      "type": "object"
+    },
+    "CreateEnrollmentRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "CreateProjectRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/ProjectPolicy"
+        },
+        "roomIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "instructions",
+        "policy",
+        "roomIds"
+      ],
+      "type": "object"
+    },
+    "CreateRoomRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "engineerIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "private": {
+          "type": "boolean"
+        },
+        "projectIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "replyMode": {
+          "type": "string"
+        },
+        "stewardId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "purpose",
+        "kind",
+        "private",
+        "replyMode",
+        "stewardId",
+        "engineerIds",
+        "projectIds"
+      ],
+      "type": "object"
+    },
+    "Decision": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acceptedBy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Actor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "body": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "createdBy": {
+          "$ref": "#/$defs/Actor"
+        },
+        "id": {
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/DecisionScope"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/Source"
+          },
+          "type": "array"
+        },
+        "status": {
+          "type": "string"
+        },
+        "supersededById": {
+          "type": "string"
+        },
+        "supersedesId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "visibleRoomIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "scope",
+        "title",
+        "body",
+        "status",
+        "createdBy",
+        "sources",
+        "visibleRoomIds",
+        "version",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "DecisionActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action",
+        "version"
+      ],
+      "type": "object"
+    },
+    "DecisionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "accept": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/DecisionScope"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/Source"
+          },
+          "type": "array"
+        },
+        "supersedesId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "title",
+        "body",
+        "sources",
+        "accept"
+      ],
+      "type": "object"
+    },
+    "DecisionScope": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "type": "object"
+    },
+    "Destination": {
+      "additionalProperties": false,
+      "properties": {
+        "messageId": {
+          "type": "string"
+        },
+        "roomId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "roomId"
+      ],
+      "type": "object"
+    },
+    "Diagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "activeRuns": {
+          "type": "integer"
+        },
+        "artifactBytes": {
+          "type": "integer"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/HealthCheck"
+          },
+          "type": "array"
+        },
+        "dataDir": {
+          "type": "string"
+        },
+        "dbSizeBytes": {
+          "type": "integer"
+        },
+        "diskFreeBytes": {
+          "type": "integer"
+        },
+        "failedRuns24h": {
+          "type": "integer"
+        },
+        "lastBackupAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/Node"
+          },
+          "type": "array"
+        },
+        "pendingApprovals": {
+          "type": "integer"
+        },
+        "pendingOutbox": {
+          "type": "integer"
+        },
+        "queueDepth": {
+          "type": "integer"
+        },
+        "sseClients": {
+          "type": "integer"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "dataDir",
+        "dbSizeBytes",
+        "artifactBytes",
+        "diskFreeBytes",
+        "queueDepth",
+        "activeRuns",
+        "pendingOutbox",
+        "pendingApprovals",
+        "failedRuns24h",
+        "nodes",
+        "sseClients",
+        "checks"
+      ],
+      "type": "object"
+    },
+    "Engineer": {
+      "additionalProperties": false,
+      "properties": {
+        "activeJobIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "capabilityTags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "handle": {
+          "type": "string"
+        },
+        "hue": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "orgId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderPreference"
+        },
+        "role": {
+          "type": "string"
+        },
+        "roomIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "versionId": {
+          "type": "string"
+        },
+        "versionNo": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "orgId",
+        "name",
+        "handle",
+        "role",
+        "description",
+        "instructions",
+        "capabilityTags",
+        "provider",
+        "hue",
+        "archived",
+        "versionId",
+        "versionNo",
+        "version",
+        "roomIds",
+        "activeJobIds",
+        "createdAt",
+        "updatedAt"
+      ],
+      "type": "object"
+    },
+    "EngineerVersion": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilityTags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "engineerId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderPreference"
+        },
+        "role": {
+          "type": "string"
+        },
+        "versionNo": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "engineerId",
+        "versionNo",
+        "name",
+        "role",
+        "description",
+        "instructions",
+        "capabilityTags",
+        "provider",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "Enrollment": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "hubFingerprint": {
+          "type": "string"
+        },
+        "hubUrl": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "expiresAt",
+        "hubUrl",
+        "hubFingerprint",
+        "command"
+      ],
+      "type": "object"
+    },
+    "Event": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "causeId": {
+          "type": "string"
+        },
+        "eventId": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "orgId": {
+          "type": "string"
+        },
+        "payload": {},
+        "roomId": {
+          "type": "string"
+        },
+        "rootRequestId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": "integer"
+        },
+        "sequence": {
+          "type": "integer"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "eventId",
+        "orgId",
+        "sequence",
+        "type",
+        "actor",
+        "occurredAt"
+      ],
+      "type": "object"
+    },
+    "ExecutionProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "available",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer"
+        },
+        "replies": {
+          "items": {
+            "$ref": "#/$defs/FindingReply"
+          },
+          "type": "array"
+        },
+        "roundId": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "roundId",
+        "severity",
+        "body",
+        "status",
+        "replies",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "FindingReply": {
+      "additionalProperties": false,
+      "properties": {
+        "author": {
+          "$ref": "#/$defs/Actor"
+        },
+        "body": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "findingId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "findingId",
+        "author",
+        "body",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "Grant": {
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "type": "string"
+        },
+        "actions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "engineerId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "projectId",
+        "engineerId",
+        "access",
+        "actions"
+      ],
+      "type": "object"
+    },
+    "HealthCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "ok",
+        "detail"
+      ],
+      "type": "object"
+    },
+    "Job": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "completedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completionRequested": {
+          "type": "boolean"
+        },
+        "contributors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "currentRunId": {
+          "type": "string"
+        },
+        "depth": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "lastActivity": {
+          "type": "string"
+        },
+        "lastActivityAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "objective": {
+          "type": "string"
+        },
+        "orgId": {
+          "type": "string"
+        },
+        "ownerId": {
+          "type": "string"
+        },
+        "parentId": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "repoId": {
+          "type": "string"
+        },
+        "requiresHumanReview": {
+          "type": "boolean"
+        },
+        "requiresPeerReview": {
+          "type": "boolean"
+        },
+        "reviewerIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Revision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rootRequestId": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/Destination"
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "running",
+            "waiting",
+            "review_ready",
+            "completed",
+            "failed",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        "stateDetail": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "waitingReason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "orgId",
+        "kind",
+        "title",
+        "objective",
+        "acceptance",
+        "state",
+        "ownerId",
+        "contributors",
+        "rootRequestId",
+        "source",
+        "requiresPeerReview",
+        "requiresHumanReview",
+        "completionRequested",
+        "depth",
+        "priority",
+        "reviewerIds",
+        "version",
+        "createdAt",
+        "updatedAt"
+      ],
+      "type": "object"
+    },
+    "JobDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "activity": {
+          "items": {
+            "$ref": "#/$defs/ActivityItem"
+          },
+          "type": "array"
+        },
+        "approvals": {
+          "items": {
+            "$ref": "#/$defs/Approval"
+          },
+          "type": "array"
+        },
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/Artifact"
+          },
+          "type": "array"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "type": "array"
+        },
+        "children": {
+          "items": {
+            "$ref": "#/$defs/Job"
+          },
+          "type": "array"
+        },
+        "decisions": {
+          "items": {
+            "$ref": "#/$defs/Decision"
+          },
+          "type": "array"
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/JobInput"
+          },
+          "type": "array"
+        },
+        "job": {
+          "$ref": "#/$defs/Job"
+        },
+        "missing": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "pullRequests": {
+          "items": {
+            "$ref": "#/$defs/PullRequest"
+          },
+          "type": "array"
+        },
+        "questions": {
+          "items": {
+            "$ref": "#/$defs/Question"
+          },
+          "type": "array"
+        },
+        "reviews": {
+          "items": {
+            "$ref": "#/$defs/Review"
+          },
+          "type": "array"
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/Run"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "job",
+        "runs",
+        "checks",
+        "artifacts",
+        "reviews",
+        "questions",
+        "approvals",
+        "pullRequests",
+        "children",
+        "decisions",
+        "activity",
+        "inputs",
+        "missing"
+      ],
+      "type": "object"
+    },
+    "JobInput": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "deliveredAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delivery": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "messageId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "jobId",
+        "body",
+        "delivery",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "JobInputRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "clientKey": {
+          "type": "string"
+        },
+        "questionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "body",
+        "clientKey"
+      ],
+      "type": "object"
+    },
+    "JobInputResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/JobInput"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Message"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "input"
+      ],
+      "type": "object"
+    },
+    "LinkPullRequestRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "jobId": {
+          "type": "string"
+        },
+        "number": {
+          "type": "integer"
+        },
+        "repoId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repoId",
+        "number",
+        "url",
+        "jobId"
+      ],
+      "type": "object"
+    },
+    "Location": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "MarkReadRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "seq": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seq"
+      ],
+      "type": "object"
+    },
+    "Member": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "type": "object"
+    },
+    "MembershipPreview": {
+      "additionalProperties": false,
+      "properties": {
+        "engineerId": {
+          "type": "string"
+        },
+        "explanation": {
+          "type": "string"
+        },
+        "privateRoom": {
+          "type": "boolean"
+        },
+        "roomId": {
+          "type": "string"
+        },
+        "visibleMessageCount": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "roomId",
+        "engineerId",
+        "visibleMessageCount",
+        "privateRoom",
+        "explanation"
+      ],
+      "type": "object"
+    },
+    "Mention": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "type": "object"
+    },
+    "MergeStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "mergeable": {
+          "type": "string"
+        },
+        "merged": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "merged",
+        "mergeable",
+        "reasons"
+      ],
+      "type": "object"
+    },
+    "Message": {
+      "additionalProperties": false,
+      "properties": {
+        "attachments": {
+          "items": {
+            "$ref": "#/$defs/Artifact"
+          },
+          "type": "array"
+        },
+        "author": {
+          "$ref": "#/$defs/Actor"
+        },
+        "body": {
+          "type": "string"
+        },
+        "clientKey": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "deletedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "editedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "mentions": {
+          "items": {
+            "$ref": "#/$defs/Mention"
+          },
+          "type": "array"
+        },
+        "orgId": {
+          "type": "string"
+        },
+        "projectIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reactions": {
+          "items": {
+            "$ref": "#/$defs/ReactionSummary"
+          },
+          "type": "array"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "type": "array"
+        },
+        "replyToId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "roomId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "thread": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ThreadSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "orgId",
+        "roomId",
+        "seq",
+        "author",
+        "body",
+        "kind",
+        "mentions",
+        "projectIds",
+        "refs",
+        "reactions",
+        "revision",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "MessagePage": {
+      "additionalProperties": false,
+      "properties": {
+        "hasMore": {
+          "type": "boolean"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/Message"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "messages",
+        "hasMore"
+      ],
+      "type": "object"
+    },
+    "Model": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "Node": {
+      "additionalProperties": false,
+      "properties": {
+        "activeRunIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "arch": {
+          "type": "string"
+        },
+        "capacity": {
+          "$ref": "#/$defs/NodeCapacity"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "draining": {
+          "type": "boolean"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "lastActivity": {
+          "type": "string"
+        },
+        "lastSeenAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "os": {
+          "type": "string"
+        },
+        "profiles": {
+          "items": {
+            "$ref": "#/$defs/ExecutionProfile"
+          },
+          "type": "array"
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/ProviderInstallation"
+          },
+          "type": "array"
+        },
+        "revokedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runnerVersion": {
+          "type": "string"
+        },
+        "serviceState": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "toolchains": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "hostname",
+        "os",
+        "arch",
+        "fingerprint",
+        "status",
+        "draining",
+        "capacity",
+        "providers",
+        "profiles",
+        "toolchains",
+        "activeRunIds",
+        "runnerVersion",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "NodeActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "drain": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "drain"
+      ],
+      "type": "object"
+    },
+    "NodeCapacity": {
+      "additionalProperties": false,
+      "properties": {
+        "cpus": {
+          "type": "integer"
+        },
+        "diskFreeMb": {
+          "type": "integer"
+        },
+        "diskPressure": {
+          "type": "boolean"
+        },
+        "memMb": {
+          "type": "integer"
+        },
+        "slots": {
+          "type": "integer"
+        },
+        "used": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "slots",
+        "used",
+        "cpus",
+        "memMb",
+        "diskFreeMb",
+        "diskPressure"
+      ],
+      "type": "object"
+    },
+    "Org": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "Overview": {
+      "additionalProperties": false,
+      "properties": {
+        "catchup": {
+          "items": {
+            "$ref": "#/$defs/CatchupItem"
+          },
+          "type": "array"
+        },
+        "decisions": {
+          "items": {
+            "$ref": "#/$defs/Decision"
+          },
+          "type": "array"
+        },
+        "questions": {
+          "items": {
+            "$ref": "#/$defs/Question"
+          },
+          "type": "array"
+        },
+        "roomId": {
+          "type": "string"
+        },
+        "since": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "work": {
+          "items": {
+            "$ref": "#/$defs/WorkRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "catchup",
+        "work",
+        "decisions",
+        "questions",
+        "roomId"
+      ],
+      "type": "object"
+    },
+    "PostMessageRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "clientKey": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "mentions": {
+          "items": {
+            "$ref": "#/$defs/Mention"
+          },
+          "type": "array"
+        },
+        "projectIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "replyToId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "body",
+        "mentions",
+        "projectIds",
+        "clientKey"
+      ],
+      "type": "object"
+    },
+    "PostMessageResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "dispatched": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "duplicate": {
+          "type": "boolean"
+        },
+        "input": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobInput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "$ref": "#/$defs/Message"
+        },
+        "resolvedQuestionIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "message",
+        "duplicate",
+        "dispatched",
+        "resolvedQuestionIds"
+      ],
+      "type": "object"
+    },
+    "Preferences": {
+      "additionalProperties": false,
+      "properties": {
+        "density": {
+          "type": "string"
+        },
+        "lastSeenAt": {
+          "type": "string"
+        },
+        "notify": {
+          "type": "string"
+        },
+        "sendKey": {
+          "type": "string"
+        },
+        "theme": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "theme",
+        "density",
+        "sendKey",
+        "notify",
+        "lastSeenAt"
+      ],
+      "type": "object"
+    },
+    "PreferencesRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "preferences": {
+          "$ref": "#/$defs/Preferences"
+        }
+      },
+      "required": [
+        "preferences"
+      ],
+      "type": "object"
+    },
+    "Project": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "grants": {
+          "items": {
+            "$ref": "#/$defs/Grant"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "orgId": {
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/ProjectPolicy"
+        },
+        "repos": {
+          "items": {
+            "$ref": "#/$defs/Repo"
+          },
+          "type": "array"
+        },
+        "roomIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "orgId",
+        "name",
+        "description",
+        "instructions",
+        "policy",
+        "repos",
+        "grants",
+        "roomIds",
+        "version",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "ProjectPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "autoPublish": {
+          "type": "boolean"
+        },
+        "checks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "executionProfile": {
+          "type": "string"
+        },
+        "requireHumanReview": {
+          "type": "boolean"
+        },
+        "requirePeerReview": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "requirePeerReview",
+        "requireHumanReview",
+        "autoPublish",
+        "checks",
+        "executionProfile"
+      ],
+      "type": "object"
+    },
+    "ProviderCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "activeSteering": {
+          "type": "boolean"
+        },
+        "mcpTools": {
+          "type": "boolean"
+        },
+        "modelEnumeration": {
+          "type": "boolean"
+        },
+        "readOnly": {
+          "type": "boolean"
+        },
+        "sandbox": {
+          "type": "boolean"
+        },
+        "sessionResume": {
+          "type": "boolean"
+        },
+        "structuredEvents": {
+          "type": "boolean"
+        },
+        "toolApprovals": {
+          "type": "boolean"
+        },
+        "usageTelemetry": {
+          "type": "boolean"
+        },
+        "userQuestions": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "structuredEvents",
+        "toolApprovals",
+        "userQuestions",
+        "sessionResume",
+        "activeSteering",
+        "usageTelemetry",
+        "sandbox",
+        "modelEnumeration",
+        "readOnly",
+        "mcpTools"
+      ],
+      "type": "object"
+    },
+    "ProviderInstallation": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "type": "string"
+        },
+        "authDetail": {
+          "type": "string"
+        },
+        "authState": {
+          "type": "string"
+        },
+        "billing": {
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/ProviderCapabilities"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/Model"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "profileId": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "tested": {
+          "type": "boolean"
+        },
+        "testedVersion": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "version",
+        "path",
+        "authState",
+        "billing",
+        "profileId",
+        "capabilities",
+        "models",
+        "tested",
+        "updatedAt"
+      ],
+      "type": "object"
+    },
+    "ProviderPreference": {
+      "additionalProperties": false,
+      "properties": {
+        "alternatives": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "model": {
+          "type": "string"
+        },
+        "profileId": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "type": "object"
+    },
+    "ProviderSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "billing": {
+          "type": "string"
+        },
+        "fake": {
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "readyNodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "provider",
+        "label",
+        "readyNodes",
+        "billing",
+        "fake"
+      ],
+      "type": "object"
+    },
+    "PullRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "checks": {
+          "$ref": "#/$defs/ChecksSummary"
+        },
+        "forge": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "lastSyncedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "merge": {
+          "$ref": "#/$defs/MergeStatus"
+        },
+        "name": {
+          "type": "string"
+        },
+        "number": {
+          "type": "integer"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "remoteAuthor": {
+          "type": "string"
+        },
+        "remoteReviews": {
+          "items": {
+            "$ref": "#/$defs/RemoteReview"
+          },
+          "type": "array"
+        },
+        "repoId": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "viewerActor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "repoId",
+        "forge",
+        "host",
+        "owner",
+        "name",
+        "number",
+        "url",
+        "title",
+        "state",
+        "base",
+        "head",
+        "remoteAuthor",
+        "viewerActor",
+        "checks",
+        "merge",
+        "remoteReviews"
+      ],
+      "type": "object"
+    },
+    "PutGrantRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "type": "string"
+        },
+        "actions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "access",
+        "actions"
+      ],
+      "type": "object"
+    },
+    "PutRepoRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "defaultBranch": {
+          "type": "string"
+        },
+        "forge": {
+          "type": "string"
+        },
+        "forgeRepo": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "remoteUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "remoteUrl",
+        "defaultBranch",
+        "forge",
+        "forgeRepo"
+      ],
+      "type": "object"
+    },
+    "Question": {
+      "additionalProperties": false,
+      "properties": {
+        "answerMessageId": {
+          "type": "string"
+        },
+        "answeredAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "askerId": {
+          "type": "string"
+        },
+        "contextChecked": {
+          "type": "string"
+        },
+        "continuingWith": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "dependentStep": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "messageId": {
+          "type": "string"
+        },
+        "missingFact": {
+          "type": "string"
+        },
+        "recipient": {
+          "$ref": "#/$defs/Actor"
+        },
+        "source": {
+          "$ref": "#/$defs/Destination"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "jobId",
+        "askerId",
+        "recipient",
+        "missingFact",
+        "contextChecked",
+        "dependentStep",
+        "continuingWith",
+        "status",
+        "source",
+        "messageId",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "ReactRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "emoji": {
+          "type": "string"
+        },
+        "remove": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "emoji",
+        "remove"
+      ],
+      "type": "object"
+    },
+    "ReactionSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "emoji": {
+          "type": "string"
+        },
+        "mine": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "emoji",
+        "count",
+        "mine"
+      ],
+      "type": "object"
+    },
+    "Ref": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "type": "object"
+    },
+    "RemoteReview": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "commitId": {
+          "type": "string"
+        },
+        "externalId": {
+          "type": "string"
+        },
+        "publishedByEngineerId": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "submittedAt": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "actor",
+        "state",
+        "commitId",
+        "submittedAt",
+        "externalId"
+      ],
+      "type": "object"
+    },
+    "Repo": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "defaultBranch": {
+          "type": "string"
+        },
+        "forge": {
+          "type": "string"
+        },
+        "forgeRepo": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "remoteUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "projectId",
+        "name",
+        "remoteUrl",
+        "defaultBranch",
+        "forge",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "RetryJobRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fromCheckpoint": {
+          "type": "boolean"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fromCheckpoint",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "Review": {
+      "additionalProperties": false,
+      "properties": {
+        "authorId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "criteria": {
+          "type": "string"
+        },
+        "currentRound": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "pullRequestId": {
+          "type": "string"
+        },
+        "reviewerId": {
+          "type": "string"
+        },
+        "rounds": {
+          "items": {
+            "$ref": "#/$defs/ReviewRound"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/Destination"
+        },
+        "state": {
+          "enum": [
+            "requested",
+            "queued",
+            "reviewing",
+            "approved",
+            "changes_requested",
+            "comments_only",
+            "unable_to_review",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        "targetKind": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "jobId",
+        "authorId",
+        "reviewerId",
+        "source",
+        "targetKind",
+        "criteria",
+        "state",
+        "currentRound",
+        "rounds",
+        "createdAt",
+        "updatedAt"
+      ],
+      "type": "object"
+    },
+    "ReviewRound": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "decidedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "number": {
+          "type": "integer"
+        },
+        "reviewId": {
+          "type": "string"
+        },
+        "reviewJobId": {
+          "type": "string"
+        },
+        "reviewerRunId": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "requested",
+            "queued",
+            "reviewing",
+            "approved",
+            "changes_requested",
+            "comments_only",
+            "unable_to_review",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "supersededBy": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/ReviewTarget"
+        }
+      },
+      "required": [
+        "id",
+        "reviewId",
+        "number",
+        "target",
+        "state",
+        "findings",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "ReviewTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "pullRequestId": {
+          "type": "string"
+        },
+        "repoId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "Revision": {
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string"
+        },
+        "repoId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repoId",
+        "base"
+      ],
+      "type": "object"
+    },
+    "RevisionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "deletions": {
+          "type": "integer"
+        },
+        "diffArtifactId": {
+          "type": "string"
+        },
+        "diffHash": {
+          "type": "string"
+        },
+        "filesChanged": {
+          "type": "integer"
+        },
+        "head": {
+          "type": "string"
+        },
+        "insertions": {
+          "type": "integer"
+        },
+        "repoId": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repoId",
+        "branch",
+        "base",
+        "head",
+        "diffArtifactId",
+        "diffHash",
+        "filesChanged",
+        "insertions",
+        "deletions",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "Room": {
+      "additionalProperties": false,
+      "properties": {
+        "archived": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "lastReadSeq": {
+          "type": "integer"
+        },
+        "lastSeq": {
+          "type": "integer"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/$defs/Member"
+          },
+          "type": "array"
+        },
+        "mentionCount": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "orgId": {
+          "type": "string"
+        },
+        "private": {
+          "type": "boolean"
+        },
+        "projectIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "replyMode": {
+          "type": "string"
+        },
+        "stewardId": {
+          "type": "string"
+        },
+        "unreadCount": {
+          "type": "integer"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "orgId",
+        "name",
+        "kind",
+        "purpose",
+        "private",
+        "replyMode",
+        "members",
+        "projectIds",
+        "archived",
+        "lastSeq",
+        "version",
+        "createdAt",
+        "lastReadSeq",
+        "unreadCount",
+        "mentionCount"
+      ],
+      "type": "object"
+    },
+    "Run": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "type": "integer"
+        },
+        "baseRev": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "causeId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "destination": {
+          "$ref": "#/$defs/Destination"
+        },
+        "endedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "engineerId": {
+          "type": "string"
+        },
+        "engineerVersionId": {
+          "type": "string"
+        },
+        "heartbeatAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "lastActivity": {
+          "type": "string"
+        },
+        "lastActivityAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "leaseEpoch": {
+          "type": "integer"
+        },
+        "leaseExpiresAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "previousRunId": {
+          "type": "string"
+        },
+        "profileId": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "resultRev": {
+          "type": "string"
+        },
+        "rootRequestId": {
+          "type": "string"
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "enum": [
+            "created",
+            "offered",
+            "preparing",
+            "running",
+            "awaiting_input",
+            "stopping",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "terminalReason": {
+          "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Usage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vendorSessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "jobId",
+        "attempt",
+        "engineerId",
+        "engineerVersionId",
+        "provider",
+        "mode",
+        "state",
+        "leaseEpoch",
+        "destination",
+        "causeId",
+        "rootRequestId",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "RunActivity": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "data": {},
+        "kind": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId",
+        "seq",
+        "kind",
+        "text",
+        "at"
+      ],
+      "type": "object"
+    },
+    "SearchResult": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "roomId": {
+          "type": "string"
+        },
+        "snippet": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "title",
+        "snippet"
+      ],
+      "type": "object"
+    },
+    "SetupRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "bootstrapSecret": {
+          "type": "string"
+        },
+        "handle": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "orgName": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bootstrapSecret",
+        "orgName",
+        "name",
+        "handle",
+        "password"
+      ],
+      "type": "object"
+    },
+    "SetupStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "needsSetup": {
+          "type": "boolean"
+        },
+        "orgName": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "needsSetup",
+        "version"
+      ],
+      "type": "object"
+    },
+    "SignInRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "handle": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle",
+        "password"
+      ],
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "roomId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "type": "object"
+    },
+    "ThreadSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "lastReplyAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "participants": {
+          "items": {
+            "$ref": "#/$defs/Actor"
+          },
+          "type": "array"
+        },
+        "replyCount": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "replyCount",
+        "lastReplyAt",
+        "participants"
+      ],
+      "type": "object"
+    },
+    "UpdateEngineerRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "archived": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capabilityTags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "instructions": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderPreference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "type": "object"
+    },
+    "UpdateProjectRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "instructions": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "type": "object"
+    },
+    "UpdateRoomRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "archived": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "private": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectIds": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "purpose": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replyMode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stewardId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "billing": {
+          "type": "string"
+        },
+        "costUsd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "billing"
+      ],
+      "type": "object"
+    },
+    "User": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "handle": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "orgId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "orgId",
+        "name",
+        "handle",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "WorkRow": {
+      "additionalProperties": false,
+      "properties": {
+        "blocker": {
+          "type": "string"
+        },
+        "job": {
+          "$ref": "#/$defs/Job"
+        },
+        "lastConfirmed": {
+          "type": "string"
+        },
+        "lastConfirmedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nodeName": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "roomName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "job",
+        "lastConfirmed"
+      ],
+      "type": "object"
+    },
+    "zone": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "zoneTrans": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  },
+  "$id": "https://getyip.dev/schema/v1/api.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "yip browser API v1"
+}

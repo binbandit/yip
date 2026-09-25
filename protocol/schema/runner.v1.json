@@ -1,0 +1,1259 @@
+{
+  "$defs": {
+    "APIError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "correlationId": {
+          "type": "string"
+        },
+        "details": {},
+        "message": {
+          "type": "string"
+        },
+        "missingCapability": {
+          "type": "string"
+        },
+        "recoverable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "recoverable"
+      ],
+      "type": "object"
+    },
+    "Ack": {
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string"
+        },
+        "upToSeq": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "runId",
+        "upToSeq"
+      ],
+      "type": "object"
+    },
+    "ActiveRun": {
+      "additionalProperties": false,
+      "properties": {
+        "lastActivity": {
+          "type": "string"
+        },
+        "leaseEpoch": {
+          "type": "integer"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId",
+        "leaseEpoch",
+        "state"
+      ],
+      "type": "object"
+    },
+    "ApprovalAction": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "ApprovalRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ApprovalAction"
+        },
+        "raw": {},
+        "requestId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId",
+        "action"
+      ],
+      "type": "object"
+    },
+    "Artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "contentType": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "roomId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "hash",
+        "name",
+        "contentType",
+        "size",
+        "kind",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "CancelRun": {
+      "additionalProperties": false,
+      "properties": {
+        "graceMs": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "graceMs"
+      ],
+      "type": "object"
+    },
+    "CheckRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer"
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "logArtifactId": {
+          "type": "string"
+        },
+        "logHash": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "command",
+        "exitCode",
+        "revision",
+        "durationMs"
+      ],
+      "type": "object"
+    },
+    "CheckpointInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": {
+          "type": "string"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string"
+        },
+        "untracked": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "head",
+        "artifactId",
+        "hash",
+        "dirty",
+        "untracked"
+      ],
+      "type": "object"
+    },
+    "CommandAck": {
+      "additionalProperties": false,
+      "properties": {
+        "commandId": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "result": {}
+      },
+      "required": [
+        "commandId",
+        "ok"
+      ],
+      "type": "object"
+    },
+    "DeliverInput": {
+      "additionalProperties": false,
+      "properties": {
+        "inputId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "inputId",
+        "text"
+      ],
+      "type": "object"
+    },
+    "ExecutionManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "type": "integer"
+        },
+        "checks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "context": {},
+        "engineerId": {
+          "type": "string"
+        },
+        "engineerName": {
+          "type": "string"
+        },
+        "engineerVersionId": {
+          "type": "string"
+        },
+        "executionProfile": {
+          "type": "string"
+        },
+        "fakeScript": {},
+        "instructions": {
+          "type": "string"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "profileId": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "repo": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepoSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resumeSessionId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "scopeFingerprint": {
+          "type": "string"
+        },
+        "timeoutMs": {
+          "type": "integer"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "runId",
+        "jobId",
+        "attempt",
+        "engineerId",
+        "engineerName",
+        "engineerVersionId",
+        "provider",
+        "mode",
+        "executionProfile",
+        "instructions",
+        "prompt",
+        "scopeFingerprint",
+        "tools",
+        "checks",
+        "timeoutMs"
+      ],
+      "type": "object"
+    },
+    "ExecutionProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "available",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "Frame": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "leaseEpoch": {
+          "type": "integer"
+        },
+        "payload": {},
+        "runId": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "id"
+      ],
+      "type": "object"
+    },
+    "Heartbeat": {
+      "additionalProperties": false,
+      "properties": {
+        "activeRuns": {
+          "items": {
+            "$ref": "#/$defs/ActiveRun"
+          },
+          "type": "array"
+        },
+        "diskFreeMb": {
+          "type": "integer"
+        },
+        "freeSlots": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "activeRuns",
+        "freeSlots",
+        "diskFreeMb"
+      ],
+      "type": "object"
+    },
+    "Hello": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "type": "string"
+        },
+        "bootTime": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "os": {
+          "type": "string"
+        },
+        "protocolVersion": {
+          "type": "integer"
+        },
+        "runnerVersion": {
+          "type": "string"
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/JournalRunState"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodeId",
+        "protocolVersion",
+        "runnerVersion",
+        "hostname",
+        "os",
+        "arch",
+        "bootTime",
+        "runs"
+      ],
+      "type": "object"
+    },
+    "InputDelivered": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "inputId": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "inputId",
+        "mode"
+      ],
+      "type": "object"
+    },
+    "JournalRunState": {
+      "additionalProperties": false,
+      "properties": {
+        "dirty": {
+          "type": "boolean"
+        },
+        "lastActivity": {
+          "type": "string"
+        },
+        "lastSeq": {
+          "type": "integer"
+        },
+        "leaseEpoch": {
+          "type": "integer"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "terminal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunTerminal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unackedFrom": {
+          "type": "integer"
+        },
+        "workspace": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId",
+        "leaseEpoch",
+        "state",
+        "lastSeq",
+        "unackedFrom",
+        "dirty"
+      ],
+      "type": "object"
+    },
+    "Lease": {
+      "additionalProperties": false,
+      "properties": {
+        "expiresInMs": {
+          "type": "integer"
+        },
+        "leaseEpoch": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "revoked": {
+          "type": "boolean"
+        },
+        "runId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId",
+        "leaseEpoch",
+        "expiresInMs",
+        "revoked"
+      ],
+      "type": "object"
+    },
+    "LeaseRenewal": {
+      "additionalProperties": false,
+      "properties": {
+        "leases": {
+          "items": {
+            "$ref": "#/$defs/Lease"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "leases"
+      ],
+      "type": "object"
+    },
+    "Location": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "Model": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "OfferRun": {
+      "additionalProperties": false,
+      "properties": {
+        "deadlineAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "leaseMs": {
+          "type": "integer"
+        },
+        "manifest": {
+          "$ref": "#/$defs/ExecutionManifest"
+        },
+        "stopMarginMs": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "manifest",
+        "leaseMs",
+        "stopMarginMs",
+        "deadlineAt"
+      ],
+      "type": "object"
+    },
+    "PairRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "type": "string"
+        },
+        "csrPem": {
+          "type": "string"
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "os": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "csrPem",
+        "name",
+        "hostname",
+        "os",
+        "arch"
+      ],
+      "type": "object"
+    },
+    "PairResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "caPem": {
+          "type": "string"
+        },
+        "certPem": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nodeId",
+        "certPem",
+        "caPem",
+        "fingerprint"
+      ],
+      "type": "object"
+    },
+    "ProviderCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "activeSteering": {
+          "type": "boolean"
+        },
+        "mcpTools": {
+          "type": "boolean"
+        },
+        "modelEnumeration": {
+          "type": "boolean"
+        },
+        "readOnly": {
+          "type": "boolean"
+        },
+        "sandbox": {
+          "type": "boolean"
+        },
+        "sessionResume": {
+          "type": "boolean"
+        },
+        "structuredEvents": {
+          "type": "boolean"
+        },
+        "toolApprovals": {
+          "type": "boolean"
+        },
+        "usageTelemetry": {
+          "type": "boolean"
+        },
+        "userQuestions": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "structuredEvents",
+        "toolApprovals",
+        "userQuestions",
+        "sessionResume",
+        "activeSteering",
+        "usageTelemetry",
+        "sandbox",
+        "modelEnumeration",
+        "readOnly",
+        "mcpTools"
+      ],
+      "type": "object"
+    },
+    "ProviderInstallation": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "type": "string"
+        },
+        "authDetail": {
+          "type": "string"
+        },
+        "authState": {
+          "type": "string"
+        },
+        "billing": {
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/ProviderCapabilities"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/Model"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "profileId": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "tested": {
+          "type": "boolean"
+        },
+        "testedVersion": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "version",
+        "path",
+        "authState",
+        "billing",
+        "profileId",
+        "capabilities",
+        "models",
+        "tested",
+        "updatedAt"
+      ],
+      "type": "object"
+    },
+    "Reconcile": {
+      "additionalProperties": false,
+      "properties": {
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/Lease"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "runs"
+      ],
+      "type": "object"
+    },
+    "RepoSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "baseRev": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "checkpointArtifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "defaultBranch": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "remoteUrl": {
+          "type": "string"
+        },
+        "repoId": {
+          "type": "string"
+        },
+        "snapshotRev": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repoId",
+        "name",
+        "remoteUrl",
+        "defaultBranch"
+      ],
+      "type": "object"
+    },
+    "ResolveApproval": {
+      "additionalProperties": false,
+      "properties": {
+        "approvalId": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId",
+        "decision"
+      ],
+      "type": "object"
+    },
+    "RevisionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "deletions": {
+          "type": "integer"
+        },
+        "diffArtifactId": {
+          "type": "string"
+        },
+        "diffHash": {
+          "type": "string"
+        },
+        "filesChanged": {
+          "type": "integer"
+        },
+        "head": {
+          "type": "string"
+        },
+        "insertions": {
+          "type": "integer"
+        },
+        "repoId": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repoId",
+        "branch",
+        "base",
+        "head",
+        "diffArtifactId",
+        "diffHash",
+        "filesChanged",
+        "insertions",
+        "deletions",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "RunAck": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "type": "boolean"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "duplicate": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "commandId",
+        "accepted",
+        "state",
+        "duplicate"
+      ],
+      "type": "object"
+    },
+    "RunEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "data": {},
+        "kind": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "kind",
+        "at"
+      ],
+      "type": "object"
+    },
+    "RunTerminal": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckpointInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "type": "string"
+        },
+        "exitConfirmed": {
+          "type": "boolean"
+        },
+        "finalText": {
+          "type": "string"
+        },
+        "lastSeq": {
+          "type": "integer"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "retryAfterMs": {
+          "type": "integer"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Usage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vendorSessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "outcome",
+        "lastSeq",
+        "exitConfirmed"
+      ],
+      "type": "object"
+    },
+    "RunnerCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "type": "string"
+        },
+        "cpus": {
+          "type": "integer"
+        },
+        "diskFreeMb": {
+          "type": "integer"
+        },
+        "memMb": {
+          "type": "integer"
+        },
+        "os": {
+          "type": "string"
+        },
+        "profiles": {
+          "items": {
+            "$ref": "#/$defs/ExecutionProfile"
+          },
+          "type": "array"
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/ProviderInstallation"
+          },
+          "type": "array"
+        },
+        "replicas": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "serviceState": {
+          "type": "string"
+        },
+        "slots": {
+          "type": "integer"
+        },
+        "toolchains": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "os",
+        "arch",
+        "cpus",
+        "memMb",
+        "diskFreeMb",
+        "slots",
+        "profiles",
+        "providers",
+        "toolchains",
+        "replicas",
+        "serviceState"
+      ],
+      "type": "object"
+    },
+    "ToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {},
+        "callId": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "callId",
+        "tool",
+        "args"
+      ],
+      "type": "object"
+    },
+    "ToolResult": {
+      "additionalProperties": false,
+      "properties": {
+        "callId": {
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/APIError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "result": {}
+      },
+      "required": [
+        "callId",
+        "ok"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "billing": {
+          "type": "string"
+        },
+        "costUsd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "billing"
+      ],
+      "type": "object"
+    },
+    "Welcome": {
+      "additionalProperties": false,
+      "properties": {
+        "draining": {
+          "type": "boolean"
+        },
+        "heartbeatMs": {
+          "type": "integer"
+        },
+        "leaseMs": {
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "protocolVersion": {
+          "type": "integer"
+        },
+        "stopMarginMs": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "nodeId",
+        "heartbeatMs",
+        "leaseMs",
+        "stopMarginMs",
+        "protocolVersion",
+        "draining"
+      ],
+      "type": "object"
+    },
+    "zone": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "zoneTrans": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  },
+  "$id": "https://getyip.dev/schema/v1/runner.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "yip runner protocol v1"
+}
