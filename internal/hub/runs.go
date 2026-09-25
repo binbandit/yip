@@ -764,6 +764,28 @@ func contextKey(r store.RunRow) string {
 	return "job:" + r.JobID
 }
 
+// humanReason turns a raw failure into one readable clause for the room.
+// A structured tool error contributes its message; anything long or
+// technical is left to the job's details.
+func humanReason(raw string) string {
+	s := strings.TrimSpace(raw)
+	if i := strings.Index(s, "{"); i >= 0 {
+		var e struct {
+			Message string `json:"message"`
+		}
+		if json.Unmarshal([]byte(s[i:]), &e) == nil && strings.TrimSpace(e.Message) != "" {
+			s = strings.TrimSpace(e.Message)
+		} else {
+			s = strings.TrimSpace(strings.TrimRight(s[:i], ": "))
+		}
+	}
+	s = strings.TrimRight(s, ". ")
+	if s == "" || len(s) > 160 || strings.ContainsAny(s, "{}[]\n") {
+		return "it stopped before finishing (the details are in the work)"
+	}
+	return s
+}
+
 // afterRun decides what the job does once an attempt ends. It runs inside a
 // savepoint (see applyTerminal): a failure here never prevents the attempt's
 // own outcome from being recorded.
@@ -777,7 +799,10 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		return nil
 	}
 	nodeName := h.nodeName(ctx, t.tx, run.NodeID)
+	engName := h.engineerName(ctx, t.tx, run.EngineerID)
 	eng := protocol.Actor{Kind: protocol.ActorEngineer, ID: run.EngineerID}
+	// The room gets one readable line, as a colleague would say it; the job
+	// keeps the full technical detail for its drawer.
 	status := func(body string) error {
 		_, err := t.postMessage(newMessage{Room: job.Source.RoomID, Thread: job.Source.ThreadID, Author: systemActor,
 			Kind: protocol.MessageStatus, Body: body, Refs: []protocol.Ref{{Kind: "job", ID: job.ID}}, JobID: job.ID, RunID: run.ID})
@@ -794,7 +819,7 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		if _, err := h.setJobState(ctx, t, job.ID, protocol.JobWaiting, protocol.WaitRecovery, detail); err != nil {
 			return err
 		}
-		return status(detail)
+		return status(fmt.Sprintf("%s went quiet on %s%s while working on %s. yip can't confirm how it ended yet.", engName, nodeName, at, job.Title))
 	case protocol.RunCancelled:
 		return nil
 	}
@@ -817,7 +842,7 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		if _, err := h.setJobState(ctx, t, job.ID, protocol.JobWaiting, protocol.WaitProviderLimit, detail); err != nil {
 			return err
 		}
-		return status(detail)
+		return status(fmt.Sprintf("%s paused %s: this account's allowance ran out. Work is saved, and it picks up again at %s.", engName, job.Title, at.Format("15:04")))
 	case protocol.OutcomeAuthRequired:
 		_, _ = t.tx.ExecContext(ctx, `UPDATE provider_installations SET auth_state = 'needs_signin', auth_detail = ? WHERE node_id = ? AND provider = ?`,
 			truncate(term.Error, 200), run.NodeID, run.Provider)
@@ -826,14 +851,15 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		if _, err := h.setJobState(ctx, t, job.ID, protocol.JobWaiting, protocol.WaitProviderSignIn, detail); err != nil {
 			return err
 		}
-		return status(detail)
+		return status(fmt.Sprintf("%s is waiting: %s needs signing in again on %s. Other work carries on.", engName, ProviderLabel(run.Provider), nodeName))
 	case protocol.OutcomeFailed, protocol.OutcomeRejected, protocol.OutcomeLeaseLost:
+		reason := firstNonEmpty(term.Error, run.TerminalReason, "unknown error")
 		detail := fmt.Sprintf("%s's run on %s ended without finishing: %s. The workspace and partial transcript are kept.",
-			h.engineerName(ctx, t.tx, run.EngineerID), nodeName, firstNonEmpty(truncate(term.Error, 200), run.TerminalReason, "unknown error"))
+			engName, nodeName, truncate(reason, 200))
 		if _, err := h.setJobState(ctx, t, job.ID, protocol.JobFailed, "", detail); err != nil {
 			return err
 		}
-		return status(detail)
+		return status(fmt.Sprintf("%s couldn't finish %s: %s.", engName, job.Title, humanReason(reason)))
 	}
 
 	// Succeeded.
