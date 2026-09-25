@@ -1,7 +1,11 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -23,6 +27,12 @@ import (
 // fakeGitHub serves one open PR whose author is the same account the shared
 // credential authenticates as, with failing checks and a blocked merge.
 func fakeGitHub(t *testing.T, head string, posted *atomic.Int32) *httptest.Server {
+	var h atomic.Value
+	h.Store(head)
+	return fakeGitHubHead(t, &h, posted)
+}
+
+func fakeGitHubHead(t *testing.T, headV *atomic.Value, posted *atomic.Int32) *httptest.Server {
 	mux := http.NewServeMux()
 	j := func(w http.ResponseWriter, v any) {
 		w.Header().Set("Content-Type", "application/json")
@@ -32,7 +42,7 @@ func fakeGitHub(t *testing.T, head string, posted *atomic.Int32) *httptest.Serve
 	pr := func() map[string]any {
 		return map[string]any{"number": 42, "html_url": "https://github.com/acme/atlas/pull/42", "title": "Fix session expiry", "state": "open",
 			"merged": false, "draft": false, "mergeable": true, "mergeable_state": "blocked", "user": user, "updated_at": time.Now().UTC(),
-			"head": map[string]any{"ref": "fix", "sha": head}, "base": map[string]any{"ref": "main", "sha": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"}}
+			"head": map[string]any{"ref": "fix", "sha": headV.Load().(string)}, "base": map[string]any{"ref": "main", "sha": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"}}
 	}
 	mux.HandleFunc("GET /user", func(w http.ResponseWriter, r *http.Request) { j(w, user) })
 	mux.HandleFunc("GET /repos/acme/atlas/pulls/42", func(w http.ResponseWriter, r *http.Request) { j(w, pr()) })
@@ -179,4 +189,116 @@ func TestDoneWithoutEvidence(t *testing.T) {
 			t.Fatalf("no human task should be created: %s", m.Body)
 		}
 	}
+}
+
+// A39, A41: a signed webhook for new PR commits supersedes the open round on
+// the old head and schedules exactly one new round; a replayed delivery
+// changes nothing.
+func TestWebhookSupersedesReviewOnNewCommits(t *testing.T) {
+	var posted atomic.Int32
+	var headV atomic.Value
+	var gh *httptest.Server
+	e := newEnv(t, envOptions{
+		forge: func(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error) {
+			return github.New(github.Options{APIBase: gh.URL, Token: func(ctx context.Context) (string, error) { return "t", nil }}),
+				forge.RepoRef{Host: "github.com", Owner: "acme", Name: "atlas"}, nil
+		},
+		director: func(m *manifest.Manifest) json.RawMessage {
+			switch {
+			case replyTo(m, "Security", "PR"):
+				return script(toolStep("work_create", map[string]any{"title": "Webhook test", "objective": "x", "kind": "code", "project": "Atlas", "repo": "atlas"}, ""))
+			case m.Review != nil && m.Review.Round == 1:
+				return script(fake.Step{Fault: "hang"})
+			case m.Review != nil:
+				return script(toolStep("work_review", map[string]any{"verdict": "approved", "expectedHead": m.Review.Head, "summary": "New head checked.", "message": "Approved the new head."}, ""))
+			case m.Job.Title == "Webhook test":
+				return script(toolStep("forge_link_pr", map[string]any{"number": 42}, ""),
+					toolStep("work_request_review", map[string]any{"reviewer": "oren", "pullRequest": 42, "message": "@oren PR #42 please"}, ""),
+					toolStep("work_wait", map[string]any{"reason": "review"}, ""))
+			}
+			return nil
+		}})
+	bare := filepath.Join(e.dir, "fixtures", "atlas.git")
+	old := gitOut(t, bare, "rev-parse", "main")
+	headV.Store(old)
+	gh = fakeGitHubHead(t, &headV, &posted)
+	// A second real commit on a PR branch in the remote.
+	work := t.TempDir()
+	gitOut(t, "", "clone", "-q", bare, work)
+	gitOut(t, work, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "new PR commit")
+	gitOut(t, work, "push", "-q", "origin", "HEAD:refs/heads/pr-42")
+	newHead := gitOut(t, work, "rev-parse", "HEAD")
+
+	a := e.project("Atlas")
+	e.c.must("PUT", "/v1/projects/"+a.ID+"/repos/"+a.Repos[0].ID, protocol.PutRepoRequest{Name: "atlas", RemoteURL: a.Repos[0].RemoteURL,
+		DefaultBranch: "main", Forge: "github", ForgeRepo: "acme/atlas"}, nil)
+	if err := e.hub.SetWebhookSecret(e.ctx, "github", "s3cret"); err != nil {
+		t.Fatal(err)
+	}
+	e.post("Security", "@Mira review the PR", []string{"mira"}, nil)
+	j := e.waitJob("Webhook test", protocol.JobReviewReady, protocol.JobWaiting)
+	e.waitFor("round 1 in progress", 30*time.Second, func() bool {
+		d := e.jobDetail(j.ID)
+		return len(d.Reviews) == 1 && len(d.Reviews[0].Rounds) == 1 && d.Reviews[0].Rounds[0].Target.Head == old
+	})
+	headV.Store(newHead)
+	body := []byte(`{"action":"synchronize","number":42,"pull_request":{"number":42,"head":{"sha":"` + newHead + `"}},"repository":{"name":"atlas","full_name":"acme/atlas","owner":{"login":"acme"}}}`)
+	send := func() int {
+		mac := hmac.New(sha256.New, []byte("s3cret"))
+		mac.Write(body)
+		req, _ := http.NewRequest("POST", e.browser.URL+"/v1/forge/github/webhook", bytes.NewReader(body))
+		req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		req.Header.Set("X-GitHub-Delivery", "delivery-1")
+		req.Header.Set("X-GitHub-Event", "pull_request")
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := send(); code != 204 {
+		t.Fatalf("webhook status %d", code)
+	}
+	e.waitFor("round 2 approved on the new head", 30*time.Second, func() bool {
+		d := e.jobDetail(j.ID)
+		if len(d.Reviews) != 1 || len(d.Reviews[0].Rounds) != 2 {
+			return false
+		}
+		r1, r2 := d.Reviews[0].Rounds[0], d.Reviews[0].Rounds[1]
+		return r1.State == protocol.ReviewCancelled && r1.SupersededBy == r2.ID && r2.Target.Head == newHead && r2.State == protocol.ReviewApproved
+	})
+	if code := send(); code != 204 {
+		t.Fatalf("replay status %d", code)
+	}
+	time.Sleep(time.Second)
+	if n := len(e.jobDetail(j.ID).Reviews[0].Rounds); n != 2 {
+		t.Fatalf("a replayed delivery scheduled another round (%d rounds)", n)
+	}
+	if _, ok := e.roomMessage("Security", "PR #42 moved"); !ok {
+		t.Fatalf("the move should be explained in the conversation")
+	}
+	bad := []byte(`{}`)
+	req, _ := http.NewRequest("POST", e.browser.URL+"/v1/forge/github/webhook", bytes.NewReader(bad))
+	req.Header.Set("X-Hub-Signature-256", "sha256=00")
+	req.Header.Set("X-GitHub-Delivery", "d2")
+	req.Header.Set("X-GitHub-Event", "pull_request")
+	resp, _ := http.DefaultClient.Do(req)
+	if resp.StatusCode != 403 {
+		t.Fatalf("a bad signature must be refused, got %d", resp.StatusCode)
+	}
+}
+
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
 }

@@ -135,9 +135,15 @@ func (h *Hub) toolRequestReview(ctx context.Context, t *txn, env toolEnv, a brid
 // openRound creates a review round, its reviewer job, and the reviewer's run.
 func (h *Hub) openRound(ctx context.Context, t *txn, env toolEnv, review protocol.Review, reviewer protocol.Engineer, number int,
 	target protocol.ReviewTarget, causeKey, criteria string) (protocol.ReviewRound, store.JobRow, error) {
+	return h.openRoundFor(ctx, t, env.job, env.eng.Name, env.me, env.run.ID, true, review, reviewer, number, target, causeKey, criteria)
+}
+
+// openRoundFor opens a round on behalf of an author job; cause identifies
+// what triggered it (an author's run, or a forge event).
+func (h *Hub) openRoundFor(ctx context.Context, t *txn, author store.JobRow, authorName string, actor protocol.Actor, cause string, automatic bool,
+	review protocol.Review, reviewer protocol.Engineer, number int, target protocol.ReviewTarget, causeKey, criteria string) (protocol.ReviewRound, store.JobRow, error) {
 	round := protocol.ReviewRound{ID: domain.NewID(), ReviewID: review.ID, Number: number, Target: target, State: protocol.ReviewRequested, CreatedAt: h.now()}
-	author := env.job
-	title := fmt.Sprintf("Review %s's %s", env.eng.Name, author.Title)
+	title := fmt.Sprintf("Review %s's %s", authorName, author.Title)
 	if number > 1 {
 		title += fmt.Sprintf(" (round %d)", number)
 	}
@@ -146,7 +152,7 @@ func (h *Hub) openRound(ctx context.Context, t *txn, env toolEnv, review protoco
 		objective += "\nFocus: " + criteria
 	}
 	rj, err := h.createJob(ctx, t, jobSpec{Kind: protocol.JobKindReview, Title: truncate(title, 110), Objective: objective, Owner: reviewer.ID,
-		Parent: &author, Source: author.Source, ProjectID: author.ProjectID, RepoID: target.RepoID, Depth: author.Depth, Actor: env.me})
+		Parent: &author, Source: author.Source, ProjectID: author.ProjectID, RepoID: target.RepoID, Depth: author.Depth, Actor: actor})
 	if err != nil {
 		return round, rj, err
 	}
@@ -158,7 +164,7 @@ func (h *Hub) openRound(ctx context.Context, t *txn, env toolEnv, review protoco
 	if _, err := store.ResolveDependency(ctx, t.tx, "job", rj.ID); err != nil {
 		return round, rj, err
 	}
-	if _, err := h.enqueueRun(ctx, t, rj, runReason{Purpose: "review", Cause: env.run.ID, Automatic: true}); err != nil {
+	if _, err := h.enqueueRun(ctx, t, rj, runReason{Purpose: "review", Cause: cause, Automatic: automatic}); err != nil {
 		return round, rj, err
 	}
 	if err := store.SetRoundState(ctx, t.tx, round.ID, protocol.ReviewQueued, "", false); err != nil {
@@ -168,7 +174,7 @@ func (h *Hub) openRound(ctx context.Context, t *txn, env toolEnv, review protoco
 		return round, rj, err
 	}
 	r2, _ := store.GetReview(ctx, t.tx, review.ID)
-	return round, rj, t.emit(ev{Type: "review.updated", Actor: env.me, Room: review.Source.RoomID, Job: review.JobID, Payload: r2})
+	return round, rj, t.emit(ev{Type: "review.updated", Actor: actor, Room: review.Source.RoomID, Job: review.JobID, Payload: r2})
 }
 
 func targetDescription(t protocol.ReviewTarget) string {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/binbandit/yip/internal/bridge"
 	"github.com/binbandit/yip/internal/domain"
@@ -379,4 +380,162 @@ func (h *Hub) toolForgePublishReview(ctx context.Context, env toolEnv, a bridge.
 	}
 	return map[string]any{"externalId": id, "remoteActor": pr.ViewerActor, "event": event,
 		"note": "Published as the forge credential's account; the forge decides whether it counts toward merge requirements."}, nil
+}
+
+// ---- forge events ----
+
+// HandleForgeWebhook verifies a signed forge delivery, drops replays by
+// delivery ID, and re-synchronises the affected pull request.
+func (h *Hub) HandleForgeWebhook(ctx context.Context, forgeName string, headers map[string]string, body []byte) error {
+	if h.cfg.WebhookVerifier == nil {
+		return domain.Unavailable("forge_webhook", "Webhooks aren't configured on this hub.")
+	}
+	_, sealed, err := store.GetCredential(ctx, h.st.R(), forgeName+"-webhook", "github.com")
+	if err != nil {
+		return domain.Unavailable("forge_webhook", "No webhook secret is configured. Run `yip forge github webhook-secret`.")
+	}
+	secret, err := h.sealer.Open(sealed)
+	if err != nil {
+		return err
+	}
+	wh, err := h.cfg.WebhookVerifier(secret, headers, body)
+	if err != nil {
+		return domain.Forbidden("Webhook signature check failed.")
+	}
+	fresh := false
+	if err := h.do(ctx, func(t *txn) error {
+		var err error
+		fresh, err = store.InsertForgeDelivery(ctx, t.tx, store.ForgeDelivery{ID: domain.NewID(), Kind: "webhook",
+			DedupeKey: "webhook:" + forgeName + ":" + wh.DeliveryID, Status: "received", Payload: fmt.Sprintf(`{"event":%q,"action":%q}`, wh.Event, wh.Action)})
+		return err
+	}); err != nil || !fresh {
+		return err // replayed delivery: nothing to do
+	}
+	if wh.PRNumber == 0 {
+		return nil
+	}
+	prs, err := store.ListPRs(ctx, h.st.R(), "owner = ? AND name = ? AND number = ?", wh.Repo.Owner, wh.Repo.Name, wh.PRNumber)
+	if err != nil {
+		return err
+	}
+	for _, pr := range prs {
+		if err := h.syncLinkedPR(ctx, pr); err != nil {
+			h.log.Warn("PR sync after webhook failed", "pr", pr.URL, "err", err)
+		}
+	}
+	return nil
+}
+
+// syncLinkedPR refreshes a linked PR. When its head moved, reviews of the
+// old revision stop applying and one new round is scheduled per reviewer.
+func (h *Hub) syncLinkedPR(ctx context.Context, pr protocol.PullRequest) error {
+	repo, err := store.GetRepo(ctx, h.st.R(), pr.RepoID)
+	if err != nil {
+		return err
+	}
+	fresh, err := h.syncPR(ctx, repo, pr.Number, pr.JobID)
+	if err != nil {
+		return err
+	}
+	fresh.ID = pr.ID
+	return h.do(ctx, func(t *txn) error {
+		if _, err := store.UpsertPR(ctx, t.tx, h.Org().ID, fresh); err != nil {
+			return err
+		}
+		cur, _ := store.GetPR(ctx, t.tx, pr.ID)
+		if err := t.emit(ev{Type: "pr.updated", Job: pr.JobID, Payload: cur}); err != nil {
+			return err
+		}
+		if pr.Head == "" || fresh.Head == pr.Head {
+			return nil
+		}
+		return h.onPRHeadChanged(ctx, t, cur, pr.Head)
+	})
+}
+
+func (h *Hub) onPRHeadChanged(ctx context.Context, t *txn, pr protocol.PullRequest, oldHead string) error {
+	if pr.JobID == "" {
+		return nil
+	}
+	job, err := store.GetJob(ctx, t.tx, pr.JobID)
+	if err != nil || !domain.JobLive(job.State) {
+		return err
+	}
+	reviews, err := store.ListJobReviews(ctx, t.tx, job.ID)
+	if err != nil {
+		return err
+	}
+	author, _ := store.GetEngineer(ctx, t.tx, job.OwnerID)
+	actor := protocol.Actor{Kind: protocol.ActorSystem, ID: "forge"}
+	var names []string
+	for _, rv := range reviews {
+		if len(rv.Rounds) == 0 {
+			continue
+		}
+		last := rv.Rounds[len(rv.Rounds)-1]
+		if last.Target.PullRequestID != pr.ID || last.Target.Head != oldHead {
+			continue
+		}
+		if domain.ReviewOpen(last.State) {
+			_ = store.SetRoundState(ctx, t.tx, last.ID, protocol.ReviewCancelled, "the pull request moved to "+shortRev(pr.Head), true)
+			if last.ReviewJobID != "" {
+				if err := h.cancelOne(ctx, t, last.ReviewJobID, "the pull request moved", actor); err != nil {
+					return err
+				}
+			}
+		}
+		if last.Number >= h.lim.MaxReviewRounds {
+			continue
+		}
+		reviewer, err := store.GetEngineer(ctx, t.tx, rv.ReviewerID)
+		if err != nil {
+			continue
+		}
+		target := protocol.ReviewTarget{Kind: "pr", RepoID: pr.RepoID, Base: pr.Base, Head: pr.Head, PullRequestID: pr.ID}
+		causeKey := job.ID + ":" + reviewer.ID + ":" + pr.Head
+		if _, err := store.RoundByCauseKey(ctx, t.tx, causeKey); err == nil {
+			continue // already scheduled once for this head
+		}
+		round, _, err := h.openRoundFor(ctx, t, job, author.Name, actor, pr.ID, false, rv, reviewer, last.Number+1, target, causeKey, rv.Criteria)
+		if err != nil {
+			return err
+		}
+		_ = store.SupersedeRound(ctx, t.tx, last.ID, round.ID)
+		names = append(names, reviewer.Name)
+	}
+	body := fmt.Sprintf("PR #%d moved from %s to %s. Reviews of the earlier revision stay attached to it and no longer count for the new head.", pr.Number, shortRev(oldHead), shortRev(pr.Head))
+	if len(names) > 0 {
+		body += " New review round requested from " + strings.Join(names, ", ") + "."
+	}
+	_, err = t.postMessage(newMessage{Room: job.Source.RoomID, Thread: job.Source.ThreadID, Author: systemActor, Kind: protocol.MessageStatus,
+		Body: body, Refs: []protocol.Ref{{Kind: "pr", ID: pr.ID}, {Kind: "job", ID: job.ID}}, JobID: job.ID})
+	return err
+}
+
+// pollPRs re-synchronises open PRs linked to live work, a bounded fallback
+// for hubs that can't receive webhooks.
+func (h *Hub) pollPRs(ctx context.Context) {
+	if h.cfg.ForgeFactory == nil {
+		return
+	}
+	prs, err := store.ListPRs(ctx, h.st.R(), `state = 'open' AND job_id IN (SELECT id FROM jobs WHERE state IN ('queued','running','waiting','review_ready'))`)
+	if err != nil {
+		return
+	}
+	for i, pr := range prs {
+		if i >= 20 {
+			break
+		}
+		if pr.LastSyncedAt != nil && h.now().Sub(*pr.LastSyncedAt) < 5*time.Minute {
+			continue
+		}
+		if err := h.syncLinkedPR(ctx, pr); err != nil {
+			h.log.Debug("PR poll failed", "pr", pr.URL, "err", err)
+		}
+	}
+}
+
+// SetWebhookSecret stores a new webhook secret sealed with the hub key.
+func (h *Hub) SetWebhookSecret(ctx context.Context, forgeName, secret string) error {
+	return h.PutForgeToken(ctx, forgeName+"-webhook", "github.com", "webhook secret", secret)
 }

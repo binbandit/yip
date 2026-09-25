@@ -1,0 +1,19 @@
+# System-level runner unit for a dedicated "yip" account. Providers must be
+# installed and signed in under this account (e.g. sudo -u yip claude auth login).
+[Unit]
+Description=yip runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=yip
+Group=yip
+Environment=HOME=/var/lib/yip
+ExecStart=/usr/local/bin/yip runner --state /var/lib/yip/runner --providers codex,claude,cursor
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target

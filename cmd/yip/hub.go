@@ -102,7 +102,7 @@ func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*
 		f.runnerURL = "https://" + net.JoinHostPort(host, rport)
 	}
 	h, err := hub.Open(ctx, hub.Config{DataDir: f.data, Version: buildinfo.Version, Logger: log, RunnerURL: f.runnerURL, Demo: isDemo,
-		ForgeFactory: githubFactory})
+		ForgeFactory: githubFactory, WebhookVerifier: github.New(github.Options{}).VerifyWebhook})
 	if err != nil {
 		return nil, nil, err
 	}

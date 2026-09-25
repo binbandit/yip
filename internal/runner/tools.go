@@ -152,16 +152,17 @@ func (r *Runner) toolRunCheck(ctx context.Context, ar *activeRun, raw json.RawMe
 		out.WriteString("\n[yip] check timed out after " + timeout.String() + "\n")
 	}
 	name := firstNonEmpty(a.Name, a.Command)
+	logText := Redact(out.String())
 	var logID string
-	if logFile, err := writeTemp(out.Bytes()); err == nil {
+	if logFile, err := writeTemp([]byte(logText)); err == nil {
 		defer os.Remove(logFile)
 		if art, err := r.uploadAndRecord(ctx, ar, logFile, "log", "check: "+truncate(name, 80)+".log", "text/plain; charset=utf-8", revision); err == nil {
 			logID = art.ID
 		}
 	}
-	tail := tailLines(out.String(), 40)
+	tail := tailLines(logText, 40)
 	rec := protocol.CheckRecord{Name: name, Command: a.Command, ExitCode: exit, Revision: revision, DurationMs: dur.Milliseconds(),
-		LogArtifactID: logID, Summary: tailLines(out.String(), 5)}
+		LogArtifactID: logID, Summary: tailLines(logText, 5)}
 	recRaw, _ := json.Marshal(rec)
 	if _, e := r.callHub(ctx, ar, bridge.RecordCheck, recRaw); e != nil {
 		return nil, e
