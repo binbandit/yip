@@ -34,6 +34,22 @@ These must be done before the MVP can be called complete (MVP brief §10):
 4. **Runner reboot (A30)** under the intended service account has not been
    performed.
 
+## Backend review (25 September)
+
+An adversarial review of the hub and runner found 14 defects (six high, eight
+medium) and several minor ones: unrestricted command execution through
+`work_run_check`, jobs that could wedge a machine or lose a wakeup, removed
+members still being woken, offers stuck after cancellation, ambiguous
+terminal acknowledgements, tool calls that could run twice after a
+reconnect, a completion policy that let one approval outvote requested
+changes, runner artifact endpoints that ignored revocation, unbounded
+sign-in cost, and incomplete redaction. All are fixed; the rules are recorded
+in ADRs 0005, 0006, and 0011, and each is pinned by a
+`TestRegression…` test in `test/integration/regression_test.go` (plus
+classifier unit tests in `internal/hub/policy_test.go`). `go test -race` over
+`internal/...` and `test/integration` reports no data races (the latency
+benchmark is skipped under the race detector).
+
 ## Matrix
 
 | ID | Status | Evidence / note |
@@ -49,15 +65,15 @@ These must be done before the MVP can be called complete (MVP brief §10):
 | A09 | Verified | `TestCancelJobTree`; unconfirmed termination is recorded as `unknown` (`applyTerminal`) |
 | A10 | Verified (API) | `TestEventReplayAfterDisconnect` (gap-free replay from `Last-Event-ID`; `reset` for an unknown cursor). Runs are owned by hub and runner, never by the browser. Browser reconnect UX not yet exercised. |
 | A11 | Verified | `TestOutboxRedeliveryExecutesOnce` (outbox rows forced back to pending across a hub restart) |
-| A12 | Verified | Same test: the runner journal returns the original acknowledgement for a repeated command |
+| A12 | Verified | Same test: the runner journal returns the original acknowledgement for a repeated command. A re-sent tool call returns its recorded result (`TestRegressionToolCallRetryRunsOnce`); terminal reports are settled only by an explicit, epoch-matched ack (`TestRegressionTerminalAckIsExplicit`). |
 | A13 | Verified | `TestPartitionProducesUnknownThenReconciles` |
 | A14 | Partial | Forge publications record a pending delivery before the network call and reconcile by marker before any retry. A push executed by a provider during a partition surfaces as an `unknown` run outcome; nothing replays it automatically. No end-to-end test. |
 | A15 | Verified | `TestProviderAllowanceWaits` |
-| A16 | Verified | `TestExactActionApprovals` (stale version, expiry, single use) |
-| A17 | Verified | `TestPrivateCanaryIsolation` (context manifests, knowledge search, room search, decisions, replies; positive control) |
+| A16 | Verified | `TestExactActionApprovals` (stale version, expiry, single use); checks go through the same policy (`TestRegressionRunCheckIsPolicedAndIsolated`) |
+| A17 | Verified | `TestPrivateCanaryIsolation` (context manifests, knowledge search, room search, decisions, replies; positive control); removed members are neither woken nor given new messages (`TestRegressionRemovedMemberNotRoutedOrLeaked`); deleted messages leave no copy in events, jobs, run context, or search (`TestRegressionRedactionIsComplete`) |
 | A18 | Verified | `TestAccessRevokedMidJob`; grant/membership changes invalidate provider sessions |
 | A19 | Partial | Separate worktree and branch per job; reviews on fixed revisions. A project-level integration lock for merges is not implemented (yip performs no merges itself). |
-| A20 | Verified | `TestDoneWithoutEvidence` |
+| A20 | Verified | `TestDoneWithoutEvidence`; `work_respond` can't complete the caller's own job (`TestRegressionWorkRespondCannotSelfComplete`) |
 | A21 | Verified (manual) | Overview conversation answers from the ledger with timestamps and no engineer run (recorded run, 25 Sep). |
 | A22 | Verified | `TestDecisionCorrection` |
 | A23 | Verified | `TestIncompatibleMachineExplains` |
@@ -72,11 +88,11 @@ These must be done before the MVP can be called complete (MVP brief §10):
 | A32 | Verified | `TestAtlasFixReviewLoop` |
 | A33 | Verified | `TestQuestionFlowAndLateReplies` |
 | A34 | Verified | `TestQuestionFlowAndLateReplies`, `TestReplyAfterCancelDoesNotRestart` |
-| A35 | Verified | `TestExactActionApprovals` (granted push proceeds without asking; exceptional request inline; engineers have no approval tool) |
+| A35 | Verified | `TestExactActionApprovals` (granted push proceeds without asking; exceptional request inline; engineers have no approval tool); commands are parsed, so `git -C . push` and similar spellings reach the same decision (`internal/hub/policy_test.go`) |
 | A36 | Verified | `TestHumanReviewPolicy` |
 | A37 | Verified | `TestAtlasFixReviewLoop` (author selects the security reviewer) |
 | A38 | Verified | `TestAtlasFixReviewLoop` (finding with file/line evidence; approval only of the revised head) |
-| A39 | Verified | `TestReviewDedupeAndRevisionBinding` (an old approval can't satisfy a new head); `TestWebhookSupersedesReviewOnNewCommits` (new PR commits supersede the open round and schedule exactly one new round). Not yet exercised against real GitHub. |
+| A39 | Verified | `TestReviewDedupeAndRevisionBinding` (an old approval can't satisfy a new head); `TestWebhookSupersedesReviewOnNewCommits` (new PR commits supersede the open round and schedule exactly one new round). Every active reviewer must be satisfied on the current head (`TestRegressionCompletionNeedsEveryReviewer`). Not yet exercised against real GitHub. |
 | A40 | Verified | `TestSharedCredentialCannotFabricateApproval` |
 | A41 | Verified | Duplicate review requests map to one round (`TestReviewDedupeAndRevisionBinding`); a replayed webhook delivery changes nothing (`TestWebhookSupersedesReviewOnNewCommits`); publications reconcile by marker before retry. |
 | A42 | Verified | `TestNoPermittedReviewer` |

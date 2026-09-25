@@ -33,6 +33,9 @@
         "runId": {
           "type": "string"
         },
+        "terminal": {
+          "type": "boolean"
+        },
         "upToSeq": {
           "type": "integer"
         }

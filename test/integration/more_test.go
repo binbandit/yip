@@ -178,6 +178,9 @@ func TestLargeHistoryReadLatency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("large fixture")
 	}
+	if raceEnabled {
+		t.Skip("latency targets don't apply under the race detector")
+	}
 	e := newEnv(t, envOptions{noRunner: true})
 	var rooms []string
 	for i := 0; i < 10; i++ {

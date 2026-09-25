@@ -73,6 +73,22 @@ under the actual account**. On macOS with FileVault, a LaunchAgent only starts
 after the disk is unlocked and the user logs in; `yip doctor` and the Machines
 page report the real service state instead of promising uptime.
 
+### What checks can reach
+
+Engineers' checks (`work_run_check`) run on the runner's machine, in the
+job's worktree, after the permission policy allows them (routine tests and
+builds proceed; pushes, publication, network access, and anything the policy
+can't inspect ask you first). They run with a scratch home directory and no
+SSH agent, git credential helper, or per-user tool configuration, so a test
+suite can't use your keys or tokens. Go, npm, and Cargo caches are shared.
+A suite that genuinely needs credentials (for example a private module proxy
+over SSH) will fail there; give it explicit configuration in the container
+profile instead. The runner's own git operations never run repository hooks.
+
+This is a boundary for credentials, not a sandbox: a check runs code from the
+workspace with your account's file access. Use the container profile for
+projects you don't trust.
+
 ### Container execution profile
 
 `packaging/container/` builds a runner image and a compose file that runs it
