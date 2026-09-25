@@ -17,6 +17,10 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
   `unauthorized` 401, `forbidden` 403, `not_found` 404, `invalid` 400,
   `conflict` 409 (stale version — never retry optimistically),
   `incomplete` 422, `limit_reached` 429, `unavailable` 503, `internal` 500.
+- Sign-in is limited per client address (30 attempts per 10 minutes across
+  all handles) and per client and handle (8 per 10 minutes); both answer
+  `limit_reached`. Handles over 64 characters and passwords over 1,024 are
+  refused before any hashing.
 - Sends are idempotent: `POST /v1/rooms/{id}/messages` takes `clientKey`
   (or `Idempotency-Key`). A retry returns the original message with
   `duplicate: true` (HTTP 200 instead of 201).
@@ -83,7 +87,9 @@ data: <Event JSON: {schemaVersion, eventId, sequence, type, actor, causeId,
 
 Control events: `ready` `{cursor}` on connect; `reset` `{cursor, reason}` when
 the cursor is too old or unknown (refetch `/v1/bootstrap` and current views);
-`slow` when the client fell behind (reconnect with the last id).
+`slow` when the client fell behind (reconnect with the last id). The stream
+re-checks its session every 20 seconds and closes once the session is signed
+out or expired; the reconnect is then refused with 401.
 
 Committed event types and their `payload`:
 

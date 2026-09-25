@@ -120,10 +120,11 @@ func TestRegressionReplyFailureDoesNotWedge(t *testing.T) {
 	e.waitMessage("Engineering", "update:")
 	e.post("Engineering", "@Mira second request", []string{"mira"}, nil)
 	e.waitMessage("Engineering", "second request answered")
-	nodes, err := e.hub.ListNodes(e.ctx)
-	if err != nil || len(nodes) == 0 || nodes[0].Status != protocol.NodeOnline {
-		t.Fatalf("the machine should stay online: %+v %v", nodes, err)
-	}
+	e.waitFor("every attempt settled", 20*time.Second, func() bool {
+		held, _ := store.RunsInStates(e.ctx, e.hub.Store().R(), protocol.RunOffered, protocol.RunPreparing, protocol.RunRunning,
+			protocol.RunAwaitingInput, protocol.RunStopping, protocol.RunUnknown)
+		return len(held) == 0
+	})
 }
 
 // work_respond only answers a help request addressed to the caller; a code
