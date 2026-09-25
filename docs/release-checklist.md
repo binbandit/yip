@@ -5,6 +5,11 @@ recorded manual check exercised it end to end on this build. **Implemented**
 means the behaviour exists but lacks a dedicated automated check. **Incomplete**
 means it is not done or not verified; it blocks declaring the MVP complete.
 
+Performance (§9 fixture, `TestLargeHistoryReadLatency`: 10,100 messages across
+ten rooms and 100 jobs, this build machine): p95 bootstrap 20 ms, room page
+0.9 ms, older page 0.9 ms, search 21 ms, jobs 0.25 ms, overview 5.5 ms —
+within the 200 ms target. Measured, not an advertised capacity.
+
 Automated evidence: `go test ./...` (unit tests; `test/integration` runs the
 hub, a paired runner over mutual TLS, the bridge, and the deterministic fake
 provider against a temporary database and git fixtures).
@@ -30,7 +35,7 @@ These must be done before the MVP can be called complete (MVP brief §10):
 | ID | Status | Evidence / note |
 |---|---|---|
 | A01 | Verified (backend) | One engineer ID and version history across rooms; sessions keyed by a scope fingerprint that includes the room (`manifest.Fingerprint`, `TestFingerprintChangesWithScope`). Profile view: UI. |
-| A02 | Implemented | Each job has explicit project/repo scope; ambiguous repositories are rejected with the options (`resolveScope`); runs never switch directories. |
+| A02 | Verified | `TestScopeIsExplicitInMultiProjectRoom`; ambiguous repositories are rejected with the options (`resolveScope`); runs never switch directories. |
 | A03 | Verified | `TestIdempotentSendQuietRoomsAndAgentMentions` |
 | A04 | Verified | `TestEachMessageKeepsItsDestination` |
 | A05 | Verified | `TestSharedAccountSingleSlot` |
@@ -38,7 +43,7 @@ These must be done before the MVP can be called complete (MVP brief §10):
 | A07 | Verified | `TestWakeupBudgetAndCycles` |
 | A08 | Verified | `TestSteeringReceipts` (pending → immediate; queued when no active attempt) |
 | A09 | Verified | `TestCancelJobTree`; unconfirmed termination is recorded as `unknown` (`applyTerminal`) |
-| A10 | Implemented | Runs are owned by the hub and runner; SSE replays from `Last-Event-ID` and sends `reset` when a cursor aged out. No browser test yet. |
+| A10 | Verified (API) | `TestEventReplayAfterDisconnect` (gap-free replay from `Last-Event-ID`; `reset` for an unknown cursor). Runs are owned by hub and runner, never by the browser. Browser reconnect UX not yet exercised. |
 | A11 | Verified | `TestOutboxRedeliveryExecutesOnce` (outbox rows forced back to pending across a hub restart) |
 | A12 | Verified | Same test: the runner journal returns the original acknowledgement for a repeated command |
 | A13 | Verified | `TestPartitionProducesUnknownThenReconciles` |
@@ -71,5 +76,5 @@ These must be done before the MVP can be called complete (MVP brief §10):
 | A40 | Verified | `TestSharedCredentialCannotFabricateApproval` |
 | A41 | Verified | Duplicate review requests map to one round (`TestReviewDedupeAndRevisionBinding`); a replayed webhook delivery changes nothing (`TestWebhookSupersedesReviewOnNewCommits`); publications reconcile by marker before retry. |
 | A42 | Verified | `TestNoPermittedReviewer` |
-| A43 | Implemented | Reviews can target a published artifact/document without a PR; no dedicated test. |
+| A43 | Verified | `TestDocumentReviewWithoutForge` (changes requested on one document version, approval of the revised version, no forge). |
 | A44 | Verified | `TestSharedCredentialCannotFabricateApproval` (failing checks, blocked merge, and internal approval shown as separate facts; nothing merged) |
