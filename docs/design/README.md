@@ -107,7 +107,8 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   - the title;
   - the handoff ("Mira building · Oren reviewing next");
   - the last confirmed activity with a relative time, or the exact blocker text;
-  - the machine.
+  - the machine;
+  - the latest attempt's state when it adds something (`WorkRow.runState`). `unknown` replaces the state word with "Not confirmed" and says the machine stopped reporting.
 
   Clicking a row opens the job drawer. "Add to this" scopes the composer to that job. The strip collapses to three rows plus "Show all N".
 - **Message row:**
@@ -128,17 +129,17 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   - An offline notice: "Can't reach your workspace. Your draft is saved on this device."
   - The steering scope ("Adding to: Fix Atlas session expiry · Mira") is highlighted with the accent edge and can be cleared with × or Escape. Its receipt reads, in turn, "Delivering to Mira…" → "Mira received your update" or "Queued for Mira's next step", driven only by `input.delivery`.
   - An activity line above the box ("Mira is replying…", or "Pip will reply when possible — No machines are paired yet").
-- **Result card:** the state and title; missing evidence stated plainly; changed files with +/− counts, parsed from the diff artifact; checks on the exact current revision (command, pass or fail, exit code), each opening the evidence; reviewers with their verdict on an exact revision beside earlier verdicts ("Oren approved a9002d3 · requested changes on b0e5d19 first"); the revision and branch; the PR's facts, kept separate; the machine; and **Inspect the work**.
+- **Result card:** the state and title; missing evidence stated plainly; the number of changed files with +/− line counts and the revision's summary, from `JobDetail.revisions`; checks on the exact current revision (command, pass or fail, exit code), each opening the evidence; reviewers with their verdict on an exact revision beside earlier verdicts ("Oren approved a9002d3 · requested changes on b0e5d19 first"); the revision and branch; the PR's facts, kept separate; the machine; and **Inspect the work**.
 - **Approval card:** the exact action (command, target, scope, revision, reason, expiry), with Allow this push (or the equivalent) and Reject. The request's `version` is sent, and a 409 is explained. The card shows Allowed, Rejected, Expired or "Allowed and used" truthfully. It states that a chat reply does not grant permission.
 - **Job drawer:**
   - A header with the state and waiting reason, the exact blocker, an "outcome not confirmed" notice for unknown runs, missing evidence, the owner, reviewers, machine, revision, last confirmed activity and the source link.
   - **Stop** (confirmed; stops the job tree), **Retry** (for failed, recovery or stalled jobs, or an unknown run), **Accept revision abc1234** (only when `requiresHumanReview && review_ready`; sends the exact revision and version, and handles 409), and Add to this work.
   - Tabs:
-    - **Evidence:** a diff per revision with per-file headers, line numbers and +/− lines, plus checks with inline logs, files, decisions, your updates with their receipts, questions and permissions, and related work.
+    - **Evidence:** a revision picker labelled with each revision's file and line counts (from `JobDetail.revisions`), the chosen revision's diff with per-file headers, line numbers and +/− lines, plus checks with inline logs, files, decisions, your updates with their receipts, questions and permissions, and related work.
     - **Review:** rounds in order, each giving the verdict on its exact revision; findings with severity, file:line, evidence and author replies; superseded rounds marked; a stale approval explained; the PR shown as peer review / remote reviews / remote checks / merge.
     - **Activity:** the job timeline, plus per-run tool logs in collapsed `<details>` that load on open.
     - **Runs:** each attempt with its state (unknown reads "Outcome not confirmed"), and the provider, model and billing — the only place these appear.
-- **Overview:** "Since you were here" catch-up with links to source conversations (it never marks rooms read), then Needs a look (with the exact blocker), Active, Recently completed and Worth remembering. The visit is recorded (`?seen=1`) only after the page has rendered. The Overview conversation is docked at ≥1180px and linked below that.
+- **Overview:** "Since you were here" catch-up with links to source conversations (it never marks rooms read), then Needs a look (with the exact blocker), Active, Recently completed and Worth remembering. The visit is recorded (`POST /v1/overview/seen`) only after the page has rendered. A row whose latest attempt's `runState` is `unknown` shows "Not confirmed" rather than a normal state. The Overview conversation is docked at ≥1180px and linked below that.
 - **Machines:** connection state and provider state are kept separate. Asleep or offline machines are described with their last-seen time ("Offline since 10:42 — asleep, shut down or off the network"). Each machine shows its slots, disk pressure, execution profiles (with the reason one is unavailable), providers with sign-in state, billing, tested or untested version and limitations, the toolchains, the runner version and the fingerprint. **Drain**, **Stop its work** and **Revoke** are three distinct, confirmed actions.
 - **Dialogs:** these use native `<dialog>` with `showModal` (so the rest of the page is inert), a stacked focus trap, and Escape through the layer stack. Focus returns to the invoker. On phones they appear as bottom sheets.
 
@@ -179,6 +180,10 @@ Where yip differs, and why:
 - `web/src/components/`: the shell pieces, message rendering, the composer, cards and dialogs. `panels/` holds the right-panel views.
 - `web/src/screens/`: one component per route.
 - `web/src/lib/state/`: the pure event reducer (`data.ts`), the runes store (`app.svelte.ts`), the SSE client (`events.ts`), drafts (`drafts.ts`) and the detail cache.
+  - On load the client reads `/v1/bootstrap`, then `GET /v1/runs` for active attempts. It opens the event stream at the bootstrap cursor, so there is no history replay.
+  - A room loads `GET /v1/rooms/{id}/work?include=replies`. Live conversational replies feed the composer's activity line, and `runState` feeds the strip.
+  - REST snapshots never turn a run that events have already finished back into a live one.
+  - `message_delta` stream chunks are appended to the preview, which is replaced when the canonical `message.created` arrives.
 - `web/src/lib/util/`: markdown-lite (which escapes all HTML), mentions, diff parsing, labels and time.
 - `web/scripts/contrast.mjs`: the contrast checks above.
 

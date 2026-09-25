@@ -5,8 +5,6 @@
   import { untrack } from 'svelte';
   import { app } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
-  import { fetchArtifactText } from '../lib/api/endpoints';
-  import { parseUnifiedDiff, filePath, type DiffFile } from '../lib/util/diff';
   import { jobShape, jobStateLabel, jobTone, reviewShape, reviewTone, verdictPhrase } from '../lib/util/labels';
   import { shortSha } from '../lib/util/time';
   import StateIcon from './StateIcon.svelte';
@@ -27,26 +25,12 @@
   const d = $derived(entry?.data);
   const job = $derived(app.data.jobs[jobId] ?? d?.job);
   const head = $derived(job?.revision?.head ?? '');
-  const diffArtifact = $derived(
-    d ? ([...d.artifacts].reverse().find((a) => a.kind === 'diff' && (!head || a.revision === head)) ?? [...d.artifacts].reverse().find((a) => a.kind === 'diff')) : undefined,
-  );
+  // Revision stats come from the hub's revision records (no diff download here).
+  const revision = $derived(d ? (d.revisions.find((r) => r.head === head) ?? d.revisions[d.revisions.length - 1]) : undefined);
+  const earlierRevisions = $derived(d && revision ? d.revisions.filter((r) => r.head !== revision.head).length : 0);
   const checks = $derived(d ? d.checks.filter((c) => !head || c.revision === head) : []);
   const earlierChecks = $derived(d ? d.checks.length - checks.length : 0);
   const docs = $derived(d ? d.artifacts.filter((a) => a.kind === 'document' || a.kind === 'file') : []);
-
-  let files = $state<DiffFile[] | null>(null);
-  let diffError = $state('');
-  $effect(() => {
-    const a = diffArtifact;
-    if (!a || a.size > 400_000) return;
-    untrack(() => {
-      files = null;
-      fetchArtifactText(a.id)
-        .then(({ text }) => (files = parseUnifiedDiff(text)))
-        .catch((e) => (diffError = e.message));
-    });
-  });
-  const totals = $derived(files ? files.reduce((acc, f) => ({ add: acc.add + f.additions, del: acc.del + f.deletions }), { add: 0, del: 0 }) : null);
 
   function roundFor(r: import('../lib/api/types.gen').Review) {
     const rounds = [...r.rounds].sort((a, b) => a.number - b.number);
@@ -79,24 +63,14 @@
     {/if}
 
     <dl class="facts">
-      {#if diffArtifact}
+      {#if revision}
         <div class="fact">
           <dt>Changed</dt>
           <dd>
-            {#if files}
-              <span>{files.length} {files.length === 1 ? 'file' : 'files'}</span>
-              {#if totals}<span class="add">+{totals.add}</span> <span class="del">−{totals.del}</span>{/if}
-              <ul class="files">
-                {#each files.slice(0, 4) as f (filePath(f))}
-                  <li class="mono truncate">{filePath(f)}</li>
-                {/each}
-                {#if files.length > 4}<li class="meta">and {files.length - 4} more</li>{/if}
-              </ul>
-            {:else if diffError}
-              <span class="meta">{diffError}</span>
-            {:else}
-              <span class="meta">{diffArtifact.name}</span>
-            {/if}
+            <span>{revision.filesChanged} {revision.filesChanged === 1 ? 'file' : 'files'}</span>
+            <span class="add">+{revision.insertions}</span> <span class="del">−{revision.deletions}</span>
+            {#if revision.summary}<p class="rev-summary">{revision.summary}</p>{/if}
+            {#if earlierRevisions}<span class="meta">after {earlierRevisions} earlier {earlierRevisions === 1 ? 'revision' : 'revisions'}</span>{/if}
           </dd>
         </div>
       {/if}
@@ -259,6 +233,9 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 6px;
+  }
+  .rev-summary {
+    margin-top: 2px;
   }
   .add {
     color: var(--success);

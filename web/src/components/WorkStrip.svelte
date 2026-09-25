@@ -3,8 +3,8 @@
   // owner and reviewer handoff, last confirmed activity, and the machine.
   // Each row opens the job drawer; "Add to" scopes the composer to that job.
   import { app, receiptKey } from '../lib/state/app.svelte';
-  import { isLiveJob, roomWorkJobs } from '../lib/state/data';
-  import { jobShape, jobStateLabel, jobTone, waitingReasonLabel } from '../lib/util/labels';
+  import { isLiveJob, jobRunState, roomWorkJobs } from '../lib/state/data';
+  import { jobShape, jobStateLabel, jobTone, runStateNote, waitingReasonLabel } from '../lib/util/labels';
   import { relative } from '../lib/util/time';
   import StateIcon from './StateIcon.svelte';
   import Icon from './Icon.svelte';
@@ -45,16 +45,27 @@
     <ul>
       {#each visible as j (j.id)}
         {@const live = isLiveJob(j)}
+        {@const rs = jobRunState(app.data, j)}
+        {@const unconfirmed = rs === 'unknown'}
+        {@const note = runStateNote(rs)}
         <li class="row" class:scoped={scoped === j.id}>
-          <button class="open" onclick={() => app.openPanel({ kind: 'job', id: j.id })} aria-label="{j.title}: {jobStateLabel(j)}. Open details">
-            <span class="state tone-{jobTone(j.state)}">
-              <StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} live={j.state === 'running'} />
-              <span class="word">{j.state === 'waiting' ? waitingReasonLabel(j.waitingReason) : jobStateLabel(j)}</span>
+          <button
+            class="open"
+            onclick={() => app.openPanel({ kind: 'job', id: j.id })}
+            aria-label="{j.title}: {unconfirmed ? 'outcome not confirmed' : jobStateLabel(j)}. Open details"
+          >
+            <span class="state tone-{unconfirmed ? 'attention' : jobTone(j.state)}">
+              <StateIcon shape={unconfirmed ? 'question' : jobShape(j.state)} tone={unconfirmed ? 'attention' : jobTone(j.state)} live={j.state === 'running' && !unconfirmed} />
+              <span class="word">{unconfirmed ? 'Not confirmed' : j.state === 'waiting' ? waitingReasonLabel(j.waitingReason) : jobStateLabel(j)}</span>
             </span>
             <span class="title truncate">{j.title}</span>
             <span class="who truncate">{handoff(j)}</span>
             <span class="last truncate">
-              {#if (j.state === 'waiting' || j.state === 'failed') && j.stateDetail}
+              {#if unconfirmed}
+                {app.nodeName(j.nodeId) || 'The machine'} stopped reporting; the last attempt's outcome is not confirmed{j.lastActivity ? ` — last confirmed: ${j.lastActivity.toLowerCase()}` : ''}
+              {:else if note && live}
+                {note}{#if j.lastActivity} · {j.lastActivity}{/if}
+              {:else if (j.state === 'waiting' || j.state === 'failed') && j.stateDetail}
                 {j.stateDetail}
               {:else if j.lastActivity}
                 {j.lastActivity}{#if j.lastActivityAt}<span class="when"> · {relative(j.lastActivityAt, app.now)}</span>{/if}

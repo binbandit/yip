@@ -44,11 +44,11 @@
   const questionRef = $derived(message.refs.find((r) => r.kind === 'question'));
   const question = $derived(questionRef ? app.data.questions[questionRef.id] : undefined);
   const asksMe = $derived(message.mentions.some((m) => m.kind === 'user' && m.id === app.me?.id));
-  // A question's answered state lives on its job; load it so the row stays truthful.
+  // Load the question so "Answered" stays truthful; question.* events keep it current.
   $effect(() => {
-    if (message.kind !== 'question' || !questionRef || question || !jobRef) return;
-    const id = jobRef.id;
-    untrack(() => details.ensureJob(id, app.data.touched.jobs[id] ?? 0));
+    if (message.kind !== 'question' || !questionRef || question) return;
+    const id = questionRef.id;
+    untrack(() => void details.ensureQuestion(id));
   });
   const deleted = $derived(!!message.deletedAt);
 

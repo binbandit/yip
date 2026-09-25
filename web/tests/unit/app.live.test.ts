@@ -50,6 +50,7 @@ beforeAll(async () => {
     .json('GET', new RegExp(`^/v1/jobs/${job.job.id}$`), job)
     .json('GET', /^\/v1\/reviews\//, job && (job as unknown as { reviews: unknown[] }).reviews[0])
     .json('POST', /\/read$/, { ok: true })
+    .json('GET', /^\/v1\/runs$/, [])
     .on('GET', /^\/v1\/artifacts\//, () => ({ body: fixture('diff.txt'), text: true }));
   hub.install();
   (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;

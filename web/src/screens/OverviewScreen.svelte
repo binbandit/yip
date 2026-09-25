@@ -7,6 +7,7 @@
   import { errorMessage } from '../lib/api/client';
   import type { Job, Overview } from '../lib/api/types.gen';
   import { catchupKindLabel, catchupShape, catchupTone } from '../lib/util/labels';
+  import { jobRunState, mergeWorkRows } from '../lib/state/data';
   import { atTime, fullTime, relative } from '../lib/util/time';
   import StateIcon from '../components/StateIcon.svelte';
   import WorkRowItem from '../components/WorkRowItem.svelte';
@@ -22,23 +23,20 @@
   async function load(markSeen: boolean) {
     error = '';
     try {
-      const o = await api.overview(false);
+      const o = await api.overview();
       o.catchup = o.catchup ?? [];
       o.work = o.work ?? [];
       o.decisions = o.decisions ?? [];
       o.questions = o.questions ?? [];
       ov = o;
-      for (const w of o.work) {
-        const cur = app.data.jobs[w.job.id];
-        if (!cur || w.job.version >= cur.version) app.data.jobs[w.job.id] = w.job;
-      }
+      mergeWorkRows(app.data, o.work);
       for (const d of o.decisions) app.data.decisions[d.id] = d;
       for (const q of o.questions) app.data.questions[q.id] = q;
       loading = false;
       if (markSeen) {
         await tick();
         requestAnimationFrame(() => {
-          api.overview(true).catch(() => {
+          api.overviewSeen().catch(() => {
             /* the next visit will record it */
           });
         });
@@ -66,7 +64,8 @@
     }
     return [...rows.values()];
   });
-  const unknownJobs = $derived(new Set(ledger.filter((r) => r.job.currentRunId && app.data.runs[r.job.currentRunId]?.state === 'unknown').map((r) => r.job.id)));
+  // runState "unknown": the latest attempt's outcome is not confirmed.
+  const unknownJobs = $derived(new Set(ledger.filter((r) => jobRunState(app.data, r.job) === 'unknown').map((r) => r.job.id)));
   const needs = $derived(ledger.filter((r) => r.job.state === 'waiting' || r.job.state === 'failed' || unknownJobs.has(r.job.id)));
   const active = $derived(ledger.filter((r) => !needs.includes(r) && (r.job.state === 'running' || r.job.state === 'queued' || r.job.state === 'review_ready')));
   const done = $derived(

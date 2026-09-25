@@ -8,9 +8,11 @@ import {
   emptyState,
   failPending,
   mergeRoomPage,
+  jobRunState,
+  mergeRuns,
+  mergeWorkRows,
   pendingReplies,
   roomWorkJobs,
-  warmupStart,
   type DataState,
 } from '../../src/lib/state/data';
 import type { Bootstrap, Event, Job, JobInput, Message, Room, Run } from '../../src/lib/api/types.gen';
@@ -201,18 +203,53 @@ describe('event reducer', () => {
     expect(s.jobs.j1.state).toBe('waiting');
   });
 
-  it('replays only work events from before the snapshot (warm-up)', () => {
+  it('resumes strictly after the snapshot cursor', () => {
     const s = emptyState();
     boot(s, [room('r1')], 500);
-    s.lastSeq = warmupStart(500);
-    const early = { ...ev('job.created', job('reply1', { kind: 'reply', state: 'waiting' })), sequence: 200 };
-    const earlyMsg = { ...ev('message.created', msg('m0', 1)), sequence: 201 };
-    applyEvent(s, early);
-    applyEvent(s, earlyMsg);
-    expect(s.jobs.reply1).toBeDefined();
-    expect(s.messages.m0).toBeUndefined();
-    expect(s.rooms.r1.unreadCount).toBe(0);
-    expect(pendingReplies(s, 'r1').map((j) => j.id)).toEqual(['reply1']);
+    mergeRoomPage(s, 'r1', [], false, false);
+    expect(applyEvent(s, { ...ev('message.created', msg('m0', 1)), sequence: 500 }).applied).toBe(false);
+    expect(applyEvent(s, { ...ev('message.created', msg('m1', 1)), sequence: 501 }).applied).toBe(true);
+    expect(s.timelines.r1.ids).toEqual(['m1']);
+  });
+
+  it('merges run snapshots without resurrecting runs that events already finished', () => {
+    const s = emptyState();
+    boot(s);
+    const base = { jobId: 'j', engineerId: MIRA, destination: { roomId: 'r1' } } as Run;
+    applyEvent(s, ev('run.updated', { ...base, id: 'run-a', state: 'succeeded' }));
+    mergeRuns(s, [
+      { ...base, id: 'run-a', state: 'running' },
+      { ...base, id: 'run-b', state: 'running' },
+    ]);
+    expect(s.runs['run-a'].state).toBe('succeeded');
+    expect(s.runs['run-b'].state).toBe('running');
+    // "unknown" can still be reconciled by a later snapshot.
+    applyEvent(s, ev('run.updated', { ...base, id: 'run-c', state: 'unknown' }));
+    mergeRuns(s, [{ ...base, id: 'run-c', state: 'failed' }]);
+    expect(s.runs['run-c'].state).toBe('failed');
+  });
+
+  it('takes the latest attempt state from runs first, then from work rows', () => {
+    const s = emptyState();
+    boot(s);
+    mergeWorkRows(s, [
+      { job: job('j1', { kind: 'reply', state: 'waiting', currentRunId: 'run-1' }), lastConfirmed: '', runState: 'unknown' },
+      { job: job('j2', { currentRunId: 'run-2' }), lastConfirmed: '', runState: 'running' },
+    ]);
+    expect(jobRunState(s, s.jobs.j1)).toBe('unknown');
+    expect(pendingReplies(s, 'r1').map((j) => j.id)).toEqual(['j1']);
+    applyEvent(s, ev('run.updated', { id: 'run-2', jobId: 'j2', state: 'unknown', engineerId: MIRA, destination: { roomId: 'r1' } } as Run));
+    expect(jobRunState(s, s.jobs.j2)).toBe('unknown');
+  });
+
+  it('never shrinks a thread summary when the root is re-sent at the same revision', () => {
+    const s = emptyState();
+    boot(s);
+    mergeRoomPage(s, 'r1', [msg('root', 1, { thread: { replyCount: 2, lastReplyAt: '2026-09-25T00:02:00Z', participants: [] } })], false, false);
+    applyEvent(s, ev('message.updated', msg('root', 1, { thread: { replyCount: 1, lastReplyAt: '2026-09-25T00:01:00Z', participants: [] } })));
+    expect(s.messages.root.thread?.replyCount).toBe(2);
+    applyEvent(s, ev('message.updated', msg('root', 1, { body: 'edited', revision: 2, thread: { replyCount: 3, lastReplyAt: '2026-09-25T00:03:00Z', participants: [] } })));
+    expect(s.messages.root.thread?.replyCount).toBe(3);
   });
 
   it('reconciles an optimistic send with the POST response and the event, in either order', () => {
