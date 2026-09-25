@@ -55,11 +55,18 @@ func gitEnv() []string {
 	return env
 }
 
+// gitSafe precedes every runner git command: the runner uses the owner's
+// credentials, so hooks and fsmonitor commands from a repository (which an
+// agent can edit) must never run under it.
+var gitSafe = []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}
+
+func gitArgs(args []string) []string { return append(append([]string{}, gitSafe...), args...) }
+
 // git runs a git command and returns trimmed stdout.
 func git(ctx context.Context, dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", gitArgs(args)...)
 	cmd.Dir = dir
 	cmd.Env = gitEnv()
 	var out, errb bytes.Buffer
@@ -372,7 +379,7 @@ func (ws *Workspace) Checkpoint(ctx context.Context, runID string) (commit strin
 	idx.Close()
 	defer os.Remove(idx.Name())
 	run := func(args ...string) (string, error) {
-		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd := exec.CommandContext(ctx, "git", gitArgs(args)...)
 		cmd.Dir = ws.Dir
 		cmd.Env = append(gitEnv(), "GIT_INDEX_FILE="+idx.Name())
 		out, err := cmd.Output()

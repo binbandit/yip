@@ -46,6 +46,9 @@ func (h *Hub) Setup(ctx context.Context, req protocol.SetupRequest) (protocol.Us
 	if req.OrgName == "" || req.Name == "" || handle == "" {
 		return protocol.User{}, domain.Invalid("Workspace name, your name, and a handle are required.")
 	}
+	if len(handle) > auth.MaxHandleLength {
+		return protocol.User{}, domain.Invalid("Use a handle of at most %d characters.", auth.MaxHandleLength)
+	}
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
 		return protocol.User{}, domain.Invalid("%s", err.Error())
@@ -99,10 +102,22 @@ func (h *Hub) Setup(ctx context.Context, req protocol.SetupRequest) (protocol.Us
 // SignIn verifies credentials and creates a session. The returned token is
 // the cookie value; only its hash is stored.
 func (h *Hub) SignIn(ctx context.Context, handle, password, clientKey, userAgent string) (token string, s store.Session, err error) {
+	if len(handle) > auth.MaxHandleLength || len(password) > auth.MaxPasswordLength {
+		return "", s, domain.Unauthorized("That handle and password don't match.")
+	}
 	handle = auth.NormalizeHandle(handle)
 	limitKey := clientKey + "|" + handle
-	if !h.logins.Allow(limitKey) {
+	if !h.clients.Allow(clientKey) || !h.logins.Allow(limitKey) {
 		return "", s, domain.Limit("Too many sign-in attempts. Wait a few minutes and try again.")
+	}
+	// Each verification costs 64 MiB; only a few run at once.
+	select {
+	case h.verifying <- struct{}{}:
+		defer func() { <-h.verifying }()
+	case <-time.After(5 * time.Second):
+		return "", s, domain.Limit("The hub is busy checking other sign-ins. Try again in a moment.")
+	case <-ctx.Done():
+		return "", s, ctx.Err()
 	}
 	u, err := store.GetUserByHandle(ctx, h.st.R(), handle)
 	if err != nil {
@@ -126,6 +141,13 @@ func (h *Hub) SignIn(ctx context.Context, handle, password, clientKey, userAgent
 		return t.audit(protocol.Actor{Kind: protocol.ActorUser, ID: u.ID}, "password", "session.create", s.ID[:12], "ok", "")
 	})
 	return token, s, err
+}
+
+// SessionActive reports whether a session is still signed in (long-lived
+// streams re-check it: signing out or expiry ends them).
+func (h *Hub) SessionActive(ctx context.Context, sessionID string) bool {
+	s, err := store.GetSession(ctx, h.st.R(), sessionID)
+	return err == nil && s.RevokedAt == nil && h.now().Before(s.ExpiresAt)
 }
 
 // Authenticate resolves a session cookie to its user.

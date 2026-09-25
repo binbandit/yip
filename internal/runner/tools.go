@@ -116,6 +116,71 @@ func (r *Runner) callHub(ctx context.Context, ar *activeRun, tool string, args j
 	}
 }
 
+// checkEnv is the environment for check commands. Workspace code under test
+// runs with a scratch HOME and TMPDIR, no SSH agent, no user or system git
+// configuration and no credential helper, so it can't reach the machine
+// owner's keys or tokens. Toolchain caches stay shared so builds stay fast.
+func (r *Runner) checkEnv(runID string) ([]string, error) {
+	scratch := r.scratchDir(runID)
+	home, tmp := filepath.Join(scratch, "home"), filepath.Join(scratch, "tmp")
+	for _, d := range []string{home, tmp} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			return nil, err
+		}
+	}
+	realHome, _ := os.UserHomeDir()
+	over := []string{"CI=1", "NO_COLOR=1", "HOME=" + home, "TMPDIR=" + tmp,
+		"GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=true", "SSH_ASKPASS=true", "GCM_INTERACTIVE=never",
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0="}
+	keep := func(key, fallback string) {
+		if v := os.Getenv(key); v != "" {
+			over = append(over, key+"="+v)
+		} else if fallback != "" {
+			if _, err := os.Stat(fallback); err == nil {
+				over = append(over, key+"="+fallback)
+			}
+		}
+	}
+	goPath := os.Getenv("GOPATH")
+	if goPath == "" && realHome != "" {
+		goPath = filepath.Join(realHome, "go")
+	}
+	if goPath != "" {
+		over = append(over, "GOPATH="+goPath)
+		if os.Getenv("GOMODCACHE") == "" {
+			over = append(over, "GOMODCACHE="+filepath.Join(goPath, "pkg", "mod"))
+		}
+	}
+	keep("GOMODCACHE", "")
+	if uc, err := os.UserCacheDir(); err == nil {
+		keep("GOCACHE", filepath.Join(uc, "go-build"))
+	}
+	if uc, err := os.UserConfigDir(); err == nil {
+		keep("GOENV", filepath.Join(uc, "go", "env"))
+	}
+	if realHome != "" {
+		keep("npm_config_cache", filepath.Join(realHome, ".npm"))
+		keep("CARGO_HOME", filepath.Join(realHome, ".cargo"))
+		keep("RUSTUP_HOME", filepath.Join(realHome, ".rustup"))
+	}
+	keep("XDG_CACHE_HOME", "")
+	var env []string
+	for _, kv := range providers.BaseEnv(nil, over...) {
+		k, _, _ := strings.Cut(kv, "=")
+		switch k {
+		case "SSH_AUTH_SOCK", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR":
+			continue // agent sockets and per-user config (gh, git credentials)
+		}
+		env = append(env, kv)
+	}
+	return env, nil
+}
+
+// scratchDir holds a run's check HOME and TMPDIR; it is removed when the
+// run ends.
+func (r *Runner) scratchDir(runID string) string { return filepath.Join(r.paths.Dir, "scratch", runID) }
+
 func decodeArgs[T any](raw json.RawMessage) (T, *protocol.APIError) {
 	var v T
 	if err := json.Unmarshal(raw, &v); err != nil {
@@ -143,12 +208,25 @@ func (r *Runner) toolRunCheck(ctx context.Context, ar *activeRun, raw json.RawMe
 	if dirty {
 		revision = head + "+uncommitted"
 	}
+	// The command goes through the same permission policy as the provider's
+	// own shell: routine checks are allowed by the run's grants; a push,
+	// publication, network access, or anything yip can't inspect needs the
+	// owner's exact-action approval.
+	d := r.requestApproval(ar, "check:"+domain.NewID(), protocol.ApprovalAction{Kind: "exec", Command: a.Command,
+		Summary: "Run check: " + truncate(a.Command, 200), Target: revision}, raw)
+	if d.Decision != "allow" {
+		return nil, apiErr("forbidden", "Not permitted to run this check: %s", firstNonEmpty(d.Reason, "the request was declined"))
+	}
+	env, err := r.checkEnv(ar.m.RunID)
+	if err != nil {
+		return nil, apiErr("internal", "Could not prepare the check environment: %s", err.Error())
+	}
 	r.emit(ar.m.RunID, ar.epoch, protocol.RunEvent{Kind: protocol.RunEvToolStarted, Tool: bridge.WorkRunCheck, Text: "Running " + truncate(a.Command, 120)})
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, "/bin/sh", "-c", a.Command)
 	cmd.Dir = ar.ws.Dir
-	cmd.Env = providers.BaseEnv(nil, "CI=1", "NO_COLOR=1")
+	cmd.Env = env
 	var out bytes.Buffer
 	lw := &limitWriter{w: &out, n: 4 << 20}
 	cmd.Stdout, cmd.Stderr = lw, lw
@@ -268,6 +346,11 @@ func (r *Runner) toolArtifactPublish(ctx context.Context, ar *activeRun, raw jso
 		return nil, apiErr("invalid", "Artifacts are limited to 50 MB.")
 	}
 	kind := firstNonEmpty(a.Kind, "document")
+	if kind != "document" && kind != "file" {
+		// Bundles, checkpoints, diffs and logs are produced by the runner
+		// itself; an agent can't publish evidence under those kinds.
+		return nil, apiErr("invalid", "kind must be document or file.")
+	}
 	ct := mime.TypeByExtension(filepath.Ext(path))
 	if ct == "" || strings.HasPrefix(ct, "text/html") {
 		ct = "text/plain; charset=utf-8"

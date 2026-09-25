@@ -50,6 +50,7 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 		}
 		_ = r.sendTyped(protocol.EvRunTerminal, m.RunID, ar.epoch, t)
 		r.ws.Release(context.Background(), ar.ws)
+		_ = os.RemoveAll(r.scratchDir(m.RunID))
 		r.mu.Lock()
 		delete(r.runs, m.RunID)
 		if ar.token != "" {

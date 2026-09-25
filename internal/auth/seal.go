@@ -72,7 +72,12 @@ type Limiter struct {
 	max    int
 	window time.Duration
 	hits   map[string][]time.Time
+	swept  time.Time
 }
+
+// maxLimiterKeys bounds the limiter's memory: once this many clients are
+// tracked, attempts under new keys are refused until old ones expire.
+const maxLimiterKeys = 20000
 
 func NewLimiter(max int, window time.Duration) *Limiter {
 	return &Limiter{max: max, window: window, hits: map[string][]time.Time{}}
@@ -84,6 +89,18 @@ func (l *Limiter) Allow(key string) bool {
 	defer l.mu.Unlock()
 	now := time.Now()
 	cut := now.Add(-l.window)
+	if len(l.hits) > 1024 && now.Sub(l.swept) > time.Minute {
+		// Evict keys whose attempts have all expired.
+		for k, ts := range l.hits {
+			if len(ts) == 0 || !ts[len(ts)-1].After(cut) {
+				delete(l.hits, k)
+			}
+		}
+		l.swept = now
+	}
+	if _, known := l.hits[key]; !known && len(l.hits) >= maxLimiterKeys {
+		return false
+	}
 	kept := l.hits[key][:0]
 	for _, t := range l.hits[key] {
 		if t.After(cut) {

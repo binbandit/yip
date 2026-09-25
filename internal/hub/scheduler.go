@@ -397,15 +397,14 @@ func (h *Hub) offer(ctx context.Context, r store.RunRow, j store.JobRow, p place
 		if _, err := t.tx.ExecContext(ctx, `UPDATE runs SET scope_fingerprint = ?, model = ? WHERE id = ?`, m.ScopeFingerprint, x.Model, cur.ID); err != nil {
 			return err
 		}
-		var consumed []string
+		// Inputs in the manifest are bound to this attempt but consumed only
+		// when it starts: a rejected or expired offer leaves them for the next.
 		for _, in := range m.Inputs {
 			if in.Kind == "owner_input" {
-				consumed = append(consumed, in.ID)
-				_ = store.SetInputDelivery(ctx, t.tx, in.ID, cur.ID, "queued")
+				if err := store.SetInputDelivery(ctx, t.tx, in.ID, cur.ID, "queued"); err != nil {
+					return err
+				}
 			}
-		}
-		if err := store.ConsumeInputs(ctx, t.tx, consumed); err != nil {
-			return err
 		}
 		if err := h.queueCommand(ctx, t, p.node.ID, cur.ID, epoch, protocol.CmdOfferRun, commandID, protocol.OfferRun{
 			Manifest: x, LeaseMs: h.lim.LeaseDuration.Milliseconds(), StopMarginMs: h.lim.StopMargin.Milliseconds(),
