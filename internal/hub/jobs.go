@@ -144,6 +144,14 @@ func (h *Hub) setJobState(ctx context.Context, t *txn, jobID string, to protocol
 		if _, err := store.CancelJobQuestions(ctx, t.tx, jobID); err != nil {
 			return j, err
 		}
+		// A parent waiting on this job learns its outcome, whatever it is.
+		if to != protocol.JobCompleted {
+			if cur, err := store.GetJob(ctx, t.tx, jobID); err == nil && cur.ParentID != "" {
+				if err := h.resolveJobDependency(ctx, t, cur); err != nil {
+					return j, err
+				}
+			}
+		}
 	}
 	t.kickAfter()
 	return t.jobChanged(ctx, jobID)
@@ -313,10 +321,10 @@ func (h *Hub) addJobInput(ctx context.Context, t *txn, userID, jobID string, msg
 		if err := store.InsertJobInput(ctx, t.tx, in, clientKey); err != nil {
 			return in, err
 		}
-		if job.State != protocol.JobWaiting || job.WaitingReason != protocol.WaitMissingInfo {
-			if _, err := h.enqueueRun(ctx, t, job, runReason{Purpose: "input", Cause: msg.ID}); err != nil {
-				return in, err
-			}
+		// New input from the owner always gives the engineer a chance to act
+		// on it, including work that was waiting for information.
+		if _, err := h.enqueueRun(ctx, t, job, runReason{Purpose: "input", Cause: msg.ID}); err != nil {
+			return in, err
 		}
 	default:
 		return in, err
@@ -778,6 +786,17 @@ func (h *Hub) cancelOne(ctx context.Context, t *txn, jobID, reason string, actor
 		switch {
 		case r.State == protocol.RunCreated:
 			if err := store.SetRunState(ctx, t.tx, r.ID, protocol.RunCancelled, reason); err != nil {
+				return err
+			}
+		case r.State == protocol.RunOffered:
+			if err := store.SetRunState(ctx, t.tx, r.ID, protocol.RunCancelled, reason); err != nil {
+				return err
+			}
+			if err := store.CancelOutboxForRun(ctx, t.tx, r.ID, "offer:"); err != nil {
+				return err
+			}
+			if err := h.queueCommand(ctx, t, r.NodeID, r.ID, r.LeaseEpoch, protocol.CmdCancelRun, "cancel:"+r.ID,
+				protocol.CancelRun{Reason: reason, GraceMs: 10000}); err != nil {
 				return err
 			}
 		case domain.RunHoldsLease(r.State) && r.State != protocol.RunStopping:

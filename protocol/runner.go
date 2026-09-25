@@ -328,6 +328,9 @@ type CancelRun struct {
 type Ack struct {
 	RunID   string `json:"runId"`
 	UpToSeq int64  `json:"upToSeq"`
+	// Terminal is set only when the hub committed (or deliberately
+	// discarded) the run's terminal report.
+	Terminal bool `json:"terminal,omitempty"`
 }
 
 type ArtifactReady struct {

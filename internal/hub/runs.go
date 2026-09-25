@@ -399,9 +399,19 @@ func (h *Hub) onRunAck(ctx context.Context, nodeID string, f protocol.Frame, a p
 		if err := store.AckOutbox(ctx, t.tx, a.CommandID); err != nil {
 			return err
 		}
-		run, err := requireLease(ctx, t.tx, nodeID, f.RunID, f.LeaseEpoch)
+		run, err := store.GetRun(ctx, t.tx, f.RunID)
 		if err != nil {
-			return err
+			return domain.NotFound("unknown run")
+		}
+		stale := run.NodeID != nodeID || run.LeaseEpoch != f.LeaseEpoch || !(run.State == protocol.RunOffered || domain.RunHoldsLease(run.State))
+		if stale {
+			// Cancelled, reset, or reassigned while the offer was in flight: the
+			// runner must not keep a slot for it.
+			if a.Accepted {
+				return h.queueCommand(ctx, t, nodeID, run.ID, f.LeaseEpoch, protocol.CmdCancelRun, "drop:"+run.ID,
+					protocol.CancelRun{Reason: "this attempt is no longer current", GraceMs: 0})
+			}
+			return nil
 		}
 		if run.State != protocol.RunOffered {
 			return nil // duplicate ack
@@ -671,7 +681,20 @@ func (h *Hub) applyTerminal(ctx context.Context, t *txn, run store.RunRow, term 
 	}
 	t.kickAfter()
 	run, _ = store.GetRun(ctx, t.tx, run.ID)
-	return h.afterRun(ctx, t, run, term)
+	// The attempt's outcome is recorded no matter what; applying it to the
+	// job happens in a savepoint so a job-level failure can't roll it back
+	// (which would otherwise wedge the engineer's slot and the machine).
+	if _, err := t.tx.ExecContext(ctx, `SAVEPOINT after_run`); err != nil {
+		return err
+	}
+	if err := h.afterRun(ctx, t, run, term); err != nil {
+		h.log.Error("could not apply a run outcome to its job", "run", run.ID, "job", run.JobID, "err", err)
+		if _, rerr := t.tx.ExecContext(ctx, `ROLLBACK TO after_run`); rerr != nil {
+			return rerr
+		}
+	}
+	_, err := t.tx.ExecContext(ctx, `RELEASE after_run`)
+	return err
 }
 
 // contextKey identifies the conversation or job a vendor session belongs to.
@@ -683,13 +706,16 @@ func contextKey(r store.RunRow) string {
 	return "job:" + r.JobID
 }
 
-// afterRun decides what the job does once an attempt ends.
+// afterRun decides what the job does once an attempt ends. It runs inside a
+// savepoint (see applyTerminal): a failure here never prevents the attempt's
+// own outcome from being recorded.
 func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term protocol.RunTerminal) error {
 	job, err := store.GetJob(ctx, t.tx, run.JobID)
 	if err != nil {
 		return err
 	}
-	if domain.JobTerminal(job.State) {
+	// Completed, cancelled, or failed work is not revived by a late attempt.
+	if !domain.JobLive(job.State) {
 		return nil
 	}
 	nodeName := h.nodeName(ctx, t.tx, run.NodeID)
@@ -712,6 +738,11 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		}
 		return status(detail)
 	case protocol.RunCancelled:
+		return nil
+	}
+	// Completion already requested and waiting on review: a later attempt
+	// ending badly doesn't undo that; the review still decides.
+	if job.State == protocol.JobReviewReady && term.Outcome != protocol.OutcomeSucceeded {
 		return nil
 	}
 	switch term.Outcome {
@@ -750,7 +781,8 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 	// Succeeded.
 	if job.Kind == protocol.JobKindReply {
 		text := strings.TrimSpace(term.FinalText)
-		if !run.PostedReply && text != "" {
+		// A reply is only posted if the engineer still belongs to the conversation.
+		if !run.PostedReply && text != "" && h.checkRunAccess(ctx, t.tx, run) == nil {
 			if _, err := t.postMessage(newMessage{Room: run.Destination.RoomID, Thread: run.Destination.ThreadID, Author: eng, Body: text,
 				ReplyTo: replyTarget(run), RunID: run.ID, JobID: job.ID, Cause: run.CauseID, Root: run.RootRequestID,
 				Mentions: h.resolveTextMentions(ctx, t.tx, run.Destination.RoomID, text)}); err != nil {
@@ -759,14 +791,10 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		}
 		return h.finishJob(ctx, t, job)
 	}
-	job, _ = store.GetJob(ctx, t.tx, job.ID)
-	if job.State == protocol.JobCompleted {
-		return nil
-	}
 	// A trigger that arrived during this attempt (e.g. review feedback) runs next.
 	if pw, err := store.TakePendingWake(ctx, t.tx, job.ID); err != nil {
 		return err
-	} else if pw != nil && domain.JobLive(job.State) {
+	} else if pw != nil {
 		_, err := h.enqueueRun(ctx, t, job, runReason{Purpose: pw.Purpose, Cause: pw.Cause, Note: pw.Note, Automatic: pw.Automatic})
 		if isLimit(err) {
 			return nil
@@ -776,30 +804,60 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 	if job.State == protocol.JobReviewReady {
 		return nil
 	}
-	if wait, detail, _ := store.GetRunIntent(ctx, t.tx, run.ID); wait != "" {
-		if wait == "review" && job.RequiresPeerReview {
-			if _, err := h.setJobState(ctx, t, job.ID, protocol.JobReviewReady, "", firstNonEmpty(detail, "Waiting for peer review")); err != nil {
-				return err
-			}
+	// Before parking, re-check: an answer or a dependency may have arrived
+	// while this attempt was still finishing.
+	since := run.CreatedAt
+	if run.StartedAt != nil {
+		since = *run.StartedAt
+	}
+	answeredDuring := h.answeredSince(ctx, t.tx, job.ID, since)
+	resolvedDuring := h.resolvedSince(ctx, t.tx, job.ID, since)
+	openQuestions, _ := h.openQuestionsFor(ctx, t.tx, job.ID)
+	openDeps, _ := store.OpenDependencies(ctx, t.tx, job.ID)
+	resume := func(purpose string, automatic bool) error {
+		_, err := h.enqueueRun(ctx, t, job, runReason{Purpose: purpose, Cause: run.ID, Automatic: automatic})
+		if isLimit(err) {
 			return nil
 		}
-		if wait == "review" {
-			wait = protocol.WaitDependency
-		}
-		_, err := h.setJobState(ctx, t, job.ID, protocol.JobWaiting, wait, detail)
 		return err
 	}
-	if n, _ := h.openQuestionsFor(ctx, t.tx, job.ID); n > 0 {
+	if wait, detail, _ := store.GetRunIntent(ctx, t.tx, run.ID); wait != "" {
+		switch {
+		case wait == protocol.WaitMissingInfo && openQuestions == 0 && answeredDuring:
+			return resume("answer", true)
+		case wait == protocol.WaitDependency && openDeps == 0 && resolvedDuring:
+			return resume("dependency_resolved", true)
+		case wait == "review" && job.RequiresPeerReview:
+			if outstanding, _ := h.outstandingReview(ctx, t.tx, job); !outstanding {
+				break // nothing to wait for; fall through to the checks below
+			}
+			_, err := h.setJobState(ctx, t, job.ID, protocol.JobReviewReady, "", firstNonEmpty(detail, "Waiting for peer review"))
+			return err
+		default:
+			if wait == "review" {
+				wait = protocol.WaitDependency
+			}
+			_, err := h.setJobState(ctx, t, job.ID, protocol.JobWaiting, wait, detail)
+			return err
+		}
+	}
+	if openQuestions > 0 {
 		_, err := h.setJobState(ctx, t, job.ID, protocol.JobWaiting, protocol.WaitMissingInfo, "Waiting for an answer in the conversation")
 		return err
+	}
+	if answeredDuring {
+		return resume("answer", true)
 	}
 	if outstanding, who := h.outstandingReview(ctx, t.tx, job); outstanding {
 		_, err := h.setJobState(ctx, t, job.ID, protocol.JobReviewReady, "", who+" is reviewing")
 		return err
 	}
-	if open, _ := store.OpenDependencies(ctx, t.tx, job.ID); open > 0 {
+	if openDeps > 0 {
 		_, err := h.setJobState(ctx, t, job.ID, protocol.JobWaiting, protocol.WaitDependency, "Waiting for a colleague's help")
 		return err
+	}
+	if resolvedDuring {
+		return resume("dependency_resolved", true)
 	}
 	// The attempt ended without completing or saying why.
 	missing, _, _ := h.completionMissing(ctx, t.tx, job)
@@ -822,6 +880,20 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 	}
 	_, err = h.setJobState(ctx, t, job.ID, protocol.JobWaiting, protocol.WaitStalled, detail)
 	return err
+}
+
+// answeredSince reports whether one of the job's questions was answered after t0.
+func (h *Hub) answeredSince(ctx context.Context, q store.Q, jobID string, t0 time.Time) bool {
+	var n int
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM questions WHERE job_id = ? AND status = 'answered' AND answered_at >= ?`, jobID, store.TS(t0)).Scan(&n)
+	return n > 0
+}
+
+// resolvedSince reports whether one of the job's dependencies resolved after t0.
+func (h *Hub) resolvedSince(ctx context.Context, q store.Q, jobID string, t0 time.Time) bool {
+	var n int
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM job_dependencies WHERE job_id = ? AND resolved_at >= ?`, jobID, store.TS(t0)).Scan(&n)
+	return n > 0
 }
 
 func replyTarget(run store.RunRow) string {
@@ -867,11 +939,19 @@ func (h *Hub) expireLeases(ctx context.Context) {
 			if err != nil || cur.LeaseEpoch != r.LeaseEpoch || cur.State != r.State {
 				return err
 			}
+			// The snapshot may be stale (e.g. a heartbeat renewed it meanwhile).
+			if cur.LeaseExpiresAt == nil || h.now().Before(*cur.LeaseExpiresAt) {
+				return nil
+			}
 			if cur.State == protocol.RunOffered {
 				if err := store.ResetOffer(ctx, t.tx, cur.ID); err != nil {
 					return err
 				}
 				if err := store.CancelOutboxForRun(ctx, t.tx, cur.ID, "offer:"); err != nil {
+					return err
+				}
+				if err := h.queueCommand(ctx, t, cur.NodeID, cur.ID, cur.LeaseEpoch, protocol.CmdCancelRun, "drop:"+cur.ID,
+					protocol.CancelRun{Reason: "the offer expired before it was acknowledged", GraceMs: 0}); err != nil {
 					return err
 				}
 				t.kickAfter()
@@ -895,7 +975,8 @@ func (h *Hub) reconcileJournal(ctx context.Context, t *txn, nodeID string, runs 
 		}
 		if jr.Terminal != nil && (run.State == protocol.RunUnknown || domain.RunHoldsLease(run.State)) {
 			if err := h.applyTerminal(ctx, t, run, *jr.Terminal); err != nil {
-				return err
+				// One bad record must not keep the machine from reconnecting.
+				h.log.Error("reconcile: could not apply a journaled outcome", "run", run.ID, "err", err)
 			}
 			continue
 		}

@@ -130,7 +130,13 @@ func (h *Hub) PostMessage(ctx context.Context, userID, roomID string, req protoc
 			return nil // the reply answered a question; the dependent work resumes
 		}
 		if len(recipients) == 0 && req.ThreadID != "" {
-			if owner, _ := store.ThreadOwner(ctx, t.tx, req.ThreadID); owner != "" {
+			owner, _ := store.ThreadOwner(ctx, t.tx, req.ThreadID)
+			if owner != "" {
+				if ok, _ := store.IsMember(ctx, t.tx, roomID, protocol.ActorEngineer, owner); !ok {
+					owner = "" // they left this conversation; nobody is woken
+				}
+			}
+			if owner != "" {
 				// Follow-up in a thread with live work goes to that work as input.
 				if job, ok := h.liveThreadJob(ctx, t.tx, req.ThreadID, owner); ok {
 					in, err := h.addJobInput(ctx, t, userID, job.ID, msg, "")

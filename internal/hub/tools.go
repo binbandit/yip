@@ -678,6 +678,9 @@ func (h *Hub) toolWorkUpdate(ctx context.Context, t *txn, env toolEnv, a bridge.
 		}
 		return map[string]any{"ok": true, "result": msg}, nil
 	case "failed":
+		if env.job.Kind == protocol.JobKindReply {
+			return map[string]any{"ok": true, "note": "A conversational reply can't fail as work; explain the limitation in your reply."}, nil
+		}
 		if strings.TrimSpace(a.Summary) == "" {
 			return nil, domain.Invalid("Explain why the objective can't be met.")
 		}
@@ -730,6 +733,9 @@ func (h *Hub) toolRequestHelp(ctx context.Context, t *txn, env toolEnv, a bridge
 	if err != nil {
 		return nil, err
 	}
+	if err := store.MarkHelpRequest(ctx, t.tx, job.ID); err != nil {
+		return nil, err
+	}
 	if _, err := t.postMessage(newMessage{Room: env.run.Destination.RoomID, Thread: env.run.Destination.ThreadID, Author: env.me,
 		Body: "@" + to.Handle + " " + strings.TrimSpace(a.Question), Mentions: []protocol.Mention{{Kind: protocol.ActorEngineer, ID: to.ID}},
 		Refs: []protocol.Ref{{Kind: "job", ID: job.ID}}, JobID: job.ID, RunID: env.run.ID, Root: env.run.RootRequestID}); err != nil {
@@ -744,11 +750,12 @@ func (h *Hub) toolRequestHelp(ctx context.Context, t *txn, env toolEnv, a bridge
 
 func (h *Hub) toolRespond(ctx context.Context, t *txn, env toolEnv, a bridge.WorkRespondArgs) (any, error) {
 	req, err := store.GetJob(ctx, t.tx, a.RequestID)
-	if err != nil || req.ParentID == "" {
-		return nil, domain.Invalid("No help request %s.", a.RequestID)
+	if err != nil || req.ParentID == "" || !req.HelpRequest {
+		return nil, domain.Invalid("No help request %s. work_respond only answers a colleague's help request; complete other work with work_update.", a.RequestID)
 	}
-	if req.OwnerID != env.eng.ID {
-		return nil, domain.Forbidden("That request isn't addressed to you.")
+	// Only the helper's own run for that request can answer it.
+	if req.OwnerID != env.eng.ID || env.job.ID != req.ID {
+		return nil, domain.Forbidden("Answer a help request from its own run.")
 	}
 	if !domain.JobLive(req.State) {
 		return map[string]any{"ok": true, "note": "That request was already resolved."}, nil
