@@ -10,11 +10,11 @@ build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/yip ./cmd/yip
 
 web-deps:
-	cd web && pnpm install --frozen-lockfile
+	cd web && npm ci
 
 ## web: build the Svelte client into web/dist
 web: web-deps
-	cd web && pnpm run build
+	cd web && npm run build
 
 ## schema: regenerate JSON schemas and TypeScript types from protocol/*.go
 schema:
@@ -24,11 +24,11 @@ test:
 	go test ./...
 
 test-web:
-	cd web && pnpm run check && pnpm run test
+	cd web && npm run check && npm run test
 
 ## e2e: browser journeys against a demo hub (requires built binary)
 e2e: all
-	cd web && pnpm run e2e
+	cd web && npm run e2e
 
 lint:
 	gofmt -l . | grep -v '^web/' | (! grep .)

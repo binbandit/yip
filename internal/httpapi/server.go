@@ -37,7 +37,7 @@ type Options struct {
 	// state-changing requests, e.g. a Tailscale Serve hostname.
 	AllowedOrigins []string
 	// Web serves the embedded client; nil serves a placeholder.
-	Web http.FileSystem
+	Web    http.FileSystem
 	Logger *slog.Logger
 }
 
