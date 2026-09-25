@@ -1,0 +1,327 @@
+// Mounts the real App in jsdom against fixtures captured from a demo hub and
+// walks the main journeys. This stands in for a browser until Playwright can
+// run (see tests/e2e); it catches runtime errors svelte-check cannot.
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { flushSync, mount, tick, unmount } from 'svelte';
+import App from '../../src/App.svelte';
+import { app } from '../../src/lib/state/app.svelte';
+import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
+
+let hub: FakeHub;
+let component: ReturnType<typeof mount>;
+const boot = fixture<{ rooms: { id: string; name: string }[]; engineers: { id: string; name: string; handle: string }[] }>('bootstrap.json');
+const roomId = (name: string) => boot.rooms.find((r) => r.name === name)!.id;
+const eng = (name: string) => boot.engineers.find((e) => e.name === name)!;
+const pipJob = fixture<{ job: { id: string; title: string } }>('job-pip.json').job;
+const codeJob = fixture<{ job: { id: string; title: string } }>('job-code.json').job;
+
+async function settle(rounds = 6) {
+  for (let i = 0; i < rounds; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    flushSync();
+    await tick();
+  }
+}
+
+async function waitFor<T>(fn: () => T | null | undefined | false, what: string, ms = 2000): Promise<T> {
+  const start = Date.now();
+  for (;;) {
+    const v = fn();
+    if (v) return v;
+    if (Date.now() - start > ms) throw new Error(`Timed out waiting for ${what}\n\n${document.body.innerHTML.slice(0, 3000)}`);
+    await settle(1);
+  }
+}
+
+const text = () => document.body.textContent ?? '';
+const byText = (sel: string, t: string | RegExp) =>
+  [...document.querySelectorAll<HTMLElement>(sel)].find((el) => (typeof t === 'string' ? el.textContent?.includes(t) : t.test(el.textContent ?? '')));
+
+function type(el: HTMLTextAreaElement | HTMLInputElement, value: string) {
+  el.focus();
+  el.value = value;
+  el.setSelectionRange?.(value.length, value.length);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+}
+
+function key(el: Element, k: string, init: KeyboardEventInit = {}) {
+  el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init }));
+  flushSync();
+}
+
+beforeAll(async () => {
+  hub = demoHub();
+  hub.install();
+  (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
+  history.replaceState(null, '', '/');
+  component = mount(App, { target: document.body });
+  app.start();
+  await waitFor(() => app.phase === 'ready', 'bootstrap');
+});
+
+afterAll(() => {
+  unmount(component);
+});
+
+describe('app smoke (jsdom, captured fixtures)', () => {
+  it('boots into the Overview with catch-up and the factual ledger', async () => {
+    await waitFor(() => text().includes('Since you were here'), 'overview');
+    expect(location.pathname).toBe('/overview');
+    expect(text()).toContain('Demo workspace — engineers run a deterministic fake provider; no models are called.');
+    await waitFor(() => text().includes('Needs a look') && text().includes("Document Beacon's request flow"), 'ledger');
+    expect(text()).toContain('Tracing the retry worker needs its repository location');
+    expect(text()).toContain('Recently completed');
+    expect(text()).toContain('Atlas uses strict server-side expiry');
+    // The visit is recorded only after rendering, and nothing marks rooms read.
+    await waitFor(() => hub.calls.some((c) => c.path === '/v1/overview?seen=1'), 'seen=1');
+    const first = hub.calls.findIndex((c) => c.path === '/v1/overview');
+    const seen = hub.calls.findIndex((c) => c.path === '/v1/overview?seen=1');
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(seen).toBeGreaterThan(first);
+    expect(hub.calls.some((c) => /\/read$/.test(c.path))).toBe(false);
+    // Opened the event stream from a warm-up cursor.
+    expect(FakeEventSource.latest().url).toMatch(/^\/v1\/events\?cursor=\d+$/);
+  });
+
+  it('shows unread by weight and mention counts in the sidebar', () => {
+    const re = byText('nav a.row', 'Reverse engineering')!;
+    expect(re.classList.contains('unread')).toBe(true);
+    expect(re.textContent).toContain('1 mention');
+    const eng = byText('nav a.row', 'Engineering')!;
+    expect(eng.classList.contains('unread')).toBe(false);
+    expect(text()).toContain('1 machine connected · work continues when you close this');
+  });
+
+  it('renders a room: roles, review references, and a result card with evidence', async () => {
+    app.go({ name: 'room', roomId: roomId('Security') });
+    await waitFor(() => text().includes('On it.'), 'security messages');
+    expect(byText('.role-badge', 'Platform engineer')).toBeTruthy();
+    expect(byText('.role-badge', 'Security engineer')).toBeTruthy();
+    expect(byText('button.chip', 'View review')).toBeTruthy();
+    await waitFor(() => byText('.result', 'Inspect the work'), 'result card');
+    await waitFor(() => byText('.result', 'go test ./...'), 'result checks');
+    expect(byText('.result', /Oren\s+approved/)).toBeTruthy();
+    expect(byText('.result', 'requested changes on')).toBeTruthy();
+    // Work strip: the completed job is listed with its state word.
+    expect(byText('.strip', codeJob.title)).toBeTruthy();
+  });
+
+  it('opens the job drawer with evidence, review truth, and runs; Escape closes it', async () => {
+    const opener = byText('.result button', 'Inspect the work')!;
+    opener.focus();
+    opener.click();
+    await waitFor(() => location.search.includes('panel=job'), 'job panel url');
+    await waitFor(() => byText('[role=tab]', 'Evidence'), 'tabs');
+    await waitFor(() => document.querySelector('.diff .line.add'), 'diff lines');
+    expect(byText('.diff .path', 'session/refresh.go')).toBeTruthy();
+    expect(byText('.diff .path', 'session/refresh_test.go')).toBeTruthy();
+    expect(text()).toContain('Passed');
+
+    byText('[role=tab]', 'Review')!.click();
+    await waitFor(() => text().includes('Round 2'), 'review rounds');
+    expect(text()).toMatch(/requested changes on\s+the first revision/);
+    expect(text()).toMatch(/approved\s+the updated revision/);
+    expect(text()).toContain('session/refresh.go:13');
+    expect(text()).toContain('Superseded by a newer revision');
+
+    byText('[role=tab]', 'Runs')!.click();
+    await waitFor(() => text().includes('Attempt 2'), 'runs');
+    expect(text()).toContain('billing unknown');
+
+    key(document.activeElement ?? document.body, 'Escape');
+    await waitFor(() => !location.search.includes('panel='), 'panel closed');
+  });
+
+  it('shows a colleague question with a reply affordance, not an alert card', async () => {
+    app.go({ name: 'room', roomId: roomId('Reverse engineering') });
+    await waitFor(() => text().includes('which repository contains'), 'question');
+    expect(text()).toContain('Pip asked you');
+    expect(byText('button', 'Reply in thread')).toBeTruthy();
+    // Beacon work is waiting with its exact blocker in the strip.
+    await waitFor(() => byText('.strip', 'Tracing the retry worker needs its repository location'), 'strip blocker');
+  });
+
+  it('marks a room read only while its newest message is on screen', async () => {
+    await waitFor(() => hub.calls.some((c) => c.method === 'POST' && c.path === `/v1/rooms/${roomId('Reverse engineering')}/read`), 'read post', 3000);
+    const call = hub.last('POST', /\/read$/)!;
+    expect(call.body).toEqual({ seq: 4 });
+    expect(call.headers['x-yip-csrf']).toBeTruthy();
+  });
+
+  it('steers a live job and shows the truthful delivery receipt', async () => {
+    const sec = roomId('Reverse engineering');
+    hub.override('POST', new RegExp(`^/v1/rooms/${sec}/messages$`), (c) => {
+      const b = c.body as { body: string; clientKey: string; jobId?: string };
+      return {
+        status: 201,
+        body: {
+          message: {
+            id: 'm-steer',
+            orgId: 'o',
+            roomId: sec,
+            seq: 5,
+            author: { kind: 'user', id: app.me!.id },
+            body: b.body,
+            kind: 'text',
+            mentions: [],
+            projectIds: [],
+            refs: [],
+            reactions: [],
+            revision: 1,
+            clientKey: b.clientKey,
+            createdAt: new Date().toISOString(),
+          },
+          duplicate: false,
+          dispatched: [],
+          input: b.jobId ? { id: 'in-1', jobId: b.jobId, body: b.body, delivery: 'pending', createdAt: new Date().toISOString() } : null,
+          resolvedQuestionIds: [],
+        },
+      };
+    });
+    const add = await waitFor(() => byText('.strip button', 'Add to this'), 'Add to this');
+    add.click();
+    await settle();
+    await waitFor(() => text().includes(`Adding to: ${pipJob.title}`), 'scope banner');
+    const ta = document.querySelector<HTMLTextAreaElement>('.room-composer textarea')!;
+    type(ta, 'The retry worker lives in beacon-worker.');
+    key(ta, 'Enter');
+    await waitFor(() => hub.last('POST', /\/messages$/), 'post');
+    const post = hub.last('POST', /\/messages$/)!;
+    expect((post.body as { jobId?: string }).jobId).toBe(pipJob.id);
+    expect((post.body as { clientKey?: string }).clientKey).toBeTruthy();
+    await waitFor(() => text().includes('Delivering to Pip…'), 'pending receipt');
+    // The hub reports the actual delivery mode later.
+    FakeEventSource.latest().emit(
+      'input.updated',
+      { schemaVersion: 1, eventId: 'e1', orgId: 'o', sequence: 999999, type: 'input.updated', actor: { kind: 'system', id: 'hub' }, occurredAt: '', payload: { id: 'in-1', jobId: pipJob.id, body: 'x', delivery: 'queued', createdAt: '' } },
+      999999,
+    );
+    await waitFor(() => text().includes("Queued for Pip's next step"), 'queued receipt');
+    expect(text()).not.toContain('Pip received your update');
+    // The optimistic copy reconciled to one message.
+    expect(document.querySelectorAll('[data-message-id="m-steer"]').length).toBe(1);
+    expect(document.querySelector('article.pending')).toBeNull();
+  });
+
+  it('creates a structured mention only from the list, by keyboard', async () => {
+    app.go({ name: 'room', roomId: roomId('Security') });
+    await waitFor(() => text().includes('On it.'), 'security');
+    const sec = roomId('Security');
+    hub.override('POST', new RegExp(`^/v1/rooms/${sec}/messages$`), (c) => {
+      const b = c.body as { body: string; clientKey: string; mentions: unknown[] };
+      return {
+        status: 201,
+        body: {
+          message: { id: 'm-' + b.clientKey, orgId: 'o', roomId: sec, seq: 100 + hub.calls.length, author: { kind: 'user', id: app.me!.id }, body: b.body, kind: 'text', mentions: b.mentions, projectIds: [], refs: [], reactions: [], revision: 1, clientKey: b.clientKey, createdAt: new Date().toISOString() },
+          duplicate: false,
+          dispatched: [],
+          resolvedQuestionIds: [],
+        },
+      };
+    });
+    const ta = document.querySelector<HTMLTextAreaElement>('.room-composer textarea')!;
+    type(ta, 'Pasted from elsewhere: @mira said hi');
+    key(ta, 'Escape');
+    key(ta, 'Enter');
+    await waitFor(() => hub.last('POST', new RegExp(`${sec}/messages$`)), 'first post');
+    expect((hub.last('POST', /messages$/)!.body as { mentions: unknown[] }).mentions).toEqual([]);
+
+    type(ta, '@or');
+    const listbox = await waitFor(() => document.querySelector('[role=listbox]'), 'mention listbox');
+    expect(ta.getAttribute('aria-expanded')).toBe('true');
+    expect(listbox.textContent).toContain('Oren');
+    expect(listbox.textContent).toContain('Security engineer');
+    expect(ta.getAttribute('aria-activedescendant')).toBeTruthy();
+    key(ta, 'Enter');
+    await settle();
+    expect(ta.value).toBe('@oren ');
+    type(ta, '@oren can you look at the refresh path?');
+    key(ta, 'Enter');
+    await waitFor(() => (hub.last('POST', /messages$/)!.body as { body: string }).body.startsWith('@oren can'), 'mention post');
+    expect((hub.last('POST', /messages$/)!.body as { mentions: unknown[] }).mentions).toEqual([{ kind: 'engineer', id: eng('Oren').id }]);
+  });
+
+  it('keeps a failed send with Retry and says the draft is safe when offline', async () => {
+    const sec = roomId('Security');
+    hub.override('POST', new RegExp(`^/v1/rooms/${sec}/messages$`), () => {
+      throw new TypeError('Failed to fetch');
+    });
+    // A thrown handler surfaces as a network failure from fetch.
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST' && String(input).endsWith('/messages')) throw new TypeError('Failed to fetch');
+      return realFetch(input, init);
+    }) as typeof fetch;
+    const ta = document.querySelector<HTMLTextAreaElement>('.room-composer textarea')!;
+    type(ta, 'This one will not arrive');
+    key(ta, 'Enter');
+    await waitFor(() => document.querySelector('article.pending.failed'), 'failed pending');
+    expect(text()).toContain("Not sent. Can't reach your workspace.");
+    expect(byText('article.pending button', 'Retry')).toBeTruthy();
+    expect(localStorage.length).toBeGreaterThan(0);
+    globalThis.fetch = realFetch;
+    byText('article.pending button', 'Discard')!.click();
+    await settle();
+    expect(document.querySelector('article.pending')).toBeNull();
+  });
+
+  it('searches with ⌘K and opens the actual source', async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
+    await settle();
+    const input = await waitFor(() => document.querySelector<HTMLInputElement>('dialog.search input'), 'search input');
+    type(input, 'expiry');
+    await waitFor(() => byText('dialog.search .group', 'Work'), 'grouped results', 3000);
+    expect(byText('dialog.search .group', 'Messages')).toBeTruthy();
+    expect(document.querySelector('dialog.search mark')?.textContent).toBe('expiry');
+    const target = [...document.querySelectorAll<HTMLElement>('dialog.search [role=option]')].findIndex((o) => o.querySelector('.title')?.textContent === 'Fix Atlas session expiry');
+    expect(target).toBeGreaterThanOrEqual(0);
+    for (let i = 0; i < target; i++) key(input, 'ArrowDown');
+    key(input, 'Enter');
+    await waitFor(() => location.search.includes(`panel=job%3A${codeJob.id}`), 'job opened from search');
+    expect(location.pathname).toBe(`/rooms/${roomId('Security')}`);
+    app.closePanel();
+  });
+
+  it('renders machines, engineers, projects and settings screens', async () => {
+    app.go({ name: 'machines' });
+    await waitFor(() => text().includes('Execution profiles'), 'machines');
+    expect(text()).toContain('Docker is not installed here');
+    expect(text()).toContain('Drain');
+    expect(text()).toContain('Stop its work');
+
+    app.go({ name: 'engineers' });
+    await waitFor(() => text().includes('New engineer'), 'engineers');
+    app.go({ name: 'engineer', id: eng('Mira').id });
+    await waitFor(() => text().includes('Standing instructions'), 'engineer profile');
+    expect(text()).toContain('AI engineer');
+
+    app.go({ name: 'projects' });
+    await waitFor(() => text().includes('Atlas'), 'projects');
+    const atlas = fixture<{ id: string }>('project-atlas.json');
+    app.go({ name: 'project', id: atlas.id });
+    await waitFor(() => text().includes('Repositories') && text().includes('Access'), 'project');
+    expect(document.querySelector('table.grants')).toBeTruthy();
+
+    app.go({ name: 'settings' });
+    await waitFor(() => text().includes('Diagnostics'), 'settings');
+    byText('button', 'Run checks')!.click();
+    await waitFor(() => text().includes('Hub version'), 'diagnostics');
+  });
+
+  it('returns to sign in when the session expires, keeping drafts', async () => {
+    app.go({ name: 'room', roomId: roomId('Security') });
+    await settle();
+    const ta = await waitFor(() => document.querySelector<HTMLTextAreaElement>('.room-composer textarea'), 'composer');
+    type(ta, 'a draft that must survive');
+    await new Promise((r) => setTimeout(r, 300));
+    hub.unauthorized = true;
+    await app.refreshRoom(roomId('Security')).catch(() => {});
+    await app.loadOlder(roomId('Security')).catch(() => {});
+    void (await import('../../src/lib/api/endpoints')).api.rooms().catch(() => {});
+    await waitFor(() => app.phase === 'signin', 'sign in');
+    expect(location.pathname).toBe('/signin');
+    expect(new URLSearchParams(location.search).get('next')).toContain('/rooms/');
+    expect(localStorage.getItem(`yip.draft.${roomId('Security')}`)).toContain('a draft that must survive');
+  });
+});
