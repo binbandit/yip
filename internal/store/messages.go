@@ -301,6 +301,11 @@ func RedactMessage(ctx context.Context, q Q, id string) error {
 		WHERE type IN ('message.created', 'message.updated') AND json_extract(payload, '$.id') = ?`, id); err != nil {
 		return err
 	}
+	// A reply job is titled by its request: clear it, and its events.
+	if _, err := q.ExecContext(ctx, `UPDATE events SET payload = json_set(payload, '$.title', '[deleted message]', '$.objective', '')
+		WHERE type IN ('job.created', 'job.updated') AND job_id IN (SELECT id FROM jobs WHERE source_message_id = ? AND kind = 'reply')`, id); err != nil {
+		return err
+	}
 	if _, err := q.ExecContext(ctx, `UPDATE jobs SET title = '[deleted message]', objective = '' WHERE source_message_id = ? AND kind = 'reply'`, id); err != nil {
 		return err
 	}
@@ -308,8 +313,13 @@ func RedactMessage(ctx context.Context, q Q, id string) error {
 		if _, err := q.ExecContext(ctx, `UPDATE jobs SET objective = '' WHERE objective = ?`, body); err != nil {
 			return err
 		}
+		// Anywhere else the exact text was copied (run context, other event
+		// payloads). The JSON-escaped form can only match inside a string.
 		escaped := strings.TrimSuffix(strings.TrimPrefix(js(body), `"`), `"`)
 		if _, err := q.ExecContext(ctx, `UPDATE runs SET manifest = replace(manifest, ?, '[deleted]') WHERE instr(manifest, ?) > 0`, escaped, escaped); err != nil {
+			return err
+		}
+		if _, err := q.ExecContext(ctx, `UPDATE events SET payload = replace(payload, ?, '[deleted]') WHERE instr(payload, ?) > 0`, escaped, escaped); err != nil {
 			return err
 		}
 		if _, err := q.ExecContext(ctx, `DELETE FROM jobs_fts WHERE objective = ?`, body); err != nil {
