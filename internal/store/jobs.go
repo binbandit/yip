@@ -15,22 +15,24 @@ type JobRow struct {
 	DiffArtifactID string
 	RetryAt        *time.Time
 	AutoRetries    int
+	HelpRequest    bool
 }
 
 const jobCols = `id, org_id, kind, title, objective, acceptance, state, waiting_reason, state_detail, owner_id, COALESCE(parent_id, ''),
 	root_request_id, source_room_id, COALESCE(source_thread_id, ''), COALESCE(source_message_id, ''), COALESCE(project_id, ''), COALESCE(repo_id, ''),
 	branch, base_rev, head_rev, COALESCE(diff_artifact_id, ''), requires_peer_review, requires_human_review, completion_requested, summary,
-	depth, priority, COALESCE(current_run_id, ''), retry_at, auto_retries, last_activity, last_activity_at, created_at, updated_at, completed_at, version`
+	depth, priority, COALESCE(current_run_id, ''), retry_at, auto_retries, last_activity, last_activity_at, created_at, updated_at, completed_at, version, help_request`
 
 func scanJob(s scanner) (JobRow, error) {
 	var j JobRow
 	var acceptance, created, updated, branch, base, head string
-	var peer, human, compReq int
+	var peer, human, compReq, help int
 	var retryAt, lastAt, completed sql.NullString
 	err := s.Scan(&j.ID, &j.OrgID, &j.Kind, &j.Title, &j.Objective, &acceptance, &j.State, &j.WaitingReason, &j.StateDetail,
 		&j.OwnerID, &j.ParentID, &j.RootRequestID, &j.Source.RoomID, &j.Source.ThreadID, &j.Source.MessageID, &j.ProjectID, &j.RepoID,
 		&branch, &base, &head, &j.DiffArtifactID, &peer, &human, &compReq, &j.Summary,
-		&j.Depth, &j.Priority, &j.CurrentRunID, &retryAt, &j.AutoRetries, &j.LastActivity, &lastAt, &created, &updated, &completed, &j.Version)
+		&j.Depth, &j.Priority, &j.CurrentRunID, &retryAt, &j.AutoRetries, &j.LastActivity, &lastAt, &created, &updated, &completed, &j.Version, &help)
+	j.HelpRequest = help == 1
 	unjs(acceptance, &j.Acceptance)
 	j.Acceptance = strs(j.Acceptance)
 	j.RequiresPeerReview, j.RequiresHumanReview, j.CompletionRequested = peer == 1, human == 1, compReq == 1
@@ -424,4 +426,18 @@ func TakePendingWake(ctx context.Context, q Q, jobID string) (*PendingWake, erro
 	unjs(raw.String, &w)
 	_, err := q.ExecContext(ctx, `UPDATE jobs SET pending_wake = NULL WHERE id = ?`, jobID)
 	return &w, err
+}
+
+// MarkHelpRequest flags a job as a colleague's help request.
+func MarkHelpRequest(ctx context.Context, q Q, id string) error {
+	_, err := q.ExecContext(ctx, `UPDATE jobs SET help_request = 1 WHERE id = ?`, id)
+	return err
+}
+
+// ConsumeStartedInputs marks inputs included in a run's manifest as consumed
+// once that run actually starts (a rejected or expired offer keeps them).
+func ConsumeStartedInputs(ctx context.Context, q Q, runID string) error {
+	_, err := q.ExecContext(ctx, `UPDATE job_inputs SET consumed_at = ? WHERE run_id = ? AND consumed_at IS NULL AND delivery = 'queued'`,
+		ts(nowUTC()), runID)
+	return err
 }

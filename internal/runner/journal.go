@@ -98,7 +98,8 @@ func (j *Journal) AcceptRun(commandID string, m protocol.ExecutionManifest, epoc
 	defer tx.Rollback()
 	mb, _ := json.Marshal(m)
 	if _, err := tx.Exec(`INSERT INTO runs(run_id, epoch, state, manifest, updated_at) VALUES (?, ?, 'accepted', ?, ?)
-		ON CONFLICT(run_id) DO UPDATE SET epoch = excluded.epoch, state = 'accepted', manifest = excluded.manifest, updated_at = excluded.updated_at`,
+		ON CONFLICT(run_id) DO UPDATE SET epoch = excluded.epoch, state = 'accepted', manifest = excluded.manifest, updated_at = excluded.updated_at,
+			terminal = NULL, terminal_acked = 0`,
 		m.RunID, epoch, string(mb), now()); err != nil {
 		return err
 	}

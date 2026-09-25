@@ -144,8 +144,8 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 	for _, c := range checks {
 		jf.Checks = append(jf.Checks, manifest.Check{Command: c.Command, Passed: c.Passed, ExitCode: c.ExitCode, Revision: c.Revision})
 	}
-	if job.ParentID != "" && job.Kind != protocol.JobKindReview {
-		if p, err := store.GetJob(ctx, q, job.ParentID); err == nil && p.OwnerID != job.OwnerID {
+	if job.HelpRequest && job.ParentID != "" {
+		if p, err := store.GetJob(ctx, q, job.ParentID); err == nil {
 			jf.HelpFrom = names["engineer:"+p.OwnerID].name
 		}
 	}
@@ -186,13 +186,24 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 				Body: "Q: " + x.MissingFact + "\nA: " + am.Body})
 		}
 	}
-	children, _ := store.ListJobs(ctx, q, store.JobFilter{ParentID: job.ID, States: []protocol.JobState{protocol.JobCompleted}})
+	children, _ := store.ListJobs(ctx, q, store.JobFilter{ParentID: job.ID, IncludeReply: true,
+		States: []protocol.JobState{protocol.JobCompleted, protocol.JobFailed, protocol.JobCancelled}})
 	for _, c := range children {
-		if c.Kind == protocol.JobKindReview || c.OwnerID == job.OwnerID {
+		if c.Kind == protocol.JobKindReview {
 			continue
 		}
-		m.Inputs = append(m.Inputs, manifest.Input{ID: c.ID, At: c.UpdatedAt, Kind: "help_answer", From: names["engineer:"+c.OwnerID].name,
-			Body: "Your request \"" + truncate(c.Objective, 200) + "\" was answered: " + c.Summary})
+		from := names["engineer:"+c.OwnerID].name
+		switch {
+		case c.State == protocol.JobCompleted && c.HelpRequest:
+			m.Inputs = append(m.Inputs, manifest.Input{ID: c.ID, At: c.UpdatedAt, Kind: "help_answer", From: from,
+				Body: "Your request \"" + truncate(c.Objective, 200) + "\" was answered: " + c.Summary})
+		case c.State == protocol.JobCompleted:
+			m.Inputs = append(m.Inputs, manifest.Input{ID: c.ID, At: c.UpdatedAt, Kind: "dependency_outcome", From: from,
+				Body: "Child work \"" + c.Title + "\" completed: " + c.Summary})
+		default:
+			m.Inputs = append(m.Inputs, manifest.Input{ID: c.ID, At: c.UpdatedAt, Kind: "dependency_outcome", From: from,
+				Body: "Child work \"" + c.Title + "\" " + string(c.State) + ": " + firstNonEmpty(c.StateDetail, c.Summary)})
+		}
 	}
 
 	// Decisions visible in this destination.

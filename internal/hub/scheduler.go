@@ -358,6 +358,24 @@ func (h *Hub) offer(ctx context.Context, r store.RunRow, j store.JobRow, p place
 		if err != nil || cur.State != protocol.RunCreated {
 			return err
 		}
+		// Access may have changed since the run was queued: never build or
+		// send context for an engineer who no longer belongs here.
+		if aerr := h.checkRunAccess(ctx, t.tx, cur); aerr != nil {
+			reason := domain.AsError(aerr).Message
+			if err := store.SetRunState(ctx, t.tx, cur.ID, protocol.RunCancelled, reason); err != nil {
+				return err
+			}
+			if err := h.runChanged(ctx, t, cur.ID); err != nil {
+				return err
+			}
+			if job, err := store.GetJob(ctx, t.tx, cur.JobID); err == nil && domain.JobLive(job.State) {
+				name := h.engineerName(ctx, t.tx, cur.EngineerID)
+				if _, err := h.setJobState(ctx, t, job.ID, protocol.JobFailed, "", name+" no longer has access: "+reason); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
 		cur.ProfileID = p.inst.ProfileID
 		if _, err := t.tx.ExecContext(ctx, `UPDATE runs SET profile_id = ? WHERE id = ?`, cur.ProfileID, cur.ID); err != nil {
 			return err

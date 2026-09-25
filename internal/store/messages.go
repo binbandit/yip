@@ -289,10 +289,32 @@ func EditMessage(ctx context.Context, q Q, id, revID, body string) error {
 	return err
 }
 
-// RedactMessage removes content from the message, its revisions, and search.
+// RedactMessage removes content from the message, its revisions, search,
+// retained event payloads, derived reply jobs, and recorded run manifests.
 func RedactMessage(ctx context.Context, q Q, id string) error {
+	var body string
+	_ = q.QueryRowContext(ctx, `SELECT body FROM messages WHERE id = ?`, id).Scan(&body)
 	if _, err := q.ExecContext(ctx, `UPDATE messages SET body = '', deleted_at = ? WHERE id = ?`, ts(nowUTC()), id); err != nil {
 		return err
+	}
+	if _, err := q.ExecContext(ctx, `UPDATE events SET payload = json_set(payload, '$.body', '')
+		WHERE type IN ('message.created', 'message.updated') AND json_extract(payload, '$.id') = ?`, id); err != nil {
+		return err
+	}
+	if _, err := q.ExecContext(ctx, `UPDATE jobs SET title = '[deleted message]', objective = '' WHERE source_message_id = ? AND kind = 'reply'`, id); err != nil {
+		return err
+	}
+	if len(body) >= 8 {
+		if _, err := q.ExecContext(ctx, `UPDATE jobs SET objective = '' WHERE objective = ?`, body); err != nil {
+			return err
+		}
+		escaped := strings.TrimSuffix(strings.TrimPrefix(js(body), `"`), `"`)
+		if _, err := q.ExecContext(ctx, `UPDATE runs SET manifest = replace(manifest, ?, '[deleted]') WHERE instr(manifest, ?) > 0`, escaped, escaped); err != nil {
+			return err
+		}
+		if _, err := q.ExecContext(ctx, `DELETE FROM jobs_fts WHERE objective = ?`, body); err != nil {
+			return err
+		}
 	}
 	if _, err := q.ExecContext(ctx, `UPDATE message_revisions SET body = '' WHERE message_id = ?`, id); err != nil {
 		return err
