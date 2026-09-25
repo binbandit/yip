@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">yip monochrome mark</title>
+  <desc id="desc">Two rounded strokes join to form a branching y.</desc>
+  <g fill="none" stroke="#183A43" stroke-width="15" stroke-linecap="round">
+    <path d="M25 20 62 60"/>
+    <path d="M99 20 25 108"/>
+  </g>
+</svg>

@@ -1,0 +1,26 @@
+# Build output
+/bin/
+/dist/
+*.test
+*.out
+
+# Local runtime data (hub/runner state, databases, artifacts)
+/.yip/
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Web client
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+/web/.svelte-kit/
+/web/test-results/
+/web/playwright-report/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
