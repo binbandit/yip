@@ -58,6 +58,11 @@ func (h *Hub) workRow(ctx context.Context, q store.Q, j store.JobRow) protocol.W
 	if j.NodeID != "" {
 		row.NodeName = h.nodeName(ctx, q, j.NodeID)
 	}
+	if j.CurrentRunID != "" {
+		if r, err := store.GetRun(ctx, q, j.CurrentRunID); err == nil {
+			row.RunState = r.State
+		}
+	}
 	switch j.State {
 	case protocol.JobWaiting, protocol.JobFailed:
 		row.Blocker = j.StateDetail

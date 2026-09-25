@@ -65,6 +65,10 @@ func (s *Server) routes() {
 	a("GET /v1/reviews/{id}", s.getReview)
 	a("POST /v1/pull-requests/link", s.linkPR)
 	a("GET /v1/pull-requests/{id}", s.getPR)
+	a("GET /v1/runs", s.activeRuns)
+	a("GET /v1/questions/{id}", s.getQuestion)
+	a("GET /v1/decisions/{id}", s.getDecision)
+	a("POST /v1/overview/seen", s.overviewSeen)
 	a("GET /v1/approvals/{id}", s.getApproval)
 	a("POST /v1/approvals/{id}/decision", s.decideApproval)
 	a("POST /v1/questions/{id}/answer", s.answerQuestion)
@@ -259,7 +263,7 @@ func (s *Server) markRead(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) roomWork(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.hub.RoomWork(r.Context(), userFrom(r).ID, r.PathValue("id"))
+	rows, err := s.hub.RoomWork(r.Context(), userFrom(r).ID, r.PathValue("id"), r.URL.Query().Get("include") == "replies")
 	respond(s, w, r, rows, err)
 }
 
@@ -659,4 +663,24 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) activeRuns(w http.ResponseWriter, r *http.Request) {
+	runs, err := s.hub.ActiveRuns(r.Context(), userFrom(r).ID)
+	respond(s, w, r, runs, err)
+}
+
+func (s *Server) getQuestion(w http.ResponseWriter, r *http.Request) {
+	q, err := s.hub.GetQuestion(r.Context(), userFrom(r).ID, r.PathValue("id"))
+	respond(s, w, r, q, err)
+}
+
+func (s *Server) getDecision(w http.ResponseWriter, r *http.Request) {
+	d, err := s.hub.GetDecision(r.Context(), userFrom(r).ID, r.PathValue("id"))
+	respond(s, w, r, d, err)
+}
+
+func (s *Server) overviewSeen(w http.ResponseWriter, r *http.Request) {
+	err := s.hub.MarkOverviewSeen(r.Context(), userFrom(r).ID)
+	respond(s, w, r, map[string]bool{"ok": true}, err)
 }

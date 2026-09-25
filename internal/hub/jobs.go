@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -683,6 +684,17 @@ func (h *Hub) JobDetail(ctx context.Context, userID, jobID string) (protocol.Job
 	}
 	d.Decisions, _ = store.ListDecisions(ctx, q, `id IN (SELECT decision_id FROM decision_sources WHERE source_kind = 'job' AND source_id = ?)`, jobID)
 	d.Activity, _ = h.jobActivity(ctx, q, jobID)
+	d.Revisions = []protocol.RevisionRecord{}
+	if evs, err := store.EventsForJob(ctx, q, jobID, 1000); err == nil {
+		for _, e := range evs {
+			if e.Type == "revision.published" {
+				var r protocol.RevisionRecord
+				if json.Unmarshal(e.Payload, &r) == nil {
+					d.Revisions = append(d.Revisions, r)
+				}
+			}
+		}
+	}
 	if domain.JobLive(job.State) && job.Kind != protocol.JobKindReply {
 		d.Missing, _, _ = h.completionMissing(ctx, q, job)
 	}

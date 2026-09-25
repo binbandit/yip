@@ -79,7 +79,8 @@ func (h *Hub) providerSummary(nodes []protocol.Node) []protocol.ProviderSummary 
 }
 
 // RoomWork returns live work attached to a room (for its work strip).
-func (h *Hub) RoomWork(ctx context.Context, userID, roomID string) ([]protocol.WorkRow, error) {
+// includeReplies adds conversational replies still queued or running.
+func (h *Hub) RoomWork(ctx context.Context, userID, roomID string, includeReplies bool) ([]protocol.WorkRow, error) {
 	room, err := h.requireRoom(ctx, h.st.R(), userID, roomID)
 	if err != nil {
 		return nil, err
@@ -87,6 +88,18 @@ func (h *Hub) RoomWork(ctx context.Context, userID, roomID string) ([]protocol.W
 	rows, err := h.ledgerForRoom(ctx, h.st.R(), room, true)
 	if err != nil {
 		return nil, err
+	}
+	if includeReplies {
+		replies, err := store.ListJobs(ctx, h.st.R(), store.JobFilter{IncludeReply: true, RoomIDs: []string{roomID},
+			States: []protocol.JobState{protocol.JobQueued, protocol.JobRunning, protocol.JobWaiting}})
+		if err != nil {
+			return nil, err
+		}
+		for _, j := range replies {
+			if j.Kind == protocol.JobKindReply {
+				rows = append(rows, h.workRow(ctx, h.st.R(), j))
+			}
+		}
 	}
 	var out []protocol.WorkRow
 	for _, r := range rows {
@@ -229,3 +242,61 @@ func (h *Hub) Export(ctx context.Context, userID string, writeJSON func(string, 
 }
 
 var _ = setupLimiter
+
+// ActiveRuns lists attempts that are queued or executing in rooms the user
+// belongs to (for "working" indicators).
+func (h *Hub) ActiveRuns(ctx context.Context, userID string) ([]protocol.Run, error) {
+	rooms, err := store.RoomIDsForMember(ctx, h.st.R(), protocol.ActorUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	runs, err := store.RunsInStates(ctx, h.st.R(), protocol.RunCreated, protocol.RunOffered, protocol.RunPreparing, protocol.RunRunning,
+		protocol.RunAwaitingInput, protocol.RunStopping, protocol.RunUnknown)
+	if err != nil {
+		return nil, err
+	}
+	out := []protocol.Run{}
+	for _, r := range runs {
+		if contains(rooms, r.Destination.RoomID) {
+			out = append(out, r.Run)
+		}
+	}
+	return out, nil
+}
+
+// GetQuestion returns one question in a room the user belongs to.
+func (h *Hub) GetQuestion(ctx context.Context, userID, id string) (protocol.Question, error) {
+	q, err := store.GetQuestion(ctx, h.st.R(), id)
+	if err != nil {
+		return q, domain.NotFound("That question doesn't exist.")
+	}
+	if _, err := h.requireRoom(ctx, h.st.R(), userID, q.Source.RoomID); err != nil {
+		return q, domain.NotFound("That question doesn't exist.")
+	}
+	return q, nil
+}
+
+// GetDecision returns one decision the user may see.
+func (h *Hub) GetDecision(ctx context.Context, userID, id string) (protocol.Decision, error) {
+	d, err := store.GetDecision(ctx, h.st.R(), id)
+	if err != nil {
+		return d, domain.NotFound("That decision doesn't exist.")
+	}
+	if d.VisibleRoomIDs != nil {
+		rooms, _ := store.RoomIDsForMember(ctx, h.st.R(), protocol.ActorUser, userID)
+		if !anyIn(d.VisibleRoomIDs, rooms) {
+			return d, domain.NotFound("That decision doesn't exist.")
+		}
+	}
+	return d, nil
+}
+
+// MarkOverviewSeen records the owner's visit for "Since you were here".
+func (h *Hub) MarkOverviewSeen(ctx context.Context, userID string) error {
+	u, err := store.GetUser(ctx, h.st.R(), userID)
+	if err != nil {
+		return err
+	}
+	u.Preferences.LastSeenAt = h.now().Format(time.RFC3339)
+	return h.SetPreferences(ctx, userID, u.Preferences)
+}
