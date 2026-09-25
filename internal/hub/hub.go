@@ -40,6 +40,8 @@ type Config struct {
 	Demo bool
 	// ForgeFactory builds a forge connector for a repository.
 	ForgeFactory func(ctx context.Context, h *Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error)
+	// WebhookVerifier validates a signed forge webhook delivery.
+	WebhookVerifier func(secret []byte, headers map[string]string, body []byte) (forge.Webhook, error)
 	// Now overrides the clock in tests.
 	Now func() time.Time
 }
@@ -66,9 +68,10 @@ type Hub struct {
 	mu sync.Mutex
 	// excluded temporarily keeps a node out of scheduling for a run after
 	// the runner rejected an offer.
-	excluded map[string]time.Time
-	closed   chan struct{}
-	wg       sync.WaitGroup
+	excluded   map[string]time.Time
+	closed     chan struct{}
+	wg         sync.WaitGroup
+	lastPRPoll time.Time
 }
 
 // Open opens the hub's data directory: database, CA, hub key, artifacts.

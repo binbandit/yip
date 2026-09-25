@@ -714,6 +714,10 @@ func (r *Runner) emitInputDelivered(ar *activeRun, runID string, epoch int64, in
 
 // emit journals a run event and sends it; it is replayed until acknowledged.
 func (r *Runner) emit(runID string, epoch int64, e protocol.RunEvent) {
+	e.Text = Redact(e.Text)
+	if len(e.Data) > 0 {
+		e.Data = []byte(Redact(string(e.Data)))
+	}
 	if e.At.IsZero() {
 		e.At = time.Now().UTC()
 	}
@@ -734,6 +738,7 @@ func (r *Runner) emit(runID string, epoch int64, e protocol.RunEvent) {
 
 // transient sends a non-durable update (coalesced streaming text).
 func (r *Runner) transient(runID string, epoch int64, kind, text string) {
+	text = Redact(text)
 	b, _ := json.Marshal(protocol.RunEvent{Seq: 0, Kind: kind, Text: text, At: time.Now().UTC()})
 	_ = r.send(protocol.Frame{Type: protocol.EvRunEvent, ID: domain.NewID(), RunID: runID, LeaseEpoch: epoch, Payload: b})
 }

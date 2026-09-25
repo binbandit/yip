@@ -1,0 +1,35 @@
+# A containerised yip runner with the restrictions the container profile
+# promises: non-root, read-only root filesystem, one workspace volume, no host
+# Docker socket or home directory, no privileges, bounded resources.
+#
+# Pair once:   docker compose -f compose.runner.yml run --rm runner runner pair \
+#                --hub https://HUB:7443 --fingerprint sha256:... --token yipe_... --name "Build container"
+# Run:         docker compose -f compose.runner.yml up -d
+#
+# Egress: restrict outbound traffic to your provider's endpoints and your
+# project remotes with a firewall or egress proxy on this network. Compose
+# alone cannot express an allowlist; yip does not claim one is in place.
+services:
+  runner:
+    build:
+      context: ../..
+      dockerfile: packaging/container/Dockerfile
+    image: yip-runner
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    volumes:
+      - yip-runner:/var/lib/yip
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    mem_limit: 8g
+    cpus: 4
+    environment:
+      YIP_EXECUTION_PROFILE: container
+    command: ["runner", "--profile", "container", "--providers", "claude", "--slots", "2"]
+    restart: unless-stopped
+volumes:
+  yip-runner: {}

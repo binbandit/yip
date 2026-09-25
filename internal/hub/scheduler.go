@@ -40,6 +40,10 @@ func (h *Hub) tick(ctx context.Context) {
 	h.retryDue(ctx)
 	h.nodeHealth(ctx)
 	h.schedule(ctx)
+	if h.now().Sub(h.lastPRPoll) > time.Minute {
+		h.lastPRPoll = h.now()
+		go h.pollPRs(context.Background())
+	}
 	for _, id := range h.nodes.ids() {
 		h.flushOutbox(ctx, id)
 	}

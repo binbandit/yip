@@ -85,6 +85,8 @@ func (s *Server) routes() {
 	a("GET /v1/diagnostics", s.diagnostics)
 	a("GET /v1/export", s.export)
 	m.HandleFunc("GET /v1/events", s.authed(s.events))
+	// Forge webhooks authenticate by HMAC signature, not by session.
+	m.HandleFunc("POST /v1/forge/github/webhook", withTimeout(s.githubWebhook))
 
 	m.Handle("/", s.static())
 }
@@ -641,3 +643,20 @@ func respondStatus(s *Server, w http.ResponseWriter, r *http.Request, status int
 }
 
 var _ = hub.ProviderLabel
+
+func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 5<<20))
+	if err != nil {
+		s.fail(w, r, domain.Invalid("Webhook body too large."))
+		return
+	}
+	headers := map[string]string{}
+	for _, k := range []string{"X-Hub-Signature-256", "X-GitHub-Delivery", "X-GitHub-Event", "Content-Type"} {
+		headers[k] = r.Header.Get(k)
+	}
+	if err := s.hub.HandleForgeWebhook(r.Context(), "github", headers, body); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

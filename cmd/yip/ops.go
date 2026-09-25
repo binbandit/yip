@@ -21,6 +21,7 @@ import (
 
 	"github.com/binbandit/yip/internal/auth"
 	"github.com/binbandit/yip/internal/buildinfo"
+	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/hub"
 	"github.com/binbandit/yip/internal/runner"
 	"github.com/binbandit/yip/internal/store"
@@ -471,6 +472,23 @@ func runOwner(args []string) error {
 }
 
 func runForge(args []string) error {
+	if len(args) >= 2 && args[0] == "github" && args[1] == "webhook-secret" {
+		fs := flag.NewFlagSet("forge github webhook-secret", flag.ExitOnError)
+		data := fs.String("data", defaultDataDir(), "hub data directory")
+		_ = fs.Parse(args[2:])
+		ctx := context.Background()
+		h, err := hub.Open(ctx, hub.Config{DataDir: *data, Version: buildinfo.Version, Logger: logger()})
+		if err != nil {
+			return err
+		}
+		defer h.Close()
+		secret := domain.RandomToken(32)
+		if err := h.SetWebhookSecret(ctx, "github", secret); err != nil {
+			return err
+		}
+		fmt.Printf("Webhook secret (configure it on the repository's webhook, content type application/json):\n%s\n\nPayload URL: https://<your hub>/v1/forge/github/webhook\nEvents: pull requests, pull request reviews, check runs, check suites, statuses.\n", secret)
+		return nil
+	}
 	if len(args) < 2 || args[0] != "github" || args[1] != "add" {
 		return errors.New("usage: yip forge github add [--data DIR] [--host github.com] [--label L] (token read from stdin)")
 	}

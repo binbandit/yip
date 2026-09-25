@@ -1,0 +1,24 @@
+# System-level unit for a dedicated "yip" account (alternative to
+# `yip service install hub`, which writes a user unit).
+#   sudo useradd --system --create-home --home-dir /var/lib/yip yip
+#   sudo install -m 0755 yip /usr/local/bin/yip
+#   sudo cp yip-hub.service /etc/systemd/system/ && sudo systemctl enable --now yip-hub
+[Unit]
+Description=yip hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=yip
+Group=yip
+ExecStart=/usr/local/bin/yip hub --data /var/lib/yip/hub --listen 127.0.0.1:7420 --runner-listen :7443
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/yip
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

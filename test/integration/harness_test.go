@@ -29,6 +29,7 @@ import (
 	"github.com/binbandit/yip/internal/demo"
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/forge"
+	"github.com/binbandit/yip/internal/forge/github"
 	"github.com/binbandit/yip/internal/httpapi"
 	"github.com/binbandit/yip/internal/hub"
 	"github.com/binbandit/yip/internal/providers"
@@ -133,7 +134,7 @@ func newEnv(t *testing.T, opts envOptions) *env {
 
 func (e *env) startHub(lim domain.Limits) {
 	h, err := hub.Open(e.ctx, hub.Config{DataDir: filepath.Join(e.dir, "hub"), Version: "test", Limits: lim, Logger: quietLogger(),
-		RunnerURL: e.runnerURL, Demo: true, ForgeFactory: e.opts.forge})
+		RunnerURL: e.runnerURL, Demo: true, ForgeFactory: e.opts.forge, WebhookVerifier: github.New(github.Options{}).VerifyWebhook})
 	if err != nil {
 		e.t.Fatal(err)
 	}
