@@ -163,7 +163,8 @@
       {#if !continuation}
         <header class="header">
           {#if isEngineer}
-            <button class="name linkish" onclick={openAuthor} title={engineer?.role}>{app.actorName(author)}</button>
+            <button class="name linkish" onclick={openAuthor}>{app.actorName(author)}</button>
+            {#if engineer?.role}<span class="role-badge">{engineer.role}</span>{/if}
           {:else if systemAuthored}
             <span class="name">yip</span>
             <span class="role-badge">From the work ledger</span>

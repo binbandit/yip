@@ -340,12 +340,6 @@
     font-size: 11px;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
-    animation: pulse 2.4s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    50% {
-      opacity: 0.55;
-    }
   }
   .hint {
     padding: 2px 8px;
@@ -417,11 +411,6 @@
     .add {
       width: 44px;
       height: 44px;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .working {
-      animation: none;
     }
   }
 </style>

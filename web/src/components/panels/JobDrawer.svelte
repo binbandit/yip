@@ -221,7 +221,7 @@
 
 <RightPanel title={job?.title ?? 'Work'} {mode} wide onclose={() => app.closePanel()}>
   {#snippet subtitle()}
-    {#if job}{jobStateLabel(job)} · {app.engineerName(job.ownerId)}{#if project} · {project.name}{/if}{/if}
+    {#if job}{jobStateLabel(job)} · {app.engineerName(job.ownerId)}{#if project}{' · '}{project.name}{/if}{/if}
   {/snippet}
 
   {#if !job}
@@ -476,7 +476,7 @@
                   <p>{q.missingFact}</p>
                   <p class="meta">
                     {q.status === 'open' ? 'Asked' : q.status === 'answered' ? 'Answered' : 'No longer needed'} · {app.engineerName(q.askerId)}
-                    {#if q.continuingWith} · meanwhile: {q.continuingWith}{/if}
+                    {#if q.continuingWith}{' · '}meanwhile: {q.continuingWith}{/if}
                     · <a href="/rooms/{q.source.roomId}?msg={q.messageId}">open in conversation</a>
                   </p>
                 </li>

@@ -104,10 +104,11 @@ describe('app smoke (jsdom, captured fixtures)', () => {
   it('renders a room like a group chat: names, one link per piece of work, a compact result', async () => {
     app.go({ name: 'room', roomId: roomId('Security') });
     await waitFor(() => text().includes('On it.'), 'security messages');
-    // Roles are on the name, not repeated on every message.
-    expect(document.querySelector('.role-badge')).toBeNull();
-    expect(byText('.msg .name', 'Mira')!.getAttribute('title')).toBe('Platform engineer');
-    expect(byText('.msg .name', 'Oren')!.getAttribute('title')).toBe('Security engineer');
+    // Names and roles lead each author group (spec §2, §8).
+    expect(byText('.role-badge', 'Platform engineer')).toBeTruthy();
+    expect(byText('.role-badge', 'Security engineer')).toBeTruthy();
+    // The header names who can answer.
+    expect(byText('.room-head .members .names', 'Oren, Mira') ?? byText('.room-head .members .names', 'Mira, Oren')).toBeTruthy();
     // The review is linked once, where it comes up, not under every message.
     expect(document.querySelectorAll('.msg button.chip.ref').length).toBeLessThanOrEqual(2);
     expect(byText('button.chip', 'View review')).toBeTruthy();
@@ -121,8 +122,9 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect(byText('.result', 'requested changes on')).toBeTruthy();
     // Finished work is announced by its result card, not kept in the strip.
     expect(byText('.strip', codeJob.title)).toBeFalsy();
-    // The summary line says what happened; the full evidence is under Details.
-    expect(byText('.result .summary', 'approved by Oren')).toBeTruthy();
+    // The summary line says what happened, and each claim opens its evidence.
+    expect(byText('.result .summary button.claim', 'approved by Oren')).toBeTruthy();
+    expect(byText('.result .summary button.claim', 'go test ./...')).toBeTruthy();
   });
 
   it('opens the job drawer with evidence, review truth, and runs; Escape closes it', async () => {
@@ -318,6 +320,10 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     app.go({ name: 'engineer', id: eng('Mira').id });
     await waitFor(() => text().includes('Standing instructions'), 'engineer profile');
     expect(text()).toContain('AI engineer');
+    // Permitted projects, from the projects' grants (spec §8, engineer profile).
+    expect(text()).toContain('Projects they can work on');
+    expect(text()).toMatch(/Atlas\s*· can change code/);
+    expect(text()).toMatch(/Beacon\s*· read only/);
 
     app.go({ name: 'projects' });
     await waitFor(() => text().includes('Atlas'), 'projects');

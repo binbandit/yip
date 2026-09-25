@@ -210,7 +210,7 @@
             </span>
             <span class="where meta">
               {#if r.roomId && r.kind !== 'room' && app.data.rooms[r.roomId]}in {app.data.rooms[r.roomId].name}{/if}
-              {#if r.at} · {relative(r.at, app.now)}{/if}
+              {#if r.at}{' · '}{relative(r.at, app.now)}{/if}
             </span>
           </div>
         {/each}

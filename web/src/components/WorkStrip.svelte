@@ -66,7 +66,7 @@
               {#if unconfirmed}
                 {app.nodeName(j.nodeId) || 'The machine'} stopped reporting; the last attempt's outcome is not confirmed{j.lastActivity ? ` — last confirmed: ${j.lastActivity.toLowerCase()}` : ''}
               {:else if note && live}
-                {note}{#if j.lastActivity} · {j.lastActivity}{/if}
+                {note}{#if j.lastActivity}{' · '}{j.lastActivity}{/if}
               {:else if (j.state === 'waiting' || j.state === 'failed') && j.stateDetail}
                 {j.stateDetail}
               {:else if j.lastActivity}
