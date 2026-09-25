@@ -28,6 +28,7 @@ import (
 	manifest "github.com/binbandit/yip/internal/context"
 	"github.com/binbandit/yip/internal/demo"
 	"github.com/binbandit/yip/internal/domain"
+	"github.com/binbandit/yip/internal/forge"
 	"github.com/binbandit/yip/internal/httpapi"
 	"github.com/binbandit/yip/internal/hub"
 	"github.com/binbandit/yip/internal/providers"
@@ -55,6 +56,7 @@ func TestMain(m *testing.M) {
 }
 
 type envOptions struct {
+	forge    func(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error)
 	limits   func(*domain.Limits)
 	director func(m *manifest.Manifest) json.RawMessage
 	noRunner bool
@@ -131,7 +133,7 @@ func newEnv(t *testing.T, opts envOptions) *env {
 
 func (e *env) startHub(lim domain.Limits) {
 	h, err := hub.Open(e.ctx, hub.Config{DataDir: filepath.Join(e.dir, "hub"), Version: "test", Limits: lim, Logger: quietLogger(),
-		RunnerURL: e.runnerURL, Demo: true})
+		RunnerURL: e.runnerURL, Demo: true, ForgeFactory: e.opts.forge})
 	if err != nil {
 		e.t.Fatal(err)
 	}

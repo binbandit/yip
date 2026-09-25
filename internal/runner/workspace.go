@@ -155,6 +155,15 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		if rev == "" || hasCommit(ctx, rep, rev) {
 			return nil
 		}
+		for i, ref := range m.Repo.FetchRefs {
+			if !strings.HasPrefix(ref, "refs/") || strings.ContainsAny(ref, " :^~") {
+				continue
+			}
+			_, _ = git(ctx, rep, "fetch", "--quiet", "origin", fmt.Sprintf("+%s:refs/yip/fetched/%d", ref, i))
+			if hasCommit(ctx, rep, rev) {
+				return nil
+			}
+		}
 		if m.Repo.CheckpointArtifact == nil || fetch == nil {
 			return fmt.Errorf("revision %s is not available on this machine and no verified bundle was provided", rev)
 		}
