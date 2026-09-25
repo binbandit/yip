@@ -300,11 +300,11 @@ const (
 )
 
 type Usage struct {
-	Source       string  `json:"source"` // vendor | unknown
-	InputTokens  *int64  `json:"inputTokens,omitempty"`
-	OutputTokens *int64  `json:"outputTokens,omitempty"`
+	Source       string   `json:"source"` // vendor | unknown
+	InputTokens  *int64   `json:"inputTokens,omitempty"`
+	OutputTokens *int64   `json:"outputTokens,omitempty"`
 	CostUSD      *float64 `json:"costUsd,omitempty"`
-	Billing      string  `json:"billing"` // subscription | api | unknown
+	Billing      string   `json:"billing"` // subscription | api | unknown
 }
 
 type Run struct {
@@ -613,25 +613,25 @@ type NodeCapacity struct {
 }
 
 type Node struct {
-	ID           string                 `json:"id"`
-	Name         string                 `json:"name"`
-	Hostname     string                 `json:"hostname"`
-	OS           string                 `json:"os"`
-	Arch         string                 `json:"arch"`
-	Fingerprint  string                 `json:"fingerprint"`
-	Status       string                 `json:"status"` // online | suspect | offline | revoked
-	Draining     bool                   `json:"draining"`
-	LastSeenAt   *time.Time             `json:"lastSeenAt,omitempty"`
-	Capacity     NodeCapacity           `json:"capacity"`
-	Providers    []ProviderInstallation `json:"providers"`
-	Profiles     []ExecutionProfile     `json:"profiles"`
-	Toolchains   map[string]string      `json:"toolchains"`
-	ActiveRunIDs []string               `json:"activeRunIds"`
-	RunnerVersion string                `json:"runnerVersion"`
-	ServiceState string                 `json:"serviceState,omitempty"`
-	LastActivity string                 `json:"lastActivity,omitempty"`
-	CreatedAt    time.Time              `json:"createdAt"`
-	RevokedAt    *time.Time             `json:"revokedAt,omitempty"`
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	Hostname      string                 `json:"hostname"`
+	OS            string                 `json:"os"`
+	Arch          string                 `json:"arch"`
+	Fingerprint   string                 `json:"fingerprint"`
+	Status        string                 `json:"status"` // online | suspect | offline | revoked
+	Draining      bool                   `json:"draining"`
+	LastSeenAt    *time.Time             `json:"lastSeenAt,omitempty"`
+	Capacity      NodeCapacity           `json:"capacity"`
+	Providers     []ProviderInstallation `json:"providers"`
+	Profiles      []ExecutionProfile     `json:"profiles"`
+	Toolchains    map[string]string      `json:"toolchains"`
+	ActiveRunIDs  []string               `json:"activeRunIds"`
+	RunnerVersion string                 `json:"runnerVersion"`
+	ServiceState  string                 `json:"serviceState,omitempty"`
+	LastActivity  string                 `json:"lastActivity,omitempty"`
+	CreatedAt     time.Time              `json:"createdAt"`
+	RevokedAt     *time.Time             `json:"revokedAt,omitempty"`
 }
 
 const (
@@ -740,18 +740,18 @@ type Event struct {
 
 // Bootstrap is the initial client state.
 type Bootstrap struct {
-	User        User          `json:"user"`
-	Org         Org           `json:"org"`
-	Rooms       []Room        `json:"rooms"`
-	Engineers   []Engineer    `json:"engineers"`
-	Projects    []Project     `json:"projects"`
-	Nodes       []Node        `json:"nodes"`
-	Cursor      int64         `json:"cursor"`
-	CSRFToken   string        `json:"csrfToken"`
-	Preferences Preferences   `json:"preferences"`
-	ServerTime  time.Time     `json:"serverTime"`
-	Version     string        `json:"version"`
-	Demo        bool          `json:"demo"`
+	User        User              `json:"user"`
+	Org         Org               `json:"org"`
+	Rooms       []Room            `json:"rooms"`
+	Engineers   []Engineer        `json:"engineers"`
+	Projects    []Project         `json:"projects"`
+	Nodes       []Node            `json:"nodes"`
+	Cursor      int64             `json:"cursor"`
+	CSRFToken   string            `json:"csrfToken"`
+	Preferences Preferences       `json:"preferences"`
+	ServerTime  time.Time         `json:"serverTime"`
+	Version     string            `json:"version"`
+	Demo        bool              `json:"demo"`
 	Providers   []ProviderSummary `json:"providers"`
 }
 
@@ -771,40 +771,40 @@ type SetupStatus struct {
 }
 
 type JobDetail struct {
-	Job          Job             `json:"job"`
-	Runs         []Run           `json:"runs"`
-	Checks       []Check         `json:"checks"`
-	Artifacts    []Artifact      `json:"artifacts"`
-	Reviews      []Review        `json:"reviews"`
-	Questions    []Question      `json:"questions"`
-	Approvals    []Approval      `json:"approvals"`
-	PullRequests []PullRequest   `json:"pullRequests"`
-	Children     []Job           `json:"children"`
-	Decisions    []Decision      `json:"decisions"`
-	Activity     []ActivityItem  `json:"activity"`
-	Inputs       []JobInput      `json:"inputs"`
-	Missing      []string        `json:"missing"`
+	Job          Job            `json:"job"`
+	Runs         []Run          `json:"runs"`
+	Checks       []Check        `json:"checks"`
+	Artifacts    []Artifact     `json:"artifacts"`
+	Reviews      []Review       `json:"reviews"`
+	Questions    []Question     `json:"questions"`
+	Approvals    []Approval     `json:"approvals"`
+	PullRequests []PullRequest  `json:"pullRequests"`
+	Children     []Job          `json:"children"`
+	Decisions    []Decision     `json:"decisions"`
+	Activity     []ActivityItem `json:"activity"`
+	Inputs       []JobInput     `json:"inputs"`
+	Missing      []string       `json:"missing"`
 }
 
 type JobInput struct {
-	ID        string    `json:"id"`
-	JobID     string    `json:"jobId"`
-	RunID     string    `json:"runId,omitempty"`
-	Body      string    `json:"body"`
-	Delivery  string    `json:"delivery"` // immediate | queued | pending
-	MessageID string    `json:"messageId,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID          string     `json:"id"`
+	JobID       string     `json:"jobId"`
+	RunID       string     `json:"runId,omitempty"`
+	Body        string     `json:"body"`
+	Delivery    string     `json:"delivery"` // immediate | queued | pending
+	MessageID   string     `json:"messageId,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
 	DeliveredAt *time.Time `json:"deliveredAt,omitempty"`
 }
 
 // ActivityItem is a human-readable entry in a job's history.
 type ActivityItem struct {
-	At      time.Time `json:"at"`
-	Actor   Actor     `json:"actor"`
-	Type    string    `json:"type"`
-	Text    string    `json:"text"`
-	RoomID  string    `json:"roomId,omitempty"`
-	Refs    []Ref     `json:"refs"`
+	At     time.Time `json:"at"`
+	Actor  Actor     `json:"actor"`
+	Type   string    `json:"type"`
+	Text   string    `json:"text"`
+	RoomID string    `json:"roomId,omitempty"`
+	Refs   []Ref     `json:"refs"`
 }
 
 type CatchupItem struct {
@@ -840,13 +840,13 @@ type Overview struct {
 }
 
 type SearchResult struct {
-	Kind     string    `json:"kind"` // message | room | engineer | job | decision | project
-	ID       string    `json:"id"`
-	Title    string    `json:"title"`
-	Snippet  string    `json:"snippet"`
-	RoomID   string    `json:"roomId,omitempty"`
-	ThreadID string    `json:"threadId,omitempty"`
-	JobID    string    `json:"jobId,omitempty"`
+	Kind     string     `json:"kind"` // message | room | engineer | job | decision | project
+	ID       string     `json:"id"`
+	Title    string     `json:"title"`
+	Snippet  string     `json:"snippet"`
+	RoomID   string     `json:"roomId,omitempty"`
+	ThreadID string     `json:"threadId,omitempty"`
+	JobID    string     `json:"jobId,omitempty"`
 	At       *time.Time `json:"at,omitempty"`
 }
 
@@ -856,20 +856,20 @@ type MessagePage struct {
 }
 
 type Diagnostics struct {
-	Version        string         `json:"version"`
-	DataDir        string         `json:"dataDir"`
-	DBSizeBytes    int64          `json:"dbSizeBytes"`
-	ArtifactBytes  int64          `json:"artifactBytes"`
-	DiskFreeBytes  int64          `json:"diskFreeBytes"`
-	QueueDepth     int            `json:"queueDepth"`
-	ActiveRuns     int            `json:"activeRuns"`
-	PendingOutbox  int            `json:"pendingOutbox"`
-	PendingApprovals int          `json:"pendingApprovals"`
-	FailedRuns24h  int            `json:"failedRuns24h"`
-	Nodes          []Node         `json:"nodes"`
-	SSEClients     int            `json:"sseClients"`
-	LastBackupAt   *time.Time     `json:"lastBackupAt,omitempty"`
-	Checks         []HealthCheck  `json:"checks"`
+	Version          string        `json:"version"`
+	DataDir          string        `json:"dataDir"`
+	DBSizeBytes      int64         `json:"dbSizeBytes"`
+	ArtifactBytes    int64         `json:"artifactBytes"`
+	DiskFreeBytes    int64         `json:"diskFreeBytes"`
+	QueueDepth       int           `json:"queueDepth"`
+	ActiveRuns       int           `json:"activeRuns"`
+	PendingOutbox    int           `json:"pendingOutbox"`
+	PendingApprovals int           `json:"pendingApprovals"`
+	FailedRuns24h    int           `json:"failedRuns24h"`
+	Nodes            []Node        `json:"nodes"`
+	SSEClients       int           `json:"sseClients"`
+	LastBackupAt     *time.Time    `json:"lastBackupAt,omitempty"`
+	Checks           []HealthCheck `json:"checks"`
 }
 
 type HealthCheck struct {
