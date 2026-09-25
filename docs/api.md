@@ -37,7 +37,10 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `GET /v1/rooms/{id}/messages?before=SEQ&limit=N` | → `MessagePage` (top-level messages, oldest first; `hasMore`) |
 | `POST /v1/rooms/{id}/messages` | `PostMessageRequest` → `PostMessageResponse` (`dispatched` engineer IDs, `input` receipt when attached to a job, `resolvedQuestionIds`) |
 | `POST /v1/rooms/{id}/read` | `{seq}` |
-| `GET /v1/rooms/{id}/work` | → `WorkRow[]` (work strip for the room) |
+| `GET /v1/rooms/{id}/work[?include=replies]` | → `WorkRow[]` (work strip; `include=replies` adds queued/running conversational replies; `runState` is the latest attempt's state) |
+| `GET /v1/runs` | → `Run[]` attempts queued or executing in your rooms (for "working" indicators) |
+| `GET /v1/questions/{id}`, `GET /v1/decisions/{id}` | → `Question` / `Decision` |
+| `POST /v1/overview/seen` | records the visit used by "Since you were here" |
 | `GET /v1/threads/{rootMessageId}` | → `MessagePage` (root first, then replies) |
 | `POST /v1/messages/{id}/reactions` | `ReactRequest` → `Message` |
 | `PATCH/DELETE /v1/messages/{id}` | `{body}` → `Message` / redact own message |
@@ -46,7 +49,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `PUT /v1/projects/{id}/repos/{repoId\|new}` | `PutRepoRequest` → `Project` |
 | `PUT /v1/projects/{id}/grants/{engineerId}` | `PutGrantRequest` (`access`: read/write/none; `actions`: push, open_pr, publish_review, merge) |
 | `GET /v1/jobs?state=a,b&project=&owner=` | → `Job[]` (work ledger; excludes conversational replies) |
-| `GET /v1/jobs/{id}` | → `JobDetail` (runs, checks, artifacts, reviews with rounds/findings, questions, approvals, PRs, children, decisions, activity, inputs, `missing` evidence) |
+| `GET /v1/jobs/{id}` | → `JobDetail` (runs, checks, artifacts, reviews with rounds/findings, questions, approvals, PRs, children, decisions, activity, inputs, `missing` evidence, `revisions` with file/line counts) |
 | `GET /v1/jobs/{id}/runs/{runId}/activity` | → `RunActivity[]` (tool log) |
 | `POST /v1/jobs/{id}/input` | `JobInputRequest` → `JobInputResponse` (steering; `input.delivery` is `pending` → later `immediate` or `queued`) |
 | `POST /v1/jobs/{id}/cancel` | `CancelJobRequest` → `Job` (stops the whole job tree) |
@@ -109,7 +112,8 @@ Committed event types and their `payload`:
 
 Transient (never persisted, no id): `event: transient`, data
 `{type: "run.stream", roomId, threadId, jobId, runId, engineerId, payload: {kind, text, at}}` —
-coalesced live text from a running engineer. Render it as a provisional
+incremental live text from a running engineer (append each `message_delta`
+chunk). Render it as a provisional
 "typing" preview; the canonical message arrives as `message.created`.
 
 ## Message anatomy

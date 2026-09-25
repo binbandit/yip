@@ -787,6 +787,8 @@ type JobDetail struct {
 	Activity     []ActivityItem `json:"activity"`
 	Inputs       []JobInput     `json:"inputs"`
 	Missing      []string       `json:"missing"`
+	// Revisions lists every published revision, oldest first.
+	Revisions []RevisionRecord `json:"revisions"`
 }
 
 type JobInput struct {
@@ -831,6 +833,9 @@ type WorkRow struct {
 	LastConfirmed   string     `json:"lastConfirmed"`
 	LastConfirmedAt *time.Time `json:"lastConfirmedAt,omitempty"`
 	Blocker         string     `json:"blocker,omitempty"`
+	// RunState is the state of the latest attempt ("unknown" means its
+	// outcome is not confirmed).
+	RunState RunState `json:"runState,omitempty"`
 }
 
 type Overview struct {

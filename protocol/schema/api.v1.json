@@ -1523,6 +1523,12 @@
           },
           "type": "array"
         },
+        "revisions": {
+          "items": {
+            "$ref": "#/$defs/RevisionRecord"
+          },
+          "type": "array"
+        },
         "runs": {
           "items": {
             "$ref": "#/$defs/Run"
@@ -1543,7 +1549,8 @@
         "decisions",
         "activity",
         "inputs",
-        "missing"
+        "missing",
+        "revisions"
       ],
       "type": "object"
     },
@@ -3893,6 +3900,21 @@
           "type": "string"
         },
         "roomName": {
+          "type": "string"
+        },
+        "runState": {
+          "enum": [
+            "created",
+            "offered",
+            "preparing",
+            "running",
+            "awaiting_input",
+            "stopping",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "unknown"
+          ],
           "type": "string"
         }
       },

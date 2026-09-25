@@ -392,6 +392,7 @@ export interface JobDetail {
   activity: ActivityItem[];
   inputs: JobInput[];
   missing: string[];
+  revisions: RevisionRecord[];
 }
 
 export interface JobInput {
@@ -951,6 +952,7 @@ export interface WorkRow {
   lastConfirmed: string;
   lastConfirmedAt?: string | null;
   blocker?: string;
+  runState?: RunState;
 }
 
 export interface zone {
