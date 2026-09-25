@@ -177,7 +177,7 @@
             {/if}
 
             {#if Object.keys(n.toolchains ?? {}).length}
-              <p class="meta tools">Toolchains: {Object.entries(n.toolchains).map(([k, v]) => `${k} ${v}`).join(' · ')}</p>
+              <p class="meta tools">Toolchains: {Object.entries(n.toolchains).map(([k, v]) => (v.toLowerCase().startsWith(k.toLowerCase()) ? v : `${k} ${v}`)).join(' · ')}</p>
             {/if}
             <p class="meta fp">Fingerprint <code>{n.fingerprint}</code></p>
 

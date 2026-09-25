@@ -90,7 +90,7 @@
             {#each remote as r (r.externalId)}
               <p>
                 {r.actor}: {r.state.toLowerCase().replace('_', ' ')} <span class="mono">{shortSha(r.commitId)}</span>
-                {#if r.publishedByEngineerId}<span class="meta"> — published by yip for {app.engineerName(r.publishedByEngineerId)}</span>{/if}
+                {#if r.publishedByEngineerId}{' '}<span class="meta">— published by yip for {app.engineerName(r.publishedByEngineerId)}</span>{/if}
               </p>
             {/each}
           {/if}
