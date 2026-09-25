@@ -53,6 +53,11 @@ func (h *Hub) HandleToolCall(ctx context.Context, nodeID, runID string, epoch in
 			return protocol.ToolResult{CallID: call.CallID, OK: false, Error: &apiErr}
 		}
 	}
+	// Access is re-checked on every call: revoking room membership or a
+	// project grant mid-job stops further tools and publication.
+	if err := h.checkRunAccess(ctx, h.st.R(), run); err != nil {
+		return fail(err)
+	}
 	if !strings.HasPrefix(call.Tool, "_") {
 		t, ok := bridge.Lookup(call.Tool)
 		if !ok {
@@ -85,6 +90,33 @@ func (h *Hub) HandleToolCall(ctx context.Context, nodeID, runID string, epoch in
 		})
 	}
 	return rec
+}
+
+// checkRunAccess verifies the run's engineer still belongs to its
+// conversation and still holds the project access its mode needs.
+func (h *Hub) checkRunAccess(ctx context.Context, q store.Q, run store.RunRow) error {
+	ok, err := store.IsMember(ctx, q, run.Destination.RoomID, protocol.ActorEngineer, run.EngineerID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.Forbidden("Your access to this conversation was removed; no further tool calls are allowed in this run.")
+	}
+	job, err := store.GetJob(ctx, q, run.JobID)
+	if err != nil {
+		return err
+	}
+	if job.ProjectID == "" || job.Kind == protocol.JobKindReply {
+		return nil
+	}
+	g, err := store.GetGrant(ctx, q, job.ProjectID, run.EngineerID)
+	if err != nil {
+		return domain.Forbidden("Your access to this project was removed; no further tool calls are allowed in this run.")
+	}
+	if run.Mode == protocol.ModeEdit && job.Kind == protocol.JobKindCode && g.Access != "write" {
+		return domain.Forbidden("Your write access to this project was removed; no further changes can be published in this run.")
+	}
+	return nil
 }
 
 func (h *Hub) loadEnv(ctx context.Context, q store.Q, run store.RunRow) (toolEnv, error) {
@@ -139,6 +171,28 @@ func (h *Hub) dispatchTool(ctx context.Context, run store.RunRow, call protocol.
 			return nil, err
 		}
 		return h.toolForgeReadPR(ctx, run, a)
+	case bridge.ForgeLinkPR:
+		// Forge tools do network I/O, so they manage their own transactions
+		// instead of holding the single writer during requests.
+		a, err := decode[bridge.ForgeReadPRArgs](call.Args)
+		if err != nil {
+			return nil, err
+		}
+		env, err := h.loadEnv(ctx, h.st.R(), run)
+		if err != nil {
+			return nil, err
+		}
+		return h.toolForgeLinkPR(ctx, env, a)
+	case bridge.ForgePublishReview:
+		a, err := decode[bridge.ForgePublishReviewArgs](call.Args)
+		if err != nil {
+			return nil, err
+		}
+		env, err := h.loadEnv(ctx, h.st.R(), run)
+		if err != nil {
+			return nil, err
+		}
+		return h.toolForgePublishReview(ctx, env, a)
 	}
 	// Mutating tools run in one transaction with their events.
 	var out any
@@ -224,20 +278,6 @@ func (h *Hub) dispatchTool(ctx context.Context, run store.RunRow, call protocol.
 				return err
 			}
 			out, err = h.toolDecisionPropose(ctx, t, env, a)
-			return err
-		case bridge.ForgeLinkPR:
-			a, err := decode[bridge.ForgeReadPRArgs](call.Args)
-			if err != nil {
-				return err
-			}
-			out, err = h.toolForgeLinkPR(ctx, t, env, a)
-			return err
-		case bridge.ForgePublishReview:
-			a, err := decode[bridge.ForgePublishReviewArgs](call.Args)
-			if err != nil {
-				return err
-			}
-			out, err = h.toolForgePublishReview(ctx, t, env, a)
 			return err
 		case bridge.RecordCheck:
 			var c protocol.CheckRecord

@@ -136,6 +136,9 @@ type RepoSpec struct {
 	SnapshotRev string `json:"snapshotRev,omitempty"`
 	// CheckpointArtifact restores a verified checkpoint bundle instead of the base.
 	CheckpointArtifact *Artifact `json:"checkpointArtifact,omitempty"`
+	// FetchRefs are extra remote refs to fetch when a revision isn't local,
+	// e.g. "refs/pull/42/head" for a pull request under review.
+	FetchRefs []string `json:"fetchRefs,omitempty"`
 }
 
 // ExecutionManifest is the pinned, immutable description of one run attempt.

@@ -854,6 +854,12 @@
         "defaultBranch": {
           "type": "string"
         },
+        "fetchRefs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "name": {
           "type": "string"
         },

@@ -14,7 +14,7 @@ func TestOpenMigratesAndSupportsFTS(t *testing.T) {
 	}
 	defer s.Close()
 	v, err := s.SchemaVersion(ctx)
-	if err != nil || v != 1 {
+	if err != nil || v < 2 {
 		t.Fatalf("schema version %d err %v", v, err)
 	}
 	if _, err := s.w.ExecContext(ctx, `INSERT INTO messages_fts(body, message_id, room_id) VALUES ('expired session refresh', 'm1', 'r1')`); err != nil {

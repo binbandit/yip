@@ -253,12 +253,12 @@ func (h *Hub) toolForgeReadPR(ctx context.Context, run store.RunRow, a bridge.Fo
 	return out, nil
 }
 
-func (h *Hub) toolForgeLinkPR(ctx context.Context, t *txn, env toolEnv, a bridge.ForgeReadPRArgs) (any, error) {
+func (h *Hub) toolForgeLinkPR(ctx context.Context, env toolEnv, a bridge.ForgeReadPRArgs) (any, error) {
 	if env.job.OwnerID != env.eng.ID {
 		return nil, domain.Forbidden("Only the job owner links its pull request.")
 	}
-	// Linking reads the forge outside this transaction; commit ordering is safe
-	// because the link itself is an idempotent upsert.
+	// The forge is read outside any transaction; the link itself is an
+	// idempotent upsert committed afterwards.
 	pr, err := h.linkPR(ctx, env.job, env.job.RepoID, a.Number, a.URL)
 	if err != nil {
 		return nil, err
@@ -272,47 +272,54 @@ func (h *Hub) toolForgeLinkPR(ctx context.Context, t *txn, env toolEnv, a bridge
 // the head revision and the remote actor's eligibility. Engineer attribution
 // and the remote actor are both recorded; several engineers sharing one
 // credential remain one remote actor.
-func (h *Hub) toolForgePublishReview(ctx context.Context, t *txn, env toolEnv, a bridge.ForgePublishReviewArgs) (any, error) {
-	review, round, err := store.ReviewByReviewJob(ctx, t.tx, env.job.ID)
+func (h *Hub) toolForgePublishReview(ctx context.Context, env toolEnv, a bridge.ForgePublishReviewArgs) (any, error) {
+	q := h.st.R()
+	review, round, err := store.ReviewByReviewJob(ctx, q, env.job.ID)
 	if err != nil || round.Target.Kind != "pr" {
 		return nil, domain.Invalid("This review isn't of a pull request.")
 	}
 	if !domain.ReviewVerdict(round.State) {
 		return nil, domain.Invalid("Record your verdict with work_review first.")
 	}
-	g, err := store.GetGrant(ctx, t.tx, env.job.ProjectID, env.eng.ID)
+	g, err := store.GetGrant(ctx, q, env.job.ProjectID, env.eng.ID)
 	if err != nil || !contains(g.Actions, "publish_review") {
 		return nil, domain.Forbidden("External publication isn't granted for this project. The internal review is recorded; ask the owner if it should be published.")
 	}
-	pr, err := store.GetPR(ctx, t.tx, round.Target.PullRequestID)
+	pr, err := store.GetPR(ctx, q, round.Target.PullRequestID)
 	if err != nil {
 		return nil, err
 	}
-	repo, err := store.GetRepo(ctx, t.tx, pr.RepoID)
+	repo, err := store.GetRepo(ctx, q, pr.RepoID)
 	if err != nil {
 		return nil, err
 	}
 	// Private-room findings can't be published into a broader PR.
-	if room, err := store.GetRoom(ctx, t.tx, review.Source.RoomID); err == nil && room.Private {
+	if room, err := store.GetRoom(ctx, q, review.Source.RoomID); err == nil && room.Private {
 		return nil, domain.Forbidden("This review happened in a private room; publishing it to the pull request would widen its audience.")
 	}
-	marker := round.ID
-	dedupe := "publish:" + round.ID
-	if d, err := store.GetForgeDelivery(ctx, t.tx, dedupe); err == nil {
+	c, ref, err := h.connectorFor(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	marker, dedupe := round.ID, "publish:"+round.ID
+	if d, err := store.GetForgeDelivery(ctx, q, dedupe); err == nil {
 		switch d.Status {
 		case "published":
 			return map[string]any{"externalId": d.ExternalID, "duplicate": true}, nil
 		case "unknown", "pending":
-			c, ref, err := h.connectorFor(ctx, repo)
-			if err != nil {
-				return nil, err
-			}
-			if id, found, err := c.FindReviewByMarker(ctx, ref, pr.Number, marker); err == nil && found {
-				_ = store.SetForgeDelivery(ctx, t.tx, d.ID, "published", id, "")
-				return map[string]any{"externalId": id, "reconciled": true}, nil
-			} else if err != nil {
+			// Reconcile an ambiguous earlier attempt before any retry.
+			id, found, ferr := c.FindReviewByMarker(ctx, ref, pr.Number, marker)
+			if ferr != nil {
 				return nil, domain.Unavailable("forge", "The earlier publication's outcome is still unknown; not retrying until it can be reconciled.")
 			}
+			if found {
+				_ = h.do(ctx, func(t *txn) error { return store.SetForgeDelivery(ctx, t.tx, d.ID, "published", id, "") })
+				return map[string]any{"externalId": id, "reconciled": true}, nil
+			}
+			_ = h.do(ctx, func(t *txn) error {
+				return store.SetForgeDelivery(ctx, t.tx, d.ID, "failed", "", "reconciled: not published")
+			})
+		case "failed":
 		}
 	}
 	event := forge.EventComment
@@ -333,28 +340,42 @@ func (h *Hub) toolForgePublishReview(ctx context.Context, t *txn, env toolEnv, a
 			comments = append(comments, forge.ReviewComment{Path: f.File, Line: f.Line, Body: "[" + f.Severity + "] " + f.Body})
 		}
 	}
+	// Record the attempt durably before the network call, so a crash leaves
+	// an ambiguous delivery to reconcile rather than a silent retry.
 	deliveryID := domain.NewID()
-	if _, err := store.InsertForgeDelivery(ctx, t.tx, store.ForgeDelivery{ID: deliveryID, PRID: pr.ID, Kind: "publish_review", DedupeKey: dedupe,
-		Status: "pending", EngineerID: env.eng.ID, ReviewRoundID: round.ID}); err != nil {
-		return nil, err
-	}
-	c, ref, err := h.connectorFor(ctx, repo)
-	if err != nil {
+	if err := h.do(ctx, func(t *txn) error {
+		_, err := store.InsertForgeDelivery(ctx, t.tx, store.ForgeDelivery{ID: deliveryID, PRID: pr.ID, Kind: "publish_review",
+			DedupeKey: dedupe + ":" + deliveryID, Status: "pending", EngineerID: env.eng.ID, ReviewRoundID: round.ID})
+		if err != nil {
+			return err
+		}
+		_, err = t.tx.ExecContext(ctx, `UPDATE forge_deliveries SET dedupe_key = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM forge_deliveries WHERE dedupe_key = ?)`,
+			dedupe, deliveryID, dedupe)
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	id, perr := c.PublishReview(ctx, ref, pr.Number, forge.PublishReview{CommitID: round.Target.Head, Event: event, Body: body, Comments: comments, Marker: marker})
+	status, errText := "published", ""
 	switch {
 	case perr == nil:
-		_ = store.SetForgeDelivery(ctx, t.tx, deliveryID, "published", id, "")
 	case errors.Is(perr, forge.ErrAmbiguous):
-		_ = store.SetForgeDelivery(ctx, t.tx, deliveryID, "unknown", "", perr.Error())
-		return nil, forgeErr(perr)
+		status, errText = "unknown", perr.Error()
 	default:
-		_ = store.SetForgeDelivery(ctx, t.tx, deliveryID, "failed", "", perr.Error())
-		return nil, forgeErr(perr)
+		status, errText = "failed", perr.Error()
 	}
-	if err := t.audit(env.me, "grant:publish_review", "forge.publish_review", pr.URL, "ok", "external id "+id); err != nil {
-		return nil, err
+	_ = h.do(ctx, func(t *txn) error {
+		if err := store.SetForgeDelivery(ctx, t.tx, deliveryID, status, id, errText); err != nil {
+			return err
+		}
+		result := "ok"
+		if perr != nil {
+			result = status
+		}
+		return t.audit(env.me, "grant:publish_review", "forge.publish_review", pr.URL, result, errText)
+	})
+	if perr != nil {
+		return nil, forgeErr(perr)
 	}
 	return map[string]any{"externalId": id, "remoteActor": pr.ViewerActor, "event": event,
 		"note": "Published as the forge credential's account; the forge decides whether it counts toward merge requirements."}, nil

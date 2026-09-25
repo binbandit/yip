@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -248,6 +249,11 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 			BaseRev: jf.Base, Branch: jf.Branch}
 		if snapshot != nil && snapshot.Head != "" {
 			spec.SnapshotRev, spec.BaseRev, spec.Branch = snapshot.Head, snapshot.Base, ""
+			if snapshot.PullRequestID != "" {
+				if pr, err := store.GetPR(ctx, q, snapshot.PullRequestID); err == nil && pr.Forge == "github" {
+					spec.FetchRefs = []string{fmt.Sprintf("refs/pull/%d/head", pr.Number)}
+				}
+			}
 			if b := h.bundleFor(ctx, q, snapshot.Head); b != nil {
 				spec.CheckpointArtifact = b
 			}
