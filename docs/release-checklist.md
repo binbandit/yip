@@ -21,9 +21,13 @@ These must be done before the MVP can be called complete (MVP brief §10):
 1. **Real providers (A28, Slices B/C).** No real-account smoke test has been
    run for Codex, Claude Code, or Cursor. Cursor isn't installed on the build
    machine. Run the gated tests in `docs/compatibility.md` and record results.
-2. **Two physical machines (Slice F).** Multi-machine behaviour is exercised
-   with one hub and one runner per test on a single host; a real two-machine
-   run (hub on one Mac mini, runner on another) has not been recorded.
+2. **Two physical machines (Slice F).** `TestTwoMachinesAndCheckpointMove`
+   runs two independent runners (separate state, replicas, journals, and
+   certificates) against one hub: concurrent jobs land on different machines,
+   and after a machine is revoked, work resumes elsewhere only from the
+   verified bundle of its published revision, as an explicit retry. All of
+   this ran on a single host; a run across two physical machines has not been
+   recorded.
 3. **Browser verification (A26, A27).** No automatable browser is installed on
    the build machine; keyboard, zoom, and 390/1024/1440 layouts have not been
    inspected in a real browser. Playwright specs exist in `web/tests/e2e`.
