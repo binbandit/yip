@@ -759,3 +759,24 @@ CREATE TABLE credentials (
   secret     BLOB NOT NULL,
   created_at TEXT NOT NULL
 );
+
+-- Agent tool calls are idempotent per (run, call): a retried call after a
+-- lost reply returns the recorded result instead of acting twice.
+CREATE TABLE tool_calls (
+  run_id     TEXT NOT NULL REFERENCES runs(id),
+  call_id    TEXT NOT NULL,
+  tool       TEXT NOT NULL,
+  ok         INTEGER NOT NULL,
+  result     TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (run_id, call_id)
+);
+
+-- Per-run intent recorded by work_wait: when the attempt ends, the job waits
+-- on this reason instead of being treated as stalled.
+CREATE TABLE run_intents (
+  run_id     TEXT PRIMARY KEY REFERENCES runs(id),
+  wait       TEXT NOT NULL DEFAULT '',
+  detail     TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);

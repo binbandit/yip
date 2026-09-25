@@ -225,6 +225,9 @@ const (
 	WaitRecovery         = "recovery"
 	WaitProviderSignIn   = "provider_sign_in"
 	WaitEngineerCapacity = "engineer_capacity"
+	// WaitStalled means an attempt ended without completing or recording why;
+	// the missing evidence is listed in StateDetail.
+	WaitStalled = "stalled"
 )
 
 const (

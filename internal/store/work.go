@@ -464,3 +464,37 @@ func GetCredential(ctx context.Context, q Q, kind, host string) (id string, secr
 func InClause(n int) string {
 	return "(" + strings.TrimSuffix(strings.Repeat("?,", n), ",") + ")"
 }
+
+// ---- tool call idempotency ----
+
+// GetToolCall returns a recorded tool result for (run, call).
+func GetToolCall(ctx context.Context, q Q, runID, callID string) (ok bool, result string, found bool, err error) {
+	var okInt int
+	err = q.QueryRowContext(ctx, `SELECT ok, result FROM tool_calls WHERE run_id = ? AND call_id = ?`, runID, callID).Scan(&okInt, &result)
+	if err == sql.ErrNoRows {
+		return false, "", false, nil
+	}
+	return okInt == 1, result, err == nil, err
+}
+
+func InsertToolCall(ctx context.Context, q Q, runID, callID, tool string, ok bool, result string) error {
+	_, err := q.ExecContext(ctx, `INSERT OR IGNORE INTO tool_calls(run_id, call_id, tool, ok, result, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		runID, callID, tool, b2i(ok), result, ts(nowUTC()))
+	return err
+}
+
+// ---- run intents ----
+
+func SetRunIntent(ctx context.Context, q Q, runID, wait, detail string) error {
+	_, err := q.ExecContext(ctx, `INSERT INTO run_intents(run_id, wait, detail, created_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(run_id) DO UPDATE SET wait = excluded.wait, detail = excluded.detail`, runID, wait, detail, ts(nowUTC()))
+	return err
+}
+
+func GetRunIntent(ctx context.Context, q Q, runID string) (wait, detail string, err error) {
+	err = q.QueryRowContext(ctx, `SELECT wait, detail FROM run_intents WHERE run_id = ?`, runID).Scan(&wait, &detail)
+	if err == sql.ErrNoRows {
+		return "", "", nil
+	}
+	return wait, detail, err
+}
