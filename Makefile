@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev)
 LDFLAGS := -s -w -X github.com/binbandit/yip/internal/buildinfo.Version=$(VERSION)
 
-.PHONY: all build web web-deps schema test test-web e2e lint demo clean release
+.PHONY: all build web web-deps schema test test-web e2e lint demo lan clean release
 
 all: web build
 
@@ -36,6 +36,10 @@ lint:
 
 demo: all
 	./bin/yip demo
+
+## lan: demo on your local network (built app :7721, live-reload client :5173)
+lan: all
+	./scripts/lan-dev.sh
 
 release:
 	GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/yip-darwin-arm64 ./cmd/yip
