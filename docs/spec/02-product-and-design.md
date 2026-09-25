@@ -66,6 +66,8 @@ The user chose yip over yap after reviewing existing uses. `getyip.dev` is a pos
 
 ### Identity: a branching y
 
+> In the web client the mark is drawn monochrome in the current ink, per [ADR 0012](../decisions/0012-visual-direction.md); the shape is unchanged.
+
 The new mark uses two rounded strokes meeting as a **y**, with an aqua upper arm, a white main stroke, and a yellow terminal. It keeps the established petrol background and reads at small sizes. Use the supplied monochrome version when colour is unavailable. The mark accompanies the lowercase wordmark without bird terminology, robot faces, or status animation.
 
 Names and identities of the engineers stay independent of the product brand. Ordinary objects remain engineers, rooms, projects, work, and machines.

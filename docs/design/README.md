@@ -74,7 +74,7 @@ Font licence: Inter is under the SIL Open Font License 1.1. The licence ships in
 
 - Spacing is on a 4px base: 4px message row padding, 12px between message groups (6px when compact), 32px between major sections.
 - Radii: 8px for sidebar rows and small buttons, 10px for buttons and inputs, 12px for popovers and menus, 14px for artifacts (result cards), 16px for the work card, message hover washes, the composer, code blocks, dialogs and the search palette. Small interactive items (reactions, count pills, chips, the send button, the action bar) are full pills.
-- Motion lasts 100–240ms with `cubic-bezier(0.25, 1, 0.5, 1)` and responds to user actions: panels slide in, dialogs pop, the new-messages pill rises, and a linked message flashes. The only looping motion is the room's "working" pill, which pulses gently. `prefers-reduced-motion` disables all motion.
+- Motion lasts 100–240ms with `cubic-bezier(0.25, 1, 0.5, 1)` and responds to user actions: panels slide in, dialogs pop, the new-messages pill rises, and a linked message flashes. The only looping motion is the composer's "typing" dots while someone composes a reply. `prefers-reduced-motion` disables all motion.
 
 ## Layout
 
@@ -92,11 +92,11 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   - read rows at reduced opacity, unread rows in bold;
   - mentions as a black count pill;
   - a pencil when a draft is saved;
-  - a pulsing elapsed-time pill ("3m", "3m (2)") while engineers are working in the room, with the names in its tooltip;
+  - a quiet elapsed-time pill ("3m", "3m (2)") while engineers are working in the room, with the names in its tooltip (it does not animate);
   - a lock instead of # for private rooms.
 
   Selection is a grey wash, never a colour. Every marker has a visually hidden text equivalent. The demo notice and any connection problem ("Reconnecting…") sit in a slim line above the card.
-- **Room header:** one 52px row — `# name` (a lock for private rooms) with the purpose in muted text, then outline buttons for linked projects, the reply mode ("Mentions only" or "Mira answers", with the full sentence in its tooltip and accessible name), and members (stacked squircles and a count; names and roles in the tooltip and accessible name), and a settings button.
+- **Room header:** one 52px row — `# name` (a lock for private rooms) with the purpose in muted text, then outline buttons for linked projects, the reply mode ("Mentions only" or "Mira answers", with the full sentence in its tooltip and accessible name), and members — stacked squircles with the names of who can answer ("Oren, Mira"), falling back to a count when the room is narrow; roles are in the tooltip and accessible name — and a settings button.
 - **Work strip:** one row per live or failed job (finished work is announced by its result card in the conversation instead). Each row shows:
   - a state word plus shape: hollow circle for queued, bar for running, pause for waiting (the word is the waiting reason), check for ready, filled check for completed, triangle for failed;
   - the title;
@@ -108,7 +108,7 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   Clicking a row opens the job drawer. "Add to this" scopes the composer to that job. The strip collapses to three rows plus "Show all N".
 - **Message row:**
   - Engineers have **squircle** avatars and the human has a **circle**; shape is the only distinction.
-  - The first message of a group shows the name and the time, as in a group chat; the engineer's role is on the name's tooltip, in the room's member list and on their profile. Consecutive messages from the same author within 10 minutes compact.
+  - The first message of a group shows the name, the engineer's role in quiet text ("Mira · Platform engineer"), and the time. Consecutive messages from the same author within 10 minutes compact, so the role appears once per group rather than on every message.
   - A question asked of you sits on a soft amber wash until it is answered.
   - A job, review, PR, decision or file is linked with a chip only on the first message that mentions it in the view; later messages about the same work stay plain.
   - Full commit hashes in message text show as their short form, with the whole hash on hover.
@@ -126,7 +126,7 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   - An offline notice: "Can't reach your workspace. Your draft is saved on this device."
   - The steering scope ("Adding to: Fix Atlas session expiry · Mira") is shown as a bar at the top of the composer and can be cleared with × or Escape. Its receipt reads, in turn, "Delivering to Mira…" → "Mira received your update" or "Queued for Mira's next step", driven only by `input.delivery`.
   - One quiet line under the box, where a group chat shows typing: "Mira is typing…", "Mira and Oren are typing…", "Pip is working on Document Beacon's request flow", or "Pip will reply when possible — No machines are paired yet". Receipts for your updates take the same line. Keyboard hints are for screen readers only. Engineers' streamed text is never shown as it arrives.
-- **Result card:** posted like an attachment. It shows the title and state, then one summary line ("3 files +28 −5 · go test ./... passed · approved by Oren"), anything missing stated plainly, and **Inspect the work**. **Details** expands the full evidence in place: the revision's summary and earlier revisions, every check on the exact current revision (each opening the evidence), each reviewer's verdict on an exact revision beside earlier verdicts ("Oren approved a9002d3 · requested changes on b0e5d19 first"), the revision and branch, the PR's facts kept separate, and the machine.
+- **Result card:** posted like an attachment. It shows the title and state, then one summary line ("3 files +28 −5 · go test ./... passed · approved by Oren") in which every claim opens its evidence: the files open the diff, a check opens its recorded command, exit status and log, a verdict opens the review, and a PR opens its facts. Anything missing is stated plainly, and **Inspect the work** opens the drawer. **Details** expands the full evidence in place: the revision's summary and earlier revisions, every check on the exact current revision (each opening the evidence), each reviewer's verdict on an exact revision beside earlier verdicts ("Oren approved a9002d3 · requested changes on b0e5d19 first"), the revision and branch, the PR's facts kept separate, and the machine.
 - **Approval card:** the exact action (command, target, scope, revision, reason, expiry), with Allow this push (or the equivalent) and Reject. The request's `version` is sent, and a 409 is explained. The card shows Allowed, Rejected, Expired or "Allowed and used" truthfully. It states that a chat reply does not grant permission.
 - **Job drawer:**
   - A header with the state and waiting reason, the exact blocker, an "outcome not confirmed" notice for unknown runs, missing evidence, the owner, reviewers, machine, revision, last confirmed activity and the source link.
@@ -137,6 +137,8 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
     - **Activity:** the job timeline, plus per-run tool logs in collapsed `<details>` that load on open.
     - **Runs:** each attempt with its state (unknown reads "Outcome not confirmed"), and the provider, model and billing — the only place these appear.
 - **Overview:** "Since you were here" catch-up with links to source conversations (it never marks rooms read), then Needs a look (with the exact blocker), Active, Recently completed and Worth remembering. The visit is recorded (`POST /v1/overview/seen`) only after the page has rendered. A row whose latest attempt's `runState` is `unknown` shows "Not confirmed" rather than a normal state. The Overview conversation is docked at ≥1180px and linked below that.
+- **Engineer profile:** role and versioned standing instructions, active and queued work, decisions they recorded, rooms, **projects they can work on** (from the projects' grants, in plain words: "Atlas · can change code · can push"), and provider preference.
+- **Review states:** "Changes requested" is an engineering state, not an alert: it uses the pause shape in neutral ink, like any other waiting state, and never red.
 - **Machines:** connection state and provider state are kept separate. Asleep or offline machines are described with their last-seen time ("Offline since 10:42 — asleep, shut down or off the network"). Each machine shows its slots, disk pressure, execution profiles (with the reason one is unavailable), providers with sign-in state, billing, tested or untested version and limitations, the toolchains, the runner version and the fingerprint. **Drain**, **Stop its work** and **Revoke** are three distinct, confirmed actions.
 - **Dialogs:** these use native `<dialog>` with `showModal` (so the rest of the page is inert), a stacked focus trap, and Escape through the layer stack. Focus returns to the invoker. On phones they appear as bottom sheets.
 
