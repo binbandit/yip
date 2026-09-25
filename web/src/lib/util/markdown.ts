@@ -144,6 +144,8 @@ function renderText(raw: string, opts: RenderOptions): string {
   s = s.replace(/\bhttps?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]]/g, (url) =>
     hold(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`),
   );
+  // Full commit hashes read as their short form; the whole hash is on hover.
+  s = s.replace(/\b[0-9a-f]{40}(?:[0-9a-f]{24})?\b/g, (sha) => hold(`<code class="sha" title="${sha}">${sha.slice(0, 7)}</code>`));
   // mentions (structured only)
   if (opts.mentions && opts.mentions.size) {
     s = s.replace(/(^|[^A-Za-z0-9_.@-])@([A-Za-z0-9_][A-Za-z0-9_.-]*[A-Za-z0-9_]|[A-Za-z0-9_])/g, (all, pre: string, handle: string) => {

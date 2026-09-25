@@ -9,6 +9,7 @@ This describes the design system in `web/`, which implements the behaviour in `d
 - **People first.** Names and engineering roles lead. Provider, model and billing appear only in a run's details and on Machines.
 - **Truthful state.** Every state is shown as a word plus a shape, never by colour alone. The client never implies progress, delivery, approval or a merge that the hub hasn't confirmed.
 - **Quiet by default.** Unread rooms are shown in heavier text rather than a different colour. Engineer activity stays out of the timeline: a quiet line sits by the composer, and tool logs are under Activity. Only meaningful events are announced to screen readers.
+- **A group chat, not a console.** Rooms read like a conversation between colleagues: names and messages, a typing line while someone composes a reply, and a compact card when work finishes. Engineers' intermediate output, tool calls and progress never stream into the conversation; a piece of work or a review is linked once, where it first comes up; and hub notices are single, human sentences with the technical detail kept in the work itself.
 
 ## Tokens
 
@@ -96,7 +97,7 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
 
   Selection is a grey wash, never a colour. Every marker has a visually hidden text equivalent. The demo notice and any connection problem ("Reconnecting…") sit in a slim line above the card.
 - **Room header:** one 52px row — `# name` (a lock for private rooms) with the purpose in muted text, then outline buttons for linked projects, the reply mode ("Mentions only" or "Mira answers", with the full sentence in its tooltip and accessible name), and members (stacked squircles and a count; names and roles in the tooltip and accessible name), and a settings button.
-- **Work strip:** one row per live job, plus failed jobs and jobs completed within 24h. Each row shows:
+- **Work strip:** one row per live or failed job (finished work is announced by its result card in the conversation instead). Each row shows:
   - a state word plus shape: hollow circle for queued, bar for running, pause for waiting (the word is the waiting reason), check for ready, filled check for completed, triangle for failed;
   - the title;
   - the handoff ("Mira building · Oren reviewing next");
@@ -107,11 +108,13 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   Clicking a row opens the job drawer. "Add to this" scopes the composer to that job. The strip collapses to three rows plus "Show all N".
 - **Message row:**
   - Engineers have **squircle** avatars and the human has a **circle**; shape is the only distinction.
-  - The first message of a group shows the name, the role in muted text, a middot and the time. Consecutive messages from the same author within 10 minutes compact.
-  - A question asked of you sits on a soft amber wash.
+  - The first message of a group shows the name and the time, as in a group chat; the engineer's role is on the name's tooltip, in the room's member list and on their profile. Consecutive messages from the same author within 10 minutes compact.
+  - A question asked of you sits on a soft amber wash until it is answered.
+  - A job, review, PR, decision or file is linked with a chip only on the first message that mentions it in the view; later messages about the same work stay plain.
+  - Full commit hashes in message text show as their short form, with the whole hash on hover.
   - Hovering or focusing a row shows an action pill (react, reply in thread, copy link, and edit or remove on your own messages).
   - A thread summary shows reply avatars and "N replies · last reply 5m ago".
-  - Kinds are rendered distinctly: `question` is an ordinary message with "Pip asked you" or "Answered" and Reply in thread; `approval` is the inline exact-action card; `result` is the result card; `review` shows View review chips; one-line `status` messages are quiet single lines, while longer hub answers show as "yip · From the work ledger".
+  - Kinds are rendered distinctly: `question` is an ordinary message with "Pip asked you" or "Answered" (and Reply in thread until it has replies); `approval` is the inline exact-action card; `result` is the result card; `review` links the review once; one-line `status` messages are small centred notices, like a group chat's, while longer hub answers show as "yip · From the work ledger".
   - A centred day pill and a monochrome hairline "New" divider (the read position when you opened the room) mark time.
 - **Composer:**
   - The mention **combobox** (`role=combobox`, `aria-activedescendant`, arrow keys, Enter/Tab, Escape) lists room members with their role. Engineers outside the room are listed but unavailable ("Not in this room — add them in room settings first").
@@ -122,8 +125,8 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   - An optimistic send that reconciles by `clientKey`. A failed send shows "Not sent · Retry · Edit · Discard", and Retry reuses the same key.
   - An offline notice: "Can't reach your workspace. Your draft is saved on this device."
   - The steering scope ("Adding to: Fix Atlas session expiry · Mira") is shown as a bar at the top of the composer and can be cleared with × or Escape. Its receipt reads, in turn, "Delivering to Mira…" → "Mira received your update" or "Queued for Mira's next step", driven only by `input.delivery`.
-  - An activity line above the box ("Mira is replying…", or "Pip will reply when possible — No machines are paired yet").
-- **Result card:** the state and title; missing evidence stated plainly; the number of changed files with +/− line counts and the revision's summary, from `JobDetail.revisions`; checks on the exact current revision (command, pass or fail, exit code), each opening the evidence; reviewers with their verdict on an exact revision beside earlier verdicts ("Oren approved a9002d3 · requested changes on b0e5d19 first"); the revision and branch; the PR's facts, kept separate; the machine; and **Inspect the work**.
+  - One quiet line under the box, where a group chat shows typing: "Mira is typing…", "Mira and Oren are typing…", "Pip is working on Document Beacon's request flow", or "Pip will reply when possible — No machines are paired yet". Receipts for your updates take the same line. Keyboard hints are for screen readers only. Engineers' streamed text is never shown as it arrives.
+- **Result card:** posted like an attachment. It shows the title and state, then one summary line ("3 files +28 −5 · go test ./... passed · approved by Oren"), anything missing stated plainly, and **Inspect the work**. **Details** expands the full evidence in place: the revision's summary and earlier revisions, every check on the exact current revision (each opening the evidence), each reviewer's verdict on an exact revision beside earlier verdicts ("Oren approved a9002d3 · requested changes on b0e5d19 first"), the revision and branch, the PR's facts kept separate, and the machine.
 - **Approval card:** the exact action (command, target, scope, revision, reason, expiry), with Allow this push (or the equivalent) and Reject. The request's `version` is sent, and a 409 is explained. The card shows Allowed, Rejected, Expired or "Allowed and used" truthfully. It states that a chat reply does not grant permission.
 - **Job drawer:**
   - A header with the state and waiting reason, the exact blocker, an "outcome not confirmed" notice for unknown runs, missing evidence, the owner, reviewers, machine, revision, last confirmed activity and the source link.
@@ -142,7 +145,7 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
 - Landmarks are the navigation ("Workspace"), `main#main`, and on phones the header, and there is a skip link. The right panel is a `complementary` region when inline and a `dialog` otherwise.
 - The **layer stack** (`web/src/lib/ui/layers.ts`) means Escape closes only the topmost layer (a menu, emoji palette, dialog, drawer or sheet) and returns focus to the control that opened it. Focus traps stack, so a confirmation dialog over an overlaid drawer traps correctly.
 - Message history is a labelled region. Up and Down (or j and k) move a roving focus between messages. Each message's actions become visible and reachable when it's focused, with no hover needed. "Load earlier messages" is a real button, and scrolling up also triggers it.
-- Live regions: a single polite announcer handles new messages from others in the room you're viewing, receipts and confirmations, and a polite toast region reports errors. Streaming previews are **not** live regions, so there's no token-by-token speech.
+- Live regions: a single polite announcer handles new messages from others in the room you're viewing, receipts and confirmations, and a polite toast region reports errors. Engineers' streamed text is never rendered, so there's no token-by-token speech.
 - The focus ring is 2px of ink with a 2px offset. Controls and rows have 44px effective targets on coarse pointers.
 - State is never shown by colour alone. Shapes and words carry it, diff lines have +/− signs, and unread rooms also get visually hidden text.
 

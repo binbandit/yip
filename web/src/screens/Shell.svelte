@@ -107,7 +107,7 @@
         {#if app.data.demo}
           <p class="demo" role="note">
             <span class="marker" aria-hidden="true"></span>
-            Demo workspace — engineers run a deterministic fake provider; no models are called.
+            {#if app.narrow}Demo workspace · no models are called{:else}Demo workspace — engineers run a deterministic fake provider; no models are called.{/if}
           </p>
         {/if}
         {#if connectionText}

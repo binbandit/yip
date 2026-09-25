@@ -13,10 +13,14 @@
     refs: Ref[];
     /** Kinds rendered elsewhere (e.g. the result card's job). */
     skip?: string[];
+    /** Specific references (kind:id) already shown nearby. */
+    hide?: string[];
   }
-  let { refs, skip = [] }: Props = $props();
+  let { refs, skip = [], hide = [] }: Props = $props();
 
-  const shown = $derived(refs.filter((r) => !skip.includes(r.kind) && ['job', 'review', 'pr', 'decision', 'artifact'].includes(r.kind)));
+  const shown = $derived(
+    refs.filter((r) => !skip.includes(r.kind) && !hide.includes(`${r.kind}:${r.id}`) && ['job', 'review', 'pr', 'decision', 'artifact'].includes(r.kind)),
+  );
 
   $effect(() => {
     const list = shown;

@@ -25,9 +25,11 @@
     highlight?: boolean;
     inThread?: boolean;
     tabindex?: number;
+    /** References already shown on an earlier message in this view. */
+    seenRefs?: string[];
     onreply?: () => void;
   }
-  let { message, continuation = false, highlight = false, inThread = false, tabindex = -1, onreply }: Props = $props();
+  let { message, continuation = false, highlight = false, inThread = false, tabindex = -1, seenRefs = [], onreply }: Props = $props();
 
   const QUICK = ['👍', '✅', '👀', '🎉', '❤️', '🙏'];
 
@@ -43,7 +45,9 @@
   const approvalRef = $derived(message.refs.find((r) => r.kind === 'approval'));
   const questionRef = $derived(message.refs.find((r) => r.kind === 'question'));
   const question = $derived(questionRef ? app.data.questions[questionRef.id] : undefined);
-  const asksMe = $derived(message.mentions.some((m) => m.kind === 'user' && m.id === app.me?.id));
+  // A settled question no longer asks anything of you.
+  const settled = $derived(message.kind === 'question' && (question?.status === 'answered' || question?.status === 'cancelled'));
+  const asksMe = $derived(!settled && message.mentions.some((m) => m.kind === 'user' && m.id === app.me?.id));
   // Load the question so "Answered" stays truthful; question.* events keep it current.
   $effect(() => {
     if (message.kind !== 'question' || !questionRef || question) return;
@@ -129,13 +133,12 @@
     {tabindex}
     aria-label="Update: {message.body.slice(0, 120)}"
   >
-    <span class="status-icon" aria-hidden="true"><Icon name="info" size={15} /></span>
     <div class="status-body">
       <MessageBody {message} />
+      <time class="status-time" datetime={message.createdAt} title={fullTime(message.createdAt)}>{clock(message.createdAt)}</time>
       {#if approvalRef}<ApprovalCard approvalId={approvalRef.id} />{/if}
-      <RefChips refs={message.refs} skip={['approval']} />
+      <RefChips refs={message.refs} skip={['approval']} hide={seenRefs} />
     </div>
-    <time class="status-time" datetime={message.createdAt} title={fullTime(message.createdAt)}>{clock(message.createdAt)}</time>
   </article>
 {:else}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -- roving focus between messages (feed pattern) -->
@@ -160,8 +163,7 @@
       {#if !continuation}
         <header class="header">
           {#if isEngineer}
-            <button class="name linkish" onclick={openAuthor}>{app.actorName(author)}</button>
-            {#if engineer?.role}<span class="role-badge">{engineer.role}</span>{/if}
+            <button class="name linkish" onclick={openAuthor} title={engineer?.role}>{app.actorName(author)}</button>
           {:else if systemAuthored}
             <span class="name">yip</span>
             <span class="role-badge">From the work ledger</span>
@@ -210,7 +212,7 @@
             {:else}
               <span class="q-state">{asksMe ? `${app.actorName(author)} asked you` : 'Question'}</span>
             {/if}
-            {#if !inThread}
+            {#if !inThread && !settled && !(message.thread && message.thread.replyCount > 0)}
               <button class="btn btn-sm" onclick={() => onreply?.()}><Icon name="reply" size={15} />Reply in thread</button>
             {/if}
           </div>
@@ -222,7 +224,7 @@
         {#if message.kind === 'result' && jobRef}
           <ResultCard jobId={jobRef.id} />
         {/if}
-        <RefChips refs={message.refs} skip={message.kind === 'result' ? ['job', 'approval'] : ['approval']} />
+        <RefChips refs={message.refs} skip={message.kind === 'result' ? ['job', 'approval'] : ['approval']} hide={seenRefs} />
         <Reactions {message} />
 
         {#if !inThread && message.thread && message.thread.replyCount > 0}
@@ -474,28 +476,33 @@
   }
 
   .status {
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: start;
-    margin: 10px 6px 0;
-    padding: 4px 10px 4px 8px;
-    border-radius: 16px;
-    color: var(--ink-secondary);
-    font-size: 13px;
-  }
-  .status-icon {
     display: flex;
     justify-content: center;
-    padding-top: 3px;
+    margin: 12px 16px 4px;
+    padding: 2px 12px;
+    border-radius: 16px;
+    color: var(--ink-secondary);
+    font-size: 12px;
+    text-align: center;
+  }
+  .status-body {
+    max-width: 560px;
   }
   .status-body :global(.prose) {
+    display: inline;
     color: var(--ink-secondary);
   }
+  .status-body :global(.prose p) {
+    display: inline;
+  }
   .status-time {
-    font-size: 12px;
+    margin-left: 6px;
     font-variant-numeric: tabular-nums;
-    padding-top: 2px;
+    color: color-mix(in srgb, var(--ink-secondary) 80%, transparent);
+  }
+  .status-time::before {
+    content: '·';
+    margin-right: 6px;
   }
 
   @media (hover: none) {

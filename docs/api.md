@@ -119,8 +119,9 @@ Committed event types and their `payload`:
 Transient (never persisted, no id): `event: transient`, data
 `{type: "run.stream", roomId, threadId, jobId, runId, engineerId, payload: {kind, text, at}}` —
 incremental live text from a running engineer (append each `message_delta`
-chunk). Render it as a provisional
-"typing" preview; the canonical message arrives as `message.created`.
+chunk). The web client doesn't render the streamed text: it shows a group
+chat's "Mira is typing…" line from the reply's run state, and the canonical
+message arrives as `message.created`.
 
 ## Message anatomy
 

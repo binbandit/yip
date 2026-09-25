@@ -78,7 +78,7 @@ describe('live updates from a captured stream', () => {
     const created = events.filter((e) => e.type === 'message.created' && (e.payload as Message).roomId === sec).length;
     await waitFor(() => document.querySelectorAll('[data-message-id]').length === created, `${created} messages`);
     await waitFor(() => document.querySelector('.result')?.textContent?.includes('Inspect the work'), 'result card');
-    expect(document.querySelector('.strip')?.textContent).toContain('Completed');
+    expect(document.querySelector('.strip')?.textContent ?? '').not.toContain(job.job.title);
     // Replaying the same stream (a reconnect) changes nothing.
     for (const e of events) es.emit(e.type, e, e.sequence);
     await settle();

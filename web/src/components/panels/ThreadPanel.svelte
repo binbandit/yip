@@ -19,7 +19,6 @@
   const replies = $derived(th ? th.ids.map((id) => app.data.messages[id]).filter(Boolean) : []);
   const roomId = $derived(root?.roomId ?? (app.loc.route.name === 'room' ? app.loc.route.roomId : ''));
   const pending = $derived(Object.values(app.data.pending).filter((p) => p.threadId === rootId));
-  const streams = $derived(Object.values(app.data.streams).filter((s) => s.threadId === rootId));
   const room = $derived(roomId ? app.data.rooms[roomId] : undefined);
   let error = $state('');
   let composer: Composer | undefined = $state();
@@ -54,7 +53,6 @@
       label="Replies"
       items={replies}
       {pending}
-      {streams}
       loaded={!!th?.loaded}
       inThread
       highlightId={app.loc.msg}

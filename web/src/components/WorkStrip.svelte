@@ -14,7 +14,9 @@
   }
   let { roomId }: Props = $props();
 
-  const jobs = $derived(roomWorkJobs(app.data, roomId, app.now));
+  // Only work that is still going (or failed) sits above the conversation;
+  // finished work is announced by its result card in the conversation itself.
+  const jobs = $derived(roomWorkJobs(app.data, roomId, app.now).filter((j) => j.state !== 'completed'));
   let expanded = $state(false);
   const visible = $derived(expanded ? jobs : jobs.slice(0, 3));
   const scoped = $derived(app.steer[receiptKey(roomId)] ?? null);

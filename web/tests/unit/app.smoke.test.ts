@@ -101,11 +101,15 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect(text()).toContain('1 machine connected · work continues when you close this');
   });
 
-  it('renders a room: roles, review references, and a result card with evidence', async () => {
+  it('renders a room like a group chat: names, one link per piece of work, a compact result', async () => {
     app.go({ name: 'room', roomId: roomId('Security') });
     await waitFor(() => text().includes('On it.'), 'security messages');
-    expect(byText('.role-badge', 'Platform engineer')).toBeTruthy();
-    expect(byText('.role-badge', 'Security engineer')).toBeTruthy();
+    // Roles are on the name, not repeated on every message.
+    expect(document.querySelector('.role-badge')).toBeNull();
+    expect(byText('.msg .name', 'Mira')!.getAttribute('title')).toBe('Platform engineer');
+    expect(byText('.msg .name', 'Oren')!.getAttribute('title')).toBe('Security engineer');
+    // The review is linked once, where it comes up, not under every message.
+    expect(document.querySelectorAll('.msg button.chip.ref').length).toBeLessThanOrEqual(2);
     expect(byText('button.chip', 'View review')).toBeTruthy();
     await waitFor(() => byText('.result', 'Inspect the work'), 'result card');
     await waitFor(() => byText('.result', 'go test ./...'), 'result checks');
@@ -115,8 +119,10 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect(text()).toContain('Mira is working');
     expect(byText('.result', /Oren\s+approved/)).toBeTruthy();
     expect(byText('.result', 'requested changes on')).toBeTruthy();
-    // Work strip: the completed job is listed with its state word.
-    expect(byText('.strip', codeJob.title)).toBeTruthy();
+    // Finished work is announced by its result card, not kept in the strip.
+    expect(byText('.strip', codeJob.title)).toBeFalsy();
+    // The summary line says what happened; the full evidence is under Details.
+    expect(byText('.result .summary', 'approved by Oren')).toBeTruthy();
   });
 
   it('opens the job drawer with evidence, review truth, and runs; Escape closes it', async () => {

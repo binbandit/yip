@@ -6,17 +6,15 @@
   import { tick, untrack, type Snippet } from 'svelte';
   import { app } from '../lib/state/app.svelte';
   import type { Message } from '../lib/api/types.gen';
-  import type { PendingMessage, StreamPreview } from '../lib/state/data';
+  import type { PendingMessage } from '../lib/state/data';
   import { dayLabel, sameDay, toDate } from '../lib/util/time';
   import MessageRow from './MessageRow.svelte';
   import PendingRow from './PendingRow.svelte';
-  import StreamRow from './StreamRow.svelte';
   import Icon from './Icon.svelte';
 
   interface Props {
     items: Message[];
     pending?: PendingMessage[];
-    streams?: StreamPreview[];
     hasMore?: boolean;
     loaded?: boolean;
     onloadolder?: () => Promise<boolean>;
@@ -34,7 +32,6 @@
   let {
     items,
     pending = [],
-    streams = [],
     hasMore = false,
     loaded = true,
     onloadolder,
@@ -62,12 +59,17 @@
     day: string | null;
     showNew: boolean;
     continuation: boolean;
+    /** References already shown on an earlier message (kind:id). */
+    seenRefs: string[];
   }
 
   const rows: Row[] = $derived.by(() => {
     const out: Row[] = [];
     let prev: Message | null = null;
     let newShown = false;
+    // A job or review is linked once, where it first comes up; later messages
+    // about the same work read as plain conversation.
+    const seen = new Set<string>();
     const now = new Date(app.now);
     for (const m of items) {
       const d = toDate(m.createdAt);
@@ -88,7 +90,9 @@
         !!d &&
         !!pd &&
         d.getTime() - pd.getTime() < GROUP_WINDOW;
-      out.push({ m, day, showNew, continuation });
+      const keys = m.refs.map((r) => `${r.kind}:${r.id}`);
+      out.push({ m, day, showNew, continuation, seenRefs: keys.filter((k) => seen.has(k)) });
+      for (const k of keys) seen.add(k);
       prev = m;
     }
     return out;
@@ -129,7 +133,7 @@
 
   // --- keep position across updates ---
   const signature = $derived(
-    `${items[0]?.id ?? ''}|${items[items.length - 1]?.id ?? ''}|${items.length}|${pending.length}|${streams.map((s) => s.text.length + (s.status ?? '')).join(',')}`,
+    `${items[0]?.id ?? ''}|${items[items.length - 1]?.id ?? ''}|${items.length}|${pending.length}`,
   );
   let snap = { height: 0, top: 0, bottom: true, first: '', last: '', count: 0 };
   let initialized = false;
@@ -261,7 +265,7 @@
     {/if}
     {#if !loaded}
       <p class="loading meta" aria-busy="true">Loading messages…</p>
-    {:else if items.length === 0 && pending.length === 0 && streams.length === 0}
+    {:else if items.length === 0 && pending.length === 0}
       {#if empty}{@render empty()}{/if}
     {/if}
     <div class="items">
@@ -278,14 +282,12 @@
           highlight={row.m.id === highlightId}
           {inThread}
           tabindex={row.m.id === rovingId ? 0 : -1}
+          seenRefs={row.seenRefs}
           onreply={() => onreply?.(row.m)}
         />
       {/each}
       {#each pending as p (p.clientKey)}
         <PendingRow {p} onedit={() => oneditpending?.(p)} />
-      {/each}
-      {#each streams as s (s.runId)}
-        <StreamRow stream={s} />
       {/each}
     </div>
     <div class="end" aria-hidden="true"></div>

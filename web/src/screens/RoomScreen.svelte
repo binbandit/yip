@@ -17,7 +17,6 @@
   const tl = $derived(app.data.timelines[roomId]);
   const items = $derived(tl ? tl.ids.map((id) => app.data.messages[id]).filter(Boolean) : []);
   const pending = $derived(Object.values(app.data.pending).filter((p) => p.roomId === roomId && !p.threadId));
-  const streams = $derived(Object.values(app.data.streams).filter((s) => s.roomId === roomId && !s.threadId));
   const engineersHere = $derived((room?.members ?? []).filter((m) => m.kind === 'engineer'));
   // Where "New" starts: the read position when you opened the room.
   const newAfterSeq = untrack(() => app.data.rooms[roomId]?.lastReadSeq ?? null);
@@ -93,7 +92,6 @@
       label="Messages in {room.name}"
       {items}
       {pending}
-      {streams}
       loaded={!!tl?.loaded}
       hasMore={!!tl?.hasMore}
       onloadolder={() => app.loadOlder(roomId)}

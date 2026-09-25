@@ -22,6 +22,14 @@ describe('markdown-lite', () => {
     );
   });
 
+  it('shows full commit hashes in their short form, but leaves links and code alone', () => {
+    const sha = '26bf3811219f88c19af535d6e4faaf5687a6e049';
+    expect(renderMarkdown(`passes on ${sha}.`)).toBe(`<p>passes on <code class="sha" title="${sha}">26bf381</code>.</p>`);
+    expect(renderMarkdown(`\`${sha}\``)).toBe(`<p><code>${sha}</code></p>`);
+    expect(renderMarkdown(`https://example.com/commit/${sha}`)).toContain(`>https://example.com/commit/${sha}</a>`);
+    expect(renderMarkdown('not a hash: 26bf3811219f')).toBe('<p>not a hash: 26bf3811219f</p>');
+  });
+
   it('renders lists and quotes', () => {
     expect(renderMarkdown('- a\n- b')).toBe('<ul><li>a</li><li>b</li></ul>');
     expect(renderMarkdown('3. c\n4. d')).toBe('<ol start="3"><li>c</li><li>d</li></ol>');
