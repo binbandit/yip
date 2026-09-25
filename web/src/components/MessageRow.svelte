@@ -278,10 +278,10 @@
     display: grid;
     grid-template-columns: 36px minmax(0, 1fr);
     gap: 10px;
-    margin: 0 8px;
-    padding: 6px 10px 6px 8px;
-    border-radius: 12px;
-    transition: background-color var(--t-fast) var(--ease);
+    margin: 0 6px;
+    padding: 4px 10px 4px 8px;
+    border-radius: 16px;
+    transition: background-color 100ms var(--ease);
   }
   .msg:not(.continuation) {
     margin-top: var(--group-gap);
@@ -289,7 +289,7 @@
   .msg:hover,
   .msg:focus-within,
   .status:hover {
-    background: var(--surface-subtle);
+    background: color-mix(in srgb, var(--surface-subtle) 70%, transparent);
   }
   .msg:focus-visible,
   .status:focus-visible {
@@ -297,7 +297,11 @@
     outline-offset: -2px;
   }
   .msg.asks-me {
-    box-shadow: inset 3px 0 0 var(--attention-fill);
+    background: color-mix(in srgb, var(--attention-subtle) 75%, transparent);
+  }
+  .msg.asks-me:hover,
+  .msg.asks-me:focus-within {
+    background: var(--attention-subtle);
   }
   .highlight {
     animation: flash 2.4s var(--ease);
@@ -315,7 +319,7 @@
   }
   .hover-time {
     opacity: 0;
-    font-size: 11.5px;
+    font-size: 11px;
     color: var(--ink-secondary);
     line-height: 24px;
     font-variant-numeric: tabular-nums;
@@ -331,13 +335,14 @@
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
-    gap: 4px 8px;
-    line-height: 1.3;
-    margin-bottom: 1px;
+    gap: 2px 6px;
+    line-height: 16px;
+    margin-bottom: 2px;
   }
   .name {
-    font-weight: 650;
-    font-size: 15px;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 20px;
     color: var(--ink);
   }
   .linkish {
@@ -346,17 +351,19 @@
     background: none;
     cursor: pointer;
     font: inherit;
-    font-weight: 650;
+    font-weight: 600;
   }
   .linkish:hover {
     text-decoration: underline;
   }
-  .role-badge {
-    transform: translateY(-1px);
+  .role-badge + .time::before {
+    content: '·';
+    margin-right: 6px;
+    color: color-mix(in srgb, var(--ink) 40%, transparent);
   }
   .time {
-    font-size: 12.5px;
-    color: var(--ink-secondary);
+    font-size: 12px;
+    color: color-mix(in srgb, var(--ink-secondary) 85%, transparent);
     font-variant-numeric: tabular-nums;
   }
   .removed {
@@ -373,25 +380,26 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 500;
     color: var(--ink-secondary);
   }
   .thread-summary {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    margin-top: 6px;
-    padding: 3px 10px 3px 4px;
+    margin-top: 4px;
+    padding: 2px 10px 2px 3px;
     border: 1px solid transparent;
     border-radius: var(--r-pill);
     background: none;
-    color: var(--accent);
-    font-size: 13px;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 600;
     cursor: pointer;
   }
   .thread-summary:hover {
-    border-color: var(--line);
+    border-color: color-mix(in srgb, var(--line-strong) 70%, transparent);
     background: var(--surface);
   }
   .faces {
@@ -410,9 +418,10 @@
     gap: 2px;
     padding: 3px;
     border-radius: var(--r-pill);
-    border: 1px solid var(--line);
-    background: var(--surface);
-    box-shadow: var(--shadow-pop);
+    border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+    background: color-mix(in srgb, var(--surface) 95%, transparent);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
     z-index: 5;
   }
   .msg:hover .actions,
@@ -469,11 +478,11 @@
     grid-template-columns: 36px minmax(0, 1fr) auto;
     gap: 10px;
     align-items: start;
-    margin: 12px 8px 0;
+    margin: 10px 6px 0;
     padding: 4px 10px 4px 8px;
-    border-radius: 12px;
+    border-radius: 16px;
     color: var(--ink-secondary);
-    font-size: 14px;
+    font-size: 13px;
   }
   .status-icon {
     display: flex;

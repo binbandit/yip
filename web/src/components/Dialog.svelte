@@ -80,11 +80,11 @@
     width: min(var(--w), calc(100vw - 32px));
     max-height: min(88vh, 900px);
     padding: 0;
-    border: 1px solid var(--line);
+    border: 1px solid color-mix(in srgb, var(--line-strong) 60%, transparent);
     border-radius: var(--r-surface);
     background: var(--surface);
     color: var(--ink);
-    box-shadow: var(--shadow-pop);
+    box-shadow: var(--shadow-dialog);
     overflow: hidden;
   }
   .dialog[open] {
@@ -93,7 +93,7 @@
   }
   .dialog::backdrop {
     background: var(--veil);
-    backdrop-filter: blur(3px);
+    backdrop-filter: blur(5px);
   }
   .inner {
     display: flex;
@@ -109,7 +109,8 @@
     padding: 18px 16px 0 24px;
   }
   h2 {
-    font-size: 18px;
+    font-size: 16px;
+    letter-spacing: -0.02em;
   }
   .desc {
     padding: 4px 24px 0;
@@ -128,7 +129,7 @@
     flex-wrap: wrap;
     padding: 14px 24px;
     border-top: 1px solid var(--line);
-    background: var(--surface-subtle);
+    background: color-mix(in srgb, var(--surface-subtle) 50%, var(--surface));
   }
   @keyframes pop {
     from {

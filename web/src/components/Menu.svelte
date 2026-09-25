@@ -180,7 +180,7 @@
     outline: none;
   }
   .item:focus-visible {
-    box-shadow: inset 0 0 0 2px var(--accent);
+    background: var(--selected);
   }
   .item.danger {
     color: var(--danger);

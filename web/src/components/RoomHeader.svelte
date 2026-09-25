@@ -20,40 +20,42 @@
         ? `${app.engineerName(room.stewardId)} answers unaddressed messages`
         : 'Quiet — only mentioned engineers reply',
   );
+  const replyShort = $derived(
+    room.kind === 'overview' ? 'Ledger answers' : room.replyMode === 'steward' && room.stewardId ? `${app.engineerName(room.stewardId)} answers` : 'Mentions only',
+  );
+  const membersLabel = $derived(engineers.map((e) => `${e.name}, ${e.role}`).join('; '));
   const title = $derived(room.kind === 'dm' && engineers[0] ? engineers[0].name : room.kind === 'overview' ? 'Overview conversation' : room.name);
 </script>
 
 <header class="room-head">
   <div class="titles">
-    <div class="line">
-      <h1 id="room-title" data-screen-title tabindex="-1">{title}</h1>
-      {#if room.private && room.kind !== 'overview'}
-        <span class="private"><Icon name="lock" size={13} />Private</span>
-      {/if}
-    </div>
+    <h1 id="room-title" data-screen-title tabindex="-1">
+      {#if room.kind === 'room'}<span class="hash" aria-hidden="true">{#if room.private}<Icon name="lock" size={14} />{:else}#{/if}</span>{/if}{title}
+    </h1>
+    {#if room.private && room.kind !== 'overview'}<span class="vh">, private</span>{/if}
     <p class="purpose truncate">
       {#if room.kind === 'dm' && engineers[0]}{engineers[0].role}{:else}{room.purpose}{/if}
     </p>
   </div>
 
   <div class="facts">
+    {#each projects as p (p.id)}
+      <a class="head-btn" href="/projects/{p.id}"><Icon name="folder" size={14} />{p.name}</a>
+    {/each}
+    <span class="head-btn static" title={replyText}>
+      <Icon name={room.replyMode === 'steward' ? 'reply' : 'at'} size={14} /><span aria-hidden="true">{replyShort}</span><span class="vh">{replyText}</span>
+    </span>
     {#if engineers.length}
-      <button class="members" onclick={() => app.openPanel({ kind: 'room', id: room.id })} aria-label="Members: {engineers.map((e) => `${e.name}, ${e.role}`).join('; ')}. Manage room">
+      <button class="head-btn members" onclick={() => app.openPanel({ kind: 'room', id: room.id })} title={membersLabel} aria-label="Members: {membersLabel}. Manage room">
         <span class="faces" aria-hidden="true">
-          {#each engineers.slice(0, 4) as e (e.id)}<Avatar actor={{ kind: 'engineer', id: e.id }} size={24} />{/each}
+          {#each engineers.slice(0, 3) as e (e.id)}<Avatar actor={{ kind: 'engineer', id: e.id }} size={20} />{/each}
         </span>
-        <span class="names truncate" aria-hidden="true">
-          {#each engineers.slice(0, 3) as e, i (e.id)}{i ? ', ' : ''}<span class="nm">{e.name}</span> <span class="rl">{e.role}</span>{/each}{engineers.length > 3 ? ` +${engineers.length - 3}` : ''}
-        </span>
+        <span aria-hidden="true">{engineers.length}</span>
       </button>
     {/if}
-    {#each projects as p (p.id)}
-      <a class="chip" href="/projects/{p.id}"><Icon name="folder" size={13} />{p.name}</a>
-    {/each}
-    <span class="reply meta" title="Reply mode">{replyText}</span>
     {#if room.kind !== 'overview'}
       <button class="icon-btn" aria-label="Room settings" onclick={() => app.openPanel({ kind: 'room', id: room.id })}>
-        <Icon name="settings" size={18} />
+        <Icon name="settings" size={17} />
       </button>
     {/if}
   </div>
@@ -64,94 +66,97 @@
     flex: none;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px 16px;
-    flex-wrap: wrap;
-    min-height: 60px;
-    padding: 10px 12px 10px 24px;
-    border-bottom: 1px solid var(--line);
+    gap: 12px;
+    min-height: 52px;
+    padding: 8px 12px 8px 20px;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
   }
   .titles {
-    min-width: 0;
-    flex: 1 1 220px;
-  }
-  .line {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 10px;
+    min-width: 0;
+    flex: 1;
   }
   h1 {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 2px;
+    flex: none;
     font-size: var(--text-title);
-    font-weight: 680;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 24px;
   }
   h1:focus-visible {
     outline-offset: 2px;
   }
-  .private {
+  .hash {
     display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--ink-secondary);
+    align-self: center;
+    width: 14px;
+    margin-right: 4px;
+    color: color-mix(in srgb, var(--ink) 45%, transparent);
+    font-weight: 500;
   }
   .purpose {
-    font-size: 13.5px;
+    min-width: 0;
+    font-size: 13px;
     color: var(--ink-secondary);
   }
   .facts {
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    min-width: 0;
+    gap: 6px;
+    flex: none;
   }
-  .members {
+  .head-btn {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    max-width: 420px;
-    min-height: 34px;
-    padding: 3px 10px 3px 4px;
-    border: 1px solid var(--line);
-    border-radius: var(--r-pill);
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-control);
     background: var(--surface);
     color: var(--ink);
     font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
     cursor: pointer;
   }
-  .members:hover {
-    border-color: var(--control-edge);
+  .head-btn:hover {
+    background: var(--surface-subtle);
+  }
+  .head-btn.static {
+    border-color: transparent;
+    color: var(--ink-secondary);
+    cursor: default;
+  }
+  .head-btn.static:hover {
+    background: none;
+  }
+  .members {
+    padding-left: 5px;
   }
   .faces {
     display: inline-flex;
   }
   .faces :global(.avatar + .avatar) {
-    margin-left: -6px;
+    margin-left: -5px;
     box-shadow: 0 0 0 2px var(--surface);
   }
-  .nm {
-    font-weight: 600;
-  }
-  .rl {
-    color: var(--ink-secondary);
-  }
-  .reply {
-    max-width: 280px;
-  }
   @media (max-width: 1100px) {
-    .names {
+    .purpose {
       display: none;
-    }
-    .members {
-      padding-right: 6px;
     }
   }
   @media (max-width: 760px) {
     .room-head {
       padding: 8px 8px 8px 16px;
     }
-    .reply {
+    .head-btn.static {
       display: none;
     }
   }

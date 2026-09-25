@@ -13,8 +13,7 @@
     "e2e": "playwright test --pass-with-no-tests"
   },
   "dependencies": {
-    "@fontsource-variable/hanken-grotesk": "^5.3.0",
-    "@fontsource/bricolage-grotesque": "^5.3.0"
+    "@fontsource-variable/inter": "^5.3.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

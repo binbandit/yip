@@ -333,53 +333,36 @@
   }
   .day {
     display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 24px 18px 4px;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--ink-secondary);
-  }
-  .day::before,
-  .day::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--line);
+    justify-content: center;
+    margin: 20px 0 6px;
+    pointer-events: none;
   }
   .day span {
-    padding: 2px 10px;
-    border: 1px solid var(--line);
+    padding: 3px 10px;
+    border: 1px solid color-mix(in srgb, var(--line-strong) 80%, transparent);
     border-radius: var(--r-pill);
     background: var(--surface);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-secondary);
   }
   .new-divider {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin: 18px 18px 0;
-    font-size: 11.5px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
+    gap: 8px;
+    margin: 14px 16px 2px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--attention-ink);
+    color: var(--ink);
   }
   .new-divider::before,
   .new-divider::after {
     content: '';
     flex: 1;
-    height: 2px;
-    border-radius: 2px;
-    background: var(--attention-fill);
-  }
-  .new-divider::before {
-    flex: 0 0 0;
-  }
-  .new-divider span {
-    padding: 1px 8px;
-    border-radius: var(--r-pill);
-    background: var(--attention-fill);
-    color: var(--attention-ink);
+    height: 1px;
+    background: color-mix(in srgb, var(--ink) 40%, transparent);
   }
   .end {
     height: 1px;
@@ -392,23 +375,25 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    height: 32px;
-    padding: 0 14px 0 10px;
+    height: 28px;
+    padding: 0 12px 0 9px;
     border: 0;
     border-radius: var(--r-pill);
     background: var(--accent);
     color: var(--accent-ink);
-    font-size: 13px;
-    font-weight: 650;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
     box-shadow: var(--shadow-pop);
     cursor: pointer;
     z-index: 6;
     animation: rise var(--t-slow) var(--ease);
   }
   .jump.quiet {
-    background: var(--surface);
+    background: color-mix(in srgb, var(--surface) 85%, transparent);
+    backdrop-filter: blur(6px);
     color: var(--ink);
-    border: 1px solid var(--line);
+    border: 1px solid color-mix(in srgb, var(--line-strong) 60%, transparent);
   }
   @keyframes rise {
     from {

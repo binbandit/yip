@@ -1,5 +1,4 @@
-import '@fontsource-variable/hanken-grotesk/wght.css';
-import '@fontsource/bricolage-grotesque/latin-600.css';
+import '@fontsource-variable/inter/wght.css';
 import './app.css';
 import { mount } from 'svelte';
 import App from './App.svelte';
