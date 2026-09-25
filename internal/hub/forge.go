@@ -158,27 +158,6 @@ func (h *Hub) linkPR(ctx context.Context, job store.JobRow, repoID string, numbe
 	return pr, err
 }
 
-// refreshPR re-reads a PR from the forge (used for freshness checks).
-func (h *Hub) refreshPR(ctx context.Context, t *txn, prID string) (protocol.PullRequest, error) {
-	pr, err := store.GetPR(ctx, t.tx, prID)
-	if err != nil {
-		return pr, err
-	}
-	repo, err := store.GetRepo(ctx, t.tx, pr.RepoID)
-	if err != nil {
-		return pr, err
-	}
-	fresh, err := h.syncPR(ctx, repo, pr.Number, pr.JobID)
-	if err != nil {
-		return pr, err
-	}
-	fresh.ID = pr.ID
-	if _, err := store.UpsertPR(ctx, t.tx, h.Org().ID, fresh); err != nil {
-		return pr, err
-	}
-	return fresh, nil
-}
-
 // GetPullRequest returns a PR with its current synchronised facts.
 func (h *Hub) GetPullRequest(ctx context.Context, userID, id string, refresh bool) (protocol.PullRequest, error) {
 	pr, err := store.GetPR(ctx, h.st.R(), id)
@@ -194,14 +173,12 @@ func (h *Hub) GetPullRequest(ctx context.Context, userID, id string, refresh boo
 		}
 	}
 	if refresh {
-		_ = h.do(ctx, func(t *txn) error {
-			fresh, err := h.refreshPR(ctx, t, id)
-			if err == nil {
-				pr = fresh
-				return t.emit(ev{Type: "pr.updated", Payload: fresh})
-			}
-			return nil
-		})
+		// Network I/O first, then a short write (never both at once).
+		if err := h.syncLinkedPR(ctx, pr); err != nil {
+			h.log.Warn("could not refresh a pull request", "pr", pr.ID, "err", err)
+		} else if fresh, err := store.GetPR(ctx, h.st.R(), id); err == nil {
+			pr = fresh
+		}
 	}
 	return pr, nil
 }

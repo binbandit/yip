@@ -448,15 +448,30 @@ func (h *Hub) completionMissing(ctx context.Context, q store.Q, job store.JobRow
 			reviewOnly = false
 		}
 		if job.RequiresPeerReview {
-			rs, _ := store.ListJobReviews(ctx, q, job.ID)
-			approved := false
-			for _, r := range rs {
-				if r.State == protocol.ReviewApproved {
-					approved = true
+			// The approval must be of the document as it stands now: a newer
+			// published artifact needs a new round.
+			key := ""
+			arts, err := store.ListJobArtifacts(ctx, q, job.ID)
+			if err != nil {
+				return nil, false, err
+			}
+			for i := len(arts) - 1; i >= 0; i-- {
+				if arts[i].Kind == "document" || arts[i].Kind == "file" {
+					key = arts[i].Hash
+					break
 				}
 			}
-			if !approved {
-				missing = append(missing, "a peer review approval")
+			if key == "" {
+				missing = append(missing, "the published document or artifact to review (artifact_publish)")
+				reviewOnly = false
+			} else {
+				ok, why, err := h.peerApproved(ctx, q, job, key)
+				if err != nil {
+					return nil, false, err
+				}
+				if !ok {
+					missing = append(missing, why)
+				}
 			}
 		}
 	case protocol.JobKindReview:
@@ -469,42 +484,56 @@ func (h *Hub) completionMissing(ctx context.Context, q store.Q, job store.JobRow
 	return missing, reviewOnly && len(missing) > 0, nil
 }
 
-// peerApproved reports whether an independent colleague approved exactly
-// this head revision with no unresolved blocking findings.
-func (h *Hub) peerApproved(ctx context.Context, q store.Q, job store.JobRow, head string) (bool, string, error) {
+// peerApproved reports whether the exact current result (a head revision,
+// or a document's content hash) is approved by an independent colleague and
+// no reviewer's concerns are outstanding. Every active review counts: one
+// approval does not outvote another reviewer's requested changes, an open
+// round, or unresolved blocking findings. A reviewer who could not review
+// (or whose review was cancelled) neither approves nor blocks.
+func (h *Hub) peerApproved(ctx context.Context, q store.Q, job store.JobRow, key string) (bool, string, error) {
 	reviews, err := store.ListJobReviews(ctx, q, job.ID)
 	if err != nil {
 		return false, "", err
 	}
-	if len(reviews) == 0 {
-		return false, "a peer review of " + shortRev(head) + " (choose a suitable colleague with work_request_review)", nil
-	}
 	var pending []string
+	approvals := 0
 	for _, r := range reviews {
-		if len(r.Rounds) == 0 {
+		if len(r.Rounds) == 0 || r.ReviewerID == job.OwnerID {
 			continue
 		}
 		cur := r.Rounds[len(r.Rounds)-1]
+		if cur.State == protocol.ReviewUnable || cur.State == protocol.ReviewCancelled {
+			continue
+		}
 		name := h.engineerName(ctx, q, r.ReviewerID)
-		if cur.Target.Head != head {
-			pending = append(pending, name+"'s review is of an older revision; request another round on "+shortRev(head))
-			continue
-		}
-		if cur.State != protocol.ReviewApproved {
-			pending = append(pending, name+"'s approval of "+shortRev(head)+" ("+strings.ReplaceAll(string(cur.State), "_", " ")+")")
-			continue
-		}
 		open, err := store.OpenBlockingFindings(ctx, q, r.ID)
 		if err != nil {
 			return false, "", err
 		}
-		if len(open) > 0 {
+		switch {
+		case targetKey(cur.Target) != key:
+			noun := "version"
+			if job.Kind == protocol.JobKindCode {
+				noun = "revision"
+			}
+			pending = append(pending, name+"'s review is of an older "+noun+"; request another round on "+shortRev(key))
+		case domain.ReviewOpen(cur.State):
+			pending = append(pending, name+"'s review of "+shortRev(key)+" (in progress)")
+		case len(open) > 0:
 			pending = append(pending, fmt.Sprintf("%d unresolved blocking finding(s) from %s", len(open), name))
-			continue
+		case cur.State == protocol.ReviewChangesRequested:
+			pending = append(pending, name+"'s requested changes on "+shortRev(key))
+		case cur.State == protocol.ReviewApproved:
+			approvals++
 		}
-		return true, "", nil
 	}
-	return false, strings.Join(pending, "; "), nil
+	if len(pending) > 0 {
+		return false, strings.Join(pending, "; "), nil
+	}
+	if approvals == 0 {
+		return false, "a peer approval of " + shortRev(key) + " (choose a suitable colleague with work_request_review)", nil
+	}
+	return true, "", nil
 }
 
 func shortRev(rev string) string {

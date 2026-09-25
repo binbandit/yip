@@ -174,6 +174,12 @@ func (h *Hub) ConnectRunner(ctx context.Context, conn *NodeConn, hello protocol.
 	if old := h.nodes.put(conn); old != nil && old.CloseFn != nil {
 		old.CloseFn("replaced by a newer connection")
 	}
+	defer func() {
+		if err != nil {
+			// Don't leave a registered connection the caller is about to close.
+			h.nodes.remove(conn)
+		}
+	}()
 	err = h.do(ctx, func(t *txn) error {
 		if err := store.SetNodeSeen(ctx, t.tx, conn.NodeID, protocol.NodeOnline, h.now()); err != nil {
 			return err
@@ -269,18 +275,30 @@ func (h *Hub) RunnerFrame(ctx context.Context, conn *NodeConn, f protocol.Frame)
 		var term protocol.RunTerminal
 		if err = json.Unmarshal(f.Payload, &term); err == nil {
 			err = h.onRunTerminal(ctx, conn.NodeID, f.RunID, f.LeaseEpoch, term, true)
-			if err == nil {
-				ack, _ := json.Marshal(protocol.Ack{RunID: f.RunID, UpToSeq: term.LastSeq})
-				_ = conn.send(protocol.Frame{Type: protocol.CmdAck, ID: f.ID, RunID: f.RunID, Payload: ack})
+			// Acknowledge a committed report, and deliberately discard one
+			// for a run the hub doesn't know or that belongs elsewhere, so
+			// the runner stops re-sending it. Other errors are transient:
+			// the runner re-sends until acknowledged.
+			if code := domain.AsError(err).Code; err == nil || code == "not_found" || code == "forbidden" {
+				if err != nil {
+					h.log.Warn("discarding a terminal report", "node", conn.NodeID, "run", f.RunID, "err", err)
+					err = nil
+				}
+				ack, _ := json.Marshal(protocol.Ack{RunID: f.RunID, UpToSeq: term.LastSeq, Terminal: true})
+				_ = conn.send(protocol.Frame{Type: protocol.CmdAck, ID: f.ID, RunID: f.RunID, LeaseEpoch: f.LeaseEpoch, Payload: ack})
 			}
 		}
 	case protocol.EvToolCall:
 		var call protocol.ToolCall
 		if err = json.Unmarshal(f.Payload, &call); err == nil {
+			nodeID := conn.NodeID
 			go func() {
-				res := h.HandleToolCall(context.Background(), conn.NodeID, f.RunID, f.LeaseEpoch, call)
+				res := h.HandleToolCall(context.Background(), nodeID, f.RunID, f.LeaseEpoch, call)
 				b, _ := json.Marshal(res)
-				_ = conn.send(protocol.Frame{Type: protocol.CmdToolResult, ID: call.CallID, RunID: f.RunID, LeaseEpoch: f.LeaseEpoch, Payload: b})
+				// The runner may have reconnected while the call ran; deliver
+				// to whichever connection is current. A result that still
+				// misses is recovered when the runner re-sends the call.
+				h.sendDirect(nodeID, protocol.Frame{Type: protocol.CmdToolResult, ID: call.CallID, RunID: f.RunID, LeaseEpoch: f.LeaseEpoch, Payload: b})
 			}()
 		}
 	case protocol.EvApprovalRequest:
@@ -974,9 +992,19 @@ func (h *Hub) reconcileJournal(ctx context.Context, t *txn, nodeID string, runs 
 			continue
 		}
 		if jr.Terminal != nil && (run.State == protocol.RunUnknown || domain.RunHoldsLease(run.State)) {
+			if _, err := t.tx.ExecContext(ctx, `SAVEPOINT reconcile_run`); err != nil {
+				return err
+			}
 			if err := h.applyTerminal(ctx, t, run, *jr.Terminal); err != nil {
-				// One bad record must not keep the machine from reconnecting.
+				// One bad record must not keep the machine from reconnecting,
+				// nor leave a half-applied outcome behind.
 				h.log.Error("reconcile: could not apply a journaled outcome", "run", run.ID, "err", err)
+				if _, err := t.tx.ExecContext(ctx, `ROLLBACK TO reconcile_run`); err != nil {
+					return err
+				}
+			}
+			if _, err := t.tx.ExecContext(ctx, `RELEASE reconcile_run`); err != nil {
+				return err
 			}
 			continue
 		}
