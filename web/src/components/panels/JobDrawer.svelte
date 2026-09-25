@@ -282,13 +282,13 @@
         {#if job.revision?.head || job.revision?.branch}
           <div>
             <dt>Revision</dt>
-            <dd><span class="mono">{shortSha(job.revision.head) || '—'}</span>{#if job.revision.branch}<span class="meta"> on {job.revision.branch}</span>{/if}</dd>
+            <dd><span class="mono">{shortSha(job.revision.head) || '—'}</span>{#if job.revision.branch}{' '}<span class="meta">on {job.revision.branch}</span>{/if}</dd>
           </div>
         {/if}
         <div>
           <dt>Last confirmed</dt>
           <dd>
-            {job.lastActivity || 'Nothing yet'}{#if job.lastActivityAt}<span class="meta" title={fullTime(job.lastActivityAt)}> · {relative(job.lastActivityAt, app.now)}</span>{/if}
+            {job.lastActivity || 'Nothing yet'}{#if job.lastActivityAt}{' '}<span class="meta" title={fullTime(job.lastActivityAt)}>· {relative(job.lastActivityAt, app.now)}</span>{/if}
           </dd>
         </div>
         <div>
@@ -297,7 +297,7 @@
             <a href="/rooms/{job.source.roomId}?msg={job.source.messageId ?? ''}{job.source.threadId ? `&panel=thread%3A${job.source.threadId}` : ''}"
               >{room?.name ?? 'the source conversation'}</a
             >
-            {#if job.requiresHumanReview}<span class="meta"> · needs your review before it completes</span>{/if}
+            {#if job.requiresHumanReview}{' '}<span class="meta">· needs your review before it completes</span>{/if}
           </dd>
         </div>
       </dl>
@@ -576,7 +576,7 @@
                   <dt>Provider</dt>
                   <dd>
                     {providerLabel(r.provider)}{r.model ? ` · ${r.model}` : ''} · {billingLabel(r.usage?.billing)}
-                    {#if r.usage?.inputTokens != null}<span class="meta"> · {r.usage.inputTokens} in / {r.usage.outputTokens ?? 0} out tokens</span>{/if}
+                    {#if r.usage?.inputTokens != null}{' '}<span class="meta">· {r.usage.inputTokens} in / {r.usage.outputTokens ?? 0} out tokens</span>{/if}
                   </dd>
                 </div>
                 <div><dt>Mode</dt><dd>{r.mode === 'edit' ? 'Can edit the workspace' : r.mode === 'readonly' ? 'Read-only' : 'Conversation'}</dd></div>

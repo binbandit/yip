@@ -68,9 +68,9 @@
               {:else if (j.state === 'waiting' || j.state === 'failed') && j.stateDetail}
                 {j.stateDetail}
               {:else if j.lastActivity}
-                {j.lastActivity}{#if j.lastActivityAt}<span class="when"> · {relative(j.lastActivityAt, app.now)}</span>{/if}
+                {j.lastActivity}{#if j.lastActivityAt}{' '}<span class="when">· {relative(j.lastActivityAt, app.now)}</span>{/if}
               {/if}
-              {#if j.nodeId && app.nodeName(j.nodeId)}<span class="when"> · on {app.nodeName(j.nodeId)}</span>{/if}
+              {#if j.nodeId && app.nodeName(j.nodeId)}{' '}<span class="when">· on {app.nodeName(j.nodeId)}</span>{/if}
             </span>
           </button>
           {#if live}

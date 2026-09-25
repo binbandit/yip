@@ -254,7 +254,7 @@
           <section class="section" aria-labelledby="eng-rooms">
             <h2 class="section-title" id="eng-rooms">Rooms</h2>
             {#if rooms.length === 0}<p class="meta">Not in any room yet. Add them from a room's settings.</p>{/if}
-            <ul class="list">{#each rooms as r (r.id)}<li><a href="/rooms/{r.id}">{r.kind === 'dm' ? 'Direct messages' : r.name}</a>{#if r.private}<span class="meta"> · private</span>{/if}</li>{/each}</ul>
+            <ul class="list">{#each rooms as r (r.id)}<li><a href="/rooms/{r.id}">{r.kind === 'dm' ? 'Direct messages' : r.name}</a>{#if r.private}{' '}<span class="meta">· private</span>{/if}</li>{/each}</ul>
           </section>
           <section class="section" aria-labelledby="eng-prov">
             <h2 class="section-title" id="eng-prov">Provider preference</h2>

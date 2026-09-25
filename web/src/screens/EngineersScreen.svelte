@@ -41,7 +41,7 @@
               <div class="top">
                 <Avatar actor={{ kind: 'engineer', id: e.id }} size={44} />
                 <div class="id">
-                  <p class="name">{e.name}{#if e.archived}<span class="meta"> · archived</span>{/if}</p>
+                  <p class="name">{e.name}{#if e.archived}{' '}<span class="meta">· archived</span>{/if}</p>
                   <p class="role">{e.role}</p>
                 </div>
               </div>

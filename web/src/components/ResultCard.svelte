@@ -126,7 +126,7 @@
       {#if job.revision?.head}
         <div class="fact">
           <dt>Revision</dt>
-          <dd><span class="mono">{shortSha(job.revision.head)}</span>{#if job.revision.branch}<span class="meta"> on {job.revision.branch}</span>{/if}</dd>
+          <dd><span class="mono">{shortSha(job.revision.head)}</span>{#if job.revision.branch}{' '}<span class="meta">on {job.revision.branch}</span>{/if}</dd>
         </div>
       {/if}
       {#if docs.length}
