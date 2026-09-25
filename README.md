@@ -159,6 +159,10 @@ cd web && npm run dev    # client dev server (proxy /v1 to a running hub)
 cd web && npm test       # client unit and smoke tests
 ```
 
+To try it on a phone or another computer while developing, `make lan` serves
+the demo on your local network (built app on :7721, live-reload client on
+:5173; plain HTTP, demo data only).
+
 To refresh the screenshots (macOS; renders with the system WebKit, so no
 browser download), start a fresh demo and run the capture script:
 

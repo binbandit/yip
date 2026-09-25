@@ -110,6 +110,14 @@ Keep the browser API on loopback and reach it through a private network:
 yip never opens ports or sets up port forwarding by itself. Runners need to
 reach the runner listener (default 7443) on the hub.
 
+**Trying the demo on your phone.** `make lan` serves the demo workspace on
+your local network over plain HTTP: the built app on port 7721 and the
+live-reload development client on 5173. Open `http://<this machine's IP>:7721`
+on the phone and sign in with the details in the demo's
+`demo-credentials.txt`. It uses demo data and the fake provider only; for a
+real workspace use one of the options above, which keep the password and
+session cookie off the network in clear text.
+
 ## Backups and restores
 
 ```sh
