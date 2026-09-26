@@ -146,6 +146,11 @@ export interface ChecksSummary {
   total: number;
 }
 
+export interface CleanupWorkspaceRequest {
+  confirm: string;
+  force: boolean;
+}
+
 export interface CreateEngineerRequest {
   name: string;
   handle: string;
@@ -554,6 +559,7 @@ export interface Node {
   lastActivity?: string;
   createdAt: string;
   revokedAt?: string | null;
+  workspaces: NodeWorkspace[];
 }
 
 export interface NodeActionRequest {
@@ -567,6 +573,23 @@ export interface NodeCapacity {
   memMb: number;
   diskFreeMb: number;
   diskPressure: boolean;
+}
+
+export interface NodeWorkspace {
+  name: string;
+  kind: string;
+  ref: string;
+  branch?: string;
+  head?: string;
+  changes: number;
+  sizeMb: number;
+  modifiedAt: string;
+  inUse: boolean;
+  jobId?: string;
+  jobTitle?: string;
+  jobState?: string;
+  published: boolean;
+  blocked?: string;
 }
 
 export interface Org {
@@ -1022,6 +1045,18 @@ export interface WorkRow {
   lastConfirmedAt?: string | null;
   blocker?: string;
   runState?: RunState;
+}
+
+export interface WorkspaceInfo {
+  name: string;
+  kind: string;
+  ref: string;
+  branch?: string;
+  head?: string;
+  changes: number;
+  sizeMb: number;
+  modifiedAt: string;
+  inUse: boolean;
 }
 
 export interface zone {

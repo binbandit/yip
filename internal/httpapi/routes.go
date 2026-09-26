@@ -79,6 +79,7 @@ func (s *Server) routes() {
 	a("POST /v1/nodes/{id}/drain", s.drainNode)
 	a("POST /v1/nodes/{id}/stop", s.stopNode)
 	a("POST /v1/nodes/{id}/probe", s.probeNode)
+	a("POST /v1/nodes/{id}/workspaces/{name}/remove", s.removeWorkspace)
 	a("GET /v1/provider-profiles", s.providerProfiles)
 	a("PUT /v1/provider-profiles/{id}", s.putProviderProfile)
 	a("DELETE /v1/nodes/{id}/credential", s.revokeNode)
@@ -411,6 +412,16 @@ func (s *Server) getJob(w http.ResponseWriter, r *http.Request) {
 func (s *Server) runActivity(w http.ResponseWriter, r *http.Request) {
 	acts, err := s.hub.RunActivity(r.Context(), userFrom(r).ID, r.PathValue("id"), r.PathValue("runId"))
 	respond(s, w, r, acts, err)
+}
+
+func (s *Server) removeWorkspace(w http.ResponseWriter, r *http.Request) {
+	req, err := decodeJSON[protocol.CleanupWorkspaceRequest](w, r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	n, err := s.hub.RemoveWorkspace(r.Context(), userFrom(r).ID, r.PathValue("id"), r.PathValue("name"), req)
+	respond(s, w, r, n, err)
 }
 
 func (s *Server) restartJob(w http.ResponseWriter, r *http.Request) {

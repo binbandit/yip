@@ -12,18 +12,22 @@ import (
 type NodeRow struct {
 	protocol.Node
 	CertSerial string
+	// RawWorkspaces is what the runner reported; Node.Workspaces joins it
+	// with the work each belongs to.
+	RawWorkspaces []protocol.WorkspaceInfo
 }
 
 const nodeCols = `id, name, hostname, os, arch, fingerprint, cert_serial, status, draining, revoked_at, last_seen_at, capacity, profiles,
-	toolchains, runner_version, service_state, last_activity, created_at`
+	toolchains, runner_version, service_state, last_activity, created_at, workspaces`
 
 func scanNode(s scanner) (NodeRow, error) {
 	var n NodeRow
 	var draining int
 	var revoked, seen sql.NullString
-	var capacity, profiles, toolchains, created string
+	var capacity, profiles, toolchains, created, workspaces string
 	err := s.Scan(&n.ID, &n.Name, &n.Hostname, &n.OS, &n.Arch, &n.Fingerprint, &n.CertSerial, &n.Status, &draining, &revoked, &seen,
-		&capacity, &profiles, &toolchains, &n.RunnerVersion, &n.ServiceState, &n.LastActivity, &created)
+		&capacity, &profiles, &toolchains, &n.RunnerVersion, &n.ServiceState, &n.LastActivity, &created, &workspaces)
+	unjs(workspaces, &n.RawWorkspaces)
 	n.Draining = draining == 1
 	n.RevokedAt, n.LastSeenAt = parseTSP(revoked), parseTSP(seen)
 	unjs(capacity, &n.Capacity)
@@ -73,7 +77,53 @@ func fillNode(ctx context.Context, q Q, n *NodeRow) error {
 		return err
 	}
 	n.ActiveRunIDs, err = stringsCol(ctx, q, `SELECT id FROM runs WHERE node_id = ? AND state IN ('offered','preparing','running','awaiting_input','stopping')`, n.ID)
-	return err
+	if err != nil {
+		return err
+	}
+	n.Workspaces = nodeWorkspaces(ctx, q, n.RawWorkspaces)
+	return nil
+}
+
+func nonNilWorkspaces(w []protocol.WorkspaceInfo) []protocol.WorkspaceInfo {
+	if w == nil {
+		return []protocol.WorkspaceInfo{}
+	}
+	return w
+}
+
+// nodeWorkspaces joins reported workspaces with their work. A job workspace
+// whose work is still open is blocked (later attempts reuse it); one whose
+// head is the published revision with nothing uncommitted loses nothing.
+func nodeWorkspaces(ctx context.Context, q Q, raw []protocol.WorkspaceInfo) []protocol.NodeWorkspace {
+	out := make([]protocol.NodeWorkspace, 0, len(raw))
+	for _, w := range raw {
+		nw := protocol.NodeWorkspace{WorkspaceInfo: w}
+		jobID := ""
+		switch w.Kind {
+		case "job":
+			_ = q.QueryRowContext(ctx, `SELECT id FROM jobs WHERE substr(replace(id, '-', ''), -12) = ?`, w.Ref).Scan(&jobID)
+		default:
+			_ = q.QueryRowContext(ctx, `SELECT job_id FROM runs WHERE substr(replace(id, '-', ''), -12) = ?`, w.Ref).Scan(&jobID)
+		}
+		if jobID != "" {
+			if j, err := GetJob(ctx, q, jobID); err == nil {
+				nw.JobID, nw.JobTitle, nw.JobState = j.ID, j.Title, string(j.State)
+				live := j.State != protocol.JobCompleted && j.State != protocol.JobFailed && j.State != protocol.JobCancelled
+				if w.Kind == "job" && live {
+					nw.Blocked = "its work is still open; later attempts continue in it"
+				}
+				nw.Published = w.Changes == 0 && (w.Kind != "job" || (j.Revision != nil && j.Revision.Head != "" && j.Revision.Head == w.Head))
+			}
+		} else {
+			// Work that no longer exists here: nothing on the hub refers to it.
+			nw.Published = w.Changes == 0 && w.Kind != "job"
+		}
+		if w.InUse {
+			nw.Blocked = "an attempt is using it right now"
+		}
+		out = append(out, nw)
+	}
+	return out
 }
 
 func SetNodeSeen(ctx context.Context, q Q, id, status string, at time.Time) error {
@@ -89,8 +139,8 @@ func SetNodeStatus(ctx context.Context, q Q, id, status string) error {
 func SetNodeCapabilities(ctx context.Context, q Q, id string, c protocol.RunnerCapabilities, hostname, runnerVersion string) error {
 	capacity := protocol.NodeCapacity{Slots: c.Slots, CPUs: c.CPUs, MemMB: c.MemMB, DiskFreeMB: c.DiskFreeMB, DiskPressure: c.DiskFreeMB > 0 && c.DiskFreeMB < 2048}
 	_, err := q.ExecContext(ctx, `UPDATE nodes SET os = ?, arch = ?, hostname = COALESCE(NULLIF(?, ''), hostname), capacity = ?, profiles = ?,
-		toolchains = ?, runner_version = COALESCE(NULLIF(?, ''), runner_version), service_state = ? WHERE id = ?`, c.OS, c.Arch, hostname,
-		js(capacity), js(c.Profiles), js(c.Toolchains), runnerVersion, c.ServiceState, id)
+		toolchains = ?, runner_version = COALESCE(NULLIF(?, ''), runner_version), service_state = ?, workspaces = ? WHERE id = ?`, c.OS, c.Arch, hostname,
+		js(capacity), js(c.Profiles), js(c.Toolchains), runnerVersion, c.ServiceState, js(nonNilWorkspaces(c.Workspaces)), id)
 	if err != nil {
 		return err
 	}
@@ -314,4 +364,10 @@ func CountOutbox(ctx context.Context, q Q) (int, error) {
 	var n int
 	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM outbox WHERE status IN ('pending','sent')`).Scan(&n)
 	return n, err
+}
+
+// SetNodeWorkspaces replaces a machine's reported workspace list.
+func SetNodeWorkspaces(ctx context.Context, q Q, id string, w []protocol.WorkspaceInfo) error {
+	_, err := q.ExecContext(ctx, `UPDATE nodes SET workspaces = ? WHERE id = ?`, js(nonNilWorkspaces(w)), id)
+	return err
 }

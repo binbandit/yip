@@ -3,6 +3,8 @@ package hub
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"os"
 	"runtime"
 	"strconv"
@@ -197,6 +199,91 @@ func (h *Hub) ProbeNode(ctx context.Context, userID, nodeID string) error {
 	}
 	h.sendDirect(nodeID, protocol.Frame{Type: protocol.CmdProbe, ID: domain.NewID()})
 	return nil
+}
+
+// RemoveWorkspace deletes one workspace on a connected machine at the
+// owner's explicit request (A24). Open work's workspace and one in use are
+// refused; one that would lose unpublished or uncommitted work needs Force.
+// It waits for the machine to confirm.
+func (h *Hub) RemoveWorkspace(ctx context.Context, userID, nodeID, name string, req protocol.CleanupWorkspaceRequest) (protocol.Node, error) {
+	n, err := store.GetNode(ctx, h.st.R(), nodeID)
+	if err != nil || n.RevokedAt != nil {
+		return protocol.Node{}, domain.NotFound("That machine doesn't exist.")
+	}
+	var ws *protocol.NodeWorkspace
+	for i := range n.Workspaces {
+		if n.Workspaces[i].Name == name {
+			ws = &n.Workspaces[i]
+		}
+	}
+	if ws == nil {
+		return protocol.Node{}, domain.NotFound("%s has no workspace called %s (as of its last report).", n.Name, name)
+	}
+	if req.Confirm != name {
+		return protocol.Node{}, domain.Invalid("Confirm by repeating the workspace name.")
+	}
+	if ws.Blocked != "" {
+		return protocol.Node{}, domain.Conflict("%s can't be removed: %s.", name, ws.Blocked)
+	}
+	if !ws.Published && !req.Force {
+		loses := "commits that were never published"
+		if ws.Changes > 0 {
+			loses = fmt.Sprintf("%d uncommitted changes", ws.Changes)
+		}
+		return protocol.Node{}, domain.Conflict("Removing %s loses %s. Confirm that this may be lost.", name, loses)
+	}
+	if !h.Connected(nodeID) {
+		return protocol.Node{}, domain.Unavailable("runner", "%s isn't connected; workspaces are removed by the machine itself.", n.Name)
+	}
+	cmdID := "cleanup:" + domain.NewID()
+	wait := make(chan protocol.CommandAck, 1)
+	h.ackWaiters.Store(nodeID+"|"+cmdID, wait)
+	defer h.ackWaiters.Delete(nodeID + "|" + cmdID)
+	b, _ := json.Marshal(protocol.CleanupWorkspace{Workspace: name, Force: req.Force})
+	h.sendDirect(nodeID, protocol.Frame{Type: protocol.CmdCleanup, ID: cmdID, Payload: b})
+	var ack protocol.CommandAck
+	select {
+	case ack = <-wait:
+	case <-time.After(60 * time.Second):
+		return protocol.Node{}, domain.Unavailable("runner", "%s didn't confirm in time; check its workspaces again shortly.", n.Name)
+	case <-ctx.Done():
+		return protocol.Node{}, ctx.Err()
+	}
+	result, detail := "ok", name
+	if !ack.OK {
+		result, detail = "refused", name+": "+ack.Error
+	}
+	if req.Force {
+		detail += " (forced)"
+	}
+	_ = h.do(ctx, func(t *txn) error {
+		return t.audit(userActor(userID), "owner", "node.workspace.remove", nodeID, result, detail)
+	})
+	if !ack.OK {
+		return protocol.Node{}, domain.Conflict("%s refused: %s.", n.Name, ack.Error)
+	}
+	// The machine re-reports its workspaces; until then, drop this one.
+	err = h.do(ctx, func(t *txn) error {
+		cur, err := store.GetNode(ctx, t.tx, nodeID)
+		if err != nil {
+			return err
+		}
+		keep := []protocol.WorkspaceInfo{}
+		for _, w := range cur.RawWorkspaces {
+			if w.Name != name {
+				keep = append(keep, w)
+			}
+		}
+		if err := store.SetNodeWorkspaces(ctx, t.tx, nodeID, keep); err != nil {
+			return err
+		}
+		return h.emitNode(ctx, t, nodeID)
+	})
+	if err != nil {
+		return protocol.Node{}, err
+	}
+	out, err := store.GetNode(ctx, h.st.R(), nodeID)
+	return out.Node, err
 }
 
 func (h *Hub) StopNodeWork(ctx context.Context, userID, nodeID string) error {

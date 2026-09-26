@@ -250,7 +250,7 @@ describe('action flows', () => {
     const now = new Date().toISOString();
     app.data.nodes['n-build'] = {
       id: 'n-build', name: 'Build mini', hostname: 'build', os: 'darwin', arch: 'arm64', fingerprint: 'f', status: 'online', draining: false,
-      capacity: { slots: 2 } as never, profiles: [], toolchains: {}, activeRunIds: [], runnerVersion: 'test', createdAt: now,
+      capacity: { slots: 2 } as never, profiles: [], toolchains: {}, activeRunIds: [], runnerVersion: 'test', createdAt: now, workspaces: [],
       providers: [{ provider: 'claude', version: '2', path: '/x', authState: 'ready', account: 'me@example.com', billing: 'subscription', profileId: 'claude:me',
         capabilities: {} as never, models: [], tested: true, updatedAt: now }],
     };
@@ -259,6 +259,30 @@ describe('action flows', () => {
     byText('dialog button', 'Done')!.click();
     await settle();
     expect(document.querySelector('dialog[open]')).toBeNull();
+  });
+
+  it('deletes a workspace from Machines only after stating what is lost', async () => {
+    const node = Object.values(app.data.nodes)[0];
+    const ws = [
+      { name: 'job-aaaaaaaaaaaa', kind: 'job', ref: 'aaaaaaaaaaaa', branch: 'yip/aaaaaaaaaaaa', changes: 2, sizeMb: 40, modifiedAt: new Date().toISOString(), inUse: false, jobId: codeDetail.job.id, jobTitle: 'Old fix', jobState: 'completed', published: false },
+      { name: 'job-bbbbbbbbbbbb', kind: 'job', ref: 'bbbbbbbbbbbb', changes: 0, sizeMb: 12, modifiedAt: new Date().toISOString(), inUse: true, published: false, blocked: 'an attempt is using it right now' },
+    ];
+    app.data.nodes[node.id] = { ...node, status: 'online', workspaces: ws };
+    hub.override('GET', /^\/v1\/nodes$/, () => ({ body: [app.data.nodes[node.id]] }));
+    hub.override('POST', new RegExp(`^/v1/nodes/${node.id}/workspaces/job-aaaaaaaaaaaa/remove$`), () => ({ body: { ...app.data.nodes[node.id], workspaces: [ws[1]] } }));
+    app.go({ name: 'machines' });
+    await waitFor(() => text().includes('Old fix'), 'workspace listed');
+    expect(text()).toContain('2 uncommitted changes');
+    expect(text()).toContain('In use — an attempt is using it right now');
+    const del = [...document.querySelectorAll<HTMLButtonElement>('.wss button')].filter((b) => b.textContent?.includes('Delete'));
+    expect(del.length).toBe(1); // the busy one offers no delete
+    del[0].click();
+    const dialog = await waitFor(() => document.querySelector('dialog[open]'), 'confirm');
+    expect(dialog.textContent).toContain('2 uncommitted changes will be lost');
+    byText('dialog button', 'Delete, losing that work')!.click();
+    await waitFor(() => hub.last('POST', /\/remove$/), 'remove posted');
+    expect(hub.last('POST', /\/remove$/)!.body).toEqual({ confirm: 'job-aaaaaaaaaaaa', force: true });
+    await waitFor(() => !text().includes('Old fix'), 'removed from the list');
   });
 
   it('shows an unconfirmed outcome from WorkRow.runState in the strip', async () => {

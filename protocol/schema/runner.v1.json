@@ -1111,6 +1111,12 @@
             "type": "string"
           },
           "type": "object"
+        },
+        "workspaces": {
+          "items": {
+            "$ref": "#/$defs/WorkspaceInfo"
+          },
+          "type": "array"
         }
       },
       "required": [
@@ -1124,7 +1130,8 @@
         "providers",
         "toolchains",
         "replicas",
-        "serviceState"
+        "serviceState",
+        "workspaces"
       ],
       "type": "object"
     },
@@ -1248,6 +1255,49 @@
         "stopMarginMs",
         "protocolVersion",
         "draining"
+      ],
+      "type": "object"
+    },
+    "WorkspaceInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "changes": {
+          "type": "integer"
+        },
+        "head": {
+          "type": "string"
+        },
+        "inUse": {
+          "type": "boolean"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "modifiedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "sizeMb": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "ref",
+        "changes",
+        "sizeMb",
+        "modifiedAt",
+        "inUse"
       ],
       "type": "object"
     },

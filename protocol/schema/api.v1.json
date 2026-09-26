@@ -520,6 +520,22 @@
       ],
       "type": "object"
     },
+    "CleanupWorkspaceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "confirm": {
+          "type": "string"
+        },
+        "force": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "confirm",
+        "force"
+      ],
+      "type": "object"
+    },
     "CreateEngineerRequest": {
       "additionalProperties": false,
       "properties": {
@@ -2207,6 +2223,12 @@
             "type": "string"
           },
           "type": "object"
+        },
+        "workspaces": {
+          "items": {
+            "$ref": "#/$defs/NodeWorkspace"
+          },
+          "type": "array"
         }
       },
       "required": [
@@ -2224,7 +2246,8 @@
         "toolchains",
         "activeRunIds",
         "runnerVersion",
-        "createdAt"
+        "createdAt",
+        "workspaces"
       ],
       "type": "object"
     },
@@ -2269,6 +2292,65 @@
         "memMb",
         "diskFreeMb",
         "diskPressure"
+      ],
+      "type": "object"
+    },
+    "NodeWorkspace": {
+      "additionalProperties": false,
+      "properties": {
+        "blocked": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "changes": {
+          "type": "integer"
+        },
+        "head": {
+          "type": "string"
+        },
+        "inUse": {
+          "type": "boolean"
+        },
+        "jobId": {
+          "type": "string"
+        },
+        "jobState": {
+          "type": "string"
+        },
+        "jobTitle": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "modifiedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "published": {
+          "type": "boolean"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "sizeMb": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "ref",
+        "changes",
+        "sizeMb",
+        "modifiedAt",
+        "inUse",
+        "published"
       ],
       "type": "object"
     },
@@ -4215,6 +4297,49 @@
       "required": [
         "job",
         "lastConfirmed"
+      ],
+      "type": "object"
+    },
+    "WorkspaceInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "changes": {
+          "type": "integer"
+        },
+        "head": {
+          "type": "string"
+        },
+        "inUse": {
+          "type": "boolean"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "modifiedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "sizeMb": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "ref",
+        "changes",
+        "sizeMb",
+        "modifiedAt",
+        "inUse"
       ],
       "type": "object"
     },

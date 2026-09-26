@@ -1042,3 +1042,71 @@ func TestRegressionStaleOutputIsQuarantined(t *testing.T) {
 		}
 	}
 }
+
+// A24: the owner deletes a workspace from Machines by explicit selection.
+// Uncommitted work needs an explicit confirmation of the loss; open work's
+// workspace can't be deleted; the machine itself removes the files.
+func TestRegressionRemoveWorkspaceFromMachines(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Reverse engineering", "map the gateway"):
+			return script(toolStep("work_create", map[string]any{"title": "Map the gateway", "objective": "Map it", "kind": "investigation", "project": "Beacon", "repo": "beacon-gateway"}, ""))
+		case m.Job.Title == "Map the gateway":
+			return script(fake.Step{Write: &fake.WriteFile{Path: "notes.txt", Content: "draft notes"}},
+				toolStep("work_update", map[string]any{"state": "completed", "summary": "Mapped."}, ""))
+		case replyTo(m, "Reverse engineering", "keep working"):
+			return script(toolStep("work_create", map[string]any{"title": "Long map", "objective": "Keep going", "kind": "investigation", "project": "Beacon", "repo": "beacon-gateway"}, ""))
+		case m.Job.Title == "Long map":
+			return script(fake.Step{Status: "Working"}, fake.Step{Fault: "hang"})
+		}
+		return nil
+	}})
+	e.post("Reverse engineering", "@Pip can you map the gateway?", []string{"pip"}, nil)
+	done := e.waitJob("Map the gateway", protocol.JobCompleted)
+	e.post("Reverse engineering", "@Pip keep working on a long map", []string{"pip"}, nil)
+	long := e.waitJob("Long map", protocol.JobRunning)
+	node := e.nodeByName("Test mini")
+	var mine, busy protocol.NodeWorkspace
+	e.waitFor("both workspaces reported", 20*time.Second, func() bool {
+		e.c.must("POST", "/v1/nodes/"+node.ID+"/probe", struct{}{}, nil)
+		time.Sleep(200 * time.Millisecond)
+		mine, busy = protocol.NodeWorkspace{}, protocol.NodeWorkspace{}
+		for _, w := range e.nodeByName("Test mini").Workspaces {
+			switch w.JobID {
+			case done.ID:
+				mine = w
+			case long.ID:
+				busy = w
+			}
+		}
+		return mine.Name != "" && busy.Name != "" && busy.InUse
+	})
+	if mine.Changes < 1 || mine.Published || mine.Blocked != "" {
+		t.Fatalf("finished work with a draft should be deletable but unpublished: %+v", mine)
+	}
+	base := "/v1/nodes/" + node.ID + "/workspaces/"
+	if err := e.c.do("POST", base+busy.Name+"/remove", protocol.CleanupWorkspaceRequest{Confirm: busy.Name, Force: true}, nil); !isStatus(err, 409) {
+		t.Fatalf("open work's workspace must not be deleted: %v", err)
+	}
+	if err := e.c.do("POST", base+mine.Name+"/remove", protocol.CleanupWorkspaceRequest{Confirm: "nope"}, nil); !isStatus(err, 400) {
+		t.Fatalf("a wrong confirmation must be refused: %v", err)
+	}
+	err := e.c.do("POST", base+mine.Name+"/remove", protocol.CleanupWorkspaceRequest{Confirm: mine.Name}, nil)
+	if !isStatus(err, 409) || !strings.Contains(err.Error(), "uncommitted") {
+		t.Fatalf("losing uncommitted work needs explicit confirmation: %v", err)
+	}
+	dir := filepath.Join(e.dir, "runner", "work", mine.Name)
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("workspace should exist before removal: %v", err)
+	}
+	var after protocol.Node
+	e.c.must("POST", base+mine.Name+"/remove", protocol.CleanupWorkspaceRequest{Confirm: mine.Name, Force: true}, &after)
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("the machine should have deleted %s: %v", dir, err)
+	}
+	for _, w := range after.Workspaces {
+		if w.Name == mine.Name {
+			t.Fatalf("the deleted workspace is still listed")
+		}
+	}
+}

@@ -698,6 +698,9 @@ func (r *Runner) handle(ctx context.Context, c *websocket.Conn, f protocol.Frame
 	case protocol.CmdProbe:
 		go r.probeOnce(ctx)
 		return nil
+	case protocol.CmdCleanup:
+		go func() { _ = r.onCleanup(ctx, f) }()
+		return nil
 	}
 	return fmt.Errorf("unknown command %q", f.Type)
 }
