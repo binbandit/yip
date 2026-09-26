@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
@@ -878,6 +879,22 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		return status(fmt.Sprintf("%s is waiting: %s needs signing in again on %s. Other work carries on.", engName, ProviderLabel(run.Provider), nodeName))
 	case protocol.OutcomeFailed, protocol.OutcomeRejected, protocol.OutcomeLeaseLost:
 		reason := firstNonEmpty(term.Error, run.TerminalReason, "unknown error")
+		// A provider crash is retried automatically, a bounded number of
+		// times with backoff and jitter, only when the attempt did nothing
+		// outside the workspace (no push, publish, merge, or network write
+		// was allowed); otherwise an explicit retry decides.
+		if term.Outcome == protocol.OutcomeFailed && job.AutoRetries < h.lim.MaxAutoRetries && !h.hadExternalEffects(ctx, t.tx, run.ID) {
+			at := h.now().Add(retryBackoff(job.AutoRetries))
+			if err := store.SetJobRetry(ctx, t.tx, job.ID, &at, job.AutoRetries+1); err != nil {
+				return err
+			}
+			detail := fmt.Sprintf("%s's run on %s stopped unexpectedly (%s). Nothing outside the workspace was changed, so yip tries again at %s (attempt %d of %d).",
+				engName, nodeName, truncate(humanReason(reason), 160), at.Format("15:04"), job.AutoRetries+2, h.lim.MaxAutoRetries+1)
+			if _, err := h.setJobState(ctx, t, job.ID, protocol.JobWaiting, protocol.WaitRecovery, detail); err != nil {
+				return err
+			}
+			return nil
+		}
 		detail := fmt.Sprintf("%s's run on %s ended without finishing: %s. The workspace and partial transcript are kept.",
 			engName, nodeName, truncate(reason, 200))
 		if _, err := h.setJobState(ctx, t, job.ID, protocol.JobFailed, "", detail); err != nil {
@@ -1132,3 +1149,28 @@ func (h *Hub) recoverOnStart(ctx context.Context) {
 }
 
 var errStale = errors.New("stale")
+
+// retryBackoff is the wait before automatic retry n (0-based): 30s, then
+// 2m, with up to 25% jitter so retries from many jobs don't align.
+func retryBackoff(n int) time.Duration {
+	base := 30 * time.Second
+	for i := 0; i < n; i++ {
+		base *= 4
+	}
+	return base + time.Duration(rand.Int64N(int64(base/4)+1))
+}
+
+// hadExternalEffects reports whether an attempt was allowed to act outside
+// its workspace: a push, publish, merge, or network action, by policy or by
+// an owner's approval. Such an attempt is never retried automatically.
+func (h *Hub) hadExternalEffects(ctx context.Context, q store.Q, runID string) bool {
+	var n int
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM approvals WHERE run_id = ? AND status IN ('approved', 'consumed')
+		AND json_extract(action, '$.kind') IN ('push', 'publish', 'merge', 'network')`, runID).Scan(&n)
+	if n > 0 {
+		return true
+	}
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE run_id = ? AND type = 'permission.auto'
+		AND json_extract(payload, '$.decision') = 'allow' AND json_extract(payload, '$.action.kind') IN ('push', 'publish', 'merge', 'network')`, runID).Scan(&n)
+	return n > 0
+}

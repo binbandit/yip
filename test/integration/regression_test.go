@@ -957,3 +957,36 @@ func TestRegressionInterruptAndRestart(t *testing.T) {
 		t.Fatalf("restarting finished work should conflict: %v", err)
 	}
 }
+
+// A provider crash that changed nothing outside the workspace is retried
+// automatically after a backoff, a bounded number of times.
+func TestRegressionCrashRetriesAutomatically(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Reverse engineering", "investigate"):
+			return script(toolStep("work_create", map[string]any{"title": "Investigate retries", "objective": "Investigate retries", "kind": "investigation", "project": "Beacon"}, ""))
+		case m.Job.Title == "Investigate retries" && m.Purpose == "retry":
+			return script(toolStep("work_update", map[string]any{"state": "completed", "summary": "Done on the second try."}, ""))
+		case m.Job.Title == "Investigate retries":
+			return script(fake.Step{Status: "Working"}, fake.Step{Fault: "crash"})
+		}
+		return nil
+	}})
+	e.post("Reverse engineering", "@Pip investigate retries please", []string{"pip"}, nil)
+	var j protocol.Job
+	e.waitFor("an automatic retry is scheduled", 20*time.Second, func() bool {
+		j, _ = e.job("Investigate retries")
+		return j.State == protocol.JobWaiting && j.WaitingReason == protocol.WaitRecovery && strings.Contains(j.StateDetail, "tries again")
+	})
+	if err := e.hub.Store().Tx(e.ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(e.ctx, `UPDATE jobs SET retry_at = ? WHERE id = ?`, store.TS(time.Now().Add(-time.Second)), j.ID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.hub.Tick(e.ctx)
+	j = e.waitJob("Investigate retries", protocol.JobCompleted)
+	if n := len(e.jobDetail(j.ID).Runs); n != 2 {
+		t.Fatalf("expected one automatic retry, got %d attempts", n)
+	}
+}

@@ -519,7 +519,8 @@ func stateOf(ctx context.Context, t *txn, jobID string) protocol.JobState {
 	return j.State
 }
 
-// retryDue resumes work that waited for a provider allowance.
+// retryDue resumes work that waited for a provider allowance, or for an
+// automatic retry after a provider crash.
 func (h *Hub) retryDue(ctx context.Context) {
 	jobs, err := store.ListJobs(ctx, h.st.R(), store.JobFilter{States: []protocol.JobState{protocol.JobWaiting}, IncludeReply: true})
 	if err != nil {
@@ -527,18 +528,26 @@ func (h *Hub) retryDue(ctx context.Context) {
 	}
 	now := h.now()
 	for _, j := range jobs {
-		if j.WaitingReason != protocol.WaitProviderLimit || j.RetryAt == nil || now.Before(*j.RetryAt) {
+		if (j.WaitingReason != protocol.WaitProviderLimit && j.WaitingReason != protocol.WaitRecovery) || j.RetryAt == nil || now.Before(*j.RetryAt) {
 			continue
 		}
+		purpose, note := "continue", "Resuming after the provider allowance wait."
+		if j.WaitingReason == protocol.WaitRecovery {
+			purpose, note = "retry", "Retrying automatically: the previous attempt stopped unexpectedly. Your workspace is as it was left."
+		}
 		_ = h.do(ctx, func(t *txn) error {
-			if err := store.SetJobRetry(ctx, t.tx, j.ID, nil, j.AutoRetries); err != nil {
-				return err
-			}
 			cur, err := store.GetJob(ctx, t.tx, j.ID)
 			if err != nil {
 				return err
 			}
-			_, err = h.enqueueRun(ctx, t, cur, runReason{Purpose: "continue", Cause: j.ID, Note: "Resuming after the provider allowance wait."})
+			if cur.State != protocol.JobWaiting || cur.WaitingReason != j.WaitingReason || cur.RetryAt == nil || now.Before(*cur.RetryAt) {
+				return nil // someone acted meanwhile (an explicit retry or stop)
+			}
+			if err := store.SetJobRetry(ctx, t.tx, j.ID, nil, cur.AutoRetries); err != nil {
+				return err
+			}
+			cur.RetryAt = nil
+			_, err = h.enqueueRun(ctx, t, cur, runReason{Purpose: purpose, Cause: j.ID, Note: note})
 			return err
 		})
 	}
