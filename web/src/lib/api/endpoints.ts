@@ -123,6 +123,7 @@ export const api = {
   nodes: () => get<Node[]>('/v1/nodes'),
   createEnrollment: (req: CreateEnrollmentRequest) => post<Enrollment>('/v1/nodes/enrollments', req),
   drainNode: (id: string, drain: boolean) => post<Node>(`/v1/nodes/${q(id)}/drain`, { drain }),
+  probeNode: (id: string) => post<{ ok: boolean }>(`/v1/nodes/${q(id)}/probe`, {}),
   stopNodeWork: (id: string) => post<{ ok: boolean }>(`/v1/nodes/${q(id)}/stop`),
   revokeNode: (id: string) => del<{ ok: boolean }>(`/v1/nodes/${q(id)}/credential`),
 

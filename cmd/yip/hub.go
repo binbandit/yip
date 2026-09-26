@@ -240,6 +240,7 @@ func runDemo(args []string) error {
 	home, _ := os.UserHomeDir()
 	f.register(fs, filepath.Join(home, ".yip", "demo"))
 	reset := fs.Bool("reset", false, "delete the demo data directory first")
+	withProviders := fs.String("with-providers", "", "also let the demo's local runner use these installed providers (codex,claude,cursor) with the sign-in they already have; engineers you switch to them run on your own account")
 	_ = fs.Parse(args)
 	if *reset {
 		if !strings.Contains(f.data, "demo") {
@@ -250,7 +251,19 @@ func runDemo(args []string) error {
 		}
 	}
 	f.localRunner = true
+	// The scripted demo engineers use the fake provider. Real providers are
+	// an explicit opt-in: they reuse each CLI's existing sign-in on this
+	// machine, and any engineer switched to them runs on the owner's account.
 	f.localProviders = "fake"
+	for _, p := range strings.Split(*withProviders, ",") {
+		switch p = strings.TrimSpace(p); p {
+		case "":
+		case "codex", "claude", "cursor":
+			f.localProviders += "," + p
+		default:
+			return fmt.Errorf("--with-providers: unknown provider %q (choose from codex, claude, cursor)", p)
+		}
+	}
 	log := logger()
 	ctx, cancel := signalContext()
 	defer cancel()

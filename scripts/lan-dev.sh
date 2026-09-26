@@ -6,13 +6,16 @@
 #   http://<this-machine>:7721  the built app embedded in the hub
 #   http://<this-machine>:5173  the live-reload dev client (proxies /v1 to the hub)
 #
-# The demo's local runner only uses the fake provider. Ctrl-C stops both.
+# The demo engineers use the scripted fake provider. Set YIP_LAN_PROVIDERS
+# (for example codex,claude) to also offer those installed CLIs with the
+# sign-in they already have; engineers switched to them run on your account.
+# Ctrl-C stops both.
 set -eu
 cd "$(dirname "$0")/.."
 DATA=${YIP_LAN_DATA:-$HOME/.yip/demo-lan}
 
 [ -x bin/yip ] || make all
-./bin/yip demo --data "$DATA" --listen 0.0.0.0:7721 --runner-listen 127.0.0.1:7744 &
+./bin/yip demo --data "$DATA" --listen 0.0.0.0:7721 --runner-listen 127.0.0.1:7744 --with-providers "${YIP_LAN_PROVIDERS:-}" &
 HUB=$!
 trap 'kill "$HUB" 2>/dev/null' EXIT INT TERM
 
