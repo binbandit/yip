@@ -84,7 +84,10 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 		ResumeSessionID: m.ResumeSessionID, PermissionTool: bridge.PermissionPrompt, FakeScript: m.FakeScript,
 		MCP: providers.MCPServer{Name: "yip", Command: r.opts.BridgeExe, Args: []string{"bridge", "--mode", m.Mode},
 			Env: map[string]string{bridge.EnvSocket: r.paths.socketPath(), bridge.EnvToken: token}},
-		Env: providers.BaseEnv(nil),
+		// Left empty so each adapter builds its own allowlisted environment,
+		// including the keys that select an existing sign-in (CODEX_HOME,
+		// CLAUDE_CONFIG_DIR) — the same environment its sign-in probe used.
+		Env: nil,
 	}
 	if m.TimeoutMs > 0 {
 		spec.Timeout = time.Duration(m.TimeoutMs) * time.Millisecond
@@ -178,8 +181,9 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	}
 	flush(true)
 	res := sess.Wait()
-	t := protocol.RunTerminal{Outcome: res.Outcome, FinalText: firstNonEmpty(strings.TrimSpace(res.FinalText), strings.TrimSpace(final.String())),
-		Error: res.Error, VendorSessionID: res.VendorSessionID, Usage: res.Usage, ExitConfirmed: res.ExitConfirmed}
+	// The final text and error leave the machine like any event: redacted.
+	t := protocol.RunTerminal{Outcome: res.Outcome, FinalText: Redact(firstNonEmpty(strings.TrimSpace(res.FinalText), strings.TrimSpace(final.String()))),
+		Error: Redact(res.Error), VendorSessionID: res.VendorSessionID, Usage: res.Usage, ExitConfirmed: res.ExitConfirmed}
 	if res.RetryAfter > 0 {
 		t.RetryAfterMs = res.RetryAfter.Milliseconds()
 	}

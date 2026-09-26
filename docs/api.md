@@ -48,7 +48,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `GET /v1/threads/{rootMessageId}` | → `MessagePage` (root first, then replies) |
 | `POST /v1/messages/{id}/reactions` | `ReactRequest` → `Message` |
 | `PATCH/DELETE /v1/messages/{id}` | `{body}` → `Message` / redact own message |
-| `GET/POST /v1/engineers`, `GET/PATCH /v1/engineers/{id}` | `GET {id}` → `{engineer, versions}` |
+| `GET/POST /v1/engineers`, `GET/PATCH /v1/engineers/{id}` | `GET {id}` → `{engineer, versions}`. `provider` carries `model`, an optional `profileId` pin (only that account runs this engineer's work) and `allowApiBilling` (off: never run on an API-key-billed install) |
 | `GET/POST /v1/projects`, `GET/PATCH /v1/projects/{id}` | |
 | `PUT /v1/projects/{id}/repos/{repoId\|new}` | `PutRepoRequest` → `Project` |
 | `PUT /v1/projects/{id}/grants/{engineerId}` | `PutGrantRequest` (`access`: read/write/none; `actions`: push, open_pr, publish_review, merge) |
@@ -66,6 +66,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `GET /v1/nodes`, `POST /v1/nodes/enrollments` | → `Node[]` / `Enrollment` (token + pairing `command`, shown once) |
 | `POST /v1/nodes/{id}/drain` (`{drain}`), `POST /v1/nodes/{id}/stop`, `DELETE /v1/nodes/{id}/credential` | drain / stop its work / revoke |
 | `POST /v1/nodes/{id}/probe` | ask a connected machine to re-check its providers now (e.g. after `codex login`); the result arrives as `node.updated` |
+| `GET /v1/provider-profiles`, `PUT /v1/provider-profiles/{id}` | → `ProviderProfile[]` / `ProviderProfileRequest` (`maxConcurrency` 1–16; default 1 — runs on one account share its allowance) |
 | `GET /v1/decisions?status=`, `POST /v1/decisions`, `POST /v1/decisions/{id}` | `DecisionRequest` / `DecisionActionRequest` |
 | `GET /v1/overview?seen=1` | → `Overview` (catch-up since last visit, work rows, decisions, open questions, `roomId` of the personal Overview conversation). `seen=1` records the visit. |
 | `GET /v1/search?q=&room=` | → `SearchResult[]` (kinds: room, engineer, project, job, message, decision) |

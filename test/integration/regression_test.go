@@ -41,6 +41,12 @@ type fakeNode struct {
 }
 
 func (e *env) fakeNode(name string) *fakeNode {
+	return e.fakeNodeWith(name, protocol.ProviderInstallation{Provider: "fake", AuthState: protocol.AuthReady, ProfileID: "fake:local",
+		Capabilities: protocol.ProviderCapabilities{ReadOnly: true}})
+}
+
+// fakeNodeWith connects an in-process machine offering one installation.
+func (e *env) fakeNodeWith(name string, inst protocol.ProviderInstallation) *fakeNode {
 	e.t.Helper()
 	_, csr, err := auth.NewNodeKeyAndCSR(name)
 	if err != nil {
@@ -68,7 +74,7 @@ func (e *env) fakeNode(name string) *fakeNode {
 	}
 	caps, _ := json.Marshal(protocol.RunnerCapabilities{Slots: 2,
 		Profiles:  []protocol.ExecutionProfile{{Name: "native", Available: true}, {Name: "readonly", Available: true}},
-		Providers: []protocol.ProviderInstallation{{Provider: "fake", AuthState: protocol.AuthReady, ProfileID: "fake:local", Capabilities: protocol.ProviderCapabilities{ReadOnly: true}}}})
+		Providers: []protocol.ProviderInstallation{inst}})
 	e.hub.RunnerFrame(e.ctx, n.conn, protocol.Frame{Type: protocol.EvCapabilities, ID: domain.NewID(), Payload: caps})
 	return n
 }
@@ -602,4 +608,95 @@ func (s slowForge) FindReviewByMarker(ctx context.Context, r forge.RepoRef, n in
 }
 func (s slowForge) VerifyWebhook(secret []byte, headers map[string]string, body []byte) (forge.Webhook, error) {
 	return forge.Webhook{}, nil
+}
+
+// A check that outlives its timeout is stopped as a process group: it ends
+// with exit 124 promptly and nothing it would have done afterwards happens.
+func TestRegressionCheckTimeoutStopsProcess(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "late.txt")
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Security", "slow"):
+			return script(toolStep("work_create", map[string]any{"title": "Slow check", "objective": "x", "kind": "code", "project": "Atlas", "repo": "atlas"}, ""))
+		case m.Job.Title == "Slow check":
+			return script(toolStep("work_run_check", map[string]any{"command": "sleep 20; echo late > " + marker, "timeoutSeconds": 1}, "r"),
+				toolStep("room_post", map[string]any{"body": "check exit: {{r.exitCode}}"}, ""),
+				toolStep("work_update", map[string]any{"state": "failed", "summary": "test done"}, ""))
+		}
+		return nil
+	}})
+	start := time.Now()
+	e.post("Security", "@Mira slow check", []string{"mira"}, nil)
+	msg := e.waitMessage("Security", "check exit:")
+	if msg.Body != "check exit: 124" {
+		t.Fatalf("a timed-out check should report exit 124: %q", msg.Body)
+	}
+	if d := time.Since(start); d > 15*time.Second {
+		t.Fatalf("the check was not stopped at its timeout (took %v)", d)
+	}
+	time.Sleep(2 * time.Second)
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatalf("the check's process kept running after its timeout")
+	}
+}
+
+// No silent fallback to API billing, and a pinned account is respected:
+// work waits (with the reason) instead of running on the wrong terms.
+func TestRegressionBillingGateAndAccountPin(t *testing.T) {
+	e := newEnv(t, envOptions{noRunner: true})
+	n := e.fakeNodeWith("api-box", protocol.ProviderInstallation{Provider: "fake", AuthState: protocol.AuthReady, ProfileID: "fake:api-key",
+		Billing: protocol.BillingAPI, Capabilities: protocol.ProviderCapabilities{ReadOnly: true}})
+	offered := func() bool {
+		_, ok := n.find(func(f protocol.Frame) bool { return f.Type == protocol.CmdOfferRun })
+		return ok
+	}
+	e.post("Engineering", "@Mira hello", []string{"mira"}, nil)
+	for i := 0; i < 5; i++ {
+		e.hub.Tick(e.ctx)
+		time.Sleep(50 * time.Millisecond)
+	}
+	if offered() {
+		t.Fatalf("an API-billed install was used without the engineer allowing API billing")
+	}
+	var reply protocol.Job
+	e.waitFor("the reason is shown", 10*time.Second, func() bool {
+		for _, j := range e.jobsWithReplies() {
+			if j.Kind == protocol.JobKindReply && strings.Contains(j.StateDetail, "API key") {
+				reply = j
+				return true
+			}
+		}
+		e.hub.Tick(e.ctx)
+		return false
+	})
+	_ = reply
+	// Pin Mira to a different account: still nothing runs.
+	var mira protocol.Engineer
+	e.c.must("GET", "/v1/engineers/"+e.engineerID("mira"), nil, &struct {
+		Engineer *protocol.Engineer `json:"engineer"`
+	}{&mira})
+	pref := mira.Provider
+	pref.ProfileID, pref.AllowAPIBilling = "fake:someone-else", true
+	e.c.must("PATCH", "/v1/engineers/"+mira.ID, protocol.UpdateEngineerRequest{Version: mira.Version, Provider: &pref}, &mira)
+	for i := 0; i < 5; i++ {
+		e.hub.Tick(e.ctx)
+		time.Sleep(50 * time.Millisecond)
+	}
+	if offered() {
+		t.Fatalf("a run was offered to an account the engineer is not pinned to")
+	}
+	// Allowing API billing on the right account lets it run.
+	pref.ProfileID = "fake:api-key"
+	e.c.must("PATCH", "/v1/engineers/"+mira.ID, protocol.UpdateEngineerRequest{Version: mira.Version, Provider: &pref}, &mira)
+	e.post("Engineering", "@Mira hello again", []string{"mira"}, nil)
+	n.waitFrame(e, "an offer once allowed", func(f protocol.Frame) bool { return f.Type == protocol.CmdOfferRun })
+}
+
+func (e *env) jobsWithReplies() []protocol.Job {
+	js, _ := store.ListJobs(e.ctx, e.hub.Store().R(), store.JobFilter{IncludeReply: true})
+	out := make([]protocol.Job, 0, len(js))
+	for _, j := range js {
+		out = append(out, j.Job)
+	}
+	return out
 }

@@ -103,6 +103,9 @@ func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (provider
 			return nil, fmt.Errorf("fake script: %w", err)
 		}
 	}
+	if spec.Env == nil {
+		spec.Env = providers.BaseEnv(nil)
+	}
 	env := append([]string{}, spec.Env...)
 	for k, v := range spec.MCP.Env {
 		env = append(env, k+"="+v)

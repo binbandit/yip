@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { billingLabel } from '../lib/util/labels';
   // An engineer's profile: role and instructions (versioned), capabilities,
   // provider preference with readiness, rooms, active work, and decisions.
   import { onMount } from 'svelte';
@@ -52,6 +53,23 @@
   onMount(() => void load());
 
   const rooms = $derived((e?.roomIds ?? []).map((r) => app.data.rooms[r]).filter(Boolean));
+  // Provider details: the models machines report for this provider, and the
+  // signed-in accounts (profiles) it could run on.
+  let profiles = $state<import('../lib/api/types.gen').ProviderProfile[]>([]);
+  $effect(() => {
+    void api.providerProfiles().then((p) => (profiles = p), () => {});
+  });
+  const providerModels = $derived.by(() => {
+    const seen = new Map<string, string>();
+    for (const n of Object.values(app.data.nodes)) {
+      for (const inst of n.providers ?? []) {
+        if (inst.provider !== e?.provider.provider) continue;
+        for (const m of inst.models ?? []) if (!seen.has(m.id)) seen.set(m.id, m.label || m.id);
+      }
+    }
+    return [...seen].map(([id, label]) => ({ id, label }));
+  });
+  const accounts = $derived(profiles.filter((p) => p.provider === e?.provider.provider));
   // Projects this engineer is permitted to work in, from the projects' grants.
   const ACTION_LABELS: Record<string, string> = { push: 'push', open_pr: 'open PRs', publish_review: 'publish reviews', merge: 'merge' };
   const permitted = $derived(
@@ -282,8 +300,35 @@
           <section class="section" aria-labelledby="eng-prov">
             <h2 class="section-title" id="eng-prov">Provider preference</h2>
             <label class="vh" for="eng-provider">Provider</label>
-            <ProviderSelect id="eng-provider" value={e.provider.provider} onchange={(v) => patch({ provider: { ...e.provider, provider: v } }, () => {})} />
-            <p class="meta note">Which model runs a job is shown in the job's run details, not in conversation.</p>
+            <ProviderSelect
+              id="eng-provider"
+              value={e.provider.provider}
+              onchange={(v) => patch({ provider: { ...e.provider, provider: v, model: '', profileId: '' } }, () => {})}
+            />
+            {#if e.provider.provider !== 'fake'}
+              <div class="prov-grid">
+                <label class="field">
+                  <span class="label">Model</span>
+                  <select class="select" value={e.provider.model ?? ''} onchange={(ev) => patch({ provider: { ...e.provider, model: (ev.target as HTMLSelectElement).value } }, () => {})}>
+                    <option value="">The provider's default</option>
+                    {#each providerModels as m (m.id)}<option value={m.id}>{m.label}</option>{/each}
+                    {#if e.provider.model && !providerModels.some((m) => m.id === e.provider.model)}<option value={e.provider.model}>{e.provider.model}</option>{/if}
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="label">Account</span>
+                  <select class="select" value={e.provider.profileId ?? ''} onchange={(ev) => patch({ provider: { ...e.provider, profileId: (ev.target as HTMLSelectElement).value } }, () => {})}>
+                    <option value="">Any signed-in account</option>
+                    {#each accounts as p (p.id)}<option value={p.id}>{p.label} · {billingLabel(p.billing)}</option>{/each}
+                  </select>
+                </label>
+              </div>
+              <label class="check">
+                <input type="checkbox" checked={!!e.provider.allowApiBilling} onchange={(ev) => patch({ provider: { ...e.provider, allowApiBilling: (ev.target as HTMLInputElement).checked } }, () => {})} />
+                <span>Allow runs billed to an API key<span class="meta block">Off: this engineer only uses subscription sign-ins and waits rather than falling back to paid API usage.</span></span>
+              </label>
+            {/if}
+            <p class="meta note">Which model ran a job is shown in the job's run details, not in conversation.</p>
           </section>
           <section class="section">
             {#if e.archived}
@@ -310,6 +355,18 @@
 {/if}
 
 <style>
+  .prov-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .check {
+    margin-top: 8px;
+  }
+  .block {
+    display: block;
+  }
   .crumb {
     font-size: 13px;
     margin-bottom: 10px;

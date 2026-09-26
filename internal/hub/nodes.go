@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -133,6 +134,50 @@ func (h *Hub) SetDraining(ctx context.Context, userID, nodeID string, draining b
 
 // StopNodeWork cancels every job with an active run on a machine. Distinct
 // from draining.
+// ProviderProfiles lists provider accounts and their concurrency limits.
+func (h *Hub) ProviderProfiles(ctx context.Context) ([]protocol.ProviderProfile, error) {
+	rows, err := h.st.R().QueryContext(ctx, `SELECT id, provider, label, billing, max_concurrency FROM provider_profiles ORDER BY provider, label`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []protocol.ProviderProfile{}
+	for rows.Next() {
+		var p protocol.ProviderProfile
+		if err := rows.Scan(&p.ID, &p.Provider, &p.Label, &p.Billing, &p.MaxConcurrency); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// SetProviderConcurrency sets how many runs one provider account may carry
+// at once across all machines. The default is 1 (brief §7), because
+// simultaneous runs share the account's allowance.
+func (h *Hub) SetProviderConcurrency(ctx context.Context, userID, profileID string, max int) (protocol.ProviderProfile, error) {
+	var out protocol.ProviderProfile
+	if max < 1 || max > 16 {
+		return out, domain.Invalid("Choose between 1 and 16 runs at once.")
+	}
+	err := h.do(ctx, func(t *txn) error {
+		res, err := t.tx.ExecContext(ctx, `UPDATE provider_profiles SET max_concurrency = ? WHERE id = ?`, max, profileID)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return domain.NotFound("That provider account doesn't exist.")
+		}
+		if err := t.audit(userActor(userID), "owner", "provider.concurrency", profileID, "ok", strconv.Itoa(max)); err != nil {
+			return err
+		}
+		t.kickAfter()
+		return t.tx.QueryRowContext(ctx, `SELECT id, provider, label, billing, max_concurrency FROM provider_profiles WHERE id = ?`, profileID).
+			Scan(&out.ID, &out.Provider, &out.Label, &out.Billing, &out.MaxConcurrency)
+	})
+	return out, err
+}
+
 // ProbeNode asks a connected machine to re-check its providers now, so a
 // sign-in the owner just completed (codex login, claude auth login) shows up
 // without waiting for the periodic probe. It changes nothing by itself.

@@ -44,8 +44,7 @@ import type {
   UpdateEngineerRequest,
   UpdateProjectRequest,
   UpdateRoomRequest,
-  WorkRow,
-} from './types.gen';
+  WorkRow, ProviderProfile } from './types.gen';
 
 const q = (v: string) => encodeURIComponent(v);
 
@@ -124,6 +123,8 @@ export const api = {
   createEnrollment: (req: CreateEnrollmentRequest) => post<Enrollment>('/v1/nodes/enrollments', req),
   drainNode: (id: string, drain: boolean) => post<Node>(`/v1/nodes/${q(id)}/drain`, { drain }),
   probeNode: (id: string) => post<{ ok: boolean }>(`/v1/nodes/${q(id)}/probe`, {}),
+  providerProfiles: () => get<ProviderProfile[]>('/v1/provider-profiles'),
+  setProviderConcurrency: (id: string, maxConcurrency: number) => put<ProviderProfile>(`/v1/provider-profiles/${q(id)}`, { maxConcurrency }),
   stopNodeWork: (id: string) => post<{ ok: boolean }>(`/v1/nodes/${q(id)}/stop`),
   revokeNode: (id: string) => del<{ ok: boolean }>(`/v1/nodes/${q(id)}/credential`),
 

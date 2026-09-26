@@ -287,6 +287,15 @@ func FindProviderSession(ctx context.Context, q Q, engineerID, provider, profile
 }
 
 // InvalidateProviderSessions prevents reuse after an access change.
+// InvalidateProviderSessionFor retires the one session a later attempt would
+// resume (same engineer, provider, conversation and machine).
+func InvalidateProviderSessionFor(ctx context.Context, q Q, engineerID, provider, contextKey, nodeID, why string) error {
+	_, err := q.ExecContext(ctx, `UPDATE provider_sessions SET invalidated_at = ?, invalidated_why = ?
+		WHERE invalidated_at IS NULL AND engineer_id = ? AND provider = ? AND context_key = ? AND node_id = ?`,
+		ts(nowUTC()), why, engineerID, provider, contextKey, nodeID)
+	return err
+}
+
 func InvalidateProviderSessions(ctx context.Context, q Q, engineerID, why string) error {
 	query := `UPDATE provider_sessions SET invalidated_at = ?, invalidated_why = ? WHERE invalidated_at IS NULL`
 	args := []any{ts(nowUTC()), why}

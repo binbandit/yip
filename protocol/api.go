@@ -79,6 +79,24 @@ type ProviderPreference struct {
 	ProfileID string `json:"profileId,omitempty"`
 	// Alternatives are explicitly configured fallbacks. Empty means wait.
 	Alternatives []string `json:"alternatives,omitempty"`
+	// AllowAPIBilling lets this engineer run on installations billed to an
+	// API key. Off by default: yip never falls back from a subscription
+	// sign-in to paid API usage unless the owner opts in.
+	AllowAPIBilling bool `json:"allowApiBilling,omitempty"`
+}
+
+// ProviderProfile is one provider account (or pooled installation) and how
+// many runs it may carry at once across all machines.
+type ProviderProfile struct {
+	ID             string `json:"id"`
+	Provider       string `json:"provider"`
+	Label          string `json:"label"`
+	Billing        string `json:"billing"`
+	MaxConcurrency int    `json:"maxConcurrency"`
+}
+
+type ProviderProfileRequest struct {
+	MaxConcurrency int `json:"maxConcurrency"`
 }
 
 type Engineer struct {
