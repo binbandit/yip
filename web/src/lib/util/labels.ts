@@ -414,6 +414,14 @@ export function catchupKindLabel(kind: string): string {
       return 'Question';
     case 'started':
       return 'Started';
+    case 'active':
+      return 'In progress';
+    case 'assigned':
+      return 'Assigned';
+    case 'review':
+      return 'In review';
+    case 'stopped':
+      return 'Stopped';
     case 'failed':
       return 'Failed';
     case 'unknown':

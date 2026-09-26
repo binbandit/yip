@@ -769,14 +769,42 @@ func TestRegressionCatchupShowsCurrentState(t *testing.T) {
 		}
 		return false
 	})
-	e.waitJob("Plan migration", protocol.JobWaiting)
+	j := e.waitJob("Plan migration", protocol.JobWaiting)
+	var waiting protocol.Overview
+	e.c.must("GET", "/v1/overview", nil, &waiting)
+	count := 0
+	for _, c := range waiting.Catchup {
+		if strings.Contains(c.Title, "Plan migration") {
+			count++
+			if c.Kind != "blocker" || !strings.Contains(c.Detail, "Still open: database") || len(c.Refs) != 2 || c.Refs[1].Kind != "question" {
+				t.Fatalf("catch-up lost the open question or evidence: %+v", c)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("want one catch-up per assignment, got %d: %+v", count, waiting.Catchup)
+	}
 	e.post("Engineering", "Postgres first.", nil, func(r *protocol.PostMessageRequest) { r.ThreadID = q.ID })
 	e.waitMessage("Engineering", "migration resumed")
 	var ov protocol.Overview
 	e.c.must("GET", "/v1/overview", nil, &ov)
 	for _, c := range ov.Catchup {
-		if strings.Contains(c.Title, "Plan migration") && c.Kind == "blocker" {
-			t.Fatalf("a job that is running again was reported as blocked: %+v", c)
+		if strings.Contains(c.Title, "Plan migration") && (c.Kind != "active" || strings.Contains(c.Detail, "Still open:") || len(c.Refs) != 1) {
+			t.Fatalf("resumed work retained an old blocker: %+v", c)
+		}
+	}
+	// Project an unconfirmed latest attempt conservatively, even if the
+	// assignment itself still says running. This mutates only this test hub.
+	if err := e.hub.Store().Tx(e.ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(e.ctx, "UPDATE runs SET state = 'unknown' WHERE id = (SELECT current_run_id FROM jobs WHERE id = ?)", j.ID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.c.must("GET", "/v1/overview", nil, &ov)
+	for _, c := range ov.Catchup {
+		if strings.Contains(c.Title, "Plan migration") && (c.Kind != "unknown" || !strings.Contains(c.Detail, "not reported a confirmed outcome")) {
+			t.Fatalf("catch-up guessed the attempt's outcome: %+v", c)
 		}
 	}
 }
@@ -1630,6 +1658,21 @@ func TestRegressionTeamConversation(t *testing.T) {
 	rounds := d.Reviews[0].Rounds
 	if rounds[0].State != protocol.ReviewChangesRequested || rounds[1].State != protocol.ReviewApproved || rounds[1].Target.Head != j.Revision.Head {
 		t.Fatalf("verdicts: %+v", rounds)
+	}
+	var ov protocol.Overview
+	e.c.must("GET", "/v1/overview", nil, &ov)
+	catchups := 0
+	for _, c := range ov.Catchup {
+		if len(c.Refs) == 0 || c.Refs[0].Kind != "job" || c.Refs[0].ID != j.ID {
+			continue
+		}
+		catchups++
+		if c.Kind != "completed" || !strings.Contains(c.Detail, "approved the updated result after re-review") || len(c.Refs) != 2 || c.Refs[1].ID != d.Reviews[0].ID || c.RoomID != j.Source.RoomID {
+			t.Fatalf("catch-up lost completed work or its review evidence: %+v", c)
+		}
+	}
+	if catchups != 1 {
+		t.Fatalf("want one completed assignment in catch-up, got %d", catchups)
 	}
 	owner, results, questions := 0, 0, 0
 	for _, m := range e.messages("Security") {

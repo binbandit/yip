@@ -77,6 +77,8 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect(text()).toContain('Tracing the retry worker needs its repository location');
     expect(text()).toContain('Recently completed');
     expect(text()).toContain('Atlas uses strict server-side expiry');
+    expect(byText('.catchup button', 'view decision')).toBeTruthy();
+    expect(byText('.catchup button', 'open the work')).toBeTruthy();
     // The visit is recorded only after rendering, and nothing marks rooms read.
     await waitFor(() => hub.calls.some((c) => c.method === 'POST' && c.path === '/v1/overview/seen'), 'overview/seen');
     const first = hub.calls.findIndex((c) => c.method === 'GET' && c.path === '/v1/overview');

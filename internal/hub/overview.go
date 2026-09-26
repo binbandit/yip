@@ -142,7 +142,7 @@ func (h *Hub) catchup(ctx context.Context, q store.Q, rooms []string, since *tim
 	if since != nil {
 		from = *since
 	}
-	evs, err := store.EventsSince(ctx, q, from, []string{"job.updated", "decision.updated", "question.created", "approval.created"}, 400)
+	evs, err := store.EventsSince(ctx, q, from, []string{"job.created", "job.updated", "run.updated", "review.updated", "decision.updated", "question.created", "question.updated", "approval.created", "approval.updated"}, 400)
 	if err != nil {
 		return []protocol.CatchupItem{}
 	}
@@ -154,33 +154,26 @@ func (h *Hub) catchup(ctx context.Context, q store.Q, rooms []string, since *tim
 			continue
 		}
 		switch e.Type {
-		case "job.updated":
-			var j protocol.Job
-			if json.Unmarshal(e.Payload, &j) != nil || j.Kind == protocol.JobKindReply || j.Kind == protocol.JobKindReview || seen["job:"+j.ID] {
+		case "job.created", "job.updated", "run.updated", "review.updated", "question.created", "question.updated", "approval.created", "approval.updated":
+			// Events tell us what changed; the ledger tells us what remains true.
+			// Never replay an old wait or approval as if it were still open.
+			id := e.JobID
+			if id == "" && strings.HasPrefix(e.Type, "job.") {
+				var j protocol.Job
+				_ = json.Unmarshal(e.Payload, &j)
+				id = j.ID
+			}
+			if id == "" || seen["job:"+id] {
 				continue
 			}
-			// Events arrive newest first: the first one per job is its current
-			// state, and older ones (an earlier wait or failure) are history.
-			seen["job:"+j.ID] = true
-			owner := names["engineer:"+j.OwnerID].name
-			var item *protocol.CatchupItem
-			switch j.State {
-			case protocol.JobCompleted:
-				item = &protocol.CatchupItem{Kind: "completed", Title: owner + " completed " + j.Title, Detail: j.Summary}
-			case protocol.JobFailed:
-				item = &protocol.CatchupItem{Kind: "failed", Title: j.Title + " failed", Detail: j.StateDetail}
-			case protocol.JobWaiting:
-				kind := "blocker"
-				if j.WaitingReason == protocol.WaitRecovery {
-					kind = "unknown"
-				}
-				item = &protocol.CatchupItem{Kind: kind, Title: owner + " is waiting: " + j.Title, Detail: j.StateDetail}
-			default:
-				continue // running, queued or ready: nothing to catch up on
+			seen["job:"+id] = true
+			j, err := store.GetJob(ctx, q, id)
+			if err != nil || j.Kind == protocol.JobKindReply || j.Kind == protocol.JobKindReview || j.ParentID != "" || !contains(rooms, j.Source.RoomID) {
+				continue
 			}
-			item.At, item.ActorID, item.RoomID, item.ThreadID, item.MessageID = e.OccurredAt, j.OwnerID, j.Source.RoomID, j.Source.ThreadID, j.Source.MessageID
-			item.Refs, item.EventSeq = []protocol.Ref{{Kind: "job", ID: j.ID}}, e.Sequence
-			out = append(out, *item)
+			item := h.catchupWork(ctx, q, j, names["engineer:"+j.OwnerID].name)
+			item.At, item.EventSeq = e.OccurredAt, e.Sequence
+			out = append(out, item)
 		case "decision.updated":
 			var d protocol.Decision
 			if json.Unmarshal(e.Payload, &d) != nil || seen["decision:"+d.ID] {
@@ -195,30 +188,7 @@ func (h *Hub) catchup(ctx context.Context, q store.Q, rooms []string, since *tim
 			}
 			out = append(out, protocol.CatchupItem{Kind: "decision", Title: "Decision: " + d.Title, Detail: truncate(d.Body, 240), At: e.OccurredAt,
 				RoomID: firstSourceRoom(d), Refs: []protocol.Ref{{Kind: "decision", ID: d.ID}}, EventSeq: e.Sequence})
-		case "question.created":
-			var x protocol.Question
-			if json.Unmarshal(e.Payload, &x) != nil {
-				continue
-			}
-			cur, err := store.GetQuestion(ctx, q, x.ID)
-			if err != nil || cur.Status != "open" {
-				continue
-			}
-			out = append(out, protocol.CatchupItem{Kind: "question", Title: names["engineer:"+x.AskerID].name + " asked: " + truncate(x.MissingFact, 120),
-				Detail: "Continuing meanwhile: " + firstNonEmpty(x.ContinuingWith, "independent work"), At: e.OccurredAt, ActorID: x.AskerID,
-				RoomID: x.Source.RoomID, ThreadID: x.Source.ThreadID, MessageID: x.MessageID, Refs: []protocol.Ref{{Kind: "question", ID: x.ID}}, EventSeq: e.Sequence})
-		case "approval.created":
-			var a protocol.Approval
-			if json.Unmarshal(e.Payload, &a) != nil {
-				continue
-			}
-			cur, err := store.GetApproval(ctx, q, a.ID)
-			if err != nil || cur.Status != "pending" || h.now().After(cur.ExpiresAt) {
-				continue
-			}
-			out = append(out, protocol.CatchupItem{Kind: "approval", Title: names["engineer:"+cur.EngineerID].name + " needs your permission: " + truncate(cur.Action.Summary, 120),
-				Detail: cur.Action.Detail, At: e.OccurredAt, ActorID: cur.EngineerID, RoomID: cur.Source.RoomID, ThreadID: cur.Source.ThreadID,
-				MessageID: cur.Source.MessageID, Refs: []protocol.Ref{{Kind: "approval", ID: cur.ID}, {Kind: "job", ID: cur.JobID}}, EventSeq: e.Sequence})
+
 		}
 	}
 	if out == nil {
@@ -232,6 +202,80 @@ func (h *Hub) catchup(ctx context.Context, q store.Q, rooms []string, since *tim
 // known status needs no engineer run, and nothing invents progress. It covers
 // every project the user's rooms reach, saying so when one is quiet, and
 // lists what is waiting on the user (questions and permissions).
+// A catch-up item is a view of existing work, questions, approvals and reviews.
+// It is never persisted as a second status stream.
+func (h *Hub) catchupWork(ctx context.Context, q store.Q, j store.JobRow, owner string) protocol.CatchupItem {
+	item := protocol.CatchupItem{Kind: "active", Title: owner + " is working on " + j.Title,
+		ActorID: j.OwnerID, RoomID: j.Source.RoomID, ThreadID: j.Source.ThreadID, MessageID: j.Source.MessageID,
+		Refs: []protocol.Ref{{Kind: "job", ID: j.ID}}}
+	switch j.State {
+	case protocol.JobCompleted:
+		item.Kind, item.Title, item.Detail = "completed", owner+" completed "+j.Title, j.Summary
+	case protocol.JobFailed:
+		item.Kind, item.Title, item.Detail = "failed", j.Title+" needs attention", j.StateDetail
+	case protocol.JobCancelled:
+		item.Kind, item.Title = "stopped", j.Title+" was stopped"
+	case protocol.JobQueued:
+		item.Kind, item.Title = "assigned", j.Title+" is assigned to "+owner
+	case protocol.JobReviewReady:
+		item.Kind, item.Title, item.Detail = "review", j.Title+" is in review", j.StateDetail
+	case protocol.JobWaiting:
+		item.Kind, item.Title, item.Detail = "blocker", owner+" is waiting: "+j.Title, j.StateDetail
+	}
+	if j.WaitingReason == protocol.WaitRecovery || h.workRow(ctx, q, j).RunState == protocol.RunUnknown {
+		item.Kind, item.Title = "unknown", "Outcome not confirmed: "+j.Title
+		item.Detail = "The last attempt has not reported a confirmed outcome."
+	}
+	questions, _ := store.ListQuestions(ctx, q, "job_id = ? AND status = 'open'", j.ID)
+	for _, question := range questions {
+		item.Detail = strings.TrimSpace(item.Detail + " Still open: " + question.MissingFact)
+		item.Refs = append(item.Refs, protocol.Ref{Kind: "question", ID: question.ID})
+	}
+	approvals, _ := store.ListApprovals(ctx, q, "job_id = ? AND status = 'pending'", j.ID)
+	for _, approval := range approvals {
+		if h.now().After(approval.ExpiresAt) {
+			continue
+		}
+		item.Detail = strings.TrimSpace(item.Detail + " Permission needed: " + approval.Action.Summary)
+		item.Refs = append(item.Refs, protocol.Ref{Kind: "approval", ID: approval.ID})
+	}
+	reviews, _ := store.ListJobReviews(ctx, q, j.ID)
+	key, _ := resultKey(ctx, q, j)
+	for _, review := range reviews {
+		name, _ := store.GetEngineer(ctx, q, review.ReviewerID)
+		for _, round := range review.Rounds {
+			if round.Number != review.CurrentRound || round.SupersededBy != "" {
+				continue
+			}
+			item.Refs = append(item.Refs, protocol.Ref{Kind: "review", ID: review.ID})
+			detail := name.Name + " reviewed an earlier version; the current result still needs review."
+			if key != "" && key == targetKey(round.Target) {
+				switch round.State {
+				case protocol.ReviewRequested, protocol.ReviewQueued:
+					detail = "Review requested from " + name.Name + "."
+				case protocol.ReviewReviewing:
+					detail = name.Name + " is reviewing."
+				case protocol.ReviewChangesRequested:
+					detail = name.Name + " requested changes: " + round.Summary
+				case protocol.ReviewApproved:
+					detail = name.Name + " approved the current result."
+					if round.Number > 1 {
+						detail = name.Name + " approved the updated result after re-review."
+					}
+				case protocol.ReviewCommentsOnly:
+					detail = name.Name + " left comments: " + round.Summary
+				case protocol.ReviewUnable:
+					detail = name.Name + " could not review: " + round.Summary
+				case protocol.ReviewCancelled:
+					detail = name.Name + "'s review was cancelled."
+				}
+			}
+			item.Detail = strings.TrimSpace(item.Detail + " " + detail)
+		}
+	}
+	return item
+}
+
 func (h *Hub) answerStatus(ctx context.Context, t *txn, userID string, room protocol.Room, msg protocol.Message) error {
 	rooms, err := store.RoomIDsForMember(ctx, t.tx, protocol.ActorUser, userID)
 	if err != nil {

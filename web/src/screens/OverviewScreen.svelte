@@ -59,7 +59,7 @@
     const rows = new Map<string, { job: Job; lastConfirmed?: string; lastConfirmedAt?: string | null; blocker?: string }>();
     for (const w of ov?.work ?? []) rows.set(w.job.id, { job: app.data.jobs[w.job.id] ?? w.job, lastConfirmed: w.lastConfirmed, lastConfirmedAt: w.lastConfirmedAt, blocker: w.blocker });
     for (const j of Object.values(app.data.jobs)) {
-      if (rows.has(j.id) || j.kind === 'reply' || j.kind === 'review' || j.state === 'cancelled' || !myRooms.has(j.source.roomId)) continue;
+      if (rows.has(j.id) || j.kind === 'reply' || j.kind === 'review' || j.parentId || j.state === 'cancelled' || !myRooms.has(j.source.roomId)) continue;
       if (j.state === 'completed' && app.now - Date.parse(j.completedAt ?? j.updatedAt) > 7 * 86400_000) continue;
       rows.set(j.id, { job: j });
     }
@@ -121,7 +121,7 @@
         <section class="section first" aria-labelledby="ov-catchup">
           <div class="section-head">
             <h2 class="section-title" id="ov-catchup">Since you were here</h2>
-            <span class="meta">Opening this doesn't mark conversations read.</span>
+            <span class="meta">What changed, with current open work below. Conversations stay unread.</span>
           </div>
           {#if ov.catchup.length === 0}
             <p class="empty-line">Nothing new since your last visit.</p>
@@ -129,7 +129,6 @@
             <ul class="catchup">
               {#each ov.catchup as c (c.eventSeq + c.kind)}
                 {@const h = catchupHref(c)}
-                {@const jobRef = c.refs?.find((r) => r.kind === 'job')}
                 <li>
                   <span class="kind tone-{catchupTone(c.kind)}"><StateIcon shape={catchupShape(c.kind)} tone={catchupTone(c.kind)} />{catchupKindLabel(c.kind)}</span>
                   <div class="c-body">
@@ -138,7 +137,17 @@
                     <p class="meta">
                       <time datetime={c.at} title={fullTime(c.at)}>{relative(c.at, app.now)}</time>
                       {#if h && c.roomId}· <a href={h}>in {app.data.rooms[c.roomId]?.name ?? 'the conversation'}</a>{/if}
-                      {#if jobRef}· <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: jobRef.id })}>open the work</button>{/if}
+                      {#each c.refs ?? [] as ref}
+                        {#if ref.kind === 'job' || ref.kind === 'review' || ref.kind === 'decision'}
+                          · <button class="link-btn" onclick={() => app.openPanel({ kind: ref.kind as 'job' | 'review' | 'decision', id: ref.id })}>{ref.kind === 'job' ? 'open the work' : `view ${ref.kind}`}</button>
+                        {:else if ref.kind === 'question' && app.data.questions[ref.id]}
+                          {@const question = app.data.questions[ref.id]}
+                          · <a href="/rooms/{question.source.roomId}?msg={question.messageId}">view question</a>
+                        {:else if ref.kind === 'approval'}
+                          {@const work = c.refs?.find((r) => r.kind === 'job')}
+                          {#if work}· <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: work.id })}>view permission request</button>{/if}
+                        {/if}
+                      {/each}
                     </p>
                   </div>
                 </li>
@@ -207,7 +216,7 @@
     <aside class="convo" aria-labelledby="ov-convo">
       <header class="convo-head">
         <h2 id="ov-convo">Ask about everything</h2>
-        <p class="meta">Answers come from the ledger with confirmed times; nobody is woken to report status.</p>
+        <p class="meta">Ask about recorded work, decisions and what remains open.</p>
       </header>
       <MessageList
         label="Overview conversation"
