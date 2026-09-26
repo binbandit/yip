@@ -817,6 +817,8 @@ export interface Repo {
   forge: string;
   forgeRepo?: string;
   createdAt: string;
+  sourceBundleId?: string;
+  importedAt?: string | null;
 }
 
 export interface RetryJobRequest {
