@@ -40,6 +40,31 @@
     return null;
   }
 
+  // Correcting an accepted decision records a new one that replaces it, with
+  // the same sources (so it stays exactly as visible), accepted by you.
+  let correcting = $state<{ title: string; body: string } | null>(null);
+  async function correct(e: SubmitEvent) {
+    e.preventDefault();
+    if (!d || !correcting) return;
+    if (!correcting.title.trim() || !correcting.body.trim()) {
+      error = 'A decision needs a title and what was decided.';
+      return;
+    }
+    busy = true;
+    error = '';
+    try {
+      const nd = await api.createDecision({ scope: d.scope, title: correcting.title.trim(), body: correcting.body.trim(), sources: d.sources, supersedesId: d.id, accept: true });
+      app.data.decisions[nd.id] = nd;
+      correcting = null;
+      app.toast('Recorded the corrected decision; it replaces the earlier one.');
+      app.openPanel({ kind: 'decision', id: nd.id });
+    } catch (err) {
+      error = errorMessage(err);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function act(action: 'accept' | 'reject') {
     if (!d) return;
     busy = true;
@@ -103,6 +128,23 @@
           Visible only from: {d.visibleRoomIds.map((r) => app.data.rooms[r]?.name ?? 'a private room').join(', ')}.
         {/if}
       </p>
+      {#if d.status === 'accepted' && !d.supersededById}
+        {#if correcting}
+          <form class="correct" onsubmit={correct}>
+            <label class="field"><span class="label">Title</span><input class="input" bind:value={correcting.title} /></label>
+            <label class="field"><span class="label">What was decided</span><textarea class="input" rows="5" bind:value={correcting.body}></textarea></label>
+            <p class="meta">Engineers use the corrected version from now on; the earlier one stays in the history, marked as replaced.</p>
+            <div class="actions">
+              <button class="btn btn-sm btn-primary" type="submit" disabled={busy}>Record correction</button>
+              <button class="btn btn-sm" type="button" onclick={() => (correcting = null)}>Cancel</button>
+            </div>
+          </form>
+        {:else}
+          <div class="actions">
+            <button class="btn btn-sm" onclick={() => (correcting = { title: d!.title, body: d!.body })}>Correct this decision</button>
+          </div>
+        {/if}
+      {/if}
       {#if d.status === 'proposed'}
         <div class="actions">
           <button class="btn btn-sm btn-primary" disabled={busy} onclick={() => act('accept')}>Accept</button>
@@ -114,6 +156,11 @@
 </RightPanel>
 
 <style>
+  .correct {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+  }
   .pad {
     padding: 14px 18px 24px;
     display: grid;
