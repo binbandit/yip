@@ -55,6 +55,7 @@ class Details {
       // Keep the shared stores current with what the detail tells us.
       if (newer(app.data.jobs[d.job.id], d.job)) app.data.jobs[d.job.id] = d.job;
       mergeRuns(app.data, d.runs);
+      for (const a of d.artifacts) app.data.artifacts[a.id] = a;
       for (const r of d.reviews) {
         const c = app.data.reviews[r.id];
         if (!c || r.updatedAt >= c.updatedAt) app.data.reviews[r.id] = r;

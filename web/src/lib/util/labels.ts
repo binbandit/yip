@@ -13,7 +13,7 @@ export function jobStateLabel(j: Pick<Job, 'state' | 'requiresHumanReview'>): st
     case 'waiting':
       return 'Waiting';
     case 'review_ready':
-      return j.requiresHumanReview ? 'Ready for your review' : 'Ready';
+      return j.requiresHumanReview ? 'Ready for your review' : 'In review';
     case 'completed':
       return 'Completed';
     case 'failed':
@@ -33,7 +33,7 @@ export function jobShape(state: JobState | string): Shape {
     case 'waiting':
       return 'pause';
     case 'review_ready':
-      return 'check';
+      return 'pause';
     case 'completed':
       return 'check-filled';
     case 'failed':
@@ -52,7 +52,6 @@ export function jobTone(state: JobState | string): Tone {
       return 'accent';
     case 'waiting':
       return 'attention';
-    case 'review_ready':
     case 'completed':
       return 'success';
     case 'failed':

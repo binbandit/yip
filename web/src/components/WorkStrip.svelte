@@ -2,6 +2,9 @@
   // A narrow strip of the room's live work: state word + shape, objective,
   // owner and reviewer handoff, last confirmed activity, and the machine.
   // Each row opens the job drawer; "Add to" scopes the composer to that job.
+  import { untrack } from 'svelte';
+  import { details } from '../lib/state/details.svelte';
+  import { currentReviewRound } from '../lib/util/reviews';
   import { app, receiptKey } from '../lib/state/app.svelte';
   import { isLiveJob, jobRunState, roomWorkJobs } from '../lib/state/data';
   import { jobShape, jobStateLabel, jobTone, runStateNote, waitingReasonLabel } from '../lib/util/labels';
@@ -21,15 +24,37 @@
   const visible = $derived(expanded ? jobs : jobs.slice(0, 3));
   const scoped = $derived(app.steer[receiptKey(roomId)] ?? null);
 
+  $effect(() => {
+    const work = visible.map((j) => ({ id: j.id, touch: app.data.touched.jobs[j.id] ?? 0, reviewers: j.reviewerIds.length }));
+    untrack(() => {
+      for (const j of work) if (j.reviewers) details.ensureJob(j.id, j.touch);
+    });
+  });
+
   function handoff(j: (typeof jobs)[number]): string {
     const owner = app.engineerName(j.ownerId);
-    const reviewers = j.reviewerIds.map((id) => app.engineerName(id));
+    const reviewers = j.reviewerIds.map((id) => {
+      const name = app.engineerName(id);
+      const review = Object.values(app.data.reviews).find((r) => r.jobId === j.id && r.reviewerId === id);
+      if (!review) return `${name} · review status unavailable`;
+      const round = currentReviewRound(j, review, Object.values(app.data.artifacts));
+      if (!round) return `${name} · review on an earlier revision`;
+      switch (round.state) {
+        case 'requested':
+        case 'queued': return `${name} · review requested`;
+        case 'reviewing': return `${name} reviewing`;
+        case 'approved': return `${name} approved`;
+        case 'changes_requested': return `${name} requested changes`;
+        case 'comments_only': return `${name} commented`;
+        case 'unable_to_review': return `${name} couldn't review`;
+        case 'cancelled': return `${name} · review cancelled`;
+      }
+    });
     const verb =
       j.state === 'running' ? (j.kind === 'code' ? 'building' : 'working') : j.state === 'queued' ? 'up next' : j.state === 'waiting' ? 'waiting' : '';
     let s = verb ? `${owner} ${verb}` : owner;
     if (reviewers.length) {
-      const rv = j.state === 'completed' || j.state === 'review_ready' ? 'reviewed' : 'reviewing next';
-      s += ` · ${reviewers.join(', ')} ${rv}`;
+      s += ` · ${reviewers.join(', ')}`;
     }
     return s;
   }
@@ -61,7 +86,7 @@
               <span class="word">{unconfirmed ? 'Not confirmed' : j.state === 'waiting' ? waitingReasonLabel(j.waitingReason) : jobStateLabel(j)}</span>
             </span>
             <span class="title truncate">{j.title}</span>
-            <span class="who truncate">{handoff(j)}</span>
+            <span class="who truncate" title={handoff(j)}>{handoff(j)}</span>
             <span class="last truncate">
               <!-- The machine comes first so truncation never hides where work runs. -->
               {#if j.nodeId && app.nodeName(j.nodeId)}<span class="where">{j.state === 'running' ? 'Running on' : 'On'} {app.nodeName(j.nodeId)} ·</span>{' '}{/if}
