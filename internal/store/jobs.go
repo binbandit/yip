@@ -74,11 +74,7 @@ func InsertJob(ctx context.Context, q Q, j JobRow) error {
 }
 
 func GetJob(ctx context.Context, q Q, id string) (JobRow, error) {
-	j, err := scanJob(q.QueryRowContext(ctx, `SELECT `+jobCols+` FROM jobs WHERE id = ?`, id))
-	if err != nil {
-		return j, notFound(err)
-	}
-	return j, fillJob(ctx, q, &j)
+	return getFilled(ctx, q, scanJob, fillJob, `SELECT `+jobCols+` FROM jobs WHERE id = ?`, id)
 }
 
 func fillJob(ctx context.Context, q Q, j *JobRow) error {
@@ -116,12 +112,9 @@ func ListJobs(ctx context.Context, q Q, f JobFilter) ([]JobRow, error) {
 		where = append(where, "kind <> 'reply'")
 	}
 	if len(f.States) > 0 {
-		ph := make([]string, len(f.States))
-		for i, s := range f.States {
-			ph[i] = "?"
-			args = append(args, string(s))
-		}
-		where = append(where, "state IN ("+strings.Join(ph, ",")+")")
+		in, states := inList(f.States)
+		where = append(where, "state IN "+in)
+		args = append(args, states...)
 	}
 	if f.OwnerID != "" {
 		where = append(where, "owner_id = ?")
@@ -139,12 +132,9 @@ func ListJobs(ctx context.Context, q Q, f JobFilter) ([]JobRow, error) {
 		if len(f.RoomIDs) == 0 {
 			return []JobRow{}, nil
 		}
-		ph := make([]string, len(f.RoomIDs))
-		for i, r := range f.RoomIDs {
-			ph[i] = "?"
-			args = append(args, r)
-		}
-		where = append(where, "source_room_id IN ("+strings.Join(ph, ",")+")")
+		in, rooms := inList(f.RoomIDs)
+		where = append(where, "source_room_id IN "+in)
+		args = append(args, rooms...)
 	}
 	if f.Since != nil {
 		where = append(where, "updated_at >= ?")
@@ -159,16 +149,7 @@ func ListJobs(ctx context.Context, q Q, f JobFilter) ([]JobRow, error) {
 		query += " LIMIT ?"
 		args = append(args, f.Limit)
 	}
-	jobs, err := list(ctx, q, scanJob, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	for i := range jobs {
-		if err := fillJob(ctx, q, &jobs[i]); err != nil {
-			return nil, err
-		}
-	}
-	return jobs, nil
+	return listFilled(ctx, q, scanJob, fillJob, query, args...)
 }
 
 // SetJobState applies a validated state change under an optimistic version.
@@ -178,14 +159,9 @@ func SetJobState(ctx context.Context, q Q, id string, expectVersion int64, state
 	if state == protocol.JobCompleted || state == protocol.JobCancelled {
 		completed = ts(now)
 	}
-	res, err := q.ExecContext(ctx, `UPDATE jobs SET state = ?, waiting_reason = ?, state_detail = ?, updated_at = ?,
+	return oneRow(q.ExecContext(ctx, `UPDATE jobs SET state = ?, waiting_reason = ?, state_detail = ?, updated_at = ?,
 		completed_at = COALESCE(?, completed_at), version = version + 1 WHERE id = ? AND version = ?`,
-		string(state), waiting, detail, ts(now), completed, id, expectVersion)
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+		string(state), waiting, detail, ts(now), completed, id, expectVersion))
 }
 
 func SetJobCurrentRun(ctx context.Context, q Q, id, runID string) error {
@@ -217,16 +193,6 @@ func SetJobCompletion(ctx context.Context, q Q, id string, requested bool, summa
 
 func SetJobRetry(ctx context.Context, q Q, id string, at *time.Time, autoRetries int) error {
 	_, err := q.ExecContext(ctx, `UPDATE jobs SET retry_at = ?, auto_retries = ? WHERE id = ?`, tsp(at), autoRetries, id)
-	return err
-}
-
-func SetJobScope(ctx context.Context, q Q, id, projectID, repoID string) error {
-	_, err := q.ExecContext(ctx, `UPDATE jobs SET project_id = ?, repo_id = ?, version = version + 1 WHERE id = ?`, nullStr(projectID), nullStr(repoID), id)
-	return err
-}
-
-func SetJobHumanReview(ctx context.Context, q Q, id string, required bool) error {
-	_, err := q.ExecContext(ctx, `UPDATE jobs SET requires_human_review = ? WHERE id = ?`, b2i(required), id)
 	return err
 }
 
@@ -372,29 +338,27 @@ func WakeupsUsed(ctx context.Context, q Q, rootID string) (used, max int, err er
 	return used, max, err
 }
 
-// SearchJobs runs a full-text query over job titles and objectives for jobs
-// whose source room is permitted.
-// SearchJobs ranks work in the given rooms; projectID, when set, narrows it
-// to that project before ranking.
+// scanJobResult reads (id, title, snippet, room, updated_at) as a job search hit.
+func scanJobResult(s scanner) (protocol.SearchResult, error) {
+	var r protocol.SearchResult
+	var updated string
+	err := s.Scan(&r.ID, &r.Title, &r.Snippet, &r.RoomID, &updated)
+	r.Kind, r.JobID = "job", r.ID
+	t := parseTS(updated)
+	r.At = &t
+	return r, err
+}
+
+// SearchJobs runs a full-text query over the titles and objectives of work
+// in the given rooms; projectID, when set, narrows it to that project before
+// ranking.
 func SearchJobs(ctx context.Context, q Q, match string, roomIDs []string, projectID string, limit int) ([]protocol.SearchResult, error) {
 	if len(roomIDs) == 0 {
 		return []protocol.SearchResult{}, nil
 	}
-	args := []any{match}
-	for _, r := range roomIDs {
-		args = append(args, r)
-	}
-	args = append(args, projectID, projectID, limit)
-	in := "(" + strings.TrimSuffix(strings.Repeat("?,", len(roomIDs)), ",") + ")"
-	return list(ctx, q, func(s scanner) (protocol.SearchResult, error) {
-		var r protocol.SearchResult
-		var updated string
-		err := s.Scan(&r.ID, &r.Title, &r.Snippet, &r.RoomID, &updated)
-		r.Kind, r.JobID = "job", r.ID
-		t := parseTS(updated)
-		r.At = &t
-		return r, err
-	}, `SELECT j.id, j.title, snippet(jobs_fts, 1, '[', ']', '…', 12), j.source_room_id, j.updated_at
+	in, rooms := inList(roomIDs)
+	args := append(append([]any{match}, rooms...), projectID, projectID, limit)
+	return list(ctx, q, scanJobResult, `SELECT j.id, j.title, snippet(jobs_fts, 1, '[', ']', '…', 12), j.source_room_id, j.updated_at
 		FROM jobs_fts f JOIN jobs j ON j.id = f.job_id WHERE jobs_fts MATCH ? AND j.source_room_id IN `+in+`
 		AND (? = '' OR j.project_id = ?)
 		ORDER BY rank LIMIT ?`, args...)
@@ -408,21 +372,9 @@ func FindJobsByID(ctx context.Context, q Q, frag string, roomIDs []string, limit
 	if len(roomIDs) == 0 || len(frag) < 6 || strings.Trim(frag, "0123456789abcdef-") != "" {
 		return []protocol.SearchResult{}, nil
 	}
-	args := []any{frag, frag + "%", "%" + frag}
-	for _, r := range roomIDs {
-		args = append(args, r)
-	}
-	args = append(args, limit)
-	in := "(" + strings.TrimSuffix(strings.Repeat("?,", len(roomIDs)), ",") + ")"
-	return list(ctx, q, func(s scanner) (protocol.SearchResult, error) {
-		var r protocol.SearchResult
-		var updated string
-		err := s.Scan(&r.ID, &r.Title, &r.Snippet, &r.RoomID, &updated)
-		r.Kind, r.JobID = "job", r.ID
-		t := parseTS(updated)
-		r.At = &t
-		return r, err
-	}, `SELECT id, title, objective, source_room_id, updated_at FROM jobs
+	in, rooms := inList(roomIDs)
+	args := append(append([]any{frag, frag + "%", "%" + frag}, rooms...), limit)
+	return list(ctx, q, scanJobResult, `SELECT id, title, objective, source_room_id, updated_at FROM jobs
 		WHERE (id = ? OR id LIKE ? OR id LIKE ?) AND source_room_id IN `+in+`
 		ORDER BY updated_at DESC LIMIT ?`, args...)
 }

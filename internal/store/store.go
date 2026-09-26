@@ -131,7 +131,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	latest := 0
 	for _, e := range entries {
-		if n, err := strconv.Atoi(strings.SplitN(e.Name(), "_", 2)[0]); err == nil && n > latest {
+		if n, err := migrationVersion(e.Name()); err == nil && n > latest {
 			latest = n
 		}
 	}
@@ -160,7 +160,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	for _, e := range entries {
 		name := e.Name()
-		n, err := strconv.Atoi(strings.SplitN(name, "_", 2)[0])
+		n, err := migrationVersion(name)
 		if err != nil {
 			return fmt.Errorf("migration %s: bad version prefix", name)
 		}
@@ -187,6 +187,12 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// migrationVersion reads the numeric prefix of a migration file name.
+func migrationVersion(name string) (int, error) {
+	v, _, _ := strings.Cut(name, "_")
+	return strconv.Atoi(v)
 }
 
 // SchemaVersion returns the highest applied migration.

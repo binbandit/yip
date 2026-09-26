@@ -24,9 +24,6 @@ func tsp(t *time.Time) any {
 	return ts(*t)
 }
 
-// TSP is the exported form of tsp.
-func TSP(t *time.Time) any { return tsp(t) }
-
 func parseTS(s string) time.Time {
 	if s == "" {
 		return time.Time{}
@@ -58,20 +55,11 @@ func js(v any) string {
 	return string(b)
 }
 
-// JS is the exported JSON encoder for callers.
-func JS(v any) string { return js(v) }
-
 func unjs(s string, v any) {
 	if s == "" {
 		return
 	}
 	_ = json.Unmarshal([]byte(s), v)
-}
-
-func unjsNull(s sql.NullString, v any) {
-	if s.Valid {
-		unjs(s.String, v)
-	}
 }
 
 // nullStr converts "" to NULL.
@@ -81,9 +69,6 @@ func nullStr(s string) any {
 	}
 	return s
 }
-
-// NullStr is the exported form of nullStr.
-func NullStr(s string) any { return nullStr(s) }
 
 func b2i(b bool) int {
 	if b {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"strings"
 	"time"
 
 	"github.com/binbandit/yip/protocol"
@@ -89,12 +88,8 @@ func NextAttempt(ctx context.Context, q Q, jobID string) (int, error) {
 
 // RunsInStates lists runs in any of the given states, oldest first.
 func RunsInStates(ctx context.Context, q Q, states ...protocol.RunState) ([]RunRow, error) {
-	ph := make([]string, len(states))
-	args := make([]any, len(states))
-	for i, s := range states {
-		ph[i], args[i] = "?", string(s)
-	}
-	return list(ctx, q, scanRun, `SELECT `+runCols+` FROM runs WHERE state IN (`+strings.Join(ph, ",")+`) ORDER BY created_at`, args...)
+	in, args := inList(states)
+	return list(ctx, q, scanRun, `SELECT `+runCols+` FROM runs WHERE state IN `+in+` ORDER BY created_at`, args...)
 }
 
 // RunsOnNode lists lease-holding runs assigned to a node.
@@ -171,13 +166,8 @@ func ResetOffer(ctx context.Context, q Q, id string) error {
 }
 
 func RenewLease(ctx context.Context, q Q, id string, epoch int64, expires, heartbeat time.Time) (bool, error) {
-	res, err := q.ExecContext(ctx, `UPDATE runs SET lease_expires_at = ?, heartbeat_at = ? WHERE id = ? AND lease_epoch = ?
-		AND state IN ('offered','preparing','running','awaiting_input','stopping')`, ts(expires), ts(heartbeat), id, epoch)
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	return oneRow(q.ExecContext(ctx, `UPDATE runs SET lease_expires_at = ?, heartbeat_at = ? WHERE id = ? AND lease_epoch = ?
+		AND state IN ('offered','preparing','running','awaiting_input','stopping')`, ts(expires), ts(heartbeat), id, epoch))
 }
 
 func SetRunActivity(ctx context.Context, q Q, id, text string, at time.Time) error {
@@ -211,11 +201,6 @@ func SetRunPostedReply(ctx context.Context, q Q, id string) error {
 	return err
 }
 
-func SetRunRetryAt(ctx context.Context, q Q, id string, at *time.Time) error {
-	_, err := q.ExecContext(ctx, `UPDATE runs SET retry_at = ? WHERE id = ?`, tsp(at), id)
-	return err
-}
-
 // ---- run events ----
 
 // InsertRunEvent stores one runner event. The (run, seq) key makes replays
@@ -225,16 +210,12 @@ func InsertRunEvent(ctx context.Context, q Q, runID string, e protocol.RunEvent)
 	if len(e.Data) > 0 {
 		data = string(e.Data)
 	}
-	res, err := q.ExecContext(ctx, `INSERT OR IGNORE INTO run_events(run_id, seq, kind, text, tool, data, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		runID, e.Seq, e.Kind, e.Text, e.Tool, data, ts(e.At))
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	if n == 1 {
+	added, err := oneRow(q.ExecContext(ctx, `INSERT OR IGNORE INTO run_events(run_id, seq, kind, text, tool, data, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		runID, e.Seq, e.Kind, e.Text, e.Tool, data, ts(e.At)))
+	if added {
 		_, err = q.ExecContext(ctx, `UPDATE runs SET last_seq = MAX(last_seq, ?) WHERE id = ?`, e.Seq, runID)
 	}
-	return n == 1, err
+	return added, err
 }
 
 func ListRunEvents(ctx context.Context, q Q, runID string, limit int) ([]protocol.RunActivity, error) {
@@ -286,7 +267,6 @@ func FindProviderSession(ctx context.Context, q Q, engineerID, provider, profile
 	return s, notFound(err)
 }
 
-// InvalidateProviderSessions prevents reuse after an access change.
 // InvalidateProviderSessionFor retires the one session a later attempt would
 // resume (same engineer, provider, conversation and machine).
 func InvalidateProviderSessionFor(ctx context.Context, q Q, engineerID, provider, contextKey, nodeID, why string) error {
@@ -296,6 +276,7 @@ func InvalidateProviderSessionFor(ctx context.Context, q Q, engineerID, provider
 	return err
 }
 
+// InvalidateProviderSessions prevents reuse after an access change.
 func InvalidateProviderSessions(ctx context.Context, q Q, engineerID, why string) error {
 	query := `UPDATE provider_sessions SET invalidated_at = ?, invalidated_why = ? WHERE invalidated_at IS NULL`
 	args := []any{ts(nowUTC()), why}
