@@ -62,6 +62,24 @@ export interface RequestOptions {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const offlineError = () => new ApiError(0, { code: 'offline', message: OFFLINE_MESSAGE, recoverable: true });
+
+/** Reads a response body as JSON (undefined when it is empty or not JSON). */
+async function readJSON(res: Response): Promise<unknown> {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The ApiError for a failed response, using the hub's message when it sent one. */
+function responseError(status: number, parsed: unknown): ApiError {
+  const e = (parsed && typeof parsed === 'object' ? parsed : {}) as Partial<APIError>;
+  return new ApiError(status, { ...e, message: e.message || defaultMessage(status), code: e.code || codeFor(status) });
+}
+
 export async function request<T>(method: Method, path: string, body?: unknown, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -85,7 +103,7 @@ export async function request<T>(method: Method, path: string, body?: unknown, o
         await sleep(400); // the connection dropped: retry once with the same key
         continue;
       }
-      throw new ApiError(0, { code: 'offline', message: OFFLINE_MESSAGE, recoverable: true });
+      throw offlineError();
     }
     // The first copy is still being processed: wait for its result.
     if (res.status === 409 && res.headers.get('Retry-After') && method !== 'GET' && attempt < 4) {
@@ -94,24 +112,10 @@ export async function request<T>(method: Method, path: string, body?: unknown, o
     }
     break;
   }
-  const text = await res.text();
-  let parsed: unknown = undefined;
-  if (text) {
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = undefined;
-    }
-  }
+  const parsed = await readJSON(res);
   if (!res.ok) {
-    const e = (parsed && typeof parsed === 'object' ? parsed : {}) as Partial<APIError>;
-    const err = new ApiError(res.status, {
-      ...e,
-      message: e.message || defaultMessage(res.status),
-      code: e.code || codeFor(res.status),
-    });
     if (res.status === 401 && !opts.quiet401) unauthorizedHandler?.();
-    throw err;
+    throw responseError(res.status, parsed);
   }
   return parsed as T;
 }
@@ -124,19 +128,12 @@ export async function upload<T>(path: string, file: Blob): Promise<T> {
   try {
     res = await fetch(path, { method: 'POST', headers, body: file, credentials: 'same-origin' });
   } catch {
-    throw new ApiError(0, { code: 'offline', message: OFFLINE_MESSAGE, recoverable: true });
+    throw offlineError();
   }
-  const text = await res.text();
-  let parsed: unknown;
-  try {
-    parsed = text ? JSON.parse(text) : undefined;
-  } catch {
-    parsed = undefined;
-  }
+  const parsed = await readJSON(res);
   if (!res.ok) {
-    const e = (parsed && typeof parsed === 'object' ? parsed : {}) as Partial<APIError>;
     if (res.status === 401) unauthorizedHandler?.();
-    throw new ApiError(res.status, { ...e, message: e.message || defaultMessage(res.status), code: e.code || codeFor(res.status) });
+    throw responseError(res.status, parsed);
   }
   return parsed as T;
 }

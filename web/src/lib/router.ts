@@ -16,7 +16,9 @@ export type Route =
   | { name: 'settings' }
   | { name: 'notfound'; path: string };
 
-export type PanelKind = 'thread' | 'job' | 'review' | 'pr' | 'engineer' | 'decision' | 'room';
+const PANEL_KINDS = ['thread', 'job', 'review', 'pr', 'engineer', 'decision', 'room'] as const;
+
+export type PanelKind = (typeof PANEL_KINDS)[number];
 
 export interface Panel {
   kind: PanelKind;
@@ -33,8 +35,6 @@ export interface Location {
   /** Where to return after sign-in. */
   next: string | null;
 }
-
-const PANEL_KINDS: PanelKind[] = ['thread', 'job', 'review', 'pr', 'engineer', 'decision', 'room'];
 
 function seg(s: string): string {
   try {
@@ -140,10 +140,6 @@ export function href(r: Route, extras: HrefExtras = {}): string {
 /** The same location with a different panel (keeps the route). */
 export function withPanel(loc: Location, panel: Panel | null, tab: string | null = null): string {
   return href(loc.route, { panel, tab, msg: panel ? loc.msg : null });
-}
-
-export function sameRoute(a: Route, b: Route): boolean {
-  return routePath(a) === routePath(b);
 }
 
 /** Only same-origin, in-app paths are acceptable "next" targets after sign-in. */

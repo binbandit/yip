@@ -81,65 +81,65 @@ class Details {
 
   private loadingOther = new Set<string>();
 
-  async ensureReview(id: string, force = false): Promise<void> {
-    if ((!force && app.data.reviews[id]) || this.loadingOther.has('r:' + id)) return;
-    this.loadingOther.add('r:' + id);
+  /** Runs load unless a load under the same key is already in flight. */
+  private async once(key: string, load: () => Promise<void>): Promise<void> {
+    if (this.loadingOther.has(key)) return;
+    this.loadingOther.add(key);
     try {
+      await load();
+    } finally {
+      this.loadingOther.delete(key);
+    }
+  }
+
+  async ensureReview(id: string, force = false): Promise<void> {
+    if (!force && app.data.reviews[id]) return;
+    await this.once('r:' + id, async () => {
       const r = await api.review(id);
       r.rounds = r.rounds ?? [];
       app.data.reviews[r.id] = r;
-    } finally {
-      this.loadingOther.delete('r:' + id);
-    }
+    });
   }
 
   async ensureApproval(id: string): Promise<void> {
-    if (app.data.approvals[id] || this.loadingOther.has('a:' + id)) return;
-    this.loadingOther.add('a:' + id);
-    try {
-      const a = await api.approval(id);
-      app.data.approvals[a.id] = a;
-    } catch {
-      /* rendered as unavailable */
-    } finally {
-      this.loadingOther.delete('a:' + id);
-    }
+    if (app.data.approvals[id]) return;
+    await this.once('a:' + id, async () => {
+      try {
+        const a = await api.approval(id);
+        app.data.approvals[a.id] = a;
+      } catch {
+        /* rendered as unavailable */
+      }
+    });
   }
 
   async ensureQuestion(id: string): Promise<void> {
-    if (app.data.questions[id] || this.loadingOther.has('q:' + id)) return;
-    this.loadingOther.add('q:' + id);
-    try {
-      const q = await api.question(id);
-      app.data.questions[q.id] = q;
-    } catch {
-      /* the message still renders; its answered state is just unknown */
-    } finally {
-      this.loadingOther.delete('q:' + id);
-    }
+    if (app.data.questions[id]) return;
+    await this.once('q:' + id, async () => {
+      try {
+        const q = await api.question(id);
+        app.data.questions[q.id] = q;
+      } catch {
+        /* the message still renders; its answered state is just unknown */
+      }
+    });
   }
 
   /** Loads one decision; throws with the hub's message when it isn't visible. */
   async ensureDecision(id: string): Promise<void> {
-    if (app.data.decisions[id] || this.loadingOther.has('d:' + id)) return;
-    this.loadingOther.add('d:' + id);
-    try {
+    if (app.data.decisions[id]) return;
+    await this.once('d:' + id, async () => {
       const d = await api.decision(id);
       app.data.decisions[d.id] = d;
-    } finally {
-      this.loadingOther.delete('d:' + id);
-    }
+    });
   }
 
   async ensurePR(id: string, refresh = false): Promise<void> {
-    if ((!refresh && app.data.prs[id]) || this.loadingOther.has('p:' + id)) return;
-    this.loadingOther.add('p:' + id);
-    try {
+    if (!refresh && app.data.prs[id]) return;
+    await this.once('p:' + id, async () => {
       const p = await api.pullRequest(id, refresh);
       app.data.prs[p.id] = p;
-    } finally {
-      this.loadingOther.delete('p:' + id);
-    }
+    });
   }
 }
 
