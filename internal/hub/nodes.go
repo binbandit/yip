@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/events"
+	"github.com/binbandit/yip/internal/redact"
 	"github.com/binbandit/yip/internal/store"
 	"github.com/binbandit/yip/protocol"
 )
@@ -279,6 +281,54 @@ func (h *Hub) Diagnostics(ctx context.Context) (protocol.Diagnostics, error) {
 	}
 	d.Checks = append(d.Checks, protocol.HealthCheck{Name: "machines", OK: online > 0, Detail: itoa(online) + " of " + itoa(len(nodes)) + " connected"})
 	return d, nil
+}
+
+// DiagnosticBundle assembles the opt-in troubleshooting export. The caller
+// previews it before saving; nothing is sent anywhere.
+func (h *Hub) DiagnosticBundle(ctx context.Context) (protocol.DiagnosticBundle, error) {
+	q := h.st.R()
+	d, err := h.Diagnostics(ctx)
+	if err != nil {
+		return protocol.DiagnosticBundle{}, err
+	}
+	b := protocol.DiagnosticBundle{GeneratedAt: h.now().UTC(), HubVersion: h.cfg.Version, GoVersion: runtime.Version(),
+		Platform: runtime.GOOS + "/" + runtime.GOARCH, Health: d.Checks, Counts: map[string]int{},
+		Work: map[string]int{"queued": d.QueueDepth, "active": d.ActiveRuns, "failedLast24h": d.FailedRuns24h,
+			"pendingApprovals": d.PendingApprovals, "pendingOutbox": d.PendingOutbox, "openWindows": d.SSEClients},
+		Machines: []protocol.DiagnosticNode{}, RecentFailures: []protocol.DiagnosticFailure{},
+		Excluded: []string{"messages and threads", "prompts and model output", "repository contents and diffs", "account names and emails",
+			"hostnames and fingerprints", "tokens, keys, and passwords (failure reasons are also redacted)"}}
+	b.SchemaVersion, _ = h.st.SchemaVersion(ctx)
+	for _, t := range []string{"rooms", "engineers", "projects", "messages", "jobs", "runs", "reviews", "decisions", "artifacts", "approvals"} {
+		var n int
+		_ = q.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+t).Scan(&n)
+		b.Counts[t] = n
+	}
+	names := map[string]string{}
+	for _, n := range d.Nodes {
+		names[n.ID] = n.Name
+		dn := protocol.DiagnosticNode{Name: n.Name, Status: n.Status, Platform: n.OS + "/" + n.Arch, RunnerVersion: n.RunnerVersion,
+			LastSeenAt: n.LastSeenAt, Providers: []protocol.DiagnosticProvider{}}
+		for _, p := range n.Providers {
+			dn.Providers = append(dn.Providers, protocol.DiagnosticProvider{Provider: p.Provider, Version: p.Version, Tested: p.Tested,
+				AuthState: p.AuthState, Billing: p.Billing})
+		}
+		b.Machines = append(b.Machines, dn)
+	}
+	rows, err := q.QueryContext(ctx, `SELECT COALESCE(ended_at, created_at), provider, COALESCE(node_id, ''), state, terminal_reason
+		FROM runs WHERE state IN ('failed', 'unknown') ORDER BY COALESCE(ended_at, created_at) DESC LIMIT 20`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var at, prov, node, state, reason string
+			if rows.Scan(&at, &prov, &node, &state, &reason) != nil {
+				continue
+			}
+			b.RecentFailures = append(b.RecentFailures, protocol.DiagnosticFailure{At: store.ParseTS(at), Provider: prov,
+				Machine: names[node], State: state, Reason: truncate(redact.String(reason), 300)})
+		}
+	}
+	return b, nil
 }
 
 func errText(err error, ok string) string {

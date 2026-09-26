@@ -2,7 +2,7 @@
   import { app } from '../lib/state/app.svelte';
   import { api, exportUrl } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
-  import type { Diagnostics } from '../lib/api/types.gen';
+  import type { DiagnosticBundle, Diagnostics } from '../lib/api/types.gen';
   import { atTime, bytes } from '../lib/util/time';
   import StateIcon from '../components/StateIcon.svelte';
   import Icon from '../components/Icon.svelte';
@@ -24,6 +24,27 @@
     } finally {
       diagLoading = false;
     }
+  }
+
+  // The debug bundle is opt-in and shown in full before it's saved.
+  let bundle = $state<DiagnosticBundle | null>(null);
+  let bundleError = $state('');
+  const bundleText = $derived(bundle ? JSON.stringify(bundle, null, 2) : '');
+  async function prepareBundle() {
+    bundleError = '';
+    try {
+      bundle = await api.diagnosticBundle();
+    } catch (err) {
+      bundleError = errorMessage(err);
+    }
+  }
+  function saveBundle() {
+    const url = URL.createObjectURL(new Blob([bundleText], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `yip-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   async function askPermission() {
@@ -109,6 +130,22 @@
       {:else if !diagError}
         <p class="meta">Checks the hub's storage, queue, machines and connections.</p>
       {/if}
+      <div class="bundle">
+        <p class="meta">
+          A diagnostic bundle helps someone troubleshoot your hub. It holds counts, health, versions and recent failure reasons — no messages, prompts,
+          code, account names or credentials. You see all of it first; nothing is sent anywhere.
+        </p>
+        {#if bundleError}<p class="notice danger" role="alert">{bundleError}</p>{/if}
+        {#if !bundle}
+          <button class="btn btn-sm" onclick={prepareBundle}>Prepare a diagnostic bundle</button>
+        {:else}
+          <textarea class="preview mono" aria-label="Diagnostic bundle contents" readonly rows="14" value={bundleText}></textarea>
+          <div class="row-actions">
+            <button class="btn btn-sm btn-primary" onclick={saveBundle}><Icon name="download" size={15} />Save this file</button>
+            <button class="btn btn-sm btn-quiet" onclick={() => (bundle = null)}>Discard</button>
+          </div>
+        {/if}
+      </div>
     </section>
 
     <section class="group" aria-labelledby="set-export">
@@ -139,6 +176,28 @@
   }
   .group > * {
     max-width: 100%;
+  }
+  .bundle {
+    display: grid;
+    gap: 8px;
+    justify-items: start;
+    margin-top: 12px;
+  }
+  .preview {
+    width: 100%;
+    resize: vertical;
+    overflow: auto;
+    margin: 0;
+    color: var(--ink);
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-artifact);
+    background: var(--surface-subtle);
+    font-size: 12px;
+  }
+  .row-actions {
+    display: flex;
+    gap: 8px;
   }
   .section-head {
     width: 100%;

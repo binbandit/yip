@@ -133,19 +133,27 @@
 
   // ---- policy ----
   let policyDraft = $state<Project['policy'] | null>(null);
+  // What a machine needs for this project's work, typed as "go, docker, os:darwin".
+  let requiresText = $state('');
+  const requiresLabel = (r: string) => (r === 'os:darwin' ? 'macOS' : r === 'os:linux' ? 'Linux' : r);
   let newCheck = $state('');
   let policyError = $state('');
   let policySaved = $state(false);
   function editPolicy() {
     if (!p) return;
     policyDraft = { ...p.policy, checks: [...(p.policy.checks ?? [])] };
+    requiresText = (p.policy.requires ?? []).join(', ');
   }
   async function savePolicy(e: SubmitEvent) {
     e.preventDefault();
     if (!p || !policyDraft) return;
     policyError = '';
     try {
-      setProject(await api.updateProject(id, { version: p.version, policy: policyDraft }));
+      const requires = requiresText
+        .split(/[,\s]+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      setProject(await api.updateProject(id, { version: p.version, policy: { ...policyDraft, requires } }));
       policyDraft = null;
       policySaved = true;
       setTimeout(() => (policySaved = false), 2500);
@@ -341,6 +349,11 @@
               <label class="check"><input type="radio" value="native" bind:group={policyDraft.executionProfile} /><span>Directly on the machine (native)</span></label>
               <label class="check"><input type="radio" value="container" bind:group={policyDraft.executionProfile} /><span>In a container<br /><span class="meta">Only machines with a container profile available can run it.</span></span></label>
             </fieldset>
+            <label class="field">
+              <span class="label">What a machine needs</span>
+              <input class="input mono" bind:value={requiresText} placeholder="e.g. go, docker, os:darwin" />
+              <span class="meta">Work in this project only goes to machines that report these tools or run this system. Machines list what they have.</span>
+            </label>
             {#if policyError}<p class="form-error" role="alert">{policyError}</p>{/if}
             <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save policy</button><button class="btn btn-sm" type="button" onclick={() => (policyDraft = null)}>Cancel</button></div>
           </form>
@@ -350,6 +363,7 @@
             <div><dt>Your review</dt><dd>{p.policy.requireHumanReview ? 'Required — you accept the exact revision' : 'Not required'}</dd></div>
             <div><dt>Checks</dt><dd>{#if p.policy.checks?.length}{#each p.policy.checks as c (c)}<code class="mono">{c}</code> {/each}{:else}None{/if}</dd></div>
             <div><dt>Runs</dt><dd>{p.policy.executionProfile === 'container' ? 'In a container' : 'Directly on the machine'}</dd></div>
+            <div><dt>Machine needs</dt><dd>{#if p.policy.requires?.length}{p.policy.requires.map(requiresLabel).join(', ')}{:else}Nothing specific{/if}</dd></div>
             <div><dt>Publishing</dt><dd>{p.policy.autoPublish ? 'Automatic where granted' : 'Only when explicitly asked'}</dd></div>
           </dl>
         {/if}

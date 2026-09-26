@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/binbandit/yip/internal/domain"
@@ -199,6 +200,13 @@ func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes [
 	}
 	portable := affinity == "" || (j.Revision != nil && j.Revision.Head != "" && h.bundleFor(ctx, h.st.R(), j.Revision.Head) != nil)
 
+	var requires []string
+	if j.ProjectID != "" {
+		if p, err := store.GetProject(ctx, h.st.R(), j.ProjectID); err == nil {
+			requires = p.Policy.Requires
+		}
+	}
+
 	var reasons []string
 	anyPossible := false
 	var best *placement
@@ -246,6 +254,10 @@ func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes [
 		}
 		if !profileOK {
 			reasons = append(reasons, n.Name+" has no available "+r.ExecutionProfile+" execution profile.")
+			continue
+		}
+		if missing := missingRequirements(n.Node, requires); missing != "" {
+			reasons = append(reasons, "This project needs "+missing+", which "+n.Name+" doesn't have.")
 			continue
 		}
 		anyPossible = true
@@ -304,6 +316,40 @@ func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes [
 		why = dedupeJoin(reasons)
 	}
 	return nil, why, !anyPossible
+}
+
+// missingRequirements names what a machine lacks from a project's needs:
+// reported toolchains, or os:<goos>.
+func missingRequirements(n protocol.Node, requires []string) string {
+	var miss []string
+	for _, req := range requires {
+		req = strings.ToLower(strings.TrimSpace(req))
+		if req == "" {
+			continue
+		}
+		if osName, ok := strings.CutPrefix(req, "os:"); ok {
+			if !strings.EqualFold(n.OS, osName) {
+				miss = append(miss, osLabel(osName))
+			}
+			continue
+		}
+		if _, ok := n.Toolchains[req]; !ok {
+			miss = append(miss, req)
+		}
+	}
+	return strings.Join(miss, " and ")
+}
+
+func osLabel(goos string) string {
+	switch goos {
+	case "darwin":
+		return "macOS"
+	case "linux":
+		return "Linux"
+	case "windows":
+		return "Windows"
+	}
+	return goos
 }
 
 func dedupeJoin(ss []string) string {

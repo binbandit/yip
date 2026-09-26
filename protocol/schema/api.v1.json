@@ -814,6 +814,176 @@
       ],
       "type": "object"
     },
+    "DiagnosticBundle": {
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "excluded": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "generatedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "goVersion": {
+          "type": "string"
+        },
+        "health": {
+          "items": {
+            "$ref": "#/$defs/HealthCheck"
+          },
+          "type": "array"
+        },
+        "hubVersion": {
+          "type": "string"
+        },
+        "machines": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticNode"
+          },
+          "type": "array"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "recentFailures": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticFailure"
+          },
+          "type": "array"
+        },
+        "schemaVersion": {
+          "type": "integer"
+        },
+        "work": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "generatedAt",
+        "hubVersion",
+        "goVersion",
+        "platform",
+        "schemaVersion",
+        "health",
+        "counts",
+        "work",
+        "machines",
+        "recentFailures",
+        "excluded"
+      ],
+      "type": "object"
+    },
+    "DiagnosticFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "machine": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "provider",
+        "machine",
+        "state",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "DiagnosticNode": {
+      "additionalProperties": false,
+      "properties": {
+        "lastSeenAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticProvider"
+          },
+          "type": "array"
+        },
+        "runnerVersion": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "platform",
+        "runnerVersion",
+        "providers"
+      ],
+      "type": "object"
+    },
+    "DiagnosticProvider": {
+      "additionalProperties": false,
+      "properties": {
+        "authState": {
+          "type": "string"
+        },
+        "billing": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "tested": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "version",
+        "tested",
+        "authState",
+        "billing"
+      ],
+      "type": "object"
+    },
     "Diagnostics": {
       "additionalProperties": false,
       "properties": {
@@ -2358,6 +2528,12 @@
         },
         "requirePeerReview": {
           "type": "boolean"
+        },
+        "requires": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "required": [

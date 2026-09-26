@@ -681,6 +681,10 @@ type ProjectPolicy struct {
 	AutoPublish        bool     `json:"autoPublish"`
 	Checks             []string `json:"checks"`
 	ExecutionProfile   string   `json:"executionProfile"` // native | container
+	// Requires lists what a machine needs for this project's work: tools the
+	// runner reports (go, node, python3, docker, cargo, swift, xcodebuild)
+	// or an operating system as os:darwin / os:linux.
+	Requires []string `json:"requires,omitempty"`
 }
 
 type Repo struct {
@@ -882,6 +886,48 @@ type SearchResult struct {
 type MessagePage struct {
 	Messages []Message `json:"messages"`
 	HasMore  bool      `json:"hasMore"`
+}
+
+// DiagnosticBundle is an opt-in, previewable export for troubleshooting. It
+// holds counts, health, versions, and recent failure reasons; never
+// messages, prompts, repository contents, account names, or credentials.
+type DiagnosticBundle struct {
+	GeneratedAt    time.Time           `json:"generatedAt"`
+	HubVersion     string              `json:"hubVersion"`
+	GoVersion      string              `json:"goVersion"`
+	Platform       string              `json:"platform"`
+	SchemaVersion  int                 `json:"schemaVersion"`
+	Health         []HealthCheck       `json:"health"`
+	Counts         map[string]int      `json:"counts"`
+	Work           map[string]int      `json:"work"`
+	Machines       []DiagnosticNode    `json:"machines"`
+	RecentFailures []DiagnosticFailure `json:"recentFailures"`
+	Excluded       []string            `json:"excluded"`
+}
+
+type DiagnosticNode struct {
+	Name          string               `json:"name"`
+	Status        string               `json:"status"`
+	Platform      string               `json:"platform"`
+	RunnerVersion string               `json:"runnerVersion"`
+	LastSeenAt    *time.Time           `json:"lastSeenAt,omitempty"`
+	Providers     []DiagnosticProvider `json:"providers"`
+}
+
+type DiagnosticProvider struct {
+	Provider  string `json:"provider"`
+	Version   string `json:"version"`
+	Tested    bool   `json:"tested"`
+	AuthState string `json:"authState"`
+	Billing   string `json:"billing"`
+}
+
+type DiagnosticFailure struct {
+	At       time.Time `json:"at"`
+	Provider string    `json:"provider"`
+	Machine  string    `json:"machine"`
+	State    string    `json:"state"`
+	Reason   string    `json:"reason"`
 }
 
 type Diagnostics struct {

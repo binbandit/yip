@@ -12,6 +12,7 @@ import type {
   CreateRoomRequest,
   Decision,
   DecisionActionRequest,
+  DiagnosticBundle,
   Diagnostics,
   Engineer,
   EngineerVersion,
@@ -140,6 +141,7 @@ export const api = {
       signal,
     }),
   diagnostics: () => get<Diagnostics>('/v1/diagnostics'),
+  diagnosticBundle: () => get<DiagnosticBundle>('/v1/diagnostics/bundle'),
 };
 
 export const artifactUrl = (id: string, download = false) => `/v1/artifacts/${q(id)}${download ? '?download=1' : ''}`;
