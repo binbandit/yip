@@ -734,6 +734,9 @@ func (h *Hub) JobDetail(ctx context.Context, userID, jobID string) (protocol.Job
 	if d.Inputs, err = store.ListJobInputs(ctx, q, jobID); err != nil {
 		return d, err
 	}
+	if d.Quarantined, err = store.ListQuarantine(ctx, q, jobID); err != nil {
+		return d, err
+	}
 	d.FollowUps = []protocol.Job{}
 	if fs, err := store.FollowUps(ctx, q, jobID); err == nil {
 		for _, f := range fs {

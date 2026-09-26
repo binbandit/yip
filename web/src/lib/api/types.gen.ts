@@ -434,6 +434,7 @@ export interface JobDetail {
   missing: string[];
   revisions: RevisionRecord[];
   followUps: Job[];
+  quarantined: QuarantinedOutput[];
 }
 
 export interface JobInput {
@@ -729,6 +730,17 @@ export interface PutRepoRequest {
   defaultBranch: string;
   forge: string;
   forgeRepo: string;
+}
+
+export interface QuarantinedOutput {
+  id: string;
+  runId: string;
+  nodeId: string;
+  epoch: number;
+  currentEpoch: number;
+  kind: string;
+  summary: string;
+  receivedAt: string;
 }
 
 export interface Question {

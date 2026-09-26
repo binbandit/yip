@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/binbandit/yip/internal/domain"
+	"github.com/binbandit/yip/internal/redact"
 	"github.com/binbandit/yip/internal/store"
 	"github.com/binbandit/yip/protocol"
 )
@@ -450,6 +452,26 @@ func requireLease(ctx context.Context, q store.Q, nodeID, runID string, epoch in
 	return run, nil
 }
 
+// quarantineIfStale keeps output that a machine sent for its own run under
+// an old lease epoch (spec §7: stale output is quarantined diagnostic
+// evidence). It never touches the work; redelivery is recorded once.
+func (h *Hub) quarantineIfStale(ctx context.Context, nodeID, runID string, epoch int64, kind, ref, summary string) {
+	run, err := store.GetRun(ctx, h.st.R(), runID)
+	if err != nil || run.NodeID != nodeID || epoch == 0 || run.LeaseEpoch == epoch {
+		return
+	}
+	o := protocol.QuarantinedOutput{ID: domain.NewID(), RunID: run.ID, NodeID: nodeID, Epoch: epoch, CurrentEpoch: run.LeaseEpoch,
+		Kind: kind, Summary: truncate(redact.String(summary), 500), ReceivedAt: h.now()}
+	key := fmt.Sprintf("%s:%s:%d:%s", kind, run.ID, epoch, ref)
+	_ = h.do(ctx, func(t *txn) error {
+		if err := store.Quarantine(ctx, t.tx, o, run.JobID, key); err != nil {
+			return err
+		}
+		return t.emit(ev{Type: "run.stale_report", Room: run.Destination.RoomID, Job: run.JobID, Run: run.ID,
+			Payload: map[string]any{"epoch": epoch, "currentEpoch": run.LeaseEpoch, "kind": kind, "summary": o.Summary}})
+	})
+}
+
 func (h *Hub) onRunAck(ctx context.Context, nodeID string, f protocol.Frame, a protocol.RunAck) error {
 	return h.do(ctx, func(t *txn) error {
 		if err := store.AckOutbox(ctx, t.tx, a.CommandID); err != nil {
@@ -558,6 +580,7 @@ func (h *Hub) onRunEvent(ctx context.Context, conn *NodeConn, f protocol.Frame, 
 		return h.applyRunEvent(ctx, t, run, e)
 	})
 	if err != nil {
+		h.quarantineIfStale(ctx, conn.NodeID, f.RunID, f.LeaseEpoch, "event", strconv.FormatInt(e.Seq, 10), firstNonEmpty(e.Kind+": "+e.Text, e.Kind))
 		return err
 	}
 	ack, _ := json.Marshal(protocol.Ack{RunID: f.RunID, UpToSeq: e.Seq})
@@ -668,6 +691,12 @@ func transient(typ string, run store.RunRow, payload json.RawMessage) eventsTran
 // onRunTerminal applies a run's final outcome. fromRunner is false when the
 // hub itself declares the outcome (lease expiry).
 func (h *Hub) onRunTerminal(ctx context.Context, nodeID, runID string, epoch int64, term protocol.RunTerminal, fromRunner bool) error {
+	staleTerminal := false
+	defer func() {
+		if staleTerminal {
+			h.quarantineIfStale(ctx, nodeID, runID, epoch, "terminal", "", term.Outcome+": "+firstNonEmpty(term.Summary, term.Error, term.FinalText))
+		}
+	}()
 	return h.do(ctx, func(t *txn) error {
 		run, err := store.GetRun(ctx, t.tx, runID)
 		if err != nil {
@@ -678,9 +707,10 @@ func (h *Hub) onRunTerminal(ctx context.Context, nodeID, runID string, epoch int
 				return domain.Forbidden("run is not assigned to this machine")
 			}
 			if run.LeaseEpoch != epoch {
-				// A stale epoch cannot publish results; keep it as diagnostic evidence only.
-				return t.emit(ev{Type: "run.stale_report", Room: run.Destination.RoomID, Job: run.JobID, Run: run.ID,
-					Payload: map[string]any{"epoch": epoch, "currentEpoch": run.LeaseEpoch, "outcome": term.Outcome, "summary": truncate(term.Summary, 500)}})
+				// A stale epoch cannot publish results; it is kept as
+				// quarantined diagnostic evidence only (after this returns).
+				staleTerminal = true
+				return nil
 			}
 		}
 		if domain.RunTerminal(run.State) {

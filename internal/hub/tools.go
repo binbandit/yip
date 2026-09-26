@@ -40,6 +40,7 @@ func (h *Hub) HandleToolCall(ctx context.Context, nodeID, runID string, epoch in
 	}
 	run, err := requireLease(ctx, h.st.R(), nodeID, runID, epoch)
 	if err != nil {
+		h.quarantineIfStale(ctx, nodeID, runID, epoch, "tool_call", call.CallID, call.Tool+" "+truncate(string(call.Args), 300))
 		return fail(domain.Forbidden("This run no longer holds a valid lease; the call was not executed."))
 	}
 	if run.State == protocol.RunStopping || !domain.RunHoldsLease(run.State) {

@@ -990,3 +990,55 @@ func TestRegressionCrashRetriesAutomatically(t *testing.T) {
 		t.Fatalf("expected one automatic retry, got %d attempts", n)
 	}
 }
+
+// Output a machine sends under an old lease epoch never changes the work;
+// it is kept, once, as quarantined diagnostic evidence.
+func TestRegressionStaleOutputIsQuarantined(t *testing.T) {
+	e := newEnv(t, envOptions{noRunner: true})
+	n := e.fakeNode("old-box")
+	e.post("Engineering", "@Mira hello", []string{"mira"}, nil)
+	offer := n.waitFrame(e, "an offer", func(f protocol.Frame) bool { return f.Type == protocol.CmdOfferRun })
+	old := offer.LeaseEpoch
+	// The lease moves on (e.g. the hub reassigned it after a partition).
+	if err := e.hub.Store().Tx(e.ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(e.ctx, `UPDATE runs SET lease_epoch = lease_epoch + 1 WHERE id = ?`, offer.RunID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ev := protocol.RunEvent{Seq: 1, Kind: protocol.RunEvStatus, Text: "Pushed token=abcdefghijklmnopqrstuvwxyz0123 to origin", At: time.Now()}
+	n.send(e, protocol.EvRunEvent, offer.RunID, old, ev)
+	n.send(e, protocol.EvRunEvent, offer.RunID, old, ev) // redelivery
+	n.send(e, protocol.EvRunTerminal, offer.RunID, old, protocol.RunTerminal{Outcome: protocol.OutcomeSucceeded, FinalText: "All done!", ExitConfirmed: true})
+	n.send(e, protocol.EvToolCall, offer.RunID, old, protocol.ToolCall{CallID: "c1", Tool: "room_post", Args: json.RawMessage(`{"body":"late"}`)})
+	var d protocol.JobDetail
+	e.waitFor("three quarantined reports", 10*time.Second, func() bool {
+		js := e.jobsWithReplies()
+		if len(js) == 0 {
+			return false
+		}
+		d = e.jobDetail(js[0].ID)
+		return len(d.Quarantined) == 3
+	})
+	kinds := map[string]bool{}
+	for _, q := range d.Quarantined {
+		kinds[q.Kind] = true
+		if q.Epoch != old || q.CurrentEpoch != old+1 {
+			t.Errorf("epochs not recorded: %+v", q)
+		}
+		if strings.Contains(q.Summary, "abcdefghijklmnopqrstuvwxyz0123") {
+			t.Errorf("a secret survived into quarantine: %q", q.Summary)
+		}
+	}
+	if !kinds["event"] || !kinds["terminal"] || !kinds["tool_call"] {
+		t.Fatalf("missing kinds: %v", kinds)
+	}
+	if d.Job.State == protocol.JobCompleted {
+		t.Fatalf("a stale report completed the work")
+	}
+	for _, m := range e.messages("Engineering") {
+		if m.Body == "All done!" || m.Body == "late" {
+			t.Fatalf("stale output reached the room: %q", m.Body)
+		}
+	}
+}

@@ -86,8 +86,6 @@ Still open (not blocking the scenario, recorded here so they aren't lost):
   UI shows storage pressure but can't delete a workspace.
 - Repository registration needs a reachable remote; importing a local
   snapshot or bundle (§ Repository access) isn't implemented.
-- Late output from a stale lease epoch is rejected, not kept as quarantined
-  diagnostic evidence.
 - Idempotency keys cover messages, job input, review requests, and forge
   publications; other mutations rely on optimistic versions.
 - Backups aren't encrypted by yip; keep them on an encrypted volume.

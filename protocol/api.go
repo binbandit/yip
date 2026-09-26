@@ -803,6 +803,19 @@ type SetupStatus struct {
 	Version    string `json:"version"`
 }
 
+// QuarantinedOutput is output an attempt sent after it lost its lease. It
+// never changed the work; it's kept so a person can see what happened.
+type QuarantinedOutput struct {
+	ID           string    `json:"id"`
+	RunID        string    `json:"runId"`
+	NodeID       string    `json:"nodeId"`
+	Epoch        int64     `json:"epoch"`
+	CurrentEpoch int64     `json:"currentEpoch"`
+	Kind         string    `json:"kind"` // event | terminal | tool_call
+	Summary      string    `json:"summary"`
+	ReceivedAt   time.Time `json:"receivedAt"`
+}
+
 type JobDetail struct {
 	Job          Job            `json:"job"`
 	Runs         []Run          `json:"runs"`
@@ -821,6 +834,8 @@ type JobDetail struct {
 	Revisions []RevisionRecord `json:"revisions"`
 	// FollowUps is later work started as a follow-up to this one.
 	FollowUps []Job `json:"followUps"`
+	// Quarantined is late output from attempts that had lost their lease.
+	Quarantined []QuarantinedOutput `json:"quarantined"`
 }
 
 type JobInput struct {

@@ -1690,6 +1690,12 @@
           },
           "type": "array"
         },
+        "quarantined": {
+          "items": {
+            "$ref": "#/$defs/QuarantinedOutput"
+          },
+          "type": "array"
+        },
         "questions": {
           "items": {
             "$ref": "#/$defs/Question"
@@ -1730,7 +1736,8 @@
         "inputs",
         "missing",
         "revisions",
-        "followUps"
+        "followUps",
+        "quarantined"
       ],
       "type": "object"
     },
@@ -2922,6 +2929,47 @@
         "defaultBranch",
         "forge",
         "forgeRepo"
+      ],
+      "type": "object"
+    },
+    "QuarantinedOutput": {
+      "additionalProperties": false,
+      "properties": {
+        "currentEpoch": {
+          "type": "integer"
+        },
+        "epoch": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "receivedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "runId",
+        "nodeId",
+        "epoch",
+        "currentEpoch",
+        "kind",
+        "summary",
+        "receivedAt"
       ],
       "type": "object"
     },

@@ -53,7 +53,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `PUT /v1/projects/{id}/repos/{repoId\|new}` | `PutRepoRequest` → `Project` |
 | `PUT /v1/projects/{id}/grants/{engineerId}` | `PutGrantRequest` (`access`: read/write/none; `actions`: push, open_pr, publish_review, merge) |
 | `GET /v1/jobs?state=a,b&project=&owner=` | → `Job[]` (work ledger; excludes conversational replies) |
-| `GET /v1/jobs/{id}` | → `JobDetail` (runs, checks, artifacts, reviews with rounds/findings, questions, approvals, PRs, children, decisions, activity, inputs, `missing` evidence, `revisions` with file/line counts, `followUps`). A job started from a request in the thread of finished work carries `followsId`, the work it follows up |
+| `GET /v1/jobs/{id}` | → `JobDetail` (runs, checks, artifacts, reviews with rounds/findings, questions, approvals, PRs, children, decisions, activity, inputs, `missing` evidence, `revisions` with file/line counts, `followUps`). A job started from a request in the thread of finished work carries `followsId`, the work it follows up. `quarantined` lists output a machine sent under an old lease epoch (events, final reports, tool calls; redacted, recorded once); it never changes the work |
 | `GET /v1/jobs/{id}/runs/{runId}/activity` | → `RunActivity[]` (tool log) |
 | `POST /v1/jobs/{id}/input` | `JobInputRequest` → `JobInputResponse` (steering; `input.delivery` is `pending` → later `immediate` or `queued`) |
 | `POST /v1/jobs/{id}/restart` | → `Job`. The explicit *interrupt and restart*: stops the running attempt (the work stays open; workspace and revisions kept) and starts the next one at once with the queued input. The composer offers it when an update is only *queued* (Claude Code, Cursor) |
