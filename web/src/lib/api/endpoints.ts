@@ -1,5 +1,5 @@
 // Typed wrappers for every /v1 endpoint the client uses (see docs/api.md).
-import { del, get, patch, post, put } from './client';
+import { del, get, patch, post, put, upload } from './client';
 import type {
   AcceptJobRequest,
   Approval,
@@ -93,6 +93,11 @@ export const api = {
   updateProject: (id: string, req: UpdateProjectRequest) => patch<Project>(`/v1/projects/${q(id)}`, req),
   putRepo: (projectId: string, repoId: string | 'new', req: PutRepoRequest) =>
     put<Project>(`/v1/projects/${q(projectId)}/repos/${q(repoId)}`, req),
+  importRepo: (projectId: string, file: Blob, opts: { name?: string; branch?: string; repoId?: string }) =>
+    upload<Project>(
+      `/v1/projects/${q(projectId)}/repos/import?name=${q(opts.name ?? '')}&branch=${q(opts.branch ?? '')}&repo=${q(opts.repoId ?? '')}`,
+      file,
+    ),
   putGrant: (projectId: string, engineerId: string, req: PutGrantRequest) =>
     put<Project>(`/v1/projects/${q(projectId)}/grants/${q(engineerId)}`, req),
 

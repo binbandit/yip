@@ -4,6 +4,7 @@
   // and decisions.
   import { onMount } from 'svelte';
   import { app } from '../lib/state/app.svelte';
+  import { atTime } from '../lib/util/time';
   import { api } from '../lib/api/endpoints';
   import { ApiError, errorMessage } from '../lib/api/client';
   import type { Decision, Job, Project, Repo } from '../lib/api/types.gen';
@@ -113,6 +114,40 @@
     }
   }
 
+  // ---- import a repository from a folder (git bundle) ----
+  let importForm = $state<null | { repoId: string; name: string; branch: string; file: File | null }>(null);
+  let importError = $state('');
+  let importBusy = $state(false);
+  function startImport(r?: Repo) {
+    importError = '';
+    repoForm = null;
+    importForm = { repoId: r?.id ?? '', name: r?.name ?? '', branch: '', file: null };
+  }
+  async function saveImport(e: SubmitEvent) {
+    e.preventDefault();
+    if (!importForm) return;
+    if (!importForm.repoId && !importForm.name.trim()) {
+      importError = 'Name the repository.';
+      return;
+    }
+    if (!importForm.file) {
+      importError = 'Choose the bundle file you created.';
+      return;
+    }
+    importBusy = true;
+    importError = '';
+    try {
+      setProject(await api.importRepo(id, importForm.file, { name: importForm.name.trim(), branch: importForm.branch.trim(), repoId: importForm.repoId }));
+      app.toast(importForm.repoId ? 'Updated from the new bundle. Machines pick it up on their next run.' : 'Imported. Machines build their copy from it.');
+      importForm = null;
+    } catch (err) {
+      importError = errorMessage(err);
+    } finally {
+      importBusy = false;
+    }
+  }
+  const bundleCmd = $derived(`git -C /path/to/${importForm?.name.trim() || 'repo'} bundle create ${importForm?.name.trim() || 'repo'}.bundle --all`);
+
   // ---- grants ----
   let grantStatus = $state<Record<string, string>>({});
   function grantFor(engineerId: string) {
@@ -206,23 +241,68 @@
       <section class="section" aria-labelledby="p-repos">
         <div class="section-head">
           <h2 class="section-title" id="p-repos">Repositories</h2>
-          {#if !repoForm}<button class="btn btn-sm" onclick={() => editRepo()}><Icon name="plus" size={15} />Add repository</button>{/if}
+          {#if !repoForm && !importForm}
+            <div class="row">
+              <button class="btn btn-sm btn-quiet" onclick={() => startImport()}>Import from a folder</button>
+              <button class="btn btn-sm" onclick={() => editRepo()}><Icon name="plus" size={15} />Add repository</button>
+            </div>
+          {/if}
         </div>
         {#if p.repos.length === 0 && !repoForm}
-          <p class="meta">No repositories yet. Add one by a remote URL your machines can reach.</p>
+          <p class="meta">No repositories yet. Add one by a remote URL your machines can reach, or import one from a folder on this computer.</p>
         {/if}
         <ul class="repos">
           {#each p.repos as r (r.id)}
             <li>
               <div>
                 <p class="r-name">{r.name} <span class="meta">· {r.defaultBranch}</span></p>
-                <p class="mono r-url">{r.remoteUrl}</p>
-                <p class="meta">{r.forge === 'github' ? `GitHub${r.forgeRepo ? ` · ${r.forgeRepo}` : ''}` : 'No forge connected'}</p>
+                {#if r.sourceBundleId && !r.remoteUrl}
+                  <p class="meta">Imported from a folder{r.importedAt ? ` · ${atTime(r.importedAt)}` : ''}</p>
+                  <p class="meta">No remote: engineers publish revisions here; there's nothing to push to.</p>
+                {:else}
+                  <p class="mono r-url">{r.remoteUrl}</p>
+                  <p class="meta">{r.forge === 'github' ? `GitHub${r.forgeRepo ? ` · ${r.forgeRepo}` : ''}` : 'No forge connected'}</p>
+                {/if}
               </div>
-              <button class="btn btn-sm btn-quiet" onclick={() => editRepo(r)}>Edit</button>
+              {#if r.sourceBundleId && !r.remoteUrl}
+                <div class="row">
+                  <button class="btn btn-sm btn-quiet" onclick={() => startImport(r)}>Import a newer bundle</button>
+                  <button class="btn btn-sm btn-quiet" onclick={() => editRepo(r)}>Add a remote</button>
+                </div>
+              {:else}
+                <button class="btn btn-sm btn-quiet" onclick={() => editRepo(r)}>Edit</button>
+              {/if}
             </li>
           {/each}
         </ul>
+        {#if importForm}
+          <form class="panel-box form" onsubmit={saveImport}>
+            <p>
+              For code that isn't on a remote your machines can reach. In the folder, make a bundle of its history, then choose it here. Only
+              committed work is included — commit anything you want the team to see first.
+            </p>
+            <pre class="mono cmd">{bundleCmd}</pre>
+            <div class="two">
+              {#if !importForm.repoId}
+                <label class="field"><span class="label">Name</span><input class="input" bind:value={importForm.name} placeholder="atlas" /></label>
+              {/if}
+              <label class="field">
+                <span class="label">Default branch</span>
+                <input class="input" bind:value={importForm.branch} placeholder="from the bundle" />
+              </label>
+            </div>
+            <label class="field">
+              <span class="label">Bundle file</span>
+              <input class="input" type="file" accept=".bundle,application/octet-stream" onchange={(e) => importForm && (importForm.file = (e.target as HTMLInputElement).files?.[0] ?? null)} />
+              <span class="hint">Up to 512 MB. Machines build their copy from it; nothing is pushed anywhere.</span>
+            </label>
+            {#if importError}<p class="form-error" role="alert">{importError}</p>{/if}
+            <div class="row">
+              <button class="btn btn-primary btn-sm" type="submit" disabled={importBusy}>{importBusy ? 'Uploading…' : importForm.repoId ? 'Import newer bundle' : 'Import repository'}</button>
+              <button class="btn btn-sm" type="button" onclick={() => (importForm = null)}>Cancel</button>
+            </div>
+          </form>
+        {/if}
         {#if repoForm}
           <form class="panel-box form" onsubmit={saveRepo}>
             <div class="two">
@@ -411,6 +491,16 @@
 </div>
 
 <style>
+  .cmd {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: var(--r-artifact);
+    background: var(--surface-subtle);
+    border: 1px solid var(--line);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+  }
   .crumb {
     font-size: 13px;
     margin-bottom: 10px;

@@ -285,6 +285,30 @@ describe('action flows', () => {
     await waitFor(() => !text().includes('Old fix'), 'removed from the list');
   });
 
+  it('imports a repository from a folder as a git bundle upload', async () => {
+    const proj = Object.values(app.data.projects)[0];
+    const bundle = new File(['# v2 git bundle\n'], 'notes.bundle', { type: 'application/octet-stream' });
+    hub.override('POST', new RegExp(`^/v1/projects/${proj.id}/repos/import`), () => ({
+      body: { ...proj, repos: [...proj.repos, { id: 'r-new', projectId: proj.id, name: 'notes', remoteUrl: '', defaultBranch: 'trunk', forge: 'none', createdAt: '', sourceBundleId: 'a1', importedAt: new Date().toISOString() }] },
+    }));
+    app.go({ name: 'project', id: proj.id });
+    const open = await waitFor(() => byText('button', 'Import from a folder'), 'import button');
+    open.click();
+    await settle();
+    expect(text()).toContain('bundle create');
+    type(document.querySelector<HTMLInputElement>('form input[placeholder="atlas"]')!, 'notes');
+    const input = document.querySelector<HTMLInputElement>('form input[type=file]')!;
+    Object.defineProperty(input, 'files', { value: [bundle], configurable: true });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    byText('form button', 'Import repository')!.click();
+    await waitFor(() => hub.last('POST', /\/repos\/import/), 'upload');
+    const call = hub.last('POST', /\/repos\/import/)!;
+    expect(call.path).toContain('name=notes');
+    expect(call.body).toBeInstanceOf(Blob);
+    await waitFor(() => text().includes('Imported from a folder'), 'imported repo shown');
+    expect(text()).toContain("there's nothing to push to");
+  });
+
   it('shows an unconfirmed outcome from WorkRow.runState in the strip', async () => {
     const engRoom = roomId('Engineering');
     const unk = { ...codeDetail.job, id: 'job-unk', title: 'Refactor gateway retries', state: 'running' as const, currentRunId: 'run-unk', source: { roomId: engRoom } };

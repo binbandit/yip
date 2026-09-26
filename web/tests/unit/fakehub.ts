@@ -47,7 +47,10 @@ export class FakeHub {
       const method = (init?.method ?? 'GET').toUpperCase();
       const headers: Record<string, string> = {};
       new Headers(init?.headers).forEach((v, k) => (headers[k] = v));
-      const call: Call = { method, path: url.pathname + url.search, body: init?.body ? JSON.parse(String(init.body)) : undefined, headers };
+      // Uploads (a Blob body) are recorded as the Blob itself.
+      const raw = init?.body;
+      const body = raw instanceof Blob ? raw : raw ? JSON.parse(String(raw)) : undefined;
+      const call: Call = { method, path: url.pathname + url.search, body, headers };
       this.calls.push(call);
       if (this.unauthorized && url.pathname !== '/v1/setup' && url.pathname !== '/v1/session') {
         return new Response(JSON.stringify({ code: 'unauthorized', message: 'Sign in to continue.', recoverable: true }), { status: 401 });

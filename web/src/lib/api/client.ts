@@ -97,6 +97,31 @@ export async function request<T>(method: Method, path: string, body?: unknown, o
   return parsed as T;
 }
 
+/** POST a file as the raw request body (e.g. a git bundle). */
+export async function upload<T>(path: string, file: Blob): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json', 'Content-Type': 'application/octet-stream' };
+  if (csrfToken) headers['X-Yip-Csrf'] = csrfToken;
+  let res: Response;
+  try {
+    res = await fetch(path, { method: 'POST', headers, body: file, credentials: 'same-origin' });
+  } catch {
+    throw new ApiError(0, { code: 'offline', message: OFFLINE_MESSAGE, recoverable: true });
+  }
+  const text = await res.text();
+  let parsed: unknown;
+  try {
+    parsed = text ? JSON.parse(text) : undefined;
+  } catch {
+    parsed = undefined;
+  }
+  if (!res.ok) {
+    const e = (parsed && typeof parsed === 'object' ? parsed : {}) as Partial<APIError>;
+    if (res.status === 401) unauthorizedHandler?.();
+    throw new ApiError(res.status, { ...e, message: e.message || defaultMessage(res.status), code: e.code || codeFor(res.status) });
+  }
+  return parsed as T;
+}
+
 function codeFor(status: number): string {
   switch (status) {
     case 400:
