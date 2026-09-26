@@ -418,9 +418,15 @@ type simpleCmd struct {
 
 // splitShell tokenizes a POSIX-style command line into simple commands.
 // dynamic names the first construct whose effect depends on run-time
-// expansion (command substitution, process substitution, heredocs).
+// expansion (command substitution or process substitution). Heredoc data
+// is consumed separately, so writing shell examples is not executing them.
 func splitShell(s string) (cmds []simpleCmd, dynamic string, ok bool) {
 	var cur simpleCmd
+	type heredoc struct {
+		end          string
+		quoted, tabs bool
+	}
+	var docs []heredoc
 	var tok strings.Builder
 	inTok, redirNext := false, false
 	flushTok := func() {
@@ -503,6 +509,10 @@ func splitShell(s string) (cmds []simpleCmd, dynamic string, ok bool) {
 			inTok = true
 		case c == ' ' || c == '\t':
 			flushTok()
+		case c == '#' && !inTok:
+			for i+1 < len(s) && s[i+1] != '\n' {
+				i++
+			}
 		case c == '\n' || c == ';' || c == '|' || c == '&' || c == '(' || c == ')' || c == '{' && !inTok || c == '}' && !inTok:
 			if c == '&' && i+1 < len(s) && s[i+1] == '>' {
 				flushTok()
@@ -514,6 +524,45 @@ func splitShell(s string) (cmds []simpleCmd, dynamic string, ok bool) {
 				continue
 			}
 			flushCmd()
+			if c == '\n' {
+				for _, doc := range docs {
+					found := false
+					for i+1 < len(s) {
+						start := i + 1
+						end := strings.IndexByte(s[start:], '\n')
+						if end < 0 {
+							end = len(s)
+						} else {
+							end += start
+						}
+						line := s[start:end]
+						if doc.tabs {
+							line = strings.TrimLeft(line, "\t")
+						}
+						i = end
+						if line == doc.end {
+							found = true
+							break
+						}
+						if !doc.quoted {
+							for k := 0; k < len(line); k++ {
+								if line[k] == '\\' {
+									if k+1 == len(line) {
+										mark("a continued heredoc line")
+									}
+									k++
+								} else if line[k] == '`' || line[k] == '$' && k+1 < len(line) && line[k+1] == '(' {
+									mark("command substitution")
+								}
+							}
+						}
+					}
+					if !found {
+						return nil, "", false
+					}
+				}
+				docs = nil
+			}
 		case c == '>' || c == '<':
 			// A preceding fd number (2>) belongs to the redirection.
 			if inTok && isDigits(tok.String()) {
@@ -522,10 +571,53 @@ func splitShell(s string) (cmds []simpleCmd, dynamic string, ok bool) {
 			}
 			flushTok()
 			if c == '<' && i+1 < len(s) && s[i+1] == '<' {
-				mark("a heredoc")
 				i++
 				if i+1 < len(s) && s[i+1] == '<' {
+					mark("a here-string")
 					i++ // here-string
+				} else {
+					doc := heredoc{}
+					if i+1 < len(s) && s[i+1] == '-' {
+						doc.tabs = true
+						i++
+					}
+					for i+1 < len(s) && (s[i+1] == ' ' || s[i+1] == '\t') {
+						i++
+					}
+					var delimiter strings.Builder
+					for i+1 < len(s) && !strings.ContainsRune(" \t\n;|&()<>", rune(s[i+1])) {
+						i++
+						switch s[i] {
+						case '\'', '"':
+							quote := s[i]
+							doc.quoted = true
+							for i++; i < len(s) && s[i] != quote; i++ {
+								// Unusual escaped double-quoted delimiters stay exceptional.
+								if s[i] == '\\' && quote == '"' {
+									return nil, "", false
+								}
+								delimiter.WriteByte(s[i])
+							}
+							if i == len(s) {
+								return nil, "", false
+							}
+						case '\\':
+							doc.quoted = true
+							i++
+							if i == len(s) || s[i] == '\n' {
+								return nil, "", false
+							}
+							delimiter.WriteByte(s[i])
+						default:
+							delimiter.WriteByte(s[i])
+						}
+					}
+					doc.end = delimiter.String()
+					if doc.end == "" {
+						return nil, "", false
+					}
+					docs = append(docs, doc)
+					continue
 				}
 			} else if i+1 < len(s) && (s[i+1] == '>' || s[i+1] == '|') {
 				i++
@@ -556,6 +648,9 @@ func splitShell(s string) (cmds []simpleCmd, dynamic string, ok bool) {
 		}
 	}
 	flushCmd()
+	if len(docs) > 0 {
+		return nil, "", false
+	}
 	return cmds, dynamic, true
 }
 

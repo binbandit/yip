@@ -48,6 +48,34 @@ func TestClassifyRoutineCommands(t *testing.T) {
 	}
 }
 
+func TestClassifyHeredocs(t *testing.T) {
+	cases := map[string]string{
+		"cat <<'EOF' > notes.md\n$(git push)\nEOF":                           "",
+		"cat > notes.md <<EOF\nOrdinary text with $USER\nEOF\ngo test ./...": "",
+		"cat <<-\"EOF\" >> notes.md\n\tgit push\n\tEOF":                      "",
+		"cat <<E'O'F > notes.md\n$(git push)\nEOF":                           "",
+		"cat <<\\EOF > notes.md\n$(git push)\nEOF":                           "",
+		"cat <<A <<'B' > notes.md\none\nA\n$(git push)\nB":                   "",
+		"cat <<EOF > notes.md # a note\ntext\nEOF":                           "",
+		"cat <<EOF > notes.md\ntext\nEOF\ngit push":                          "push",
+		"cat <<EOF > notes.md && git push\ntext\nEOF":                        "push",
+		"cat <<'EOF' > ../notes.md\ntext\nEOF":                               "exec",
+		"cat <<EOF > notes.md\n$(git push)\nEOF":                             "exec",
+		"cat <<EOF > notes.md\n`git push`\nEOF":                              "exec",
+		"cat <<EOF > notes.md\ntext\\\nEOF\ngit push\nEOF":                   "exec,push",
+		"sh <<'EOF'\ngit push\nEOF":                                          "exec",
+		"python3 - <<'EOF'\nprint(1)\nEOF":                                   "exec",
+		"cat <<'EOF' | sh\ngit push\nEOF":                                    "exec",
+		"cat <<EOF > notes.md\nmissing delimiter":                            "exec",
+		"cat <<A <<B > notes.md\ntext\nA":                                    "exec",
+	}
+	for cmd, want := range cases {
+		if got := classesOf(cmd); got != want {
+			t.Errorf("%q: got %q, want %q", cmd, got, want)
+		}
+	}
+}
+
 func TestClassifyExplicitActions(t *testing.T) {
 	cases := map[string]string{
 		"git push origin HEAD":                        "push",

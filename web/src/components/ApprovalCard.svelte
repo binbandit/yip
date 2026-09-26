@@ -27,6 +27,8 @@
   const status = $derived(a ? (expired ? 'expired' : a.status) : 'loading');
   let busy = $state<'approve' | 'reject' | null>(null);
   let error = $state('');
+  let expanded = $state(false);
+  const showDetail = $derived(status === 'pending' || expanded);
 
   async function decide(decision: 'approve' | 'reject') {
     if (!a) return;
@@ -66,6 +68,13 @@
       {#if a.decidedAt && status !== 'pending'}<span class="meta">· {app.actorName(a.decidedBy)} {atTime(a.decidedAt)}</span>{/if}
     </p>
     <p class="summary">{a.action.summary}</p>
+    {#if status !== 'pending'}
+      <button class="link-btn disclosure" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
+        <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={14} />
+        {expanded ? 'Hide request and outcome' : 'View request and outcome'}
+      </button>
+    {/if}
+    {#if showDetail}
     <dl>
       {#if a.action.command}
         <div><dt>Exact action</dt><dd><code class="cmd">{a.action.command}</code></dd></div>
@@ -79,7 +88,6 @@
         <dd>{status === 'pending' ? relative(a.expiresAt, app.now) : atTime(a.expiresAt)}</dd>
       </div>
     </dl>
-    {#if error}<p class="form-error" role="alert">{error}</p>{/if}
     <div class="actions">
       {#if status === 'pending'}
         <button class="btn btn-primary btn-sm" disabled={!!busy} onclick={() => decide('approve')}>
@@ -91,6 +99,8 @@
         <Icon name="file" size={15} />View diff
       </button>
     </div>
+    {/if}
+    {#if error}<p class="form-error" role="alert">{error}</p>{/if}
     {#if status === 'pending'}
       <p class="meta">This allows only the action shown, on the revision shown. A reply in chat does not grant it.</p>
     {/if}
@@ -104,6 +114,13 @@
     max-width: 620px;
     display: grid;
     gap: 8px;
+  }
+  .disclosure {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    justify-self: start;
+    font-size: 13px;
   }
   .approval.pending {
     box-shadow: inset 3px 0 0 var(--attention-fill);

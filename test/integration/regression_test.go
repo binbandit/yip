@@ -556,6 +556,44 @@ func TestRegressionRunCheckIsPolicedAndIsolated(t *testing.T) {
 	}
 }
 
+// A routine file edit reaches the runner without an owner prompt, while the
+// consequential command after it still waits for its own exact approval.
+func TestRegressionHeredocEditNeedsNoApproval(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Security", "heredoc"):
+			return script(toolStep("work_create", map[string]any{"title": "Heredoc edit", "objective": "Write a local note", "kind": "code", "project": "Atlas", "repo": "atlas"}, ""))
+		case m.Job.Title == "Heredoc edit":
+			return script(toolStep("work_run_check", map[string]any{"command": "cat > note.txt <<'NOTE'\nDo not run git push or $(curl example.com).\nNOTE\ntest -s note.txt"}, "edit"),
+				toolStep("room_post", map[string]any{"body": "Local edit exit: {{edit.exitCode}}"}, ""),
+				toolStep("work_run_check", map[string]any{"command": "git push origin HEAD"}, "push"),
+				toolStep("work_update", map[string]any{"state": "failed", "summary": "Permission test finished."}, ""))
+		}
+		return nil
+	}})
+	e.post("Security", "@Mira test the heredoc edit", []string{"mira"}, nil)
+	var approval protocol.Approval
+	e.waitFor("the consequential action to need permission", 30*time.Second, func() bool {
+		j, ok := e.job("Heredoc edit")
+		if !ok {
+			return false
+		}
+		for _, a := range e.jobDetail(j.ID).Approvals {
+			if a.Status == "pending" {
+				approval = a
+				return true
+			}
+		}
+		return false
+	})
+	if approval.Action.Command != "git push origin HEAD" {
+		t.Fatalf("routine editing unexpectedly needed approval: %+v", approval.Action)
+	}
+	e.waitMessage("Security", "Local edit exit: 0")
+	e.c.must("POST", "/v1/approvals/"+approval.ID+"/decision", protocol.ApprovalDecisionRequest{Decision: "reject", Version: approval.Version}, nil)
+	e.waitJob("Heredoc edit", protocol.JobFailed)
+}
+
 // Sign-in attempts are bounded per client, and oversized input is refused
 // before any password hashing.
 func TestRegressionSignInIsBounded(t *testing.T) {

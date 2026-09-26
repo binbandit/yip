@@ -150,6 +150,13 @@ describe('action flows', () => {
     byText('.approval button', 'Allow this push')!.click();
     await waitFor(() => byText('.approval .kicker', 'Allowed'), 'allowed');
     expect(byText('.approval button', 'Allow this push')).toBeUndefined();
+    expect(document.querySelector('.approval .cmd')).toBeNull();
+    const disclosure = byText('.approval button', 'View request and outcome')!;
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    disclosure.click();
+    await settle();
+    expect(document.querySelector('.approval .cmd')?.textContent).toBe(approval.action.command);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
   });
 
   it('accepts the exact revision only when your review is required', async () => {
@@ -323,7 +330,7 @@ describe('action flows', () => {
     const proj = Object.values(app.data.projects)[0];
     const base = { engineerId: mira.id, scope: { kind: 'project', id: proj.id }, sources: [], visibleRoomIds: null as unknown as string[], createdBy: { kind: 'engineer', id: mira.id }, createdAt: new Date().toISOString() };
     const notes = [
-      { ...base, id: 'n-due', body: 'The queue lives in worker/queue.go', status: 'accepted', reviewAfter: new Date(Date.now() - 1000).toISOString(), version: 3 },
+      { ...base, id: 'n-due', body: 'The queue lives in worker/queue.go', status: 'accepted', reviewAfter: new Date(app.now - 1000).toISOString(), version: 3 },
       { ...base, id: 'n-sug', body: 'Retries back off exponentially', status: 'proposed', reviewAfter: new Date(Date.now() + 1e9).toISOString(), version: 1 },
     ];
     hub.override('GET', new RegExp(`^/v1/engineers/${mira.id}/notes$`), () => ({ body: notes }));
