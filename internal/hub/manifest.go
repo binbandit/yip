@@ -230,6 +230,18 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 		m.Decisions = append(m.Decisions, manifest.Decision{ID: d.ID, Title: d.Title, Body: d.Body, Scope: scope, Source: src})
 	}
 
+	// A reply sees the engineer's own open work here, so a clarification
+	// can go to the assignment it's about.
+	if job.Kind == protocol.JobKindReply {
+		if open, err := store.ListJobs(ctx, q, store.JobFilter{OwnerID: eng.ID, RoomIDs: []string{room.ID}, States: liveStates}); err == nil {
+			for _, w := range open {
+				if w.ID != job.ID && domain.JobLive(w.State) {
+					m.OpenWork = append(m.OpenWork, manifest.OpenWork{ID: w.ID, Title: w.Title, State: string(w.State)})
+				}
+			}
+		}
+	}
+
 	// The engineer's own notes usable here (layer 5).
 	for _, n := range h.notesForContext(ctx, q, eng.ID, room) {
 		scope := n.Scope.Kind

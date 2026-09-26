@@ -311,6 +311,13 @@ func (h *Hub) dispatchTool(ctx context.Context, run store.RunRow, call protocol.
 			}
 			out, err = h.toolDecisionPropose(ctx, t, env, a)
 			return err
+		case bridge.WorkAddInput:
+			a, err := decode[bridge.WorkAddInputArgs](call.Args)
+			if err != nil {
+				return err
+			}
+			out, err = h.toolWorkAddInput(ctx, t, env, a)
+			return err
 		case bridge.NoteRecord:
 			a, err := decode[bridge.NoteRecordArgs](call.Args)
 			if err != nil {
@@ -1001,4 +1008,34 @@ func (h *Hub) hasColleagueInRoom(ctx context.Context, q store.Q, roomID, ownerID
 		}
 	}
 	return false
+}
+
+// toolWorkAddInput lets a reply route the owner's message to the engineer's
+// own open assignment in this conversation (a clarification, not new work).
+// The message gets the work's ref, so it shows a receipt; the reply ends
+// without posting a second acknowledgment.
+func (h *Hub) toolWorkAddInput(ctx context.Context, t *txn, env toolEnv, a bridge.WorkAddInputArgs) (any, error) {
+	if env.job.Kind != protocol.JobKindReply || env.job.Source.MessageID == "" {
+		return nil, domain.Invalid("work_add_input adds the message you're replying to; use it from a reply.")
+	}
+	target, err := store.GetJob(ctx, t.tx, strings.TrimSpace(a.Job))
+	if err != nil || target.OwnerID != env.eng.ID || target.Source.RoomID != env.room.ID {
+		return nil, domain.Invalid("That isn't one of your assignments in this conversation.")
+	}
+	if !domain.JobLive(target.State) {
+		return nil, domain.Conflict("%s is already %s; create follow-up work instead.", target.Title, target.State)
+	}
+	msg, err := store.GetMessage(ctx, t.tx, env.job.Source.MessageID)
+	if err != nil {
+		return nil, err
+	}
+	if msg.Author.Kind != protocol.ActorUser {
+		return nil, domain.Forbidden("Only the owner's messages can be added to work.")
+	}
+	in, err := h.addJobInput(ctx, t, msg.Author.ID, target.ID, msg, "")
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"added": target.Title, "delivery": in.Delivery,
+		"note": "Added. End your turn now without text; the owner sees a receipt on their message."}, nil
 }

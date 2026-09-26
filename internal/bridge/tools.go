@@ -52,6 +52,7 @@ const (
 	DecisionPropose    = "decision_propose"
 	KnowledgeSearch    = "knowledge_search"
 	NoteRecord         = "note_record"
+	WorkAddInput       = "work_add_input"
 	ForgeReadPR        = "forge_read_pr"
 	ForgeLinkPR        = "forge_link_pr"
 	ForgePublishReview = "forge_publish_review"
@@ -91,6 +92,8 @@ var Tools = []Tool{
 		InputSchema: schema(`{"type":"object","required":["question","missingFact","contextChecked"],"properties":{"question":{"type":"string","description":"the message to post"},"missingFact":{"type":"string"},"contextChecked":{"type":"string"},"dependentStep":{"type":"string"},"continuingWith":{"type":"string"}},"additionalProperties":false}`)},
 	{Name: DecisionPropose, Modes: all, Description: "Record a scoped, sourced decision (e.g. an implementation contract you established). Cite the message or job IDs it came from. It becomes shared knowledge only where its sources are visible.",
 		InputSchema: schema(`{"type":"object","required":["title","body","sources"],"properties":{"title":{"type":"string"},"body":{"type":"string"},"project":{"type":"string"},"sources":{"type":"array","items":{"type":"string"},"description":"message or job IDs"},"supersedes":{"type":"string"}},"additionalProperties":false}`)},
+	{Name: WorkAddInput, Modes: []string{protocol.ModeConversation}, Description: "Add the message you're replying to to one of your open assignments in this conversation (a clarification, a constraint, a change of scope). It's delivered to that work as the owner's input: immediately if the work can take it, otherwise before its next step. Afterwards end your turn without text; the owner sees a receipt on their message.",
+		InputSchema: schema(`{"type":"object","required":["job"],"properties":{"job":{"type":"string","description":"the job ID of your open assignment"}},"additionalProperties":false}`)},
 	{Name: NoteRecord, Modes: all, Description: "Keep a short note for your own future work: a conclusion with where it came from (e.g. \"Atlas's integration tests need the fake clock; see job X\"). Not a transcript, and not your reasoning. Cite message or job IDs; the note is used only where those sources are visible. Notes from your own finished work are kept automatically; others wait as suggestions for the owner. Supersede an outdated note instead of adding a new one.",
 		InputSchema: schema(`{"type":"object","required":["body","sources"],"properties":{"body":{"type":"string","maxLength":400},"project":{"type":"string"},"sources":{"type":"array","items":{"type":"string"},"description":"message or job IDs"},"supersedes":{"type":"string","description":"the ID of your note this replaces"}},"additionalProperties":false}`)},
 	{Name: KnowledgeSearch, Modes: all, Description: "Search accepted decisions and conversation history visible from this conversation. Results carry source IDs you can cite.",
@@ -238,6 +241,10 @@ type DecisionProposeArgs struct {
 	Project    string   `json:"project"`
 	Sources    []string `json:"sources"`
 	Supersedes string   `json:"supersedes"`
+}
+
+type WorkAddInputArgs struct {
+	Job string `json:"job"`
 }
 
 type NoteRecordArgs struct {

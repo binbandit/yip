@@ -1466,3 +1466,85 @@ func TestRegressionRoomAnswerTargetsQuestion(t *testing.T) {
 	}
 	e.waitJob("Document Beacon", protocol.JobCompleted)
 }
+
+// A clarification in ordinary conversation reaches the assignment it's
+// about. While the engineer is working on it here, the message goes straight
+// into that work (a reply would wait until she stops); the owner's message
+// shows the receipt and nobody posts a second acknowledgment.
+func TestRegressionClarificationReachesRunningWork(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		if m.Job.Kind == "code" {
+			return script(fake.Step{Status: "Working on it"}, fake.Step{Fault: "hang"})
+		}
+		return nil
+	}})
+	e.post("Security", "@Mira can you fix Atlas accepting expired sessions?", []string{"mira"}, nil)
+	fix := e.waitJob("Fix Atlas session expiry", protocol.JobRunning)
+	e.waitFor("Mira to be working", 10*time.Second, func() bool {
+		d := e.jobDetail(fix.ID)
+		return len(d.Runs) > 0 && d.Runs[len(d.Runs)-1].State == protocol.RunRunning
+	})
+	clar := e.post("Security", "@Mira also keep the existing API response shape", []string{"mira"}, nil)
+	if clar.Input == nil || clar.Input.JobID != fix.ID || len(clar.Dispatched) != 0 {
+		t.Fatalf("the clarification should go to the running fix as input: %+v", clar)
+	}
+	e.waitFor("the delivery receipt", 10*time.Second, func() bool {
+		for _, in := range e.jobDetail(fix.ID).Inputs {
+			if in.MessageID == clar.Message.ID && (in.Delivery == "immediate" || in.Delivery == "queued") {
+				return true
+			}
+		}
+		return false
+	})
+	time.Sleep(500 * time.Millisecond)
+	for _, m := range e.messages("Security") {
+		if m.Author.Kind == protocol.ActorEngineer && m.Seq > clar.Message.Seq {
+			t.Fatalf("a clarification needs no second acknowledgment: %q", m.Body)
+		}
+	}
+}
+
+// When the engineer isn't working right now, her reply recognises a
+// clarification to her one open assignment and adds it there; with two
+// plausible assignments she asks one short question and adds nothing.
+func TestRegressionClarificationToWaitingWork(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		if m.Job.Kind == "code" && m.Purpose != "input" {
+			return script(toolStep("work_wait", map[string]any{"reason": "dependency", "detail": "waiting on the security team"}, ""))
+		}
+		if m.Job.Kind == "code" {
+			return script(toolStep("work_wait", map[string]any{"reason": "dependency", "detail": "still waiting"}, ""))
+		}
+		return nil
+	}})
+	e.post("Security", "@Mira can you fix Atlas accepting expired sessions?", []string{"mira"}, nil)
+	fix := e.waitJob("Fix Atlas session expiry", protocol.JobWaiting)
+	clar := e.post("Security", "@Mira also keep the existing API response shape", []string{"mira"}, nil)
+	e.waitFor("the reply to add it to the fix", 15*time.Second, func() bool {
+		for _, in := range e.jobDetail(fix.ID).Inputs {
+			if in.MessageID == clar.Message.ID {
+				return true
+			}
+		}
+		return false
+	})
+	e.post("Security", "@Mira can you fix the Atlas refresh bug?", []string{"mira"}, nil)
+	e.waitFor("a second waiting assignment", 20*time.Second, func() bool {
+		n := 0
+		for _, j := range e.jobs() {
+			if j.Kind == "code" && j.State == protocol.JobWaiting {
+				n++
+			}
+		}
+		return n == 2
+	})
+	amb := e.post("Security", "@Mira also log the rejected token's age", []string{"mira"}, nil)
+	e.waitMessage("Security", "Which one is that for:")
+	for _, j := range e.jobs() {
+		for _, in := range e.jobDetail(j.ID).Inputs {
+			if in.MessageID == amb.Message.ID {
+				t.Fatalf("an ambiguous clarification must not be attached to %q", j.Title)
+			}
+		}
+	}
+}

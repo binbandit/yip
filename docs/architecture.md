@@ -65,6 +65,18 @@ yip guessing from text. With several open questions nothing is assumed. The
 answer keeps a small receipt ("Answers Pip's question — the work waiting on
 it resumed").
 
+**Clarifying work in conversation.** A message to an engineer who is
+working on something in the room right now goes into that work as the
+owner's input (a reply would otherwise wait for the engineer to be free),
+framed so the engineer decides whether it's about this work, another of
+their assignments (they ask one short question), or a separate request
+(they start separate work). When the engineer isn't working, their reply
+sees their open assignments in the room and adds a clarification to the
+right one with `work_add_input`, or asks which one if several fit. Either
+way the owner's message shows "Added to Mira's …" with its delivery state
+(delivering, queued for the next step, received), and nobody posts a second
+acknowledgment. "Add to this work" stays as an explicit shortcut.
+
 **Engineer notes and work records.** Context layer 5 (spec §8) is each
 engineer's memory of earlier work (`engineer_notes`), visible only where
 its sources are (a private room's note stays in that room).

@@ -123,6 +123,8 @@ var (
 	statusRe = regexp.MustCompile(`\b(status|where are we|how are|update me|what'?s (happening|going on)|progress)\b`)
 	recallRe = regexp.MustCompile(`\b(decid(ed|e|ing)|decision|policy|contract|agreed|remember|settled)\b`)
 	expiryRe = regexp.MustCompile(`expir|session`)
+	// A clarification to work already under way ("also keep …").
+	clarifyRe = regexp.MustCompile(`\b(also|keep|make sure|actually|instead|don'?t|do not|as well)\b`)
 )
 
 // ---- conversational replies ----
@@ -130,6 +132,16 @@ var (
 func replyScript(m *manifest.Manifest) Script {
 	text := strings.ToLower(requestText(m))
 	switch {
+	case len(m.OpenWork) > 0 && clarifyRe.MatchString(text):
+		if len(m.OpenWork) == 1 {
+			// Goes to the assignment; the owner sees a receipt, not another message.
+			return Script{Steps: []Step{tool("work_add_input", map[string]any{"job": m.OpenWork[0].ID}, "")}}
+		}
+		var titles []string
+		for _, w := range m.OpenWork {
+			titles = append(titles, w.Title)
+		}
+		return Script{Steps: []Step{final("Which one is that for: " + strings.Join(titles, " or ") + "?")}}
 	case recallRe.MatchString(text):
 		if len(m.Decisions) == 0 {
 			return Script{Steps: []Step{final("I can't find a recorded decision about that from this conversation. If it was decided in a private room, it stays there — ask me in that room, or record it here.")}}
@@ -381,6 +393,18 @@ func investigationScript(m *manifest.Manifest) Script {
 		if in.Kind == "answer" {
 			answer = in.Body
 		}
+	}
+	// New notes from the owner while the question is still open: take them
+	// in quietly and keep waiting (no repeated update or second question).
+	noted := false
+	for _, in := range m.Inputs {
+		noted = noted || in.Kind == "owner_input"
+	}
+	if answer == "" && noted && m.Purpose == "input" {
+		return Script{Steps: []Step{
+			status("Noted your update; still waiting on where the retry worker lives"),
+			tool("work_wait", map[string]any{"reason": "missing_information", "detail": "Tracing the retry worker needs its repository location"}, ""),
+		}}
 	}
 	if answer != "" {
 		ans := answer

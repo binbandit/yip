@@ -292,7 +292,16 @@ func runMode(j store.JobRow) string {
 
 // addJobInput attaches a follow-up to a selected job. The receipt reports the
 // actual delivery mode; it never claims immediate delivery that didn't happen.
+// roomInputFrame prefixes input that reached work from the room rather
+// than from an explicit "add to this work": the engineer decides whether it
+// is about this work, another assignment, or a separate request.
+const roomInputFrame = "(The owner said this in the room while you were working on this. If it's about this work, take it into account; if it's a separate request, start separate work for it with work_create; if it could be about another of your assignments, ask one short question in the room.)\n\n"
+
 func (h *Hub) addJobInput(ctx context.Context, t *txn, userID, jobID string, msg protocol.Message, clientKey string) (protocol.JobInput, error) {
+	return h.addJobInputFramed(ctx, t, userID, jobID, msg, clientKey, "")
+}
+
+func (h *Hub) addJobInputFramed(ctx context.Context, t *txn, userID, jobID string, msg protocol.Message, clientKey, frame string) (protocol.JobInput, error) {
 	job, err := store.GetJob(ctx, t.tx, jobID)
 	if err != nil {
 		return protocol.JobInput{}, domain.NotFound("That work doesn't exist.")
@@ -312,7 +321,7 @@ func (h *Hub) addJobInput(ctx context.Context, t *txn, userID, jobID string, msg
 			return in, err
 		}
 		if err := h.queueCommand(ctx, t, run.NodeID, run.ID, run.LeaseEpoch, protocol.CmdDeliverInput, "input:"+in.ID,
-			protocol.DeliverInput{InputID: in.ID, Text: msg.Body}); err != nil {
+			protocol.DeliverInput{InputID: in.ID, Text: frame + msg.Body}); err != nil {
 			return in, err
 		}
 	case err == nil:

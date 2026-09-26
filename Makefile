@@ -35,7 +35,7 @@ e2e-webkit: all
 	scripts/e2e/run-webkit.sh
 
 lint:
-	gofmt -l . | grep -v '^web/' | (! grep .)
+	gofmt -l . | grep -v -e '^web/' -e '^\.claude/' | (! grep .)
 	go vet ./...
 
 demo: all

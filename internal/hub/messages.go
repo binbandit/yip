@@ -129,6 +129,19 @@ func (h *Hub) PostMessage(ctx context.Context, userID, roomID string, req protoc
 		if len(recipients) == 0 && len(resolved) > 0 {
 			return nil // the reply answered a question; the dependent work resumes
 		}
+		// A message to an engineer who is working on something in this room
+		// right now goes to that work (a reply would wait until the work
+		// stops); they decide whether it's a clarification or a new request.
+		if len(recipients) == 1 && req.ThreadID == "" {
+			if job, ok := h.workingHere(ctx, t.tx, recipients[0], roomID); ok {
+				in, err := h.addJobInputFramed(ctx, t, userID, job.ID, msg, "", roomInputFrame)
+				if err != nil {
+					return err
+				}
+				resp.Input = &in
+				return nil
+			}
+		}
 		if len(recipients) == 0 && req.ThreadID != "" {
 			owner, _ := store.ThreadOwner(ctx, t.tx, req.ThreadID)
 			if owner != "" {
@@ -323,4 +336,24 @@ func (h *Hub) DeleteMessage(ctx context.Context, userID, messageID string) error
 		m, _ = store.GetMessage(ctx, t.tx, messageID)
 		return t.emit(ev{Type: "message.updated", Actor: userActor(userID), Room: m.RoomID, Payload: m})
 	})
+}
+
+// workingHere returns the engineer's work in this room that holds their
+// active attempt right now, if any.
+func (h *Hub) workingHere(ctx context.Context, q store.Q, engineerID, roomID string) (store.JobRow, bool) {
+	runs, err := store.RunsInStates(ctx, q, protocol.RunPreparing, protocol.RunRunning, protocol.RunAwaitingInput)
+	if err != nil {
+		return store.JobRow{}, false
+	}
+	for _, r := range runs {
+		if r.EngineerID != engineerID {
+			continue
+		}
+		j, err := store.GetJob(ctx, q, r.JobID)
+		if err == nil && j.Kind != protocol.JobKindReply && j.Kind != protocol.JobKindReview && j.OwnerID == engineerID &&
+			j.Source.RoomID == roomID && domain.JobLive(j.State) {
+			return j, true
+		}
+	}
+	return store.JobRow{}, false
 }

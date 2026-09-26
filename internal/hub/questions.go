@@ -62,8 +62,10 @@ func (h *Hub) toolHumanAsk(ctx context.Context, t *txn, env toolEnv, a bridge.Hu
 }
 
 // resolveQuestionsFromMessage lets an ordinary reply answer a question:
-// replying in its thread, replying to it, or mentioning the asker while the
-// question is open in this conversation.
+// replying in its thread, or replying to it (the web composer does this by
+// default when one question in the room is waiting on you). Merely
+// mentioning the asker is not an answer: "@Pip also note X" is a
+// clarification, and the owner can say "Not an answer".
 func (h *Hub) resolveQuestionsFromMessage(ctx context.Context, t *txn, userID string, room protocol.Room, msg protocol.Message) ([]string, error) {
 	open, err := store.ListQuestions(ctx, t.tx, "source_room_id = ? AND status = 'open' AND recipient_id = ?", room.ID, userID)
 	if err != nil || len(open) == 0 {
@@ -84,8 +86,6 @@ func (h *Hub) resolveQuestionsFromMessage(ctx context.Context, t *txn, userID st
 		case msg.ThreadID != "" && msg.ThreadID == q.MessageID:
 			match = true
 		case msg.ThreadID != "" && q.Source.ThreadID == msg.ThreadID && (mentioned[q.AskerID] || len(msg.Mentions) == 0):
-			match = true
-		case msg.ThreadID == "" && q.Source.ThreadID == "" && mentioned[q.AskerID]:
 			match = true
 		}
 		if !match {

@@ -40,6 +40,13 @@ type Decision struct {
 	Source string `json:"source"`
 }
 
+// OpenWork is one of the engineer's own unfinished assignments here.
+type OpenWork struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	State string `json:"state"`
+}
+
 // Note is one of the engineer's own kept notes (context layer 5), or a
 // work record yip wrote when work finished (Kind "record").
 type Note struct {
@@ -150,36 +157,39 @@ type Budget struct {
 
 // Manifest is the complete, recorded context of one run.
 type Manifest struct {
-	Version              int         `json:"version"`
-	RunID                string      `json:"runId"`
-	Purpose              string      `json:"purpose"`
-	Note                 string      `json:"note,omitempty"`
-	OrgName              string      `json:"orgName"`
-	OwnerName            string      `json:"ownerName"`
-	OwnerHandle          string      `json:"ownerHandle"`
-	Engineer             Colleague   `json:"engineer"`
-	EngineerVersionID    string      `json:"engineerVersionId"`
-	EngineerDescription  string      `json:"engineerDescription,omitempty"`
-	EngineerInstructions string      `json:"engineerInstructions,omitempty"`
-	OrgRules             string      `json:"orgRules,omitempty"`
-	ProjectRules         []string    `json:"projectRules,omitempty"`
-	RoomName             string      `json:"roomName"`
-	RoomPurpose          string      `json:"roomPurpose,omitempty"`
-	RoomPrivate          bool        `json:"roomPrivate"`
-	InThread             bool        `json:"inThread"`
-	Request              *Message    `json:"request,omitempty"`
-	Conversation         []Message   `json:"conversation"`
-	Job                  Job         `json:"job"`
-	Review               *Review     `json:"review,omitempty"`
-	OwnReview            *Review     `json:"ownReview,omitempty"`
-	Inputs               []Input     `json:"inputs,omitempty"`
-	Decisions            []Decision  `json:"decisions,omitempty"`
-	Notes                []Note      `json:"notes,omitempty"`
-	Colleagues           []Colleague `json:"colleagues,omitempty"`
-	Projects             []string    `json:"projects,omitempty"`
-	Omitted              []string    `json:"omitted,omitempty"`
-	Budget               Budget      `json:"budget"`
-	ScopeFingerprint     string      `json:"scopeFingerprint"`
+	Version              int        `json:"version"`
+	RunID                string     `json:"runId"`
+	Purpose              string     `json:"purpose"`
+	Note                 string     `json:"note,omitempty"`
+	OrgName              string     `json:"orgName"`
+	OwnerName            string     `json:"ownerName"`
+	OwnerHandle          string     `json:"ownerHandle"`
+	Engineer             Colleague  `json:"engineer"`
+	EngineerVersionID    string     `json:"engineerVersionId"`
+	EngineerDescription  string     `json:"engineerDescription,omitempty"`
+	EngineerInstructions string     `json:"engineerInstructions,omitempty"`
+	OrgRules             string     `json:"orgRules,omitempty"`
+	ProjectRules         []string   `json:"projectRules,omitempty"`
+	RoomName             string     `json:"roomName"`
+	RoomPurpose          string     `json:"roomPurpose,omitempty"`
+	RoomPrivate          bool       `json:"roomPrivate"`
+	InThread             bool       `json:"inThread"`
+	Request              *Message   `json:"request,omitempty"`
+	Conversation         []Message  `json:"conversation"`
+	Job                  Job        `json:"job"`
+	Review               *Review    `json:"review,omitempty"`
+	OwnReview            *Review    `json:"ownReview,omitempty"`
+	Inputs               []Input    `json:"inputs,omitempty"`
+	Decisions            []Decision `json:"decisions,omitempty"`
+	Notes                []Note     `json:"notes,omitempty"`
+	// OpenWork is the engineer's own unfinished work in this conversation,
+	// so a reply can recognise a clarification to an ongoing assignment.
+	OpenWork         []OpenWork  `json:"openWork,omitempty"`
+	Colleagues       []Colleague `json:"colleagues,omitempty"`
+	Projects         []string    `json:"projects,omitempty"`
+	Omitted          []string    `json:"omitted,omitempty"`
+	Budget           Budget      `json:"budget"`
+	ScopeFingerprint string      `json:"scopeFingerprint"`
 	// RestoreArtifactID is the code bundle this run may fetch to restore a
 	// published revision (the hub serves runners only artifacts named here).
 	RestoreArtifactID string    `json:"restoreArtifactId,omitempty"`
@@ -376,6 +386,12 @@ func (m *Manifest) Prompt() string {
 			fmt.Fprintf(&b, "- %s [%s, %s, source %s]: %s\n", d.Title, d.ID, d.Scope, d.Source, oneLine(d.Body))
 		}
 	}
+	if len(m.OpenWork) > 0 {
+		b.WriteString("\n## Your open assignments in this conversation\n")
+		for _, w := range m.OpenWork {
+			fmt.Fprintf(&b, "- %s (%s) [job %s]\n", w.Title, w.State, w.ID)
+		}
+	}
 	var records, notes []Note
 	for _, n := range m.Notes {
 		if n.Kind == "record" {
@@ -495,7 +511,7 @@ func purposeLabel(p string) string {
 func purposeInstruction(purpose, kind string) string {
 	switch {
 	case kind == "reply":
-		return "Respond to the request. If it needs investigation with tools, code changes, or follow-through, create the work with work_create (it will run after this reply) and reply briefly with what you'll do. Otherwise answer directly. Your final text is posted as your reply."
+		return "Respond to the request. If it clarifies or changes one of your open assignments listed above, add it to that work with work_add_input and end your turn with no text (the owner sees a receipt); if it could belong to more than one, ask one short question instead. If it needs new investigation, code changes, or follow-through, create the work with work_create (it will run after this reply) and acknowledge in one short sentence. Otherwise answer directly. Your final text is posted as your reply."
 	case kind == "review":
 		return "Do the review now and record the verdict with work_review."
 	case purpose == "address_review":
