@@ -436,8 +436,22 @@ func SetDecisionStatus(ctx context.Context, q Q, id string, expectVersion int64,
 
 // SearchDecisions returns accepted decision IDs matching a query; callers
 // filter visibility.
-func SearchDecisions(ctx context.Context, q Q, match string, limit int) ([]string, error) {
-	return stringsCol(ctx, q, `SELECT decision_id FROM decisions_fts WHERE decisions_fts MATCH ? ORDER BY rank LIMIT ?`, match, limit)
+// SearchDecisions ranks accepted-or-proposed decisions by text, limited to
+// those whose visibility allows at least one of rooms (or that carry no room
+// restriction). Visibility is applied before ranking and the limit, so
+// private decisions never crowd out ones the reader may see.
+func SearchDecisions(ctx context.Context, q Q, match string, rooms []string, limit int) ([]string, error) {
+	args := []any{match}
+	cond := `d.visible_room_ids IS NULL`
+	if len(rooms) > 0 {
+		cond += ` OR EXISTS (SELECT 1 FROM json_each(d.visible_room_ids) WHERE value IN (` + strings.TrimSuffix(strings.Repeat("?,", len(rooms)), ",") + `))`
+		for _, r := range rooms {
+			args = append(args, r)
+		}
+	}
+	args = append(args, limit)
+	return stringsCol(ctx, q, `SELECT f.decision_id FROM decisions_fts f JOIN decisions d ON d.id = f.decision_id
+		WHERE decisions_fts MATCH ? AND (`+cond+`) ORDER BY f.rank LIMIT ?`, args...)
 }
 
 // ---- usage ----

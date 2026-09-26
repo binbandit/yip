@@ -129,6 +129,35 @@ func (s *Store) migrate(ctx context.Context) error {
 		return err
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	latest := 0
+	for _, e := range entries {
+		if n, err := strconv.Atoi(strings.SplitN(e.Name(), "_", 2)[0]); err == nil && n > latest {
+			latest = n
+		}
+	}
+	var cur int
+	if err := s.w.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&cur); err != nil {
+		return err
+	}
+	// Never open a database a newer yip has already migrated: this build
+	// doesn't know that schema and could damage it.
+	if cur > latest {
+		return fmt.Errorf("this database uses schema %d, but this yip only knows up to %d; upgrade yip before opening it", cur, latest)
+	}
+	// Before changing an existing database's schema, keep a consistent copy
+	// next to it so an upgrade can be rolled back.
+	if cur > 0 && cur < latest {
+		var file string
+		_ = s.w.QueryRowContext(ctx, `SELECT file FROM pragma_database_list WHERE name = 'main'`).Scan(&file)
+		if file != "" {
+			bak := fmt.Sprintf("%s.pre-schema-%d.bak", file, latest)
+			if _, err := os.Stat(bak); errors.Is(err, os.ErrNotExist) {
+				if _, err := s.w.ExecContext(ctx, `VACUUM INTO ?`, bak); err != nil {
+					return fmt.Errorf("back up before migrating: %w", err)
+				}
+			}
+		}
+	}
 	for _, e := range entries {
 		name := e.Name()
 		n, err := strconv.Atoi(strings.SplitN(name, "_", 2)[0])

@@ -322,6 +322,17 @@ func RedactMessage(ctx context.Context, q Q, id string) error {
 		if _, err := q.ExecContext(ctx, `UPDATE events SET payload = replace(payload, ?, '[deleted]') WHERE instr(payload, ?) > 0`, escaped, escaped); err != nil {
 			return err
 		}
+		// Steering input taken from the message, the run's activity log, and
+		// runner commands not yet delivered (their JSON-escaped copies).
+		if _, err := q.ExecContext(ctx, `UPDATE job_inputs SET body = '[deleted message]' WHERE message_id = ? OR body = ?`, id, body); err != nil {
+			return err
+		}
+		if _, err := q.ExecContext(ctx, `UPDATE run_events SET text = replace(text, ?, '[deleted]') WHERE instr(text, ?) > 0`, body, body); err != nil {
+			return err
+		}
+		if _, err := q.ExecContext(ctx, `UPDATE outbox SET frame = replace(frame, ?, '[deleted]') WHERE instr(frame, ?) > 0`, escaped, escaped); err != nil {
+			return err
+		}
 		if _, err := q.ExecContext(ctx, `DELETE FROM jobs_fts WHERE objective = ?`, body); err != nil {
 			return err
 		}

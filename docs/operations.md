@@ -107,6 +107,10 @@ Keep the browser API on loopback and reach it through a private network:
   hub with `--secure-cookies --allowed-origin https://hub.your-tailnet.ts.net`.
 - **Direct TLS**: `--listen 0.0.0.0:7420 --tls-cert … --tls-key …`.
 
+A non-loopback `--listen` without TLS is refused unless you pass
+`--insecure-http`, which is only for a trusted local network (the password
+and session cookie cross it unencrypted) and is logged as a warning.
+
 yip never opens ports or sets up port forwarding by itself. Runners need to
 reach the runner listener (default 7443) on the hub.
 

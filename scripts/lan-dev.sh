@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 DATA=${YIP_LAN_DATA:-$HOME/.yip/demo-lan}
 
 [ -x bin/yip ] || make all
-./bin/yip demo --data "$DATA" --listen 0.0.0.0:7721 --runner-listen 127.0.0.1:7744 --with-providers "${YIP_LAN_PROVIDERS:-}" &
+./bin/yip demo --data "$DATA" --listen 0.0.0.0:7721 --insecure-http --runner-listen 127.0.0.1:7744 --with-providers "${YIP_LAN_PROVIDERS:-}" &
 HUB=$!
 trap 'kill "$HUB" 2>/dev/null' EXIT INT TERM
 

@@ -2,6 +2,8 @@ package hub
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,7 +69,24 @@ func (h *Hub) HandleToolCall(ctx context.Context, nodeID, runID string, epoch in
 			return fail(domain.Forbidden("%s is not available in a %s run.", call.Tool, run.Mode))
 		}
 	}
+	// The same call failing again and again is a loop, not progress.
+	sum := sha256.Sum256(append([]byte(run.ID+"|"+call.Tool+"|"), call.Args...))
+	repeatKey := hex.EncodeToString(sum[:])
+	h.mu.Lock()
+	failures := h.failedCalls[repeatKey]
+	h.mu.Unlock()
+	if limit := h.lim.RepeatedFailureLimit; limit > 0 && failures >= limit {
+		return fail(domain.Invalid("This exact %s call has failed %d times in this run. Change the approach, or ask a colleague or the owner for help.", call.Tool, failures))
+	}
 	result, err := h.dispatchTool(ctx, run, call)
+	if err != nil {
+		h.mu.Lock()
+		if len(h.failedCalls) > 20000 {
+			h.failedCalls = map[string]int{}
+		}
+		h.failedCalls[repeatKey]++
+		h.mu.Unlock()
+	}
 	var rec protocol.ToolResult
 	if err != nil {
 		rec = fail(err)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -373,6 +374,18 @@ func (h *Hub) AddJobInput(ctx context.Context, userID, jobID string, req protoco
 
 // ---- completion policy ----
 
+var toolHint = regexp.MustCompile(`\s*\([^()]*\b(?:work_[a-z_]+|artifact_publish)\)$`)
+
+// ownerMissing phrases missing evidence for the owner: the same facts
+// without the tool hints that are addressed to the engineer.
+func ownerMissing(missing []string) []string {
+	out := make([]string, len(missing))
+	for i, m := range missing {
+		out[i] = toolHint.ReplaceAllString(m, "")
+	}
+	return out
+}
+
 // completionMissing lists the evidence a job still lacks. An engineer saying
 // "done" is not completion; the published revision, recorded checks, and
 // required reviews are.
@@ -563,7 +576,7 @@ func (h *Hub) requestCompletion(ctx context.Context, t *txn, job store.JobRow, s
 		return "", domain.Incomplete(missing, "Not complete yet. Missing: %s.", strings.Join(missing, "; "))
 	}
 	if len(missing) > 0 {
-		detail := "Waiting on " + strings.Join(missing, "; ")
+		detail := "Waiting on " + strings.Join(ownerMissing(missing), "; ")
 		if _, err := h.setJobState(ctx, t, job.ID, protocol.JobReviewReady, "", detail); err != nil {
 			return "", err
 		}
@@ -733,7 +746,8 @@ func (h *Hub) JobDetail(ctx context.Context, userID, jobID string) (protocol.Job
 		}
 	}
 	if domain.JobLive(job.State) && job.Kind != protocol.JobKindReply {
-		d.Missing, _, _ = h.completionMissing(ctx, q, job)
+		missing, _, _ := h.completionMissing(ctx, q, job)
+		d.Missing = ownerMissing(missing)
 	}
 	d.Runs, d.Checks, d.Artifacts = nonNilRuns(d.Runs), nonNilChecks(d.Checks), nonNilArtifacts(d.Artifacts)
 	if d.Approvals == nil {
@@ -879,10 +893,13 @@ func (h *Hub) RetryJob(ctx context.Context, userID, jobID string, req protocol.R
 		if _, err := h.requireRoom(ctx, t.tx, userID, job.Source.RoomID); err != nil {
 			return err
 		}
-		if domain.JobTerminal(job.State) {
-			return domain.Conflict("That work is %s. Start follow-up work with a new message.", job.State)
+		if job.State == protocol.JobCompleted {
+			return domain.Conflict("That work is completed. Start follow-up work with a new message.")
 		}
 		if active, err := store.ActiveRunForJob(ctx, t.tx, jobID); err == nil {
+			if active.State == protocol.RunStopping {
+				return domain.Conflict("%s is still stopping this work; resume it once it has stopped.", h.nodeName(ctx, t.tx, active.NodeID))
+			}
 			if active.State != protocol.RunUnknown {
 				return domain.Conflict("An attempt is already %s.", active.State)
 			}
@@ -891,7 +908,8 @@ func (h *Hub) RetryJob(ctx context.Context, userID, jobID string, req protocol.R
 				return err
 			}
 		}
-		if job.State == protocol.JobFailed {
+		// Failed or stopped work resumes (from its checkpoint when asked).
+		if job.State == protocol.JobFailed || job.State == protocol.JobCancelled {
 			if _, err := h.setJobState(ctx, t, jobID, protocol.JobQueued, "", ""); err != nil {
 				return err
 			}

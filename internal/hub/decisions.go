@@ -128,6 +128,13 @@ func (h *Hub) autoAcceptDecisions(ctx context.Context, t *txn, job store.JobRow)
 		if g, err := store.GetGrant(ctx, t.tx, d.Scope.ID, d.CreatedBy.ID); err != nil || g.Access == "none" {
 			continue
 		}
+		// Policy may accept an engineer's decision, but never one that would
+		// supersede something the owner decided: that stays a proposal.
+		if d.SupersedesID != "" {
+			if prev, err := store.GetDecision(ctx, t.tx, d.SupersedesID); err == nil && prev.CreatedBy.Kind == protocol.ActorUser {
+				continue
+			}
+		}
 		if err := h.acceptDecision(ctx, t, d, protocol.Actor{Kind: protocol.ActorSystem, ID: "policy:auto-accept"}); err != nil {
 			return err
 		}

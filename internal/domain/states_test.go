@@ -14,6 +14,7 @@ func TestJobTransitions(t *testing.T) {
 		{protocol.JobReviewReady, protocol.JobQueued},
 		{protocol.JobWaiting, protocol.JobQueued},
 		{protocol.JobFailed, protocol.JobQueued},
+		{protocol.JobCancelled, protocol.JobQueued}, // explicit resume
 	}
 	for _, p := range allowed {
 		if !CanTransitionJob(p[0], p[1]) {

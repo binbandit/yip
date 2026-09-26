@@ -71,6 +71,9 @@ type Hub struct {
 	// excluded temporarily keeps a node out of scheduling for a run after
 	// the runner rejected an offer.
 	excluded   map[string]time.Time
+	// failedCalls counts identical failing tool calls per run, so an engineer
+	// stuck repeating the same call is stopped (RepeatedFailureLimit).
+	failedCalls map[string]int
 	closed     chan struct{}
 	wg         sync.WaitGroup
 	lastPRPoll time.Time
@@ -113,7 +116,7 @@ func Open(ctx context.Context, cfg Config) (*Hub, error) {
 		cfg: cfg, st: st, bus: events.NewBus(), lim: cfg.Limits, log: cfg.Logger, ca: ca, sealer: sealer,
 		artifacts: arts, logins: auth.NewLimiter(8, 10*time.Minute),
 		clients: auth.NewLimiter(30, 10*time.Minute), verifying: make(chan struct{}, 2), nodes: newNodeRegistry(),
-		kick: make(chan struct{}, 1), excluded: map[string]time.Time{}, closed: make(chan struct{}),
+		kick: make(chan struct{}, 1), excluded: map[string]time.Time{}, failedCalls: map[string]int{}, closed: make(chan struct{}),
 	}
 	if org, err := store.FirstOrg(ctx, st.R()); err == nil {
 		h.org = org
