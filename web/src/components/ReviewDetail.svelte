@@ -64,7 +64,9 @@
               <li class="finding sev-{f.severity}">
                 <p class="f-head">
                   <span class="sev">{severityLabel(f.severity)}</span>
-                  {#if f.file}<span class="mono loc">{f.file}{f.line ? `:${f.line}` : ''}</span>{/if}
+                  {#if f.file}<button class="link-btn mono loc" onclick={() => app.showInDiff(review.jobId, f.file!, f.line || undefined, r.target.head)} title="Show in the diff"
+                      >{f.file}{f.line ? `:${f.line}` : ''}</button
+                    >{/if}
                   <span class="f-status">{findingStatusLabel(f.status)}</span>
                 </p>
                 <MessageBody message={{ body: f.body, mentions: [] }} />

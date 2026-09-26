@@ -106,6 +106,13 @@
       .map((a) => ({ head: a.revision ?? '', artifactId: a.id, at: a.createdAt }));
   });
   let chosenRev = $state<string | null>(null);
+  // A finding's location opens the diff of the revision that was reviewed.
+  $effect(() => {
+    const f = app.diffFocus;
+    if (!f || f.jobId !== jobId || !f.head) return;
+    const o = revOptions.find((x) => x.head === f.head);
+    if (o) untrack(() => (chosenRev = o.artifactId));
+  });
   const rev = $derived(revOptions.find((o) => o.artifactId === chosenRev) ?? revOptions.find((o) => o.head === job?.revision?.head) ?? revOptions[0]);
   const diff = $derived(rev && d ? (d.artifacts.find((a) => a.id === rev.artifactId) ?? { id: rev.artifactId, revision: rev.head }) : undefined);
   let diffFiles = $state<DiffFile[] | null>(null);
@@ -426,7 +433,7 @@
             {#if diff.revision !== job.revision?.head && job.revision?.head}
               <p class="notice attention">This diff is for an earlier revision ({shortSha(diff.revision)}).</p>
             {/if}
-            <DiffView files={diffFiles} />
+            <DiffView files={diffFiles} focus={app.diffFocus?.jobId === jobId ? app.diffFocus : null} />
             {#if diffTruncated}<p class="meta">The diff is long; <a href="/v1/artifacts/{diff.id}" target="_blank" rel="noopener">open the full file</a>.</p>{/if}
           {/if}
         </section>

@@ -303,4 +303,15 @@ describe('action flows', () => {
     expect(document.querySelector('aside.panel.full button[aria-label="Back"]')).toBeTruthy();
     app.viewport = 1440;
   });
+
+  it("opens a review finding's file and line in the reviewed revision's diff", async () => {
+    app.go({ name: 'room', roomId: roomId('Security') }, { panel: { kind: 'job', id: codeDetail.job.id }, tab: 'review' });
+    const loc = await waitFor(() => byText('aside button.loc', 'session/refresh.go:13'), 'finding location');
+    loc.click();
+    await waitFor(() => app.loc.tab === 'evidence', 'evidence tab');
+    const line = await waitFor(() => document.querySelector('[data-path="session/refresh.go"] .line.focus'), 'focused line');
+    expect(line.getAttribute('data-new')).toBe('13');
+    const round1 = codeDetail.reviews[0].rounds[0].target.head!;
+    await waitFor(() => (document.querySelector<HTMLSelectElement>('.rev-pick select')?.selectedOptions[0]?.textContent ?? '').startsWith(round1.slice(0, 7)), 'reviewed revision chosen');
+  });
 });
