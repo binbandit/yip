@@ -26,3 +26,6 @@
 .idea/
 .vscode/
 *.swp
+
+# Local agent worktrees
+/.claude/worktrees/
