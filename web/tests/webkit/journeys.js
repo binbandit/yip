@@ -87,6 +87,23 @@ window.__journeys = (() => {
       },
     },
     {
+      // Answering a question in the room, as in any group chat: no thread.
+      name: "a plain answer in the room resumes the engineer's work",
+      width: 1440, height: 900,
+      run: async (t) => {
+        await openRoom(t, 'Reverse engineering');
+        await mention(t, 'pi');
+        const box = await composer(t);
+        await t.type(box, 'where could Beacon write a duplicate when it retries?');
+        await t.press('Enter');
+        await t.waitFor(() => t.byText('.room-composer .scope', "Answering Pip's question"), 'the answering chip', 45000);
+        await t.type(box, "It's in beacon-retry-worker, which isn't linked; document the gateway side and say what you couldn't verify.");
+        await t.press('Enter');
+        await t.waitFor(() => t.text().includes("Answers Pip's question"), 'the answer receipt', 15000);
+        await t.waitFor(() => !t.byText('.room-composer .scope', "Answering Pip's question"), 'the chip to go', 15000);
+      },
+    },
+    {
       // Pip's Beacon investigation waits on a question, so it stays open
       // long enough to steer (the Atlas fix finishes too quickly to race).
       name: 'steering open work shows the actual delivery receipt',

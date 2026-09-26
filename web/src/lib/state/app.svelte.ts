@@ -450,6 +450,7 @@ class AppState {
     mentions: Mention[];
     projectIds: string[];
     jobId?: string;
+    replyToId?: string;
     clientKey?: string;
   }): Promise<PostMessageResponse | null> {
     const clientKey = p.clientKey ?? newClientKey();
@@ -461,6 +462,7 @@ class AppState {
       mentions: p.mentions,
       projectIds: p.projectIds,
       jobId: p.jobId,
+      replyToId: p.replyToId,
       createdAt: new Date().toISOString(),
       status: 'sending',
     };
@@ -473,6 +475,7 @@ class AppState {
         clientKey,
         threadId: p.threadId || undefined,
         jobId: p.jobId || undefined,
+        replyToId: p.replyToId || undefined,
       });
       confirmSent(this.data, resp.message);
       clearUnsent(clientKey);
@@ -489,6 +492,7 @@ class AppState {
         mentions: p.mentions,
         projectIds: p.projectIds,
         jobId: p.jobId,
+        replyToId: p.replyToId,
         createdAt: pending.createdAt,
       });
       return null;
@@ -518,6 +522,7 @@ class AppState {
         mentions: u.mentions.filter((m): m is Mention => typeof m.kind === 'string'),
         projectIds: u.projectIds ?? [],
         jobId: u.jobId,
+        replyToId: u.replyToId,
         createdAt: u.createdAt,
         status: 'failed',
         error: 'Not sent yet.',

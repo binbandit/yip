@@ -55,6 +55,16 @@ the code that enforces them and the tests that prove it.
    colleague who doesn't exist. A colleague who is present but lacks access is
    not waived: the author asks in the room (A42).
 
+**Answering in the room.** An owner's reply resolves an engineer's question
+when it targets it: in the question's thread, as a reply to it, or by
+mentioning the asker. In the web client, when exactly one question in the
+room's main timeline is waiting on you, the composer targets it by default
+and says so ("Answering Pip's question", with *Not an answer* one click
+away), so a plain answer in the room works as in any group chat without
+yip guessing from text. With several open questions nothing is assumed. The
+answer keeps a small receipt ("Answers Pip's question — the work waiting on
+it resumed").
+
 **Engineer notes and work records.** Context layer 5 (spec §8) is each
 engineer's memory of earlier work (`engineer_notes`), visible only where
 its sources are (a private room's note stays in that room).
