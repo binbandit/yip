@@ -30,10 +30,7 @@ func (h *Hub) decisionVisibility(ctx context.Context, q store.Q, sources []proto
 	if len(private) > 1 {
 		return nil, domain.Forbidden("These sources come from different private conversations; a decision can't combine them. Record it separately in each.")
 	}
-	if len(private) == 1 {
-		return private, nil
-	}
-	return nil, nil
+	return private, nil
 }
 
 func (h *Hub) toolDecisionPropose(ctx context.Context, t *txn, env toolEnv, a bridge.DecisionProposeArgs) (any, error) {

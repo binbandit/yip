@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -186,19 +187,20 @@ func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes [
 		}
 	}
 	// Workspace affinity: edit work continues where its worktree lives unless
-	// a verified checkpoint of its published revision exists.
-	affinity := ""
+	// a verified checkpoint of its published revision exists (it is then
+	// portable, but still prefers the same machine).
+	affinity, portable := "", true
 	if r.Mode == protocol.ModeEdit && r.PreviousRunID != "" {
 		if prev, err := store.GetRun(ctx, h.st.R(), r.PreviousRunID); err == nil && prev.NodeID != "" {
 			affinity = prev.NodeID
-			if j.Revision != nil && j.Revision.Head != "" && h.bundleFor(ctx, h.st.R(), j.Revision.Head) != nil {
-				// portable, but still prefer the same machine
-			} else if prevNode, err := store.GetNode(ctx, h.st.R(), prev.NodeID); err == nil && prevNode.RevokedAt != nil {
-				return nil, "The machine holding this work's workspace was revoked and no verified checkpoint exists. Retry explicitly to start a fresh attempt.", true
+			portable = j.Revision != nil && j.Revision.Head != "" && h.bundleFor(ctx, h.st.R(), j.Revision.Head) != nil
+			if !portable {
+				if prevNode, err := store.GetNode(ctx, h.st.R(), prev.NodeID); err == nil && prevNode.RevokedAt != nil {
+					return nil, "The machine holding this work's workspace was revoked and no verified checkpoint exists. Retry explicitly to start a fresh attempt.", true
+				}
 			}
 		}
 	}
-	portable := affinity == "" || (j.Revision != nil && j.Revision.Head != "" && h.bundleFor(ctx, h.st.R(), j.Revision.Head) != nil)
 
 	var requires []string
 	if j.ProjectID != "" {
@@ -246,12 +248,9 @@ func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes [
 			reasons = append(reasons, provider+" on "+n.Name+" can't enforce a read-only review.")
 			continue
 		}
-		profileOK := false
-		for _, p := range n.Profiles {
-			if p.Name == r.ExecutionProfile && p.Available {
-				profileOK = true
-			}
-		}
+		profileOK := slices.ContainsFunc(n.Profiles, func(p protocol.ExecutionProfile) bool {
+			return p.Name == r.ExecutionProfile && p.Available
+		})
 		if !profileOK {
 			reasons = append(reasons, n.Name+" has no available "+r.ExecutionProfile+" execution profile.")
 			continue
@@ -364,14 +363,7 @@ func dedupeJoin(ss []string) string {
 	if len(out) > 3 {
 		out = append(out[:3], fmt.Sprintf("(+%d more)", len(out)-3))
 	}
-	s := ""
-	for i, o := range out {
-		if i > 0 {
-			s += " "
-		}
-		s += o
-	}
-	return s
+	return strings.Join(out, " ")
 }
 
 func (h *Hub) noteQueued(ctx context.Context, j store.JobRow, detail string) {
@@ -402,7 +394,7 @@ func (h *Hub) noteQueued(ctx context.Context, j store.JobRow, detail string) {
 
 func (h *Hub) noteWaiting(ctx context.Context, j store.JobRow, detail string) {
 	reason := protocol.WaitMachine
-	if len(detail) > 0 && containsStr(detail, "needs sign-in") {
+	if strings.Contains(detail, "needs sign-in") {
 		reason = protocol.WaitProviderSignIn
 	}
 	if j.State == protocol.JobWaiting && j.WaitingReason == reason && j.StateDetail == detail {
@@ -416,17 +408,6 @@ func (h *Hub) noteWaiting(ctx context.Context, j store.JobRow, detail string) {
 		_, err = h.setJobState(ctx, t, j.ID, protocol.JobWaiting, reason, detail)
 		return err
 	})
-}
-
-func containsStr(s, sub string) bool {
-	return len(sub) == 0 || (len(s) >= len(sub) && (func() bool {
-		for i := 0; i+len(sub) <= len(s); i++ {
-			if s[i:i+len(sub)] == sub {
-				return true
-			}
-		}
-		return false
-	})())
 }
 
 // offer assigns the run to a node under a fresh lease epoch and queues the
@@ -496,7 +477,8 @@ func (h *Hub) offer(ctx context.Context, r store.RunRow, j store.JobRow, p place
 			}
 		}
 		detail := "Starting on " + p.node.Name
-		if _, err := store.SetJobState(ctx, t.tx, job.ID, mustVersion(ctx, t, job.ID), stateOf(ctx, t, job.ID), "", detail); err != nil {
+		latest, _ := store.GetJob(ctx, t.tx, job.ID)
+		if _, err := store.SetJobState(ctx, t.tx, job.ID, latest.Version, latest.State, "", detail); err != nil {
 			return err
 		}
 		if err := store.SetJobActivity(ctx, t.tx, job.ID, detail, h.now()); err != nil {
@@ -507,16 +489,6 @@ func (h *Hub) offer(ctx context.Context, r store.RunRow, j store.JobRow, p place
 		}
 		return h.runChanged(ctx, t, cur.ID)
 	})
-}
-
-func mustVersion(ctx context.Context, t *txn, jobID string) int64 {
-	j, _ := store.GetJob(ctx, t.tx, jobID)
-	return j.Version
-}
-
-func stateOf(ctx context.Context, t *txn, jobID string) protocol.JobState {
-	j, _ := store.GetJob(ctx, t.tx, jobID)
-	return j.State
 }
 
 // retryDue resumes work that waited for a provider allowance, or for an

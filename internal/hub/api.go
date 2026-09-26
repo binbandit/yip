@@ -11,8 +11,6 @@ import (
 	"github.com/binbandit/yip/protocol"
 )
 
-var setupLimiter = struct{ allow func(string) bool }{}
-
 // AllowSetupAttempt rate-limits owner setup attempts per client.
 func (h *Hub) AllowSetupAttempt(client string) bool { return h.logins.Allow("setup|" + client) }
 
@@ -169,7 +167,7 @@ func (h *Hub) AuthorizeNode(ctx context.Context, nodeID, serial string) error {
 	return nil
 }
 
-// leaseStates are the run states in which a machine holds a run's lease.
+// leaseStatesSQL lists the run states in which a machine holds a run's lease.
 const leaseStatesSQL = `('offered','preparing','running','awaiting_input','stopping')`
 
 // OpenArtifactForNode serves a code bundle or checkpoint to a runner, but
@@ -283,8 +281,6 @@ func (h *Hub) Export(ctx context.Context, userID string, writeJSON func(string, 
 	}
 	return writeJSON("artifacts.json", visible)
 }
-
-var _ = setupLimiter
 
 // ActiveRuns lists attempts that are queued or executing in rooms the user
 // belongs to (for "working" indicators).

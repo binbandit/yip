@@ -11,7 +11,7 @@ import (
 	"github.com/binbandit/yip/protocol"
 )
 
-var userActor = func(id string) protocol.Actor { return protocol.Actor{Kind: protocol.ActorUser, ID: id} }
+func userActor(id string) protocol.Actor { return protocol.Actor{Kind: protocol.ActorUser, ID: id} }
 
 // requireRoom loads a room and checks the user is a member.
 func (h *Hub) requireRoom(ctx context.Context, q store.Q, userID, roomID string) (protocol.Room, error) {
