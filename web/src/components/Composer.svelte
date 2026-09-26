@@ -6,7 +6,7 @@
   import { onMount, tick, untrack } from 'svelte';
   import { app, receiptKey } from '../lib/state/app.svelte';
   import { draftKey, loadDraft, saveDraft, clearDraft } from '../lib/state/drafts';
-  import { filterCandidates, findMentionQuery, insertMention, pruneSelected, resolveMentions, type MentionCandidate, type SelectedMention } from '../lib/util/mentions';
+  import { filterCandidates, findMentionQuery, insertMention, projectsNamedIn, pruneSelected, resolveMentions, type MentionCandidate, type SelectedMention } from '../lib/util/mentions';
   import { deliveryReceipt, jobStateLabel, waitingReasonLabel } from '../lib/util/labels';
   import { isLiveJob, jobRunState, pendingReplies, workingInRoom } from '../lib/state/data';
   import type { Mention } from '../lib/api/types.gen';
@@ -172,9 +172,28 @@
     query = q;
   }
 
+  // Naming a room project in the text adds it as a chip (spec §7: "Atlas
+  // resolves to a project chip"). A chip you remove stays removed; a chip you
+  // chose yourself isn't taken away when the name leaves the text.
+  let autoProjects = new Set<string>();
+  let dismissedProjects = new Set<string>();
+  function detectProjects() {
+    const named = projectsNamedIn(body, roomProjects);
+    let next = projectIds.filter((p) => !autoProjects.has(p) || named.includes(p));
+    for (const id of named) {
+      if (!next.includes(id) && !dismissedProjects.has(id)) {
+        next = [...next, id];
+        autoProjects.add(id);
+      }
+    }
+    for (const id of autoProjects) if (!next.includes(id)) autoProjects.delete(id);
+    if (next.join() !== projectIds.join()) projectIds = next;
+  }
+
   function onInput() {
     autosize();
     updateQuery();
+    detectProjects();
     scheduleSave();
     if (sendError) sendError = '';
   }
@@ -250,6 +269,9 @@
     selected = [];
     query = null;
     sendError = '';
+    projectIds = projectIds.filter((p) => !autoProjects.has(p)); // chosen chips stay; detected ones were for this message
+    autoProjects = new Set();
+    dismissedProjects = new Set();
     clearDraft(key);
     if (jobId) saveDraft(key, { body: '', mentions: [], projectIds: pids, jobId });
     if (!jobId) delete app.receipts[rkey];
@@ -276,6 +298,9 @@
   }
 
   function toggleProject(id: string) {
+    if (projectIds.includes(id)) dismissedProjects.add(id);
+    else dismissedProjects.delete(id);
+    autoProjects.delete(id);
     projectIds = projectIds.includes(id) ? projectIds.filter((p) => p !== id) : [...projectIds, id];
     scheduleSave();
   }

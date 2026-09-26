@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   filterCandidates,
   findMentionQuery,
+  projectsNamedIn,
   insertMention,
   parseSerializedMentions,
   pruneSelected,
@@ -72,5 +73,21 @@ describe('structured mentions', () => {
     expect(filterCandidates(all, 'o').map((c) => c.handle)).toEqual(['oren']);
     expect(filterCandidates(all, 'security').map((c) => c.handle)).toEqual(['oren']);
     expect(filterCandidates(all, '').length).toBe(3);
+  });
+});
+
+describe('projectsNamedIn', () => {
+  const ps = [
+    { id: 'a', name: 'Atlas' },
+    { id: 'b', name: 'Beacon' },
+    { id: 'c', name: 'C++ tools' },
+  ];
+  it('finds whole-word project names, any case, with possessives', () => {
+    expect(projectsNamedIn("Can you fix atlas's expiry and check Beacon?", ps)).toEqual(['a', 'b']);
+    expect(projectsNamedIn('update the C++ tools build', ps)).toEqual(['c']);
+  });
+  it('ignores names inside other words', () => {
+    expect(projectsNamedIn('the atlassian page', ps)).toEqual([]);
+    expect(projectsNamedIn('beacons everywhere', ps)).toEqual([]);
   });
 });
