@@ -309,6 +309,7 @@
     const replyToId = answering?.messageId || undefined;
     const pids = projectIds.filter((p) => room?.projectIds.includes(p));
     body = '';
+    notAnswer = null;
     selected = [];
     query = null;
     sendError = '';

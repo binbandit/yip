@@ -202,6 +202,7 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     key(ta, 'Enter');
     await waitFor(() => (hub.last('POST', /messages$/)?.body as { body: string } | undefined)?.body === 'Heads up: I am out tomorrow.', 'chat sent');
     expect((hub.last('POST', /messages$/)!.body as { replyToId?: string }).replyToId).toBeUndefined();
+    await waitFor(() => byText('.room-composer .scope', "Answering Pip's question"), 'targeting returns for the next message');
   });
 
   it('marks a room read only while its newest message is on screen', async () => {
