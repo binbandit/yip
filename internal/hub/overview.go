@@ -198,10 +198,6 @@ func (h *Hub) catchup(ctx context.Context, q store.Q, rooms []string, since *tim
 	return out
 }
 
-// answerStatus replies in the Overview conversation from the ledger itself:
-// known status needs no engineer run, and nothing invents progress. It covers
-// every project the user's rooms reach, saying so when one is quiet, and
-// lists what is waiting on the user (questions and permissions).
 // A catch-up item is a view of existing work, questions, approvals and reviews.
 // It is never persisted as a second status stream.
 func (h *Hub) catchupWork(ctx context.Context, q store.Q, j store.JobRow, owner string) protocol.CatchupItem {
@@ -276,6 +272,10 @@ func (h *Hub) catchupWork(ctx context.Context, q store.Q, j store.JobRow, owner 
 	return item
 }
 
+// answerStatus replies in the Overview conversation from the ledger itself:
+// known status needs no engineer run, and nothing invents progress. It covers
+// every project the user's rooms reach, saying so when one is quiet, and
+// lists what is waiting on the user (questions and permissions).
 func (h *Hub) answerStatus(ctx context.Context, t *txn, userID string, room protocol.Room, msg protocol.Message) error {
 	rooms, err := store.RoomIDsForMember(ctx, t.tx, protocol.ActorUser, userID)
 	if err != nil {

@@ -153,11 +153,18 @@ func (s *session) emit(e providers.Event) {
 }
 
 func (s *session) SendInput(ctx context.Context, text string) (string, error) {
+	select {
+	case <-s.done:
+		return "", providers.ErrUnsupported
+	default:
+	}
 	s.mu.Lock()
 	s.inputs = append(s.inputs, text)
 	s.vars["input"] = text
 	s.mu.Unlock()
-	s.emit(providers.Event{Kind: providers.EventStatus, Text: "Received your update: " + truncate(text, 120)})
+	// The runner records the delivery receipt. Only the script goroutine
+	// writes events, so ending the script cannot race a late input's send
+	// against closing that channel.
 	return "immediate", nil
 }
 
