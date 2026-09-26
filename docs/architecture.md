@@ -40,12 +40,19 @@ the code that enforces them and the tests that prove it.
    author edits in a per-job worktree, publishes a revision (diff and bundle
    uploaded and hash-verified), runs checks through the runner, and picks a
    reviewer.
-6. **Review.** A review round binds to the exact head. The reviewer gets a
-   read-only snapshot and records a verdict with evidence. On
-   `changes_requested`, the author is woken — or the wakeup is held until the
-   current attempt ends.
-7. **Completion.** When the author has asked to complete and the final head
-   is approved with passing checks, the hub completes the job, posts the
+6. **Review.** Code rounds bind to the exact Git head; document and
+   investigation rounds bind to the latest published document's content hash,
+   even when the author also publishes a Git revision. The reviewer gets a
+   read-only snapshot: code from the verified bundle, or the exact stored
+   document as `review-artifact`. Only the leased reviewer can download that
+   document through the runner endpoint. Verdicts must echo the full
+   `expectedHead` or `expectedHash`. A corrected result needs a new round.
+   On `changes_requested`, the author resumes, addresses the findings and
+   requests re-review. Missing room membership or project read access is
+   named in the source conversation; access is never widened automatically.
+7. **Completion.** When the author has asked to complete and the current
+   result has its required evidence (code head and checks, or document hash),
+   the hub completes the job, posts the
    result, and auto-accepts the author's sourced decisions. There is no Accept
    click unless policy requires one.
 
@@ -56,14 +63,38 @@ the code that enforces them and the tests that prove it.
    not waived: the author asks in the room (A42).
 
 **Answering in the room.** An owner's reply resolves an engineer's question
-when it targets it: in the question's thread, as a reply to it, or by
-mentioning the asker. In the web client, when exactly one question in the
+when it targets it: in the question's thread or with an explicit reply target.
+Mentioning the asker alone is a clarification, not an answer. In the web client, when exactly one question in the
 room's main timeline is waiting on you, the composer targets it by default
 and says so ("Answering Pip's question", with *Not an answer* one click
-away), so a plain answer in the room works as in any group chat without
+away for the next message only), so a plain answer in the room works as in any group chat without
 yip guessing from text. With several open questions nothing is assumed. The
 answer keeps a small receipt ("Answers Pip's question — the work waiting on
 it resumed").
+
+
+**Conversation and catch-up.** Tool results and context instructions keep
+acknowledgments short and completion outcome-first. Internal work IDs,
+absolute ledger timestamps and scheduling explanations stay out of ordinary
+chat. One logical assignment produces one work-strip row; child review and
+help jobs remain available in its details. Review labels come from the
+current round on the current immutable result, never from job state alone.
+`review_ready` means In review, not approved.
+
+Overview derives catch-up from persisted event changes and current ledger
+facts. Each changed root assignment appears once with its current summary,
+open questions or permission requests, and the applicable review verdict.
+Links open the work, conversation, question, review or decision. Unconfirmed
+attempts remain unconfirmed. Older waits and old-version approvals are not
+reported as current; the live ledger below also includes unchanged open
+work. There is no new persisted status stream, and opening Overview does
+not mark rooms read.
+
+Routine shell edits and checks in the assigned checkout can use heredocs.
+The policy parser separates a literal body from executable shell syntax,
+checks trailing commands and retains approval for substitutions and
+consequential actions. A decided approval folds into a short outcome with
+a disclosure of its exact request; pending requests keep their full detail.
 
 **Clarifying work in conversation.** A message to an engineer who is
 working on something in the room right now goes into that work as the

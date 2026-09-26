@@ -97,10 +97,10 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
 
   Selection is a grey wash, never a colour. Every marker has a visually hidden text equivalent. The demo notice and any connection problem ("Reconnecting…") sit in a slim line above the card.
 - **Room header:** one 52px row — `# name` (a lock for private rooms) with the purpose in muted text, then outline buttons for linked projects, the reply mode ("Mentions only" or "Mira answers", with the full sentence in its tooltip and accessible name), and members — stacked squircles with the names of who can answer ("Oren, Mira"), falling back to a count when the room is narrow; roles are in the tooltip and accessible name — and a settings button.
-- **Work strip:** one row per live or failed job (finished work is announced by its result card in the conversation instead). Each row shows:
-  - a state word plus shape: hollow circle for queued, bar for running, pause for waiting (the word is the waiting reason), check for ready, filled check for completed, triangle for failed;
+- **Work strip:** one row per logical live or failed assignment (child work stays in its details) (finished work is announced by its result card in the conversation instead). Each row shows:
+  - a state word plus shape: hollow circle for queued, bar for running, pause for waiting (the word is the waiting reason), neutral pause for In review, filled check for completed, triangle for failed;
   - the title;
-  - the handoff ("Mira building · Oren reviewing next");
+  - the handoff from the actual current review round ("Mira building · Oren review requested", "reviewing", "requested changes" or "approved"); an old-version verdict says it belongs to an earlier revision;
   - the last confirmed activity with a relative time, or the exact blocker text;
   - the machine;
   - the latest attempt's state when it adds something (`WorkRow.runState`). `unknown` replaces the state word with "Not confirmed" and says the machine stopped reporting.
@@ -116,9 +116,11 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   - A thread summary shows reply avatars and "N replies · last reply 5m ago".
   - Kinds are rendered distinctly: `question` is an ordinary message with "Pip asked you" or "Answered" (and Reply in thread until it has replies); `approval` is the inline exact-action card; `result` is the result card; `review` links the review once; one-line `status` messages are small centred notices, like a group chat's, while longer hub answers show as "yip · From the work ledger".
   - A centred day pill and a monochrome hairline "New" divider (the read position when you opened the room) mark time.
+- **Room voice:** short acknowledgments, meaningful developments once, and completion led by the outcome and anything unresolved. Engineers do not recite work IDs, UTC ledger timestamps or scheduling steps. Completion does not imply merge or deployment.
 - **Composer:**
   - The mention **combobox** (`role=combobox`, `aria-activedescendant`, arrow keys, Enter/Tab, Escape) lists room members with their role. Engineers outside the room are listed but unavailable ("Not in this room — add them in room settings first").
   - Only choices made from the list become structured mentions. Mentions inside code are ignored, and "Asking Mira, Oren" confirms who will be addressed.
+  - With one open question, **Answering Mira's question** targets the answer explicitly. **Not an answer** applies to the next sent message only; the answer target returns afterwards. A mention alone never resolves a question.
   - A project context picker.
   - Enter or Mod+Enter per the owner's preference, and IME-safe.
   - A draft per room and per thread, saved on this device.
@@ -127,16 +129,16 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   - The steering scope ("Adding to: Fix Atlas session expiry · Mira") is shown as a bar at the top of the composer and can be cleared with × or Escape. Its receipt reads, in turn, "Delivering to Mira…" → "Mira received your update" or "Queued for Mira's next step", driven only by `input.delivery`.
   - One quiet line under the box, where a group chat shows typing: "Mira is typing…", "Mira and Oren are typing…", "Pip is working on Document Beacon's request flow", or "Pip will reply when possible — No machines are paired yet". Receipts for your updates take the same line. Keyboard hints are for screen readers only. Engineers' streamed text is never shown as it arrives.
 - **Result card:** posted like an attachment. It shows the title and state, then one summary line ("3 files +28 −5 · go test ./... passed · approved by Oren") in which every claim opens its evidence: the files open the diff, a check opens its recorded command, exit status and log, a verdict opens the review, and a PR opens its facts. Anything missing is stated plainly, and **Inspect the work** opens the drawer. **Details** expands the full evidence in place: the revision's summary and earlier revisions, every check on the exact current revision (each opening the evidence), each reviewer's verdict on an exact revision beside earlier verdicts ("Oren approved a9002d3 · requested changes on b0e5d19 first"), the revision and branch, the PR's facts kept separate, and the machine.
-- **Approval card:** the exact action (command, target, scope, revision, reason, expiry), with Allow this push (or the equivalent) and Reject. The request's `version` is sent, and a 409 is explained. The card shows Allowed, Rejected, Expired or "Allowed and used" truthfully. It states that a chat reply does not grant permission.
+- **Approval card:** the exact action (command, target, scope, revision, reason, expiry), with Allow this push (or the equivalent) and Reject. The request's `version` is sent, and a 409 is explained. After a decision, a compact Allowed, Rejected, Expired or "Allowed and used" entry replaces the command body; **View request and outcome** reopens the exact action and outcome. Pending requests keep all detail. It states that a chat reply does not grant permission.
 - **Job drawer:**
   - A header with the state and waiting reason, the exact blocker, an "outcome not confirmed" notice for unknown runs, missing evidence, the owner, reviewers, machine, revision, last confirmed activity and the source link.
-  - **Stop** (confirmed; stops the job tree), **Retry** (for failed, recovery or stalled jobs, or an unknown run), **Accept revision abc1234** (only when `requiresHumanReview && review_ready`; sends the exact revision and version, and handles 409), and Add to this work.
+  - **Stop** (confirmed; stops the job tree), **Retry** (for failed, recovery or stalled jobs, or an unknown run), **Accept revision abc1234** or **Accept document abc1234** (only when `requiresHumanReview && review_ready`; sends the exact revision and version, and handles 409), and Add to this work.
   - Tabs:
     - **Evidence:** a revision picker labelled with each revision's file and line counts (from `JobDetail.revisions`), the chosen revision's diff with per-file headers, line numbers and +/− lines, plus checks with inline logs, files, decisions, your updates with their receipts, questions and permissions, and related work.
-    - **Review:** rounds in order, each giving the verdict on its exact revision; findings with severity, file:line, evidence and author replies; superseded rounds marked; a stale approval explained; the PR shown as peer review / remote reviews / remote checks / merge.
+    - **Review:** rounds in order, each giving the verdict on its exact Git revision or document hash, with a link to the reviewed document; findings with severity, file:line, evidence and author replies; superseded rounds marked; a stale approval explained; the PR shown as peer review / remote reviews / remote checks / merge.
     - **Activity:** the job timeline, plus per-run tool logs in collapsed `<details>` that load on open.
     - **Runs:** each attempt with its state (unknown reads "Outcome not confirmed"), and the provider, model and billing — the only place these appear.
-- **Overview:** "Since you were here" catch-up with links to source conversations (it never marks rooms read), then Needs a look (with the exact blocker), Active, Recently completed and Worth remembering. The visit is recorded (`POST /v1/overview/seen`) only after the page has rendered. A row whose latest attempt's `runState` is `unknown` shows "Not confirmed" rather than a normal state. The Overview conversation is docked at ≥1180px and linked below that.
+- **Overview:** "Since you were here" summarizes changed assignments from current ledger facts, with one entry per assignment and explicit open questions, permission requests and revision-bound review outcomes. Evidence links open the work, question, review or decision as well as the source conversation. It never marks rooms read or creates another status stream. Unchanged open work remains in the live ledger below, then Needs a look (with the exact blocker), Active, Recently completed and Worth remembering. The visit is recorded (`POST /v1/overview/seen`) only after the page has rendered. A row whose latest attempt's `runState` is `unknown` shows "Not confirmed" rather than a normal state. The Overview conversation is docked at ≥1180px and linked below that.
 - **Engineer profile:** role and versioned standing instructions, active and queued work, decisions they recorded, rooms, **projects they can work on** (from the projects' grants, in plain words: "Atlas · can change code · can push"), and provider preference.
 - **Review states:** "Changes requested" is an engineering state, not an alert: it uses the pause shape in neutral ink, like any other waiting state, and never red.
 - **Machines:** a compact list, then details on demand (see `docs/screenshots/machines-redesign/`).
@@ -202,3 +204,14 @@ Where yip differs, and why:
 - `npm test` runs the unit tests (reducer, mentions, markdown escaping, drafts, router, diff parsing) and the jsdom smoke suites. The smoke suites mount the real `App` against payloads captured from a demo hub (`tests/unit/fixtures`), including a full captured SSE stream.
 - `npm run e2e` runs the Playwright journeys in `tests/e2e` against `bin/yip demo` (build it first with `make all`). They run only if a Playwright Chromium or a system Chrome or Edge is installed; the command never downloads a browser.
 - `node scripts/contrast.mjs` recomputes the contrast table.
+
+### Conversation verification (26 September 2026)
+
+The scripted browser journey covers assignment, clarification, a genuine
+question, owner answer, peer requested changes, author correction, re-review,
+completion and recall from another permitted room, followed by Overview
+review evidence opened with Enter. It needs no owner relay or mandatory
+acceptance. [Room comparisons](../screenshots/team-conversation/README.md)
+cover 390, 900, 1280 and 1440px in both themes. See the
+[release checklist](../release-checklist.md) for counts and the separate
+real-provider checks still reserved for the owner.

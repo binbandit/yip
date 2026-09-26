@@ -97,10 +97,10 @@ final class Runner: NSObject, WKNavigationDelegate, WKScriptMessageHandlerWithRe
     // Real key presses: AppKit key events sent to the web view.
     nonisolated func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage,
                                            replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void) {
-        let body = message.body as? [String: Any] ?? [:]
-        let key = body["press"] as? String ?? ""
-        let mods = body["mods"] as? [String] ?? []
         MainActor.assumeIsolated {
+            let body = message.body as? [String: Any] ?? [:]
+            let key = body["press"] as? String ?? ""
+            let mods = body["mods"] as? [String] ?? []
             self.press(key, mods: mods)
             replyHandler(true, nil)
         }

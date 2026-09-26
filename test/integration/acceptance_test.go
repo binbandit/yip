@@ -571,7 +571,7 @@ func TestDecisionCorrection(t *testing.T) {
 	e.c.must("POST", "/v1/decisions", protocol.DecisionRequest{Scope: old.Scope, Title: "Atlas refresh allows a 30-second clock-skew window",
 		Body: "Corrected: refresh tolerates 30 seconds of client clock skew; validation stays strict.", SupersedesID: old.ID, Accept: true}, &corrected)
 	e.post("Engineering", "@Mira what did we decide about Atlas session expiry?", []string{"mira"}, nil)
-	m := e.waitMessage("Engineering", "We already settled this")
+	m := e.waitMessage("Engineering", "We settled on")
 	if !strings.Contains(m.Body, "30-second") || strings.Contains(m.Body, old.Title) {
 		t.Fatalf("recall should use the corrected decision: %s", m.Body)
 	}

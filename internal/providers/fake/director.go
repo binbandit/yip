@@ -248,11 +248,13 @@ func codeScript(m *manifest.Manifest) Script {
 		return addressReview(m)
 	}
 	if strings.Contains(strings.ToLower(m.Job.Objective), "client rollout") && m.Job.Head != "" && m.OwnReview == nil && (m.Purpose == "answer" || m.Purpose == "input") {
-		answered := false
+		answer := ""
 		for _, in := range m.Inputs {
-			answered = answered || in.Kind == "answer"
+			if in.Kind == "answer" {
+				answer = in.Body
+			}
 		}
-		if !answered {
+		if answer == "" {
 			return Script{Steps: []Step{tool("work_wait", map[string]any{"reason": "missing_information"}, "")}}
 		}
 		rv, ok := pickReviewer(m)
@@ -260,7 +262,10 @@ func codeScript(m *manifest.Manifest) Script {
 			return missingReviewer(m)
 		}
 		return Script{Steps: []Step{
-			tool("work_request_review", map[string]any{"reviewer": rv.Handle, "criteria": "The exact expiry boundary and the refresh path", "message": "@" + rv.Handle + " can you check expiry and refresh? The owner clarified the client rollout; the session contract stays unchanged."}, ""),
+			{Write: &WriteFile{Path: "docs/client-rollout.md", Content: "# Client rollout\n\nOwner's release scope: " + answer + "\n\nThe existing session contract and error codes are unchanged. Expired sessions must be rejected at and after ExpiresAt on both validation and refresh.\n"}},
+			tool("work_publish_revision", map[string]any{"summary": "Record the clarified client rollout scope"}, ""),
+			tool("work_run_check", map[string]any{"name": "go test", "command": "go test ./..."}, ""),
+			tool("work_request_review", map[string]any{"reviewer": rv.Handle, "criteria": "The exact expiry boundary and the refresh path", "message": "@" + rv.Handle + " can you check expiry and refresh? The rollout note records the owner's release scope; the session contract stays unchanged."}, ""),
 			tool("work_update", map[string]any{"state": "completed", "summary": "Validation rejects expired sessions; the client rollout keeps the existing session contract."}, ""),
 		}}
 	}
@@ -293,7 +298,7 @@ func codeScript(m *manifest.Manifest) Script {
 	}
 	if strings.Contains(strings.ToLower(m.Job.Objective), "client rollout") {
 		return Script{Steps: append(steps,
-			tool("human_ask", map[string]any{"question": "Which client release should the compatibility note cover? I've checked the session contract; I'll finish the validation checks while that is clarified.", "missingFact": "Client release for the rollout note", "contextChecked": "The repository documents the session contract but not the client rollout", "dependentStep": "The rollout note", "continuingWith": "The expiry implementation and regression checks"}, ""),
+			tool("human_ask", map[string]any{"question": "Validation checks pass. Which client release should the compatibility note cover?", "missingFact": "Client release for the rollout note", "contextChecked": "The repository documents the session contract but not the client rollout", "dependentStep": "The rollout note", "continuingWith": "The implementation and checks are ready; the rollout note needs the release scope"}, ""),
 			tool("work_wait", map[string]any{"reason": "missing_information"}, ""))}
 	}
 	if !m.Job.PeerReview {

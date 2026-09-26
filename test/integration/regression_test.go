@@ -1655,6 +1655,24 @@ func TestRegressionTeamConversation(t *testing.T) {
 	if len(d.Reviews) != 1 || len(d.Reviews[0].Rounds) != 2 {
 		t.Fatalf("expected a change and re-review: %+v", d.Reviews)
 	}
+	rolloutRecorded := false
+	for _, artifact := range d.Artifacts {
+		if artifact.Kind != "diff" || artifact.Revision != j.Revision.Head {
+			continue
+		}
+		path, err := e.hub.Artifacts().Path(artifact.Hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		diff, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rolloutRecorded = strings.Contains(string(diff), "docs/client-rollout.md") && strings.Contains(string(diff), "The web client release")
+	}
+	if !rolloutRecorded {
+		t.Fatal("the clarified rollout scope is missing from the final reviewed revision")
+	}
 	rounds := d.Reviews[0].Rounds
 	if rounds[0].State != protocol.ReviewChangesRequested || rounds[1].State != protocol.ReviewApproved || rounds[1].Target.Head != j.Revision.Head {
 		t.Fatalf("verdicts: %+v", rounds)
