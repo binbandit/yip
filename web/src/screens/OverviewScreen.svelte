@@ -144,14 +144,12 @@
           {/if}
         </section>
 
-        <section class="section" aria-labelledby="ov-needs">
-          <div class="section-head"><h2 class="section-title" id="ov-needs">Needs a look</h2><span class="meta">{needs.length || ''}</span></div>
-          {#if needs.length === 0}
-            <p class="empty-line">Nothing is blocked or failed.</p>
+        <section class="section" aria-labelledby="ov-done">
+          <div class="section-head"><h2 class="section-title" id="ov-done">Recently completed</h2><span class="meta">last 7 days</span></div>
+          {#if done.length === 0}
+            <p class="empty-line">Nothing completed recently.</p>
           {:else}
-            <ul class="rows">
-              {#each needs as r (r.job.id)}<WorkRowItem {...r} unknownOutcome={unknownJobs.has(r.job.id)} />{/each}
-            </ul>
+            <ul class="rows">{#each done.slice(0, 12) as r (r.job.id)}<WorkRowItem {...r} />{/each}</ul>
           {/if}
         </section>
 
@@ -164,12 +162,14 @@
           {/if}
         </section>
 
-        <section class="section" aria-labelledby="ov-done">
-          <div class="section-head"><h2 class="section-title" id="ov-done">Recently completed</h2><span class="meta">last 7 days</span></div>
-          {#if done.length === 0}
-            <p class="empty-line">Nothing completed recently.</p>
+        <section class="section" aria-labelledby="ov-needs">
+          <div class="section-head"><h2 class="section-title" id="ov-needs">Needs a look</h2><span class="meta">{needs.length || ''}</span></div>
+          {#if needs.length === 0}
+            <p class="empty-line">Nothing is blocked or failed.</p>
           {:else}
-            <ul class="rows">{#each done.slice(0, 12) as r (r.job.id)}<WorkRowItem {...r} />{/each}</ul>
+            <ul class="rows">
+              {#each needs as r (r.job.id)}<WorkRowItem {...r} unknownOutcome={unknownJobs.has(r.job.id)} />{/each}
+            </ul>
           {/if}
         </section>
 

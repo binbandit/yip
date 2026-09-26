@@ -150,7 +150,7 @@
     class:asks-me={asksMe && !mine}
     data-message-id={message.id}
     {tabindex}
-    aria-label="{app.actorName(author)}{engineer ? `, ${engineer.role}` : ''}, {clock(message.createdAt)}"
+    aria-label="{app.actorName(author)}{engineer ? `, AI engineer, ${engineer.role}` : ''}, {clock(message.createdAt)}"
   >
     <div class="gutter">
       {#if continuation}

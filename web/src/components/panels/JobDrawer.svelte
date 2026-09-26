@@ -49,11 +49,15 @@
   const job = $derived(app.data.jobs[jobId] ?? d?.job);
   const runs = $derived(d ? [...d.runs].sort((a, b) => b.attempt - a.attempt) : []);
   const unknownRun = $derived(runs.find((r) => r.state === 'unknown'));
+  // A stop is only confirmed once the machine reports the attempt ended.
+  const stoppingRun = $derived(runs.find((r) => r.state === 'stopping'));
   const project = $derived(job?.projectId ? app.data.projects[job.projectId] : undefined);
   const room = $derived(job ? app.data.rooms[job.source.roomId] : undefined);
   const live = $derived(!!job && isLiveJob(job));
   const canRetry = $derived(
-    !!job && (job.state === 'failed' || (job.state === 'waiting' && (job.waitingReason === 'recovery' || job.waitingReason === 'stalled')) || !!unknownRun),
+    !!job &&
+      !stoppingRun &&
+      (job.state === 'failed' || job.state === 'cancelled' || (job.state === 'waiting' && (job.waitingReason === 'recovery' || job.waitingReason === 'stalled')) || !!unknownRun),
   );
   const canAccept = $derived(!!job && job.requiresHumanReview && job.state === 'review_ready' && !!job.revision?.head);
 
@@ -236,9 +240,12 @@
     <div class="pad head">
       <p class="state tone-{jobTone(job.state)}">
         <StateIcon shape={jobShape(job.state)} tone={jobTone(job.state)} size={16} live={job.state === 'running'} />
-        <strong>{jobStateLabel(job)}</strong>
+        <strong>{job.state === 'cancelled' && stoppingRun ? 'Stopping' : jobStateLabel(job)}</strong>
         {#if job.state === 'waiting'}<span class="muted">· {waitingReasonLabel(job.waitingReason)}</span>{/if}
       </p>
+      {#if stoppingRun}
+        <p class="notice attention">Waiting for {app.nodeName(stoppingRun.nodeId) || 'its machine'} to confirm the attempt has stopped.</p>
+      {/if}
 
       {#if (job.state === 'waiting' || job.state === 'failed' || job.state === 'review_ready') && job.stateDetail}
         <p class="notice {job.state === 'failed' ? 'danger' : 'attention'}">{job.stateDetail}</p>
@@ -314,7 +321,7 @@
           <button class="btn btn-sm btn-danger" onclick={() => (confirmStop = true)}><Icon name="stop" size={15} />Stop</button>
         {/if}
         {#if canRetry}
-          <button class="btn btn-sm" disabled={busy === 'retry'} onclick={retry}><Icon name="refresh" size={15} />{busy === 'retry' ? 'Retrying…' : 'Retry'}</button>
+          <button class="btn btn-sm" disabled={busy === 'retry'} onclick={retry}><Icon name="refresh" size={15} />{busy === 'retry' ? (job.state === 'cancelled' ? 'Resuming…' : 'Retrying…') : job.state === 'cancelled' ? 'Resume' : 'Retry'}</button>
         {/if}
       </div>
     </div>
@@ -596,7 +603,7 @@
 {#if confirmStop && job}
   <ConfirmDialog
     title="Stop this work?"
-    body="Stopping ends {job.title} and any work it started. Changes already made stay where they are; nothing is deleted. You can retry later."
+    body="Stopping ends {job.title} and any work it started. Changes already made stay where they are; nothing is deleted. You can resume it later from its last checkpoint."
     confirmLabel="Stop the work"
     danger
     onconfirm={stop}

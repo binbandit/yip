@@ -22,8 +22,8 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    height: 52px;
-    padding: 0 8px;
+    height: calc(52px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
   }
   .brand {
     display: inline-flex;

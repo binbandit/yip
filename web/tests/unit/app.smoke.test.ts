@@ -98,7 +98,7 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect(eng.classList.contains('unread')).toBe(false);
     // Working indicator from GET /v1/runs, without replaying history.
     expect(byText('nav a.row', 'Security')!.textContent).toContain('Mira working');
-    expect(text()).toContain('1 machine connected · work continues when you close this');
+    expect(text()).toMatch(/1 machine connected · work runs on .+, not in this window/);
   });
 
   it('renders a room like a group chat: names, one link per piece of work, a compact result', async () => {

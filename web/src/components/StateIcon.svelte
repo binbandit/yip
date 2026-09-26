@@ -46,20 +46,5 @@
     display: inline-block;
     vertical-align: -2px;
   }
-  .live .fill {
-    animation: slide 1.8s ease-in-out infinite alternate;
-  }
-  @keyframes slide {
-    from {
-      transform: translateX(0);
-    }
-    to {
-      transform: translateX(5.5px);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .live .fill {
-      animation: none;
-    }
-  }
+  /* Running is shown by the bar shape and its word, not by looping motion. */
 </style>
