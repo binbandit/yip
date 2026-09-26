@@ -55,16 +55,27 @@ the code that enforces them and the tests that prove it.
    colleague who doesn't exist. A colleague who is present but lacks access is
    not waived: the author asks in the room (A42).
 
-**Engineer notes.** Context layer 5 (spec §8) is each engineer's short
-notes from earlier work (`engineer_notes`). An engineer keeps one with
-`note_record`, citing messages or jobs; the note is scoped to a project or
-room and is visible only where its sources are (a private room's note stays
-in that room). The narrow auto-accept policy keeps a note whose sources are
-all the engineer's own completed work; anything else waits on the profile
-as a suggestion, with no notification or queue. A run's context includes
-up to 12 kept notes usable in its conversation, in projects the engineer
-can still access, and not due for review (90 days, renewable). Corrections
-supersede; nothing is overwritten.
+**Engineer notes and work records.** Context layer 5 (spec §8) is each
+engineer's memory of earlier work (`engineer_notes`), visible only where
+its sources are (a private room's note stays in that room).
+
+- *Work records* are written by yip itself when work finishes, for the owner
+  and for every colleague who reviewed it: the outcome, the final revision
+  and who approved it, checks that passed on it, and how each review finding
+  ended (with the author's reply). They restate the ledger, so they're kept
+  without anyone's click; completing the same work again replaces its
+  record. This is what lets an engineer answer "where did we land?" in
+  another room without the owner curating memory.
+- *Notes* are what an engineer (`note_record`) or the owner chooses to keep.
+  They're kept automatically when every source is finished work the engineer
+  did or reviewed, its result, or the owner's own words; a colleague's claim
+  or open work leaves a quiet suggestion on the profile (no notification or
+  queue).
+- A run gets up to 6 records and 12 notes usable in its conversation, in
+  projects the engineer can still access, and not due for review (records
+  after a year, notes after 90 days, renewable). A corrected note carries
+  what it replaced, who changed it and when, so the engineer can say "that
+  was updated" instead of rewriting history.
 
 **Late output.** A machine that reports for an attempt under an old lease
 epoch is refused, and what it sent (run events, its final report, tool

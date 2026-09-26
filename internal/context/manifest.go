@@ -40,12 +40,18 @@ type Decision struct {
 	Source string `json:"source"`
 }
 
-// Note is one of the engineer's own kept notes (context layer 5).
+// Note is one of the engineer's own kept notes (context layer 5), or a
+// work record yip wrote when work finished (Kind "record").
 type Note struct {
 	ID     string `json:"id"`
+	Kind   string `json:"kind,omitempty"`
 	Body   string `json:"body"`
 	Scope  string `json:"scope"`
 	Source string `json:"source"`
+	// Correction history: set when this note replaced an earlier one.
+	Previously string `json:"previously,omitempty"`
+	UpdatedBy  string `json:"updatedBy,omitempty"`
+	UpdatedOn  string `json:"updatedOn,omitempty"`
 }
 
 type Colleague struct {
@@ -370,11 +376,30 @@ func (m *Manifest) Prompt() string {
 			fmt.Fprintf(&b, "- %s [%s, %s, source %s]: %s\n", d.Title, d.ID, d.Scope, d.Source, oneLine(d.Body))
 		}
 	}
-	if len(m.Notes) > 0 {
-		b.WriteString("\n## Your notes from earlier work (cite as your notes; supersede any that are out of date with note_record)\n")
-		for _, n := range m.Notes {
-			fmt.Fprintf(&b, "- %s [%s, %s, source %s]\n", oneLine(n.Body), n.ID, n.Scope, n.Source)
+	var records, notes []Note
+	for _, n := range m.Notes {
+		if n.Kind == "record" {
+			records = append(records, n)
+		} else {
+			notes = append(notes, n)
 		}
+	}
+	if len(records) > 0 {
+		b.WriteString("\n## Work you finished (yip's record of it; these are facts you may state here)\n")
+		for _, n := range records {
+			fmt.Fprintf(&b, "- %s [%s]\n", oneLine(n.Body), n.Scope)
+		}
+	}
+	if len(notes) > 0 {
+		b.WriteString("\n## Your notes from earlier work (supersede any that are out of date with note_record)\n")
+		for _, n := range notes {
+			fmt.Fprintf(&b, "- %s [%s, source %s]", oneLine(n.Body), n.Scope, n.Source)
+			if n.Previously != "" {
+				fmt.Fprintf(&b, " — updated by %s on %s; it previously said: \"%s\"", n.UpdatedBy, n.UpdatedOn, oneLine(n.Previously))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("If a note was updated, say it was updated (and by whom) when that matters; don't claim an earlier answer was wrong or that the note always said this.\n")
 	}
 	if len(m.Colleagues) > 0 {
 		b.WriteString("\n## Colleagues\n")

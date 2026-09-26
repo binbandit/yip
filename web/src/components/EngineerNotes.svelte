@@ -131,6 +131,7 @@
       {#each kept as n (n.id)}
         {@const src = sourceHref(n)}
         <li class:due={due(n)}>
+          {#if n.kind === 'record'}<p class="tag meta">Work record · written by yip when the work finished</p>{/if}
           <p class="body">{n.body}</p>
           <p class="meta">
             {scopeLabel(n)}{#if src}{' · from '}<a href={src.href}>{src.label}</a>{:else}{' · written by you'}{/if}
@@ -200,6 +201,10 @@
   }
   .body {
     margin: 0;
+  }
+  .tag {
+    margin: 0;
+    font-size: 12px;
   }
   .acts {
     display: flex;

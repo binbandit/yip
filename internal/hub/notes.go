@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -21,6 +22,11 @@ const (
 	notesInContext = 12
 	// notesPerEngineer bounds how many current notes one engineer keeps.
 	notesPerEngineer = 60
+	// Work records are longer (they carry the outcome and review), last a
+	// year before review, and at most recordsInContext enter a run.
+	recordMaxChars    = 900
+	recordReviewAfter = 365 * 24 * time.Hour
+	recordsInContext  = 6
 )
 
 // noteVisibleIn reports whether a note may be used in (or shown from) room:
@@ -94,7 +100,7 @@ func (h *Hub) toolNoteRecord(ctx context.Context, t *txn, env toolEnv, a bridge.
 		}
 	}
 	var current int
-	_ = t.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM engineer_notes WHERE engineer_id = ? AND status IN ('proposed','accepted')`, env.eng.ID).Scan(&current)
+	_ = t.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM engineer_notes WHERE engineer_id = ? AND kind = 'note' AND status IN ('proposed','accepted')`, env.eng.ID).Scan(&current)
 	if current >= notesPerEngineer {
 		return nil, domain.Limit("You already keep %d notes. Supersede an outdated one instead of adding another.", current)
 	}
@@ -104,21 +110,22 @@ func (h *Hub) toolNoteRecord(ctx context.Context, t *txn, env toolEnv, a bridge.
 	if err := store.InsertNote(ctx, t.tx, n); err != nil {
 		return nil, err
 	}
-	status, msg := "proposed", "Kept as a suggestion on your profile. It becomes part of your notes when the owner keeps it, or automatically once the work it comes from is finished."
+	status, msg := "proposed", "Saved as a suggestion the owner can keep; no need to mention this in the conversation. (Notes citing finished work you did or reviewed, its result, or the owner's own words are kept automatically. Finished work is also recorded for you without a note.)"
 	if h.ownFinishedWorkOnly(ctx, t.tx, n) {
 		if err := h.acceptNote(ctx, t, n, protocol.Actor{Kind: protocol.ActorSystem, ID: "policy:auto-accept"}); err != nil {
 			return nil, err
 		}
-		status, msg = "accepted", "Kept. You'll see it in conversations where its sources are visible."
+		status, msg = "accepted", "Kept. You'll have it in conversations where its sources are visible."
 	} else if err := h.emitNote(ctx, t, n.ID, env.me); err != nil {
 		return nil, err
 	}
 	return map[string]any{"noteId": n.ID, "status": status, "note": msg}, nil
 }
 
-// ownFinishedWorkOnly is the narrow auto-accept policy: every source is a
-// job this engineer owned that has completed. (A message source, or work
-// still open, leaves the note a proposal.)
+// ownFinishedWorkOnly is the narrow auto-accept policy: every source is
+// finished work this engineer owned or reviewed, its result message, or the
+// owner's own message. (A colleague's message, or work still open, leaves
+// the note a proposal.)
 func (h *Hub) ownFinishedWorkOnly(ctx context.Context, q store.Q, n protocol.EngineerNote) bool {
 	if n.CreatedBy.Kind != protocol.ActorEngineer || len(n.Sources) == 0 {
 		return false
@@ -128,16 +135,48 @@ func (h *Hub) ownFinishedWorkOnly(ctx context.Context, q store.Q, n protocol.Eng
 			return false // correcting the owner's note stays a proposal
 		}
 	}
+	ownerID, _ := h.ownerID(ctx, q)
 	for _, s := range n.Sources {
-		if s.Kind != "job" {
+		switch s.Kind {
+		case "job":
+			if !h.ownFinishedJob(ctx, q, s.ID, n.EngineerID) {
+				return false
+			}
+		case "message":
+			m, err := store.GetMessage(ctx, q, s.ID)
+			if err != nil {
+				return false
+			}
+			// The owner's own words, or the result of finished work this
+			// engineer did or reviewed.
+			if m.Author.Kind == protocol.ActorUser && m.Author.ID == ownerID {
+				continue
+			}
+			if m.Kind == protocol.MessageResult && m.JobID != "" && h.ownFinishedJob(ctx, q, m.JobID, n.EngineerID) {
+				continue
+			}
 			return false
-		}
-		j, err := store.GetJob(ctx, q, s.ID)
-		if err != nil || j.OwnerID != n.EngineerID || j.State != protocol.JobCompleted {
+		default:
 			return false
 		}
 	}
 	return true
+}
+
+// ownFinishedJob reports whether a completed job was owned or reviewed by
+// the engineer.
+func (h *Hub) ownFinishedJob(ctx context.Context, q store.Q, jobID, engineerID string) bool {
+	j, err := store.GetJob(ctx, q, jobID)
+	if err != nil || j.State != protocol.JobCompleted {
+		return false
+	}
+	if j.OwnerID == engineerID {
+		return true
+	}
+	if r, err := store.GetReviewForJob(ctx, q, jobID, engineerID); err == nil && r.ReviewerID == engineerID {
+		return true
+	}
+	return false
 }
 
 // autoAcceptNotes applies the policy once a job completes.
@@ -317,6 +356,7 @@ func (h *Hub) notesForContext(ctx context.Context, q store.Q, engineerID string,
 		return nil
 	}
 	var out []protocol.EngineerNote
+	notes, records := 0, 0
 	for _, n := range ns {
 		if !noteVisibleIn(n, room) {
 			continue
@@ -326,10 +366,144 @@ func (h *Hub) notesForContext(ctx context.Context, q store.Q, engineerID string,
 				continue
 			}
 		}
-		out = append(out, n)
-		if len(out) == notesInContext {
-			break
+		if n.Kind == "record" {
+			if records == recordsInContext {
+				continue
+			}
+			records++
+		} else {
+			if notes == notesInContext {
+				continue
+			}
+			notes++
 		}
+		out = append(out, n)
 	}
 	return out
+}
+
+// recordFinishedWork writes a work record for the owner of finished work
+// and for each colleague who reviewed it, from the ledger itself: the
+// outcome, the final revision and who approved it, checks that passed on it,
+// and how review findings were handled. Records are kept automatically (they
+// restate verified facts, not opinions) and follow the work's visibility, so
+// an engineer remembers finished work in other conversations where it may
+// be discussed, without the owner curating anything. A later completion of
+// the same work replaces its earlier record.
+func (h *Hub) recordFinishedWork(ctx context.Context, t *txn, job store.JobRow) error {
+	if job.Kind == protocol.JobKindReply || job.Kind == protocol.JobKindReview {
+		return nil
+	}
+	reviews, err := store.ListJobReviews(ctx, t.tx, job.ID)
+	if err != nil {
+		return err
+	}
+	checks, _ := store.ListChecks(ctx, t.tx, job.ID)
+	head := ""
+	if job.Revision != nil {
+		head = job.Revision.Head
+	}
+	where := ""
+	if p, err := store.GetProject(ctx, t.tx, job.ProjectID); err == nil {
+		where = " in " + p.Name
+	}
+	var approvedBy, facts []string
+	for _, r := range reviews {
+		if len(r.Rounds) == 0 {
+			continue
+		}
+		cur := r.Rounds[len(r.Rounds)-1]
+		name := h.engineerName(ctx, t.tx, r.ReviewerID)
+		if cur.State == protocol.ReviewApproved {
+			approvedBy = append(approvedBy, name)
+		}
+		for _, rd := range r.Rounds {
+			for _, f := range rd.Findings {
+				if f.Severity == "note" {
+					continue
+				}
+				handled := findingOutcome(f)
+				facts = append(facts, fmt.Sprintf("%s's %s \"%s\": %s", name, f.Severity, truncate(oneLineText(f.Body), 90), handled))
+			}
+		}
+	}
+	var passed []string
+	for _, c := range checks {
+		if cmd := "`" + c.Command + "`"; c.Passed && head != "" && c.Revision == head && !contains(passed, cmd) {
+			passed = append(passed, cmd)
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Finished \"%s\"%s on %s", job.Title, where, h.now().Format("2 Jan"))
+	if head != "" {
+		fmt.Fprintf(&b, "; final revision %s", shortRev(head))
+	}
+	if len(approvedBy) > 0 {
+		fmt.Fprintf(&b, ", approved by %s", strings.Join(approvedBy, " and "))
+	}
+	if len(passed) > 0 {
+		fmt.Fprintf(&b, "; checks passed: %s", strings.Join(passed, ", "))
+	}
+	b.WriteString(".")
+	if s := strings.TrimSpace(job.Summary); s != "" {
+		fmt.Fprintf(&b, " Outcome: %s", truncate(oneLineText(s), 320))
+	}
+	if len(facts) > 0 {
+		fmt.Fprintf(&b, " Review: %s.", strings.Join(facts, "; "))
+	}
+	body := truncate(b.String(), recordMaxChars)
+
+	scope := protocol.DecisionScope{Kind: "room", ID: job.Source.RoomID}
+	if job.ProjectID != "" {
+		scope = protocol.DecisionScope{Kind: "project", ID: job.ProjectID}
+	}
+	sources := []protocol.Source{{Kind: "job", ID: job.ID, RoomID: job.Source.RoomID}}
+	visible, err := h.decisionVisibility(ctx, t.tx, sources)
+	if err != nil {
+		return err
+	}
+	people := []string{job.OwnerID}
+	for _, r := range reviews {
+		if !contains(people, r.ReviewerID) {
+			people = append(people, r.ReviewerID)
+		}
+	}
+	by := protocol.Actor{Kind: protocol.ActorSystem, ID: "policy:work-record"}
+	now := h.now()
+	for _, eng := range people {
+		text := body
+		if eng != job.OwnerID {
+			text = truncate("You reviewed "+h.engineerName(ctx, t.tx, job.OwnerID)+"'s work. "+body, recordMaxChars)
+		}
+		n := protocol.EngineerNote{ID: domain.NewID(), EngineerID: eng, Kind: "record", Scope: scope, Body: text, Status: "proposed",
+			CreatedBy: by, Sources: sources, VisibleRoomIDs: visible, ReviewAfter: now.Add(recordReviewAfter), CreatedAt: now}
+		prior, _ := store.ListNotes(ctx, t.tx, `engineer_id = ? AND kind = 'record' AND status = 'accepted'
+			AND id IN (SELECT note_id FROM engineer_note_sources WHERE source_kind = 'job' AND source_id = ?)`, eng, job.ID)
+		if len(prior) > 0 {
+			n.SupersedesID = prior[0].ID
+		}
+		if err := store.InsertNote(ctx, t.tx, n); err != nil {
+			return err
+		}
+		if err := h.acceptNote(ctx, t, n, by); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// findingOutcome says how a review finding ended, with the author's reply.
+func findingOutcome(f protocol.Finding) string {
+	out := map[string]string{"resolved": "resolved", "addressed": "addressed", "disputed": "declined", "withdrawn": "withdrawn by the reviewer", "open": "left open"}[f.Status]
+	if out == "" {
+		out = f.Status
+	}
+	if n := len(f.Replies); n > 0 {
+		out += " (" + truncate(oneLineText(f.Replies[n-1].Body), 110) + ")"
+	}
+	return out
+}
+
+func oneLineText(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
