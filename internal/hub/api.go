@@ -109,10 +109,7 @@ func (h *Hub) RoomWork(ctx context.Context, userID, roomID string, includeReplie
 		}
 		out = append(out, r)
 	}
-	if out == nil {
-		out = []protocol.WorkRow{}
-	}
-	return out, nil
+	return nonNil(out), nil
 }
 
 // RunActivity returns a run's recorded tool and progress log.

@@ -189,10 +189,7 @@ func (h *Hub) ListDecisions(ctx context.Context, userID string, status string) (
 		}
 		out = append(out, d)
 	}
-	if out == nil {
-		out = []protocol.Decision{}
-	}
-	return out, nil
+	return nonNil(out), nil
 }
 
 func anyIn(a, b []string) bool {
