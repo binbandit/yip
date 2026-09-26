@@ -577,7 +577,7 @@ export function roomWorkJobs(s: DataState, roomId: string, now = Date.now()): Jo
   const out: Job[] = [];
   for (const j of Object.values(s.jobs)) {
     if (j.source?.roomId !== roomId) continue;
-    if (j.kind === 'reply' || j.kind === 'review') continue;
+    if (j.kind === 'reply' || j.kind === 'review' || j.parentId) continue;
     if (j.state === 'cancelled') continue;
     if (j.state === 'completed') {
       const at = j.completedAt ? Date.parse(j.completedAt) : Date.parse(j.updatedAt);

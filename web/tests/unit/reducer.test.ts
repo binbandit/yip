@@ -336,6 +336,7 @@ describe('event reducer', () => {
     applyEvent(s, ev('job.created', job('a', { state: 'running' })));
     applyEvent(s, ev('job.created', job('b', { kind: 'reply', state: 'waiting' })));
     applyEvent(s, ev('job.created', job('c', { kind: 'review' })));
+    applyEvent(s, ev('job.created', job('child', { parentId: 'a', kind: 'investigation' })));
     applyEvent(s, ev('job.created', job('d', { state: 'completed', completedAt: '2026-09-20T00:00:00Z' })));
     applyEvent(s, ev('job.created', job('e', { state: 'failed' })));
     expect(roomWorkJobs(s, 'r1', now).map((j) => j.id)).toEqual(['e', 'a']);

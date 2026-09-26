@@ -442,9 +442,9 @@ func (h *Hub) toolWorkStatus(ctx context.Context, run store.RunRow, a bridge.Wor
 		}
 		out = append(out, map[string]any{"jobId": r.Job.ID, "title": r.Job.Title, "owner": h.engineerName(ctx, q, r.Job.OwnerID),
 			"state": r.Job.State, "waitingReason": r.Job.WaitingReason, "detail": r.Job.StateDetail, "project": r.ProjectName,
-			"room": r.RoomName, "machine": r.NodeName, "lastConfirmed": r.LastConfirmed, "lastConfirmedAt": r.LastConfirmedAt})
+			"room": r.RoomName, "runState": r.RunState, "summary": r.Job.Summary, "lastConfirmed": r.LastConfirmed})
 	}
-	return map[string]any{"work": out, "note": "Ledger facts visible from this conversation. Reading status never wakes other engineers."}, nil
+	return map[string]any{"work": out, "note": "Summarize outcomes and what remains open by title. Preserve uncertainty when runState is unknown. Use jobId only for tool references, never in chat."}, nil
 }
 
 func (h *Hub) toolKnowledgeSearch(ctx context.Context, run store.RunRow, a bridge.KnowledgeSearchArgs) (any, error) {
@@ -547,7 +547,7 @@ func (h *Hub) toolRoomPost(ctx context.Context, t *txn, env toolEnv, a bridge.Ro
 	if err := store.SetRunPostedReply(ctx, t.tx, env.run.ID); err != nil {
 		return nil, err
 	}
-	return map[string]any{"messageId": msg.ID, "note": "Posted. Mentions do not wake anyone."}, nil
+	return map[string]any{"messageId": msg.ID, "note": "Posted. Do not repeat this message in your final reply."}, nil
 }
 
 func jobRefFor(j store.JobRow) []protocol.Ref {
@@ -738,7 +738,7 @@ func (h *Hub) toolWorkCreate(ctx context.Context, t *txn, env toolEnv, a bridge.
 		res["repo"] = repo.Name
 	}
 	if owner.ID == env.eng.ID && env.job.Kind == protocol.JobKindReply {
-		res["note"] = "The job starts after this reply ends. Reply briefly with what you'll do."
+		res["note"] = "Acknowledge what you will do in one short sentence, then end your turn. The assignment is recorded; do not announce its creation or ID."
 	}
 	return res, nil
 }
@@ -892,7 +892,7 @@ func (h *Hub) toolWait(ctx context.Context, t *txn, env toolEnv, a bridge.WorkWa
 	if err := store.SetRunIntent(ctx, t.tx, env.run.ID, reason, truncate(a.Detail, 300)); err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true, "note": "Recorded. End your turn now; your capacity is released and you'll be resumed automatically when it resolves."}, nil
+	return map[string]any{"ok": true, "note": "The work will continue when this is resolved. End your turn without repeating the waiting status in chat."}, nil
 }
 
 // ---- internal records from the runner ----

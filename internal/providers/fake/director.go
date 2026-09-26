@@ -153,7 +153,7 @@ func replyScript(m *manifest.Manifest) Script {
 				break
 			}
 		}
-		return Script{Steps: []Step{final(fmt.Sprintf("We already settled this: **%s**. %s\n\n(Decision %s, %s; source %s.)", d.Title, d.Body, d.ID, d.Scope, d.Source))}}
+		return Script{Steps: []Step{final(fmt.Sprintf("We settled on **%s**. %s", d.Title, d.Body))}}
 	case statusRe.MatchString(text):
 		return Script{Steps: []Step{tool("work_status", map[string]any{"includeCompleted": true}, "s"), {Summarize: "s"}}}
 	case fixRe.MatchString(text):
@@ -174,7 +174,7 @@ func replyScript(m *manifest.Manifest) Script {
 			tool("work_create", map[string]any{"title": title, "objective": requestText(m), "kind": "code", "project": p.name, "repo": p.repos[0],
 				"acceptance": acceptance}, "w"),
 			ifEq("w.ok", true,
-				[]Step{final(fmt.Sprintf("On it. I'll make the change in %s, check it against the existing contract, and get an independent review before I report back.", p.name))},
+				[]Step{final(fmt.Sprintf("On it. I'll check the %s change against the existing contract.", p.name))},
 				[]Step{final("I couldn't start that: {{w.error.message}}")}),
 		}}
 	case studyRe.MatchString(text):
@@ -194,7 +194,7 @@ func replyScript(m *manifest.Manifest) Script {
 		return Script{Steps: []Step{
 			tool("work_create", args, "w"),
 			ifEq("w.ok", true,
-				[]Step{final("I'll trace it through the code and write it up with source locations. I'll ask here if something is genuinely missing.")},
+				[]Step{final("I'll trace the flow and write up what the code confirms.")},
 				[]Step{final("I couldn't start that: {{w.error.message}}")}),
 		}}
 	}
@@ -242,7 +242,7 @@ func codeScript(m *manifest.Manifest) Script {
 	}
 	if m.Job.Head != "" {
 		return Script{Steps: []Step{tool("work_update", map[string]any{"state": "completed",
-			"summary": "Fixed and reviewed: expired sessions are rejected at and after ExpiresAt on both validation and refresh, preserving the strict-expiry contract. Regression tests cover the exact boundary; go test ./... passes."}, "")}}
+			"summary": "Expired sessions are rejected at and after ExpiresAt on both validation and refresh, preserving the strict-expiry contract."}, "")}}
 	}
 	rv, ok := pickReviewer(m)
 	steps := []Step{
@@ -319,7 +319,7 @@ func addressReview(m *manifest.Manifest) Script {
 		tool("work_respond_to_review", map[string]any{"responses": responses, "requestRereview": true,
 			"message": "Good catch. Refresh now uses the shared validator, and the new regression passes. @" + reviewerHandle + " ready for another look."}, "resp"),
 		tool("work_update", map[string]any{"state": "completed",
-			"summary": "Fixed and reviewed: expired sessions are rejected at and after ExpiresAt on both Validate and Refresh (one shared validator), preserving the strict-expiry contract. Regression tests cover the exact boundary; go test ./... passes on {{rev.head}}."}, ""),
+			"summary": "Expired sessions are rejected at and after ExpiresAt on both Validate and Refresh. Refresh now uses the shared validator, with regression coverage for the exact boundary."}, ""),
 	}}
 }
 
@@ -375,7 +375,7 @@ func reviewScript(m *manifest.Manifest) Script {
 				"findings": []map[string]any{{"severity": "blocking", "file": "session/refresh.go", "line": "{{g.line}}",
 					"body":     "Refresh still accepts a token at the exact expiry instant: now.After(t.ExpiresAt) is false when now == ExpiresAt. Use the shared validator here and add a regression test for the boundary.",
 					"evidence": "session/refresh.go:{{g.line}}: {{g.out}}"}},
-				"message": "One change before this goes in: the refresh handler still accepts a token at the exact expiry instant. Please use the shared validator there and add a regression test."}, "")},
+				"message": "One change before I can approve: the refresh handler still accepts a token at the exact expiry instant. Please use the shared validator there and add a regression test."}, "")},
 			[]Step{tool("work_review", map[string]any{"verdict": "approved", "expectedHead": r.Head, "resolve": resolve,
 				"summary": "Checked the updated diff and the boundary tests: refresh now rejects the token at expiry through the shared validator, and normal refresh still works. go test ./... passes on this revision.",
 				"message": "Checked the updated diff and the boundary test. That fixes it. Approved."}, "")}),

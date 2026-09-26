@@ -28,7 +28,7 @@ func (h *Hub) ledgerForRoom(ctx context.Context, q store.Q, room protocol.Room, 
 	}
 	var out []protocol.WorkRow
 	for _, j := range jobs {
-		if j.Kind == protocol.JobKindReview {
+		if j.Kind == protocol.JobKindReview || j.ParentID != "" {
 			continue
 		}
 		if room.Kind != protocol.RoomKindOverview && j.Source.RoomID != room.ID {
@@ -97,7 +97,7 @@ func (h *Hub) Overview(ctx context.Context, userID string, markSeen bool) (proto
 		return ov, err
 	}
 	for _, j := range jobs {
-		if j.Kind == protocol.JobKindReview {
+		if j.Kind == protocol.JobKindReview || j.ParentID != "" {
 			continue
 		}
 		if j.State == protocol.JobCompleted && j.CompletedAt != nil && h.now().Sub(*j.CompletedAt) > 7*24*time.Hour {
@@ -335,21 +335,17 @@ func (h *Hub) answerStatus(ctx context.Context, t *txn, userID string, room prot
 
 // statusLine is one job's line in a status answer, from its recorded state.
 func statusLine(j store.JobRow, owner string) string {
-	when := ""
-	if j.LastActivityAt != nil {
-		when = " (last confirmed " + j.LastActivityAt.Format("Jan 2 15:04") + ")"
-	}
 	switch j.State {
 	case protocol.JobCompleted:
 		return fmt.Sprintf("%s completed: %s", owner, j.Title)
 	case protocol.JobRunning:
-		return fmt.Sprintf("%s is working on %s — %s%s", owner, j.Title, strings.ToLower(firstNonEmpty(j.LastActivity, "in progress")), when)
+		return fmt.Sprintf("%s is working on %s: %s", owner, j.Title, strings.ToLower(firstNonEmpty(j.LastActivity, "in progress")))
 	case protocol.JobQueued:
 		return fmt.Sprintf("%s has %s queued%s", owner, j.Title, detailSuffix(j.StateDetail))
 	case protocol.JobReviewReady:
 		return fmt.Sprintf("%s: %s — %s", owner, j.Title, firstNonEmpty(j.StateDetail, "in review"))
 	case protocol.JobWaiting:
-		return fmt.Sprintf("%s is waiting on %s: %s%s", owner, j.Title, firstNonEmpty(j.StateDetail, j.WaitingReason), when)
+		return fmt.Sprintf("%s is waiting on %s: %s", owner, j.Title, firstNonEmpty(j.StateDetail, j.WaitingReason))
 	case protocol.JobFailed:
 		return fmt.Sprintf("%s: %s failed — %s", owner, j.Title, j.StateDetail)
 	}

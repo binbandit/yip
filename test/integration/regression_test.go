@@ -1586,3 +1586,22 @@ func TestRegressionClarificationToWaitingWork(t *testing.T) {
 		}
 	}
 }
+
+// Recall speaks about the decision; its internal identifiers stay in evidence.
+func TestRegressionDecisionRecallUsesHumanTitles(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	e.post("Security", "@Mira fix Atlas accepting expired sessions", []string{"mira"}, nil)
+	j := e.waitJob("Fix Atlas session expiry", protocol.JobCompleted)
+	e.post("Engineering", "@Mira what did we decide about expiry?", []string{"mira"}, nil)
+	msg := e.waitMessage("Engineering", "We settled on")
+	var ds []protocol.Decision
+	e.c.must("GET", "/v1/decisions?status=accepted", nil, &ds)
+	if len(ds) != 1 || !strings.Contains(msg.Body, ds[0].Title) || strings.Contains(msg.Body, ds[0].ID) || strings.Contains(msg.Body, j.ID) {
+		t.Fatalf("recall should use the decision title, not internal IDs: %q", msg.Body)
+	}
+	for _, m := range e.messages("Security") {
+		if m.Author.Kind == protocol.ActorEngineer && strings.Contains(m.Body, j.ID) {
+			t.Fatalf("internal work ID leaked into conversation: %q", m.Body)
+		}
+	}
+}

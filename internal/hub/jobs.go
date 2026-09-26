@@ -591,7 +591,7 @@ func (h *Hub) requestCompletion(ctx context.Context, t *txn, job store.JobRow, s
 		if _, err := h.setJobState(ctx, t, job.ID, protocol.JobReviewReady, "", detail); err != nil {
 			return "", err
 		}
-		return "Completion recorded. The job completes automatically once " + strings.Join(missing, "; ") + ". Finish your turn now.", nil
+		return "Waiting for " + strings.Join(missing, "; ") + ". End your turn; the result will be posted when the evidence passes.", nil
 	}
 	return h.finishOrAwaitHuman(ctx, t, job)
 }
@@ -616,12 +616,12 @@ func (h *Hub) finishOrAwaitHuman(ctx context.Context, t *txn, job store.JobRow) 
 			Root: job.RootRequestID}); err != nil {
 			return "", err
 		}
-		return "Evidence and reviews pass. The project requires the owner's acceptance of this exact revision; the job is review_ready.", nil
+		return "Evidence and reviews pass. This project requires the owner's acceptance. The result is already posted; end your turn.", nil
 	}
 	if err := h.finishJob(ctx, t, job); err != nil {
 		return "", err
 	}
-	return "Completed. The result has been posted with its evidence.", nil
+	return "Completed. The result has been posted with its evidence; end your turn without a second announcement.", nil
 }
 
 // finishJob marks a job completed, posts the result, and resumes dependents.
