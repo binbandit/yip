@@ -1605,3 +1605,53 @@ func TestRegressionDecisionRecallUsesHumanTitles(t *testing.T) {
 		}
 	}
 }
+
+// One assignment, an ordinary clarification and answer, then the engineers
+// exchange changes and re-review without any owner relay or acceptance.
+func TestRegressionTeamConversation(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	e.post("Security", "@Mira fix Atlas expiry for the client rollout", []string{"mira"}, nil)
+	j := e.waitJob("Fix Atlas session expiry", protocol.JobWaiting)
+	d := e.jobDetail(j.ID)
+	if len(d.Questions) != 1 {
+		t.Fatalf("questions: %+v", d.Questions)
+	}
+	e.post("Security", "@Mira also keep the existing error codes", []string{"mira"}, nil)
+	e.waitFor("clarification attached to the same assignment", 15*time.Second, func() bool { return len(e.jobDetail(j.ID).Inputs) > 0 })
+	answer := e.post("Security", "The web client release. Keep the existing session contract.", nil, func(r *protocol.PostMessageRequest) { r.ReplyToID = d.Questions[0].MessageID })
+	if len(answer.Resolved) != 1 {
+		t.Fatalf("answer did not reach the question: %+v", answer)
+	}
+	j = e.waitJob("Fix Atlas session expiry", protocol.JobCompleted)
+	d = e.jobDetail(j.ID)
+	if len(d.Reviews) != 1 || len(d.Reviews[0].Rounds) != 2 {
+		t.Fatalf("expected a change and re-review: %+v", d.Reviews)
+	}
+	rounds := d.Reviews[0].Rounds
+	if rounds[0].State != protocol.ReviewChangesRequested || rounds[1].State != protocol.ReviewApproved || rounds[1].Target.Head != j.Revision.Head {
+		t.Fatalf("verdicts: %+v", rounds)
+	}
+	owner, results, questions := 0, 0, 0
+	for _, m := range e.messages("Security") {
+		if m.Author.Kind == protocol.ActorUser {
+			owner++
+		}
+		if m.Kind == protocol.MessageResult {
+			results++
+		}
+		if m.Kind == protocol.MessageQuestion {
+			questions++
+		}
+		if m.Kind == protocol.MessageApproval {
+			t.Fatalf("routine work needed approval: %s", m.Body)
+		}
+	}
+	if owner != 3 || results != 1 || questions != 1 {
+		t.Fatalf("owner %d, results %d, questions %d", owner, results, questions)
+	}
+	e.post("Engineering", "@Mira where did we land on Atlas expiry?", []string{"mira"}, nil)
+	recall := e.waitMessage("Engineering", "Finished")
+	if !strings.Contains(recall.Body, j.Revision.Head[:8]) || !strings.Contains(recall.Body, "approved by Oren") || !strings.Contains(recall.Body, "resolved") {
+		t.Fatalf("recall lost the review outcome: %s", recall.Body)
+	}
+}

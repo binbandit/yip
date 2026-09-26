@@ -594,7 +594,7 @@ func TestNoPermittedReviewer(t *testing.T) {
 	if j.WaitingReason != protocol.WaitMissingInfo || len(j.ReviewerIDs) != 0 {
 		t.Fatalf("expected a question, not a review without access: %+v", j)
 	}
-	if _, ok := e.roomMessage("Security", "@brayden there's no colleague"); !ok {
+	if _, ok := e.roomMessage("Security", "@brayden Oren needs read access to Atlas"); !ok {
 		t.Fatalf("expected the author to ask in the room")
 	}
 }

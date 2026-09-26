@@ -48,6 +48,21 @@ func (h *Hub) reviewTarget(ctx context.Context, q store.Q, job store.JobRow, prN
 	return protocol.ReviewTarget{}, domain.Invalid("Publish the document or artifact to review first (artifact_publish).")
 }
 
+// Both initial review and re-review retain the original room and project boundary.
+func (h *Hub) requireReviewerAccess(ctx context.Context, q store.Q, job store.JobRow, reviewer protocol.Engineer) error {
+	if ok, _ := store.IsMember(ctx, q, job.Source.RoomID, protocol.ActorEngineer, reviewer.ID); !ok {
+		room, _ := store.GetRoom(ctx, q, job.Source.RoomID)
+		return domain.Forbidden("%s needs membership in #%s to review here. Explain the missing access in the room and choose a permitted colleague or ask the owner to invite them.", reviewer.Name, room.Name)
+	}
+	if job.ProjectID != "" {
+		if grant, err := store.GetGrant(ctx, q, job.ProjectID, reviewer.ID); err != nil || grant.Access == "none" {
+			project, _ := store.GetProject(ctx, q, job.ProjectID)
+			return domain.Forbidden("%s needs read access to %s to review here. Explain the missing access in the room and choose a permitted colleague or ask the owner to grant it.", reviewer.Name, project.Name)
+		}
+	}
+	return nil
+}
+
 func targetKey(t protocol.ReviewTarget) string {
 	if t.Head != "" {
 		return t.Head
@@ -67,14 +82,8 @@ func (h *Hub) toolRequestReview(ctx context.Context, t *txn, env toolEnv, a brid
 	if reviewer.ID == env.eng.ID {
 		return nil, domain.Invalid("Choose a distinct colleague; you can't review your own work.")
 	}
-	// Review access never silently expands room or repository permissions.
-	if ok, _ := store.IsMember(ctx, t.tx, job.Source.RoomID, protocol.ActorEngineer, reviewer.ID); !ok {
-		return nil, domain.Forbidden("%s isn't in this conversation, so they can't review here. Choose a colleague who is, or ask the owner to invite %s.", reviewer.Name, reviewer.Name)
-	}
-	if job.ProjectID != "" {
-		if _, err := store.GetGrant(ctx, t.tx, job.ProjectID, reviewer.ID); err != nil {
-			return nil, domain.Forbidden("%s has no access to this project. Choose a permitted colleague.", reviewer.Name)
-		}
+	if err := h.requireReviewerAccess(ctx, t.tx, job, reviewer); err != nil {
+		return nil, err
 	}
 	target, err := h.reviewTarget(ctx, t.tx, job, a.PullRequest)
 	if err != nil {
@@ -410,6 +419,9 @@ func (h *Hub) toolRespondReview(ctx context.Context, t *txn, env toolEnv, a brid
 			return nil, domain.Invalid("Publish your revised work first (work_publish_revision); re-review applies to a new revision. To dispute a finding without changes, mark each response disputed with evidence.")
 		}
 		reviewer, _ := store.GetEngineer(ctx, t.tx, review.ReviewerID)
+		if err := h.requireReviewerAccess(ctx, t.tx, job, reviewer); err != nil {
+			return nil, err
+		}
 		causeKey := job.ID + ":" + reviewer.ID + ":" + targetKey(target) + fmt.Sprintf(":r%d", last.Number+1)
 		if existing, err := store.RoundByCauseKey(ctx, t.tx, causeKey); err == nil {
 			rounds = append(rounds, existing.Number)

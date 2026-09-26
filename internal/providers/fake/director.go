@@ -142,6 +142,13 @@ func replyScript(m *manifest.Manifest) Script {
 			titles = append(titles, w.Title)
 		}
 		return Script{Steps: []Step{final("Which one is that for: " + strings.Join(titles, " or ") + "?")}}
+	case strings.Contains(text, "where did we land"):
+		for _, n := range m.Notes {
+			if n.Kind == "record" && expiryRe.MatchString(strings.ToLower(n.Body)) {
+				return Script{Steps: []Step{final(n.Body)}}
+			}
+		}
+		return Script{Steps: []Step{final("I don't have a finished work record for that here.")}}
 	case recallRe.MatchString(text):
 		if len(m.Decisions) == 0 {
 			return Script{Steps: []Step{final("I can't find a recorded decision about that from this conversation. If it was decided in a private room, it stays there — ask me in that room, or record it here.")}}
@@ -240,6 +247,23 @@ func codeScript(m *manifest.Manifest) Script {
 	if m.OwnReview != nil && m.OwnReview.Verdict == "changes_requested" {
 		return addressReview(m)
 	}
+	if strings.Contains(strings.ToLower(m.Job.Objective), "client rollout") && m.Job.Head != "" && m.OwnReview == nil && (m.Purpose == "answer" || m.Purpose == "input") {
+		answered := false
+		for _, in := range m.Inputs {
+			answered = answered || in.Kind == "answer"
+		}
+		if !answered {
+			return Script{Steps: []Step{tool("work_wait", map[string]any{"reason": "missing_information"}, "")}}
+		}
+		rv, ok := pickReviewer(m)
+		if !ok {
+			return missingReviewer(m)
+		}
+		return Script{Steps: []Step{
+			tool("work_request_review", map[string]any{"reviewer": rv.Handle, "criteria": "The exact expiry boundary and the refresh path", "message": "@" + rv.Handle + " can you check expiry and refresh? The owner clarified the client rollout; the session contract stays unchanged."}, ""),
+			tool("work_update", map[string]any{"state": "completed", "summary": "Validation rejects expired sessions; the client rollout keeps the existing session contract."}, ""),
+		}}
+	}
 	if m.Job.Head != "" {
 		return Script{Steps: []Step{tool("work_update", map[string]any{"state": "completed",
 			"summary": "Expired sessions are rejected at and after ExpiresAt on both validation and refresh, preserving the strict-expiry contract."}, "")}}
@@ -267,19 +291,20 @@ func codeScript(m *manifest.Manifest) Script {
 			"body":    "A session token is valid only while now is strictly before ExpiresAt. At the exact expiry instant and after it, the server rejects the token — including on the refresh path. There is no grace period.",
 			"project": "Atlas", "sources": src}, "decision"))
 	}
+	if strings.Contains(strings.ToLower(m.Job.Objective), "client rollout") {
+		return Script{Steps: append(steps,
+			tool("human_ask", map[string]any{"question": "Which client release should the compatibility note cover? I've checked the session contract; I'll finish the validation checks while that is clarified.", "missingFact": "Client release for the rollout note", "contextChecked": "The repository documents the session contract but not the client rollout", "dependentStep": "The rollout note", "continuingWith": "The expiry implementation and regression checks"}, ""),
+			tool("work_wait", map[string]any{"reason": "missing_information"}, ""))}
+	}
 	if !m.Job.PeerReview {
 		// Nobody else here to review (the owner reviews it): finish with evidence.
 		return Script{Steps: append(steps, tool("work_update", map[string]any{"state": "completed",
 			"summary": "Expired sessions are rejected: Validate now refuses a token at and after ExpiresAt, preserving the strict-expiry contract in docs/sessions.md. go test ./... passes on {{rev.head}}. Ready for your review."}, "done"))}
 	}
 	if !ok {
-		steps = append(steps, tool("human_ask", map[string]any{
-			"question":    "@" + m.OwnerHandle + " there's no colleague with access in this room who can review the Atlas expiry fix. Could you invite a reviewer?",
-			"missingFact": "A permitted reviewer for the Atlas change", "contextChecked": "Room members and their Atlas access",
-			"dependentStep": "Peer review of the fix", "continuingWith": "Nothing else is independent of the review"}, ""),
-			tool("work_wait", map[string]any{"reason": "missing_information"}, ""))
-		return Script{Steps: steps}
+		return Script{Steps: append(steps, missingReviewer(m).Steps...)}
 	}
+
 	steps = append(steps,
 		pause(),
 		tool("work_request_review", map[string]any{"reviewer": rv.Handle, "criteria": "The exact expiry boundary and the refresh path",
@@ -288,6 +313,23 @@ func codeScript(m *manifest.Manifest) Script {
 			"summary": "Expired sessions are rejected: Validate now refuses a token at and after ExpiresAt, preserving the strict-expiry contract in docs/sessions.md (no grace period). go test ./... passes on {{rev.head}}."}, "done"),
 	)
 	return Script{Steps: steps}
+}
+
+func missingReviewer(m *manifest.Manifest) Script {
+	missing := "A colleague needs room membership and read access to " + m.Job.Project + " to review this work."
+	for _, c := range m.Colleagues {
+		if c.InRoom && c.Access == "none" {
+			missing = c.Name + " needs read access to " + m.Job.Project + " to review here."
+			break
+		}
+		if !c.InRoom && c.Access != "none" {
+			missing = c.Name + " needs membership in #" + m.RoomName + " to review here."
+		}
+	}
+	return Script{Steps: []Step{
+		tool("human_ask", map[string]any{"question": "@" + m.OwnerHandle + " " + missing + " Could you grant that access or choose another reviewer?", "missingFact": missing, "contextChecked": "Room members and their project access", "dependentStep": "Peer review", "continuingWith": "The implementation and checks are ready"}, ""),
+		tool("work_wait", map[string]any{"reason": "missing_information"}, ""),
+	}}
 }
 
 func addressReview(m *manifest.Manifest) Script {
