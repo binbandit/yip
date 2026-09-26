@@ -25,7 +25,6 @@ type Limits struct {
 	SSEClientBuffer       int
 	MaxToolPayloadBytes   int
 	RepeatedFailureLimit  int
-	CheckTimeout          time.Duration
 }
 
 // DefaultLimits returns the MVP defaults.
@@ -51,6 +50,5 @@ func DefaultLimits() Limits {
 		SSEClientBuffer:       512,
 		MaxToolPayloadBytes:   256 * 1024,
 		RepeatedFailureLimit:  3,
-		CheckTimeout:          15 * time.Minute,
 	}
 }
