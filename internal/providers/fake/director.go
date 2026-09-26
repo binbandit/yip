@@ -255,6 +255,11 @@ func codeScript(m *manifest.Manifest) Script {
 			"body":    "A session token is valid only while now is strictly before ExpiresAt. At the exact expiry instant and after it, the server rejects the token — including on the refresh path. There is no grace period.",
 			"project": "Atlas", "sources": src}, "decision"))
 	}
+	if !m.Job.PeerReview {
+		// Nobody else here to review (the owner reviews it): finish with evidence.
+		return Script{Steps: append(steps, tool("work_update", map[string]any{"state": "completed",
+			"summary": "Expired sessions are rejected: Validate now refuses a token at and after ExpiresAt, preserving the strict-expiry contract in docs/sessions.md. go test ./... passes on {{rev.head}}. Ready for your review."}, "done"))}
+	}
 	if !ok {
 		steps = append(steps, tool("human_ask", map[string]any{
 			"question":    "@" + m.OwnerHandle + " there's no colleague with access in this room who can review the Atlas expiry fix. Could you invite a reviewer?",

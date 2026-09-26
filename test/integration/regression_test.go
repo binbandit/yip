@@ -781,3 +781,60 @@ func TestRegressionSearchByWorkIDAndProject(t *testing.T) {
 		t.Errorf("unfiltered search found nothing")
 	}
 }
+
+// With no other engineer in the conversation, code work is reviewed by the
+// owner instead of waiting forever for a peer.
+func TestRegressionSoloEngineerOwnerReviews(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	a := e.project("Atlas")
+	e.c.must("POST", "/v1/rooms", protocol.CreateRoomRequest{Name: "Solo", EngineerIDs: []string{e.engineerID("mira")}, ProjectIDs: []string{a.ID}}, nil)
+	e.post("Solo", "@Mira can you fix Atlas accepting expired sessions?", []string{"mira"}, nil)
+	j := e.waitJob("Fix Atlas session expiry", protocol.JobReviewReady, protocol.JobCompleted)
+	if j.RequiresPeerReview || !j.RequiresHumanReview {
+		t.Fatalf("expected owner review in place of peer review: peer=%v human=%v", j.RequiresPeerReview, j.RequiresHumanReview)
+	}
+	e.waitFor("ready for the owner's review", 60*time.Second, func() bool {
+		j, _ = e.job("Fix Atlas session expiry")
+		return j.State == protocol.JobReviewReady && j.Revision != nil && j.Revision.Head != ""
+	})
+	var done protocol.Job
+	e.c.must("POST", "/v1/jobs/"+j.ID+"/accept", protocol.AcceptJobRequest{Revision: j.Revision.Head, Version: j.Version}, &done)
+	if done.State != protocol.JobCompleted {
+		t.Fatalf("accept should complete: %s", done.State)
+	}
+}
+
+// Asking the Overview where things stand covers every project the user's
+// rooms reach, naming quiet ones, and what waits on the user.
+func TestRegressionOverviewStatusCoversAllProjects(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	e.post("Engineering", "@Pip can you investigate Beacon's request flow?", []string{"pip"}, nil)
+	e.waitJob("Document Beacon", protocol.JobRunning, protocol.JobWaiting, protocol.JobReviewReady, protocol.JobCompleted)
+	var rooms []protocol.Room
+	e.c.must("GET", "/v1/rooms", nil, &rooms)
+	overview := ""
+	for _, r := range rooms {
+		if r.Kind == protocol.RoomKindOverview {
+			overview = r.ID
+		}
+	}
+	e.c.must("POST", "/v1/rooms/"+overview+"/messages", protocol.PostMessageRequest{Body: "Where are we with everything?", ClientKey: "status-1"}, nil)
+	var answer string
+	e.waitFor("the ledger answer", 10*time.Second, func() bool {
+		var page protocol.MessagePage
+		e.c.must("GET", "/v1/rooms/"+overview+"/messages?limit=50", nil, &page)
+		for _, m := range page.Messages {
+			if m.Kind == protocol.MessageStatus {
+				answer = m.Body
+				return true
+			}
+		}
+		return false
+	})
+	if !strings.Contains(answer, "**Beacon**") {
+		t.Errorf("active project missing:\n%s", answer)
+	}
+	if !strings.Contains(answer, "Quiet: Atlas") {
+		t.Errorf("a quiet project should be named:\n%s", answer)
+	}
+}

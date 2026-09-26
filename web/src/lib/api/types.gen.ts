@@ -638,6 +638,7 @@ export interface ProviderProfile {
   label: string;
   billing: string;
   maxConcurrency: number;
+  pausedUntil?: string | null;
 }
 
 export interface ProviderProfileRequest {

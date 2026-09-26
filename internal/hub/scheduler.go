@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -83,6 +84,16 @@ func (h *Hub) profileMax(ctx context.Context, profileID string) int {
 		return h.lim.ActiveRunsPerAccount
 	}
 	return n
+}
+
+// profilePausedUntil is when a provider account whose allowance ran out may
+// be used again (zero when it isn't paused).
+func (h *Hub) profilePausedUntil(ctx context.Context, profileID string) time.Time {
+	var v sql.NullString
+	if err := h.st.R().QueryRowContext(ctx, `SELECT paused_until FROM provider_profiles WHERE id = ?`, profileID).Scan(&v); err != nil || !v.Valid {
+		return time.Time{}
+	}
+	return store.ParseTS(v.String)
 }
 
 // schedule offers created runs to eligible machines, fairly and with the
@@ -267,6 +278,10 @@ func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes [
 		}
 		if counts.profile[inst.ProfileID] >= h.profileMax(ctx, inst.ProfileID) {
 			reasons = append(reasons, "The "+provider+" account ("+firstNonEmpty(inst.Account, inst.ProfileID)+") is at its concurrency limit.")
+			continue
+		}
+		if until := h.profilePausedUntil(ctx, inst.ProfileID); h.now().Before(until) {
+			reasons = append(reasons, "The "+provider+" account ("+firstNonEmpty(inst.Account, inst.ProfileID)+") ran out of allowance; it's paused until "+until.Local().Format("15:04")+".")
 			continue
 		}
 		score := 100 - counts.node[n.ID]*10

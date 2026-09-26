@@ -245,6 +245,17 @@ describe('action flows', () => {
     await waitFor(() => text().includes('yip runner pair --hub https://hub.local:7443 --token t'), 'command');
     expect(text()).toContain('sha256:abcd');
     expect(text()).toContain('shown only once');
+    expect(text()).toContain('Waiting for Build mini to connect');
+    // The machine connects: the dialog notices and shows its providers.
+    const now = new Date().toISOString();
+    app.data.nodes['n-build'] = {
+      id: 'n-build', name: 'Build mini', hostname: 'build', os: 'darwin', arch: 'arm64', fingerprint: 'f', status: 'online', draining: false,
+      capacity: { slots: 2 } as never, profiles: [], toolchains: {}, activeRunIds: [], runnerVersion: 'test', createdAt: now,
+      providers: [{ provider: 'claude', version: '2', path: '/x', authState: 'ready', account: 'me@example.com', billing: 'subscription', profileId: 'claude:me',
+        capabilities: {} as never, models: [], tested: true, updatedAt: now }],
+    };
+    await waitFor(() => text().includes('Build mini is paired and connected'), 'paired');
+    expect(text()).toContain('Claude Code · Signed in · subscription');
     byText('dialog button', 'Done')!.click();
     await settle();
     expect(document.querySelector('dialog[open]')).toBeNull();

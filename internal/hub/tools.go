@@ -678,6 +678,15 @@ func (h *Hub) toolWorkCreate(ctx context.Context, t *txn, env toolEnv, a bridge.
 	if repo != nil {
 		spec.RepoID = repo.ID
 	}
+	// Peer review needs a colleague in this conversation. With nobody else
+	// here at all (a direct message, or a workspace with one engineer) the
+	// owner reviews it instead, visibly, so the work can still finish. A
+	// colleague who is here but lacks access is not waived: the author asks
+	// (A42) rather than anyone's access being widened.
+	waived := false
+	if spec.RequiresPeerReview && !h.hasColleagueInRoom(ctx, t.tx, env.job.Source.RoomID, owner.ID) {
+		spec.RequiresPeerReview, spec.RequiresHumanReview, waived = false, true, true
+	}
 	if env.job.Kind != protocol.JobKindReply {
 		p := env.job
 		spec.Parent = &p
@@ -706,6 +715,9 @@ func (h *Hub) toolWorkCreate(ctx context.Context, t *txn, env toolEnv, a bridge.
 	}
 	res := map[string]any{"jobId": job.ID, "owner": owner.Name, "state": "queued", "project": project.Name,
 		"peerReviewRequired": job.RequiresPeerReview, "humanReviewRequired": job.RequiresHumanReview}
+	if waived {
+		res["reviewNote"] = "No other engineer is in this conversation to review this, so the owner reviews it instead: finish it with evidence and it waits for their acceptance. Do not request a peer review."
+	}
 	if repo != nil {
 		res["repo"] = repo.Name
 	}
@@ -964,3 +976,20 @@ func (h *Hub) recordArtifact(ctx context.Context, t *txn, env toolEnv, a protoco
 }
 
 var errNoForge = errors.New("no forge")
+
+// hasColleagueInRoom reports whether another active engineer belongs to the room.
+func (h *Hub) hasColleagueInRoom(ctx context.Context, q store.Q, roomID, ownerID string) bool {
+	room, err := store.GetRoom(ctx, q, roomID)
+	if err != nil {
+		return true // unknown: keep the stricter default
+	}
+	for _, m := range room.Members {
+		if m.Kind != protocol.ActorEngineer || m.ID == ownerID {
+			continue
+		}
+		if e, err := store.GetEngineer(ctx, q, m.ID); err == nil && !e.Archived {
+			return true
+		}
+	}
+	return false
+}

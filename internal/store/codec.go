@@ -38,6 +38,9 @@ func parseTS(s string) time.Time {
 	return t.UTC()
 }
 
+// ParseTS is the exported form of parseTS (zero for an empty value).
+func ParseTS(s string) time.Time { return parseTS(s) }
+
 func parseTSP(s sql.NullString) *time.Time {
 	if !s.Valid || s.String == "" {
 		return nil

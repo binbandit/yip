@@ -229,77 +229,97 @@ func (h *Hub) catchup(ctx context.Context, q store.Q, rooms []string, since *tim
 }
 
 // answerStatus replies in the Overview conversation from the ledger itself:
-// known status needs no engineer run, and nothing invents progress.
+// known status needs no engineer run, and nothing invents progress. It covers
+// every project the user's rooms reach, saying so when one is quiet, and
+// lists what is waiting on the user (questions and permissions).
 func (h *Hub) answerStatus(ctx context.Context, t *txn, userID string, room protocol.Room, msg protocol.Message) error {
 	rooms, err := store.RoomIDsForMember(ctx, t.tx, protocol.ActorUser, userID)
 	if err != nil {
 		return err
 	}
-	jobs, err := store.ListJobs(ctx, t.tx, store.JobFilter{RoomIDs: rooms, States: append(append([]protocol.JobState{}, liveStates...), protocol.JobCompleted), Limit: 60})
+	// Active work is never crowded out by finished work: they're read apart.
+	live, err := store.ListJobs(ctx, t.tx, store.JobFilter{RoomIDs: rooms, States: liveStates, Limit: 200})
+	if err != nil {
+		return err
+	}
+	since := h.now().Add(-72 * time.Hour)
+	done, err := store.ListJobs(ctx, t.tx, store.JobFilter{RoomIDs: rooms, States: []protocol.JobState{protocol.JobCompleted}, Since: &since, Limit: 40})
 	if err != nil {
 		return err
 	}
 	names := h.actorNames(ctx, t.tx)
 	byProject := map[string][]store.JobRow{}
 	var order []string
-	for _, j := range jobs {
+	add := func(key string) {
+		if _, ok := byProject[key]; !ok {
+			byProject[key] = nil
+			order = append(order, key)
+		}
+	}
+	for _, j := range append(live, done...) {
 		if j.Kind == protocol.JobKindReview || j.Kind == protocol.JobKindReply {
 			continue
 		}
-		if j.State == protocol.JobCompleted && j.CompletedAt != nil && h.now().Sub(*j.CompletedAt) > 72*time.Hour {
+		if j.State == protocol.JobCompleted && (j.CompletedAt == nil || j.CompletedAt.Before(since)) {
 			continue
 		}
 		key := "No project"
 		if p, err := store.GetProject(ctx, t.tx, j.ProjectID); err == nil {
 			key = p.Name
 		}
-		if _, ok := byProject[key]; !ok {
-			order = append(order, key)
-		}
+		add(key)
 		byProject[key] = append(byProject[key], j)
 	}
+	// Every project linked to one of the user's rooms is accounted for.
+	var quiet []string
+	if ps, err := store.ListProjects(ctx, t.tx); err == nil {
+		for _, p := range ps {
+			if !anyIn(p.RoomIDs, rooms) {
+				continue
+			}
+			if _, ok := byProject[p.Name]; !ok {
+				quiet = append(quiet, p.Name)
+			}
+		}
+	}
 	sort.Strings(order)
+	sort.Strings(quiet)
 	var b strings.Builder
 	if len(order) == 0 {
 		b.WriteString("Nothing is in flight, and nothing finished in the last three days.")
 	} else {
 		b.WriteString("Here's where things stand, from the work ledger:\n")
-		var refs []protocol.Ref
 		for _, p := range order {
 			fmt.Fprintf(&b, "\n**%s**\n", p)
 			for _, j := range byProject[p] {
-				refs = append(refs, protocol.Ref{Kind: "job", ID: j.ID})
-				owner := names["engineer:"+j.OwnerID].name
-				when := ""
-				if j.LastActivityAt != nil {
-					when = " (last confirmed " + j.LastActivityAt.Format("Jan 2 15:04") + ")"
-				}
-				line := ""
-				switch j.State {
-				case protocol.JobCompleted:
-					line = fmt.Sprintf("%s completed: %s", owner, j.Title)
-				case protocol.JobRunning:
-					line = fmt.Sprintf("%s is working on %s — %s%s", owner, j.Title, strings.ToLower(firstNonEmpty(j.LastActivity, "in progress")), when)
-				case protocol.JobQueued:
-					line = fmt.Sprintf("%s has %s queued%s", owner, j.Title, detailSuffix(j.StateDetail))
-				case protocol.JobReviewReady:
-					line = fmt.Sprintf("%s: %s — %s", owner, j.Title, firstNonEmpty(j.StateDetail, "in review"))
-				case protocol.JobWaiting:
-					line = fmt.Sprintf("%s is waiting on %s: %s%s", owner, j.Title, firstNonEmpty(j.StateDetail, j.WaitingReason), when)
-				case protocol.JobFailed:
-					line = fmt.Sprintf("%s: %s failed — %s", owner, j.Title, j.StateDetail)
-				}
-				fmt.Fprintf(&b, "- %s\n", line)
+				fmt.Fprintf(&b, "- %s\n", statusLine(j, names["engineer:"+j.OwnerID].name))
 			}
 		}
-		_ = refs
+	}
+	if len(quiet) > 0 {
+		fmt.Fprintf(&b, "\nQuiet: %s — nothing in flight or finished in the last three days.\n", strings.Join(quiet, ", "))
 	}
 	open, _ := store.ListQuestions(ctx, t.tx, "status = 'open' AND recipient_id = ?", userID)
-	if len(open) > 0 {
-		b.WriteString("\nOpen questions for you, in their conversations:\n")
-		for _, x := range open {
-			r, _ := store.GetRoom(ctx, t.tx, x.Source.RoomID)
-			fmt.Fprintf(&b, "- %s in #%s: %s\n", names["engineer:"+x.AskerID].name, r.Name, x.MissingFact)
+	pending, _ := store.ListApprovals(ctx, t.tx, "status = 'pending' AND expires_at > ?", store.TS(h.now()))
+	var waits []string
+	for _, x := range open {
+		if !contains(rooms, x.Source.RoomID) {
+			continue
+		}
+		r, _ := store.GetRoom(ctx, t.tx, x.Source.RoomID)
+		waits = append(waits, fmt.Sprintf("%s asked in #%s: %s", names["engineer:"+x.AskerID].name, r.Name, x.MissingFact))
+	}
+	for _, a := range pending {
+		if !contains(rooms, a.Source.RoomID) {
+			continue
+		}
+		r, _ := store.GetRoom(ctx, t.tx, a.Source.RoomID)
+		waits = append(waits, fmt.Sprintf("%s needs your permission in #%s: %s", names["engineer:"+a.EngineerID].name, r.Name, a.Action.Summary))
+	}
+	if len(waits) > 0 {
+		b.WriteString("\nWaiting on you, in their conversations:\n")
+		for _, w := range waits {
+			fmt.Fprintf(&b, "- %s\n", w)
 		}
 	}
 	var refs []protocol.Ref
@@ -311,6 +331,29 @@ func (h *Hub) answerStatus(ctx context.Context, t *txn, userID string, room prot
 	_, err = t.postMessage(newMessage{Room: room.ID, Author: systemActor, Kind: protocol.MessageStatus, Body: strings.TrimSpace(b.String()),
 		Refs: refs, ReplyTo: msg.ID, Cause: msg.ID})
 	return err
+}
+
+// statusLine is one job's line in a status answer, from its recorded state.
+func statusLine(j store.JobRow, owner string) string {
+	when := ""
+	if j.LastActivityAt != nil {
+		when = " (last confirmed " + j.LastActivityAt.Format("Jan 2 15:04") + ")"
+	}
+	switch j.State {
+	case protocol.JobCompleted:
+		return fmt.Sprintf("%s completed: %s", owner, j.Title)
+	case protocol.JobRunning:
+		return fmt.Sprintf("%s is working on %s — %s%s", owner, j.Title, strings.ToLower(firstNonEmpty(j.LastActivity, "in progress")), when)
+	case protocol.JobQueued:
+		return fmt.Sprintf("%s has %s queued%s", owner, j.Title, detailSuffix(j.StateDetail))
+	case protocol.JobReviewReady:
+		return fmt.Sprintf("%s: %s — %s", owner, j.Title, firstNonEmpty(j.StateDetail, "in review"))
+	case protocol.JobWaiting:
+		return fmt.Sprintf("%s is waiting on %s: %s%s", owner, j.Title, firstNonEmpty(j.StateDetail, j.WaitingReason), when)
+	case protocol.JobFailed:
+		return fmt.Sprintf("%s: %s failed — %s", owner, j.Title, j.StateDetail)
+	}
+	return fmt.Sprintf("%s: %s (%s)", owner, j.Title, j.State)
 }
 
 func detailSuffix(s string) string {
