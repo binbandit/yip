@@ -44,9 +44,7 @@ func (r *Runner) listWorkspaces(ctx context.Context) []protocol.WorkspaceInfo {
 			gctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			info.Branch, _ = git(gctx, dir, "branch", "--show-current")
 			info.Head, _ = git(gctx, dir, "rev-parse", "HEAD")
-			if st, err := git(gctx, dir, "status", "--porcelain"); err == nil && strings.TrimSpace(st) != "" {
-				info.Changes = len(strings.Split(strings.TrimSpace(st), "\n"))
-			}
+			info.Changes = changedFiles(gctx, dir)
 			cancel()
 		}
 		info.SizeMB = dirSizeMB(dir)
@@ -82,6 +80,16 @@ func (r *Runner) workspaceInUse(kind, ref, dir string) bool {
 		}
 	}
 	return false
+}
+
+// changedFiles counts the entries `git status --porcelain` reports in dir
+// (0 when there are none or git fails).
+func changedFiles(ctx context.Context, dir string) int {
+	st, err := git(ctx, dir, "status", "--porcelain")
+	if st = strings.TrimSpace(st); err != nil || st == "" {
+		return 0
+	}
+	return len(strings.Split(st, "\n"))
 }
 
 // dirSizeMB sums file sizes under dir, stopping after 200,000 entries so a
@@ -122,8 +130,8 @@ func (r *Runner) cleanupWorkspace(ctx context.Context, req protocol.CleanupWorks
 		return fmt.Errorf("%s is being used by a running attempt", req.Workspace)
 	}
 	if kind != "scratch" && !req.Force {
-		if st, err := git(ctx, dir, "status", "--porcelain"); err == nil && strings.TrimSpace(st) != "" {
-			return fmt.Errorf("%s has %d uncommitted changes; confirm that they may be lost", req.Workspace, len(strings.Split(strings.TrimSpace(st), "\n")))
+		if n := changedFiles(ctx, dir); n > 0 {
+			return fmt.Errorf("%s has %d uncommitted changes; confirm that they may be lost", req.Workspace, n)
 		}
 	}
 	_ = makeWritable(dir)
@@ -131,10 +139,9 @@ func (r *Runner) cleanupWorkspace(ctx context.Context, req protocol.CleanupWorks
 		return err
 	}
 	// Forget the worktree in every replica; the branch itself stays.
-	if reps, _ := filepath.Glob(filepath.Join(r.paths.replicas(), "*")); len(reps) > 0 {
-		for _, rep := range reps {
-			_, _ = git(ctx, rep, "worktree", "prune")
-		}
+	reps, _ := filepath.Glob(filepath.Join(r.paths.replicas(), "*"))
+	for _, rep := range reps {
+		_, _ = git(ctx, rep, "worktree", "prune")
 	}
 	r.log.Info("workspace removed on the owner's request", "workspace", req.Workspace, "forced", req.Force)
 	return nil

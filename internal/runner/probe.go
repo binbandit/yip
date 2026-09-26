@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -12,9 +13,6 @@ import (
 
 	"github.com/binbandit/yip/protocol"
 )
-
-func runtimeOS() string   { return runtime.GOOS }
-func runtimeArch() string { return runtime.GOARCH }
 
 func diskFreeMB(path string) int64 {
 	var st syscall.Statfs_t
@@ -120,8 +118,8 @@ func toolVersion(ctx context.Context, tool string, args ...string) string {
 	if err != nil {
 		return ""
 	}
-	line := strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
-	return line
+	line, _, _ := strings.Cut(string(out), "\n")
+	return strings.TrimSpace(line)
 }
 
 func memMB() int64 {
@@ -129,28 +127,16 @@ func memMB() int64 {
 	case "darwin":
 		out, err := exec.Command("sysctl", "-n", "hw.memsize").Output()
 		if err == nil {
-			var n int64
-			for _, c := range strings.TrimSpace(string(out)) {
-				if c < '0' || c > '9' {
-					break
-				}
-				n = n*10 + int64(c-'0')
-			}
+			n, _ := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
 			return n / (1 << 20)
 		}
 	case "linux":
 		b, err := os.ReadFile("/proc/meminfo")
 		if err == nil {
 			for _, line := range strings.Split(string(b), "\n") {
-				if strings.HasPrefix(line, "MemTotal:") {
-					f := strings.Fields(line)
-					if len(f) >= 2 {
-						var n int64
-						for _, c := range f[1] {
-							n = n*10 + int64(c-'0')
-						}
-						return n / 1024
-					}
+				if f := strings.Fields(line); len(f) >= 2 && f[0] == "MemTotal:" {
+					n, _ := strconv.ParseInt(f[1], 10, 64)
+					return n / 1024
 				}
 			}
 		}

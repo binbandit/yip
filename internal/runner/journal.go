@@ -1,10 +1,8 @@
 package runner
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/url"
 	"time"
 
@@ -253,27 +251,6 @@ func (j *Journal) AddInput(inputID, runID, text string) (bool, error) {
 	return n == 1, nil
 }
 
-func (j *Journal) PendingInputs(runID string) ([][2]string, error) {
-	rows, err := j.db.Query(`SELECT input_id, text FROM inputs WHERE run_id = ? AND delivered = 0 ORDER BY rowid`, runID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out [][2]string
-	for rows.Next() {
-		var id, text string
-		if err := rows.Scan(&id, &text); err != nil {
-			return nil, err
-		}
-		out = append(out, [2]string{id, text})
-	}
-	return out, rows.Err()
-}
-
 func (j *Journal) MarkInputDelivered(inputID string) {
 	_, _ = j.db.Exec(`UPDATE inputs SET delivered = 1 WHERE input_id = ?`, inputID)
 }
-
-var errNotFound = errors.New("not found")
-
-var _ = context.Background

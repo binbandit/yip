@@ -46,7 +46,6 @@ func (p Paths) ca() string       { return filepath.Join(p.Dir, "hub-ca.pem") }
 func (p Paths) journal() string  { return filepath.Join(p.Dir, "journal.db") }
 func (p Paths) replicas() string { return filepath.Join(p.Dir, "replicas") }
 func (p Paths) work() string     { return filepath.Join(p.Dir, "work") }
-func (p Paths) logs() string     { return filepath.Join(p.Dir, "logs") }
 
 // socketPath returns a short unix socket path (macOS limits socket paths to
 // 104 bytes, and TMPDIR there is long).

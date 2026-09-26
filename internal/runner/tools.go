@@ -336,7 +336,7 @@ func (r *Runner) toolPublishRevision(ctx context.Context, ar *activeRun, raw jso
 	if err != nil {
 		return nil, apiErr("unavailable", "Uploading the diff failed: %s", err.Error())
 	}
-	bundle, err := ar.ws.Bundle(ctx, ar.ws.Base, head, ar.ws.Branch)
+	bundle, err := ar.ws.Bundle(ctx, ar.ws.Base, head)
 	if err != nil {
 		return nil, apiErr("internal", "Creating the bundle failed: %s", err.Error())
 	}
