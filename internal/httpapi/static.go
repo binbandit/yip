@@ -18,10 +18,7 @@ main{max-width:520px;padding:32px;background:#fff;border-radius:16px}code{backgr
 // for client-side routes. Hashed assets are cached immutably.
 func (s *Server) static() http.Handler {
 	if s.opts.Web == nil {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(placeholder))
-		})
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { writePlaceholder(w) })
 	}
 	files := http.FileServer(s.opts.Web)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,8 +41,7 @@ func (s *Server) static() http.Handler {
 		}
 		index, err := s.opts.Web.Open("/index.html")
 		if err != nil {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(placeholder))
+			writePlaceholder(w)
 			return
 		}
 		defer index.Close()
@@ -53,13 +49,13 @@ func (s *Server) static() http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		st, _ := index.Stat()
-		http.ServeContent(w, r, "index.html", st.ModTime(), index.(readSeeker))
+		http.ServeContent(w, r, "index.html", st.ModTime(), index)
 	})
 }
 
-type readSeeker interface {
-	Read([]byte) (int, error)
-	Seek(int64, int) (int64, error)
+func writePlaceholder(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(placeholder))
 }
 
 // WebFS adapts an embedded directory for Options.Web, returning nil when the

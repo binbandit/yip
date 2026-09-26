@@ -125,9 +125,8 @@ func (s *Server) postSetup(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, domain.Limit("Too many setup attempts. Wait a few minutes."))
 		return
 	}
-	req, err := decodeJSON[protocol.SetupRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.SetupRequest](s, w, r)
+	if !ok {
 		return
 	}
 	u, err := s.hub.Setup(r.Context(), req)
@@ -149,9 +148,8 @@ func (s *Server) postSession(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	req, err := decodeJSON[protocol.SignInRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.SignInRequest](s, w, r)
+	if !ok {
 		return
 	}
 	token, sess, err := s.hub.SignIn(r.Context(), req.Handle, req.Password, clientKey(r), r.UserAgent())
@@ -179,9 +177,8 @@ func (s *Server) getBootstrap(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.PreferencesRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.PreferencesRequest](s, w, r)
+	if !ok {
 		return
 	}
 	u := userFrom(r)
@@ -201,9 +198,8 @@ func (s *Server) listRooms(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createRoom(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.CreateRoomRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.CreateRoomRequest](s, w, r)
+	if !ok {
 		return
 	}
 	room, err := s.hub.CreateRoom(r.Context(), userFrom(r).ID, req)
@@ -216,9 +212,8 @@ func (s *Server) getRoom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) patchRoom(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.UpdateRoomRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.UpdateRoomRequest](s, w, r)
+	if !ok {
 		return
 	}
 	room, err := s.hub.UpdateRoom(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -246,9 +241,8 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.PostMessageRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.PostMessageRequest](s, w, r)
+	if !ok {
 		return
 	}
 	if req.ClientKey == "" {
@@ -263,12 +257,11 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) markRead(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.MarkReadRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.MarkReadRequest](s, w, r)
+	if !ok {
 		return
 	}
-	err = s.hub.MarkRead(r.Context(), userFrom(r).ID, r.PathValue("id"), req.Seq)
+	err := s.hub.MarkRead(r.Context(), userFrom(r).ID, r.PathValue("id"), req.Seq)
 	respond(s, w, r, map[string]bool{"ok": true}, err)
 }
 
@@ -283,9 +276,8 @@ func (s *Server) getThread(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) react(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.ReactRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.ReactRequest](s, w, r)
+	if !ok {
 		return
 	}
 	msg, err := s.hub.React(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -293,11 +285,10 @@ func (s *Server) react(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) editMessage(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[struct {
+	req, ok := decodeJSON[struct {
 		Body string `json:"body"`
-	}](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	}](s, w, r)
+	if !ok {
 		return
 	}
 	msg, err := s.hub.EditMessage(r.Context(), userFrom(r).ID, r.PathValue("id"), req.Body)
@@ -317,9 +308,8 @@ func (s *Server) listEngineers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createEngineer(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.CreateEngineerRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.CreateEngineerRequest](s, w, r)
+	if !ok {
 		return
 	}
 	e, err := s.hub.CreateEngineer(r.Context(), userFrom(r).ID, req)
@@ -332,9 +322,8 @@ func (s *Server) getEngineer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) patchEngineer(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.UpdateEngineerRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.UpdateEngineerRequest](s, w, r)
+	if !ok {
 		return
 	}
 	e, err := s.hub.UpdateEngineer(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -347,9 +336,8 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.CreateProjectRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.CreateProjectRequest](s, w, r)
+	if !ok {
 		return
 	}
 	p, err := s.hub.CreateProject(r.Context(), userFrom(r).ID, req)
@@ -362,9 +350,8 @@ func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) patchProject(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.UpdateProjectRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.UpdateProjectRequest](s, w, r)
+	if !ok {
 		return
 	}
 	p, err := s.hub.UpdateProject(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -372,9 +359,8 @@ func (s *Server) patchProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) putRepo(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.PutRepoRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.PutRepoRequest](s, w, r)
+	if !ok {
 		return
 	}
 	repoID := r.PathValue("repoId")
@@ -386,9 +372,8 @@ func (s *Server) putRepo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) putGrant(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.PutGrantRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.PutGrantRequest](s, w, r)
+	if !ok {
 		return
 	}
 	p, err := s.hub.PutGrant(r.Context(), userFrom(r).ID, r.PathValue("id"), r.PathValue("engineerId"), req)
@@ -419,9 +404,8 @@ func (s *Server) runActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) removeWorkspace(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.CleanupWorkspaceRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.CleanupWorkspaceRequest](s, w, r)
+	if !ok {
 		return
 	}
 	n, err := s.hub.RemoveWorkspace(r.Context(), userFrom(r).ID, r.PathValue("id"), r.PathValue("name"), req)
@@ -442,9 +426,8 @@ func (s *Server) listNotes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createNote(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.NoteRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.NoteRequest](s, w, r)
+	if !ok {
 		return
 	}
 	n, err := s.hub.CreateNote(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -452,9 +435,8 @@ func (s *Server) createNote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) decideNote(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.NoteActionRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.NoteActionRequest](s, w, r)
+	if !ok {
 		return
 	}
 	n, err := s.hub.DecideNote(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -467,9 +449,8 @@ func (s *Server) restartJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) jobInput(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.JobInputRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.JobInputRequest](s, w, r)
+	if !ok {
 		return
 	}
 	resp, err := s.hub.AddJobInput(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -477,9 +458,8 @@ func (s *Server) jobInput(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.CancelJobRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.CancelJobRequest](s, w, r)
+	if !ok {
 		return
 	}
 	j, err := s.hub.CancelJob(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -487,9 +467,8 @@ func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) retryJob(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.RetryJobRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.RetryJobRequest](s, w, r)
+	if !ok {
 		return
 	}
 	j, err := s.hub.RetryJob(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -497,9 +476,8 @@ func (s *Server) retryJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) acceptJob(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.AcceptJobRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.AcceptJobRequest](s, w, r)
+	if !ok {
 		return
 	}
 	j, err := s.hub.AcceptJob(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -512,9 +490,8 @@ func (s *Server) getReview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) linkPR(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.LinkPullRequestRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.LinkPullRequestRequest](s, w, r)
+	if !ok {
 		return
 	}
 	pr, err := s.hub.LinkPullRequest(r.Context(), userFrom(r).ID, req)
@@ -532,9 +509,8 @@ func (s *Server) getApproval(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) decideApproval(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.ApprovalDecisionRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.ApprovalDecisionRequest](s, w, r)
+	if !ok {
 		return
 	}
 	a, err := s.hub.DecideApproval(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -542,9 +518,8 @@ func (s *Server) decideApproval(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.AnswerQuestionRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.AnswerQuestionRequest](s, w, r)
+	if !ok {
 		return
 	}
 	resp, err := s.hub.AnswerQuestion(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -559,9 +534,8 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createEnrollment(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.CreateEnrollmentRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.CreateEnrollmentRequest](s, w, r)
+	if !ok {
 		return
 	}
 	en, err := s.hub.CreateEnrollment(r.Context(), userFrom(r).ID, req)
@@ -569,9 +543,8 @@ func (s *Server) createEnrollment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) drainNode(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.NodeActionRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.NodeActionRequest](s, w, r)
+	if !ok {
 		return
 	}
 	n, err := s.hub.SetDraining(r.Context(), userFrom(r).ID, r.PathValue("id"), req.Drain)
@@ -584,9 +557,8 @@ func (s *Server) providerProfiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) putProviderProfile(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.ProviderProfileRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.ProviderProfileRequest](s, w, r)
+	if !ok {
 		return
 	}
 	out, err := s.hub.SetProviderConcurrency(r.Context(), userFrom(r).ID, r.PathValue("id"), req.MaxConcurrency)
@@ -616,9 +588,8 @@ func (s *Server) listDecisions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createDecision(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.DecisionRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.DecisionRequest](s, w, r)
+	if !ok {
 		return
 	}
 	d, err := s.hub.CreateDecision(r.Context(), userFrom(r).ID, req)
@@ -626,9 +597,8 @@ func (s *Server) createDecision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) decideDecision(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[protocol.DecisionActionRequest](w, r)
-	if err != nil {
-		s.fail(w, r, err)
+	req, ok := decodeJSON[protocol.DecisionActionRequest](s, w, r)
+	if !ok {
 		return
 	}
 	d, err := s.hub.DecideDecision(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
@@ -728,8 +698,6 @@ func respondStatus(s *Server, w http.ResponseWriter, r *http.Request, status int
 	}
 	writeJSON(w, status, v)
 }
-
-var _ = hub.ProviderLabel
 
 func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 5<<20))

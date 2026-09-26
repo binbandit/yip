@@ -38,6 +38,12 @@ func NewRunnerServer(h *hub.Hub, logf func(msg string, args ...any)) *RunnerServ
 
 func (s *RunnerServer) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
+// writeError sends err as an API error; runner requests carry no request ID.
+func writeError(w http.ResponseWriter, err error) {
+	de := domain.AsError(err)
+	writeJSON(w, de.Status, de.API(""))
+}
+
 type nodeKey struct{}
 
 type nodeIdentity struct{ id, serial string }
@@ -45,12 +51,12 @@ type nodeIdentity struct{ id, serial string }
 func (s *RunnerServer) node(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 {
-			writeJSON(w, 401, domain.Unauthorized("A paired machine certificate is required.").API(""))
+			writeError(w, domain.Unauthorized("A paired machine certificate is required."))
 			return
 		}
 		id, serial := auth.NodeIDFromCert(r.TLS.PeerCertificates[0])
 		if id == "" {
-			writeJSON(w, 401, domain.Unauthorized("Certificate is not a yip node identity.").API(""))
+			writeError(w, domain.Unauthorized("Certificate is not a yip node identity."))
 			return
 		}
 		h(w, r.WithContext(context.WithValue(r.Context(), nodeKey{}, nodeIdentity{id, serial})))
@@ -62,8 +68,7 @@ func (s *RunnerServer) current(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ident := r.Context().Value(nodeKey{}).(nodeIdentity)
 		if err := s.hub.AuthorizeNode(r.Context(), ident.id, ident.serial); err != nil {
-			de := domain.AsError(err)
-			writeJSON(w, de.Status, de.API(""))
+			writeError(w, err)
 			return
 		}
 		h(w, r)
@@ -73,13 +78,12 @@ func (s *RunnerServer) current(h http.HandlerFunc) http.HandlerFunc {
 func (s *RunnerServer) pair(w http.ResponseWriter, r *http.Request) {
 	var req protocol.PairRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
-		writeJSON(w, 400, domain.Invalid("Invalid pairing request.").API(""))
+		writeError(w, domain.Invalid("Invalid pairing request."))
 		return
 	}
 	resp, err := s.hub.Pair(r.Context(), req)
 	if err != nil {
-		de := domain.AsError(err)
-		writeJSON(w, de.Status, de.API(""))
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, 201, resp)
@@ -160,12 +164,12 @@ func (s *RunnerServer) connect(w http.ResponseWriter, r *http.Request) {
 func (s *RunnerServer) putArtifact(w http.ResponseWriter, r *http.Request) {
 	ident := r.Context().Value(nodeKey{}).(nodeIdentity)
 	if !s.hub.NodeHoldsRun(r.Context(), ident.id) {
-		writeJSON(w, 403, domain.Forbidden("Uploads are accepted only for a run this machine currently holds.").API(""))
+		writeError(w, domain.Forbidden("Uploads are accepted only for a run this machine currently holds."))
 		return
 	}
 	size, err := strconv.ParseInt(r.Header.Get("X-Yip-Size"), 10, 64)
 	if err != nil {
-		writeJSON(w, 400, domain.Invalid("X-Yip-Size is required.").API(""))
+		writeError(w, domain.Invalid("X-Yip-Size is required."))
 		return
 	}
 	body := http.MaxBytesReader(w, r.Body, hub.MaxArtifactBytes+1)
@@ -180,8 +184,7 @@ func (s *RunnerServer) getArtifact(w http.ResponseWriter, r *http.Request) {
 	ident := r.Context().Value(nodeKey{}).(nodeIdentity)
 	a, f, err := s.hub.OpenArtifactForNode(r.Context(), ident.id, r.PathValue("id"))
 	if err != nil {
-		de := domain.AsError(err)
-		writeJSON(w, de.Status, de.API(""))
+		writeError(w, err)
 		return
 	}
 	defer f.Close()
