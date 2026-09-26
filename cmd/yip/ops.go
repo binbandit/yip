@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/tar"
 	"bufio"
 	"context"
 	"crypto/sha256"
@@ -10,8 +11,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/binbandit/yip/internal/backupcrypt"
 	"io"
 	"io/fs"
+	iofs "io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -229,48 +232,88 @@ func tableCounts(ctx context.Context, q store.Q) map[string]int {
 func runBackup(args []string) error {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
 	data := fs.String("data", defaultDataDir(), "hub data directory")
-	out := fs.String("out", "", "new directory to write the backup into")
+	out := fs.String("out", "", "new directory to write the backup into (with --encrypt: a new file, e.g. hub.yipenc)")
+	encrypt := fs.Bool("encrypt", false, "write one passphrase-encrypted file instead of a directory")
+	passFile := fs.String("passphrase-file", "", "read the passphrase from this file (default: YIP_BACKUP_PASSPHRASE, or ask)")
 	_ = fs.Parse(args)
 	if *out == "" {
 		return errors.New("--out is required")
 	}
-	if entries, err := os.ReadDir(*out); err == nil && len(entries) > 0 {
-		return fmt.Errorf("%s is not empty; choose a new directory", *out)
+	if !*encrypt {
+		if entries, err := os.ReadDir(*out); err == nil && len(entries) > 0 {
+			return fmt.Errorf("%s is not empty; choose a new directory", *out)
+		}
+		m, err := writeBackup(*data, *out)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Backup written to %s (verified: database integrity ok, %d artifacts).\n%s\n", *out, len(m.Artifacts), strings.Join(m.Notes, "\n"))
+		return nil
 	}
-	ctx := context.Background()
-	st, err := store.Open(ctx, filepath.Join(*data, "hub.db"))
+	if _, err := os.Stat(*out); err == nil {
+		return fmt.Errorf("%s already exists; choose a new file", *out)
+	}
+	pass, err := backupPassphrase(*passFile, true)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
-	if err := os.MkdirAll(*out, 0o700); err != nil {
+	// The plain backup is staged in a private temporary directory, then
+	// packed and encrypted into one file; the staging copy is removed.
+	tmp, err := os.MkdirTemp("", "yip-backup-*")
+	if err != nil {
 		return err
 	}
-	dbPath := filepath.Join(*out, "hub.db")
+	defer os.RemoveAll(tmp)
+	m, err := writeBackup(*data, filepath.Join(tmp, "backup"))
+	if err != nil {
+		return err
+	}
+	if err := sealBackup(filepath.Join(tmp, "backup"), *out, pass); err != nil {
+		return err
+	}
+	fmt.Printf("Encrypted backup written to %s (verified before encryption: database integrity ok, %d artifacts).\n", *out, len(m.Artifacts))
+	fmt.Println("Keep the passphrase somewhere safe: without it the backup can't be restored.")
+	fmt.Println("Provider sign-ins are not included; re-establish them on each runner after a restore.")
+	return nil
+}
+
+// writeBackup writes a verified plain backup directory.
+func writeBackup(data, out string) (backupManifest, error) {
+	var m backupManifest
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(data, "hub.db"))
+	if err != nil {
+		return m, err
+	}
+	defer st.Close()
+	if err := os.MkdirAll(out, 0o700); err != nil {
+		return m, err
+	}
+	dbPath := filepath.Join(out, "hub.db")
 	if err := st.Backup(ctx, dbPath); err != nil {
-		return fmt.Errorf("database backup: %w", err)
+		return m, fmt.Errorf("database backup: %w", err)
 	}
 	for _, sub := range []string{"pki", "hub.key"} {
-		if err := copyTree(filepath.Join(*data, sub), filepath.Join(*out, sub)); err != nil {
-			return err
+		if err := copyTree(filepath.Join(data, sub), filepath.Join(out, sub)); err != nil {
+			return m, err
 		}
 	}
 	b, err := store.Open(ctx, dbPath)
 	if err != nil {
-		return err
+		return m, err
 	}
 	defer b.Close()
 	if err := store.IntegrityCheck(ctx, b.R()); err != nil {
-		return fmt.Errorf("backup failed verification: %w", err)
+		return m, fmt.Errorf("backup failed verification: %w", err)
 	}
-	m := backupManifest{Format: "yip-backup v1", Version: buildinfo.Version, CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	m = backupManifest{Format: "yip-backup v1", Version: buildinfo.Version, CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		Counts: tableCounts(ctx, b.R()),
-		Notes: []string{"Contains the hub CA private key and hub.key: store this backup encrypted.",
+		Notes: []string{"Contains the hub CA private key and hub.key: store this backup encrypted (yip backup --encrypt).",
 			"Provider sign-ins are not included; re-establish them on each runner after a restore."}}
 	m.SchemaVersion, _ = b.SchemaVersion(ctx)
 	m.DatabaseSHA, _ = fileSHA(dbPath)
-	src, _ := hub.NewArtifactStore(filepath.Join(*data, "artifacts"))
-	dst, _ := hub.NewArtifactStore(filepath.Join(*out, "artifacts"))
+	src, _ := hub.NewArtifactStore(filepath.Join(data, "artifacts"))
+	dst, _ := hub.NewArtifactStore(filepath.Join(out, "artifacts"))
 	arts, _ := store.ListArtifacts(ctx, b.R())
 	seen := map[string]bool{}
 	for _, a := range arts {
@@ -280,36 +323,195 @@ func runBackup(args []string) error {
 		seen[a.Hash] = true
 		f, err := src.Open(a.Hash)
 		if err != nil {
-			return fmt.Errorf("artifact %s missing from the live store: %w", a.Hash, err)
+			return m, fmt.Errorf("artifact %s missing from the live store: %w", a.Hash, err)
 		}
 		err = dst.Put(f, a.Hash, a.Size)
 		f.Close()
 		if err != nil {
-			return fmt.Errorf("artifact %s: %w", a.Hash, err)
+			return m, fmt.Errorf("artifact %s: %w", a.Hash, err)
 		}
 		m.Artifacts = append(m.Artifacts, backupArtifact{Hash: a.Hash, Size: a.Size})
 	}
 	mb, _ := json.MarshalIndent(m, "", "  ")
-	if err := os.WriteFile(filepath.Join(*out, "backup.json"), mb, 0o600); err != nil {
-		return err
+	if err := os.WriteFile(filepath.Join(out, "backup.json"), mb, 0o600); err != nil {
+		return m, err
 	}
 	_ = st.Tx(ctx, func(tx *sqlTx) error { return store.SetSetting(ctx, tx, "last_backup_at", m.CreatedAt) })
-	fmt.Printf("Backup written to %s (verified: database integrity ok, %d artifacts).\n%s\n", *out, len(m.Artifacts), strings.Join(m.Notes, "\n"))
-	return nil
+	return m, nil
+}
+
+// backupPassphrase reads the passphrase from a file, YIP_BACKUP_PASSPHRASE,
+// or the terminal (asked twice for a new backup).
+func backupPassphrase(file string, confirm bool) ([]byte, error) {
+	if file != "" {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(strings.TrimRight(string(b), "\r\n")), nil
+	}
+	if v := os.Getenv("YIP_BACKUP_PASSPHRASE"); v != "" {
+		return []byte(v), nil
+	}
+	p, err := readSecret("Backup passphrase: ", false)
+	if err != nil {
+		return nil, err
+	}
+	if confirm {
+		again, err := readSecret("Repeat it: ", false)
+		if err != nil {
+			return nil, err
+		}
+		if again != p {
+			return nil, errors.New("the passphrases don't match")
+		}
+	}
+	return []byte(p), nil
+}
+
+// sealBackup packs a backup directory as a tar stream and encrypts it into
+// out (written to a temporary name, then moved into place).
+func sealBackup(dir, out string, pass []byte) error {
+	tmp := out + ".partial"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+	w, err := backupcrypt.NewWriter(f, pass)
+	if err != nil {
+		f.Close()
+		return err
+	}
+	tw := tar.NewWriter(w)
+	err = filepath.WalkDir(dir, func(path string, d iofs.DirEntry, err error) error {
+		if err != nil || path == dir {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, path)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		hdr, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		hdr.Name = filepath.ToSlash(rel)
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		src, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+		_, err = io.Copy(tw, src)
+		return err
+	})
+	for _, c := range []io.Closer{tw, w, f} {
+		if cerr := c.Close(); err == nil {
+			err = cerr
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmp, out)
+}
+
+// openBackup decrypts an encrypted backup file into a private temporary
+// directory and returns it (the caller removes it).
+func openBackup(file string, pass []byte) (string, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	r, err := backupcrypt.NewReader(f, pass)
+	if err != nil {
+		return "", err
+	}
+	tmp, err := os.MkdirTemp("", "yip-restore-*")
+	if err != nil {
+		return "", err
+	}
+	tr := tar.NewReader(r)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return tmp, nil
+		}
+		if err != nil {
+			os.RemoveAll(tmp)
+			return "", err
+		}
+		name := filepath.Clean(filepath.FromSlash(hdr.Name))
+		if filepath.IsAbs(name) || name == ".." || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
+			os.RemoveAll(tmp)
+			return "", fmt.Errorf("the backup contains an unsafe path %q", hdr.Name)
+		}
+		dest := filepath.Join(tmp, name)
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			err = os.MkdirAll(dest, 0o700)
+		case tar.TypeReg:
+			if err = os.MkdirAll(filepath.Dir(dest), 0o700); err == nil {
+				var out *os.File
+				if out, err = os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600); err == nil {
+					_, err = io.Copy(out, tr)
+					if cerr := out.Close(); err == nil {
+						err = cerr
+					}
+				}
+			}
+		default:
+			err = fmt.Errorf("the backup contains an unexpected entry %q", hdr.Name)
+		}
+		if err != nil {
+			os.RemoveAll(tmp)
+			return "", err
+		}
+	}
 }
 
 // runRestore restores into a separate, new directory and verifies the
 // database and every artifact hash before it can be activated.
 func runRestore(args []string) error {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
-	from := fs.String("from", "", "backup directory")
+	from := fs.String("from", "", "backup directory, or an encrypted backup file")
 	data := fs.String("data", "", "new, empty hub data directory to restore into")
+	passFile := fs.String("passphrase-file", "", "for an encrypted backup: read the passphrase from this file (default: YIP_BACKUP_PASSPHRASE, or ask)")
 	_ = fs.Parse(args)
 	if *from == "" || *data == "" {
 		return errors.New("--from and --data are required")
 	}
 	if entries, err := os.ReadDir(*data); err == nil && len(entries) > 0 {
 		return fmt.Errorf("%s is not empty; restore into a new directory, verify it, then point the hub at it", *data)
+	}
+	if fi, err := os.Stat(*from); err == nil && fi.Mode().IsRegular() {
+		f, err := os.Open(*from)
+		if err != nil {
+			return err
+		}
+		enc := backupcrypt.IsEncrypted(f)
+		f.Close()
+		if !enc {
+			return fmt.Errorf("%s is neither a backup directory nor an encrypted yip backup", *from)
+		}
+		pass, err := backupPassphrase(*passFile, false)
+		if err != nil {
+			return err
+		}
+		dir, err := openBackup(*from, pass)
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(dir)
+		*from = dir
 	}
 	raw, err := os.ReadFile(filepath.Join(*from, "backup.json"))
 	if err != nil {

@@ -84,7 +84,6 @@ Still open (not blocking the scenario, recorded here so they aren't lost):
 
 - Idempotency keys cover messages, job input, review requests, and forge
   publications; other mutations rely on optimistic versions.
-- Backups aren't encrypted by yip; keep them on an encrypted volume.
 - Engineer memory beyond accepted decisions (promoted notes with provenance)
   isn't implemented.
 - The GitHub contract test needs a real repository and token; browser e2e
@@ -118,7 +117,7 @@ Still open (not blocking the scenario, recorded here so they aren't lost):
 | A22 | Verified | `TestDecisionCorrection`; correction from the decision drawer keeps the sources (unit test) |
 | A23 | Verified | `TestIncompatibleMachineExplains`, `TestRegressionBillingGateAndAccountPin`, `TestRegressionProjectToolchainRequirement` |
 | A24 | Verified | Workspaces are never deleted automatically. Machines lists them with their work and what deleting loses; removal needs explicit selection, a named confirmation, and `force` for uncommitted/unpublished work, and is refused for open or in-use work (`TestRegressionRemoveWorkspaceFromMachines`, Machines unit test). CLI: `yip runner workspaces` / `cleanup`. |
-| A25 | Verified (manual) | `yip backup` against a running hub, `yip restore` into a new directory: integrity, 12 artifact hashes, and record counts matched (recorded 25 Sep). |
+| A25 | Verified | `yip backup` against a running hub, `yip restore` into a new directory: integrity, 12 artifact hashes, and record counts matched (recorded 25 Sep). Encrypted backups round-trip, carry no readable key material or database, and refuse a wrong passphrase leaving nothing behind (`TestEncryptedBackupRoundTrip`, `internal/backupcrypt` tests for tampering and truncation). |
 | A26 | Incomplete | Keyboard/zoom not verified in a browser. |
 | A27 | Incomplete | Layouts not visually inspected in a browser. |
 | A28 | **Incomplete** | Real providers not exercised (see blocking items). |
