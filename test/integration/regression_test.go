@@ -1655,3 +1655,122 @@ func TestRegressionTeamConversation(t *testing.T) {
 		t.Fatalf("recall lost the review outcome: %s", recall.Body)
 	}
 }
+
+// Publishing a Git revision for a report must not change the document's
+// review identity. A corrected artifact needs a new, readable snapshot and
+// approval of its content hash before completion.
+func TestRegressionDocumentCorrectionAndRereview(t *testing.T) {
+	publish := func(body string) []fake.Step {
+		return []fake.Step{{Write: &fake.WriteFile{Path: "docs/plan.md", Content: body}},
+			toolStep("work_publish_revision", map[string]any{"summary": "Update plan"}, ""),
+			toolStep("artifact_publish", map[string]any{"path": "docs/plan.md", "name": "Plan", "kind": "document"}, "")}
+	}
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Engineering", "report"):
+			return script(toolStep("work_create", map[string]any{"title": "Reviewed report", "objective": "Document the rollout", "kind": "document", "project": "Beacon", "repo": "beacon-gateway"}, ""))
+		case m.Review != nil:
+			var resolves []string
+			for _, f := range m.Review.Findings {
+				resolves = append(resolves, f.ID)
+			}
+			verdict, summary := "changes_requested", "The plan needs a rollback step."
+			args := map[string]any{"verdict": verdict, "summary": summary, "expectedHead": m.Review.Head, "expectedHash": m.Review.Hash,
+				"findings": []map[string]any{{"severity": "blocking", "body": "Add rollback.", "evidence": "The reviewed document only says Deploy."}}}
+			if m.Review.Round > 1 {
+				args = map[string]any{"verdict": "approved", "summary": "Rollback verified.", "expectedHead": m.Review.Head, "expectedHash": m.Review.Hash, "resolve": resolves}
+			}
+			return script(fake.Step{Shell: "cat review-artifact", Save: "doc"},
+				toolStep("room_post", map[string]any{"body": "Review snapshot: {{doc.out}}"}, ""), toolStep("work_review", args, ""))
+		case m.Job.Title == "Reviewed report" && m.OwnReview != nil:
+			var responses []map[string]any
+			for _, f := range m.OwnReview.Findings {
+				responses = append(responses, map[string]any{"findingId": f.ID, "body": "Added rollback."})
+			}
+			return script(append(publish("Deploy. Rollback: revert the release."),
+				toolStep("work_respond_to_review", map[string]any{"responses": responses, "requestRereview": true, "message": "Rollback is ready for another look."}, ""),
+				toolStep("work_update", map[string]any{"state": "completed", "summary": "The rollout plan includes rollback."}, ""))...)
+		case m.Job.Title == "Reviewed report":
+			return script(append(publish("Deploy."), toolStep("work_request_review", map[string]any{"reviewer": "mira", "message": "Please check the report."}, ""),
+				toolStep("work_update", map[string]any{"state": "completed", "summary": "The rollout plan is drafted."}, ""))...)
+		}
+		return nil
+	}})
+	p := e.project("Beacon")
+	policy := p.Policy
+	policy.RequirePeerReview = true
+	e.c.must("PATCH", "/v1/projects/"+p.ID, protocol.UpdateProjectRequest{Version: p.Version, Policy: &policy}, nil)
+	e.post("Engineering", "@Pip write the report", []string{"pip"}, nil)
+	var detail protocol.JobDetail
+	e.waitFor("report review requested", 20*time.Second, func() bool {
+		j, ok := e.job("Reviewed report")
+		if !ok {
+			return false
+		}
+		detail = e.jobDetail(j.ID)
+		return len(detail.Reviews) > 0
+	})
+	if detail.Reviews[0].Rounds[0].Target.Kind != "artifact" {
+		t.Fatalf("document reviewed as Git instead of content: %+v", detail.Reviews[0].Rounds[0].Target)
+	}
+	j := e.waitJob("Reviewed report", protocol.JobCompleted)
+	detail = e.jobDetail(j.ID)
+	rounds := detail.Reviews[0].Rounds
+	if len(rounds) != 2 || rounds[0].State != protocol.ReviewChangesRequested || rounds[1].State != protocol.ReviewApproved || rounds[0].Target.Hash == rounds[1].Target.Hash {
+		t.Fatalf("document rounds: %+v", rounds)
+	}
+	if len(detail.Missing) != 0 || rounds[0].SupersededBy != rounds[1].ID {
+		t.Fatalf("completion and review diverged: %+v", detail.Missing)
+	}
+	e.waitMessage("Engineering", "Review snapshot: Deploy. Rollback: revert the release.")
+}
+
+func TestRegressionCorrectingApprovedDocumentRequiresNewApproval(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Engineering", "approved document"):
+			return script(toolStep("work_create", map[string]any{"title": "Correct approved document", "objective": "A corrected plan", "kind": "document", "project": "Beacon"}, ""))
+		case m.Review != nil:
+			return script(toolStep("work_review", map[string]any{"verdict": "approved", "expectedHash": "wrong", "summary": "Wrong content"}, "wrong"),
+				toolStep("room_post", map[string]any{"body": "Hash guard: {{wrong.error.message}}"}, ""),
+				toolStep("work_review", map[string]any{"verdict": "approved", "expectedHash": m.Review.Hash, "summary": "Verified this document."}, ""))
+		case m.Job.Title == "Correct approved document" && m.Purpose == "start":
+			return script(fake.Step{Write: &fake.WriteFile{Path: "plan.md", Content: "Initial plan"}},
+				toolStep("artifact_publish", map[string]any{"path": "plan.md", "kind": "document"}, ""),
+				toolStep("work_request_review", map[string]any{"reviewer": "mira", "message": "Check this plan."}, ""),
+				toolStep("work_wait", map[string]any{"reason": "review"}, ""))
+		case m.Job.Title == "Correct approved document":
+			return script(fake.Step{Write: &fake.WriteFile{Path: "plan.md", Content: "Corrected plan"}},
+				toolStep("artifact_publish", map[string]any{"path": "plan.md", "kind": "document"}, ""),
+				toolStep("work_update", map[string]any{"state": "completed", "summary": "Corrected the plan."}, "completion"),
+				toolStep("room_post", map[string]any{"body": "Completion guard: {{completion.result}}"}, ""),
+				toolStep("work_respond_to_review", map[string]any{"responses": []any{}, "requestRereview": true, "message": "Please review the corrected plan."}, ""))
+		}
+		return nil
+	}})
+	p := e.project("Beacon")
+	policy := p.Policy
+	policy.RequirePeerReview = true
+	e.c.must("PATCH", "/v1/projects/"+p.ID, protocol.UpdateProjectRequest{Version: p.Version, Policy: &policy}, nil)
+	e.post("Engineering", "@Pip write the approved document", []string{"pip"}, nil)
+	j := e.waitJob("Correct approved document", protocol.JobCompleted)
+	d := e.jobDetail(j.ID)
+	if len(d.Reviews) != 1 || len(d.Reviews[0].Rounds) != 2 {
+		t.Fatalf("old approval was reused: %+v", d.Reviews)
+	}
+	rounds := d.Reviews[0].Rounds
+	if rounds[0].Target.Hash == rounds[1].Target.Hash || rounds[1].State != protocol.ReviewApproved {
+		t.Fatalf("wrong content identity: %+v", rounds)
+	}
+	if m := e.waitMessage("Engineering", "Completion guard:"); !strings.Contains(m.Body, "older version") {
+		t.Fatalf("stale approval completed the correction: %s", m.Body)
+	}
+	if m := e.waitMessage("Engineering", "Hash guard:"); !strings.Contains(m.Body, "exact expectedHash") {
+		t.Fatalf("wrong hash accepted: %s", m.Body)
+	}
+	other := e.fakeNode("unassigned reader")
+	if _, f, err := e.hub.OpenArtifactForNode(e.ctx, other.id, rounds[1].Target.ArtifactID); err == nil {
+		f.Close()
+		t.Fatal("unassigned machine read the report")
+	}
+}

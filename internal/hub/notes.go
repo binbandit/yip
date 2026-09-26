@@ -399,9 +399,9 @@ func (h *Hub) recordFinishedWork(ctx context.Context, t *txn, job store.JobRow) 
 		return err
 	}
 	checks, _ := store.ListChecks(ctx, t.tx, job.ID)
-	head := ""
-	if job.Revision != nil {
-		head = job.Revision.Head
+	head, err := resultKey(ctx, t.tx, job)
+	if err != nil {
+		return err
 	}
 	where := ""
 	if p, err := store.GetProject(ctx, t.tx, job.ProjectID); err == nil {
@@ -414,7 +414,7 @@ func (h *Hub) recordFinishedWork(ctx context.Context, t *txn, job store.JobRow) 
 		}
 		cur := r.Rounds[len(r.Rounds)-1]
 		name := h.engineerName(ctx, t.tx, r.ReviewerID)
-		if cur.State == protocol.ReviewApproved {
+		if cur.State == protocol.ReviewApproved && targetKey(cur.Target) == head {
 			approvedBy = append(approvedBy, name)
 		}
 		for _, rd := range r.Rounds {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -174,11 +175,47 @@ type Workspace struct {
 	Scratch  bool
 }
 
-// fetchBundle downloads and verifies a bundle artifact to a temp file.
+// bundleFetcher downloads and verifies an artifact to a temporary file.
 type bundleFetcher func(ctx context.Context, a protocol.Artifact) (string, error)
 
 // Prepare creates or reuses the workspace for a run.
 func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, fetch bundleFetcher) (*Workspace, error) {
+	if m.ReviewArtifact != nil {
+		if fetch == nil {
+			return nil, errors.New("no artifact fetcher for document review")
+		}
+		source, err := fetch(ctx, *m.ReviewArtifact)
+		if err != nil {
+			return nil, err
+		}
+		defer os.Remove(source)
+		dir := filepath.Join(w.paths.work(), "review-"+domain.Short(m.RunID))
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, err
+		}
+		in, err := os.Open(source)
+		if err != nil {
+			return nil, err
+		}
+		defer in.Close()
+		out, err := os.Create(filepath.Join(dir, "review-artifact"))
+		if err != nil {
+			return nil, err
+		}
+		_, copyErr := io.Copy(out, in)
+		closeErr := out.Close()
+		if copyErr != nil {
+			return nil, copyErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		if err := makeReadOnly(dir); err != nil {
+			return nil, err
+		}
+		return &Workspace{Dir: dir, ReadOnly: true, Scratch: true}, nil
+	}
+
 	if m.Repo == nil {
 		dir := filepath.Join(w.paths.work(), "scratch-"+domain.Short(m.RunID))
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -270,7 +307,9 @@ func (w *Workspaces) Release(ctx context.Context, ws *Workspace) {
 		return
 	}
 	_ = makeWritable(ws.Dir)
-	_, _ = git(ctx, ws.Replica, "worktree", "remove", "--force", ws.Dir)
+	if ws.Replica != "" {
+		_, _ = git(ctx, ws.Replica, "worktree", "remove", "--force", ws.Dir)
+	}
 	_ = os.RemoveAll(ws.Dir)
 }
 

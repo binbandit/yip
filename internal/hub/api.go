@@ -174,11 +174,16 @@ func (h *Hub) OpenArtifactForNode(ctx context.Context, nodeID, id string) (proto
 	if err != nil {
 		return a, nil, domain.NotFound("unknown artifact")
 	}
-	if a.Kind != "bundle" && a.Kind != "checkpoint" && a.Kind != "source_bundle" {
-		return a, nil, domain.Forbidden("runners may only fetch code bundles and checkpoints")
+	if a.Kind != "bundle" && a.Kind != "checkpoint" && a.Kind != "source_bundle" && a.Kind != "document" && a.Kind != "file" {
+		return a, nil, domain.Forbidden("runners may only fetch bundles, checkpoints and assigned review artifacts")
 	}
 	var n int
 	query, arg := `SELECT COUNT(*) FROM runs WHERE node_id = ? AND state IN `+leaseStatesSQL+` AND instr(manifest, ?) > 0`, `"`+a.ID+`"`
+	if a.Kind == "document" || a.Kind == "file" {
+		query = `SELECT COUNT(*) FROM runs r JOIN review_rounds rr ON rr.review_job_id = r.job_id
+			WHERE r.node_id = ? AND r.state IN ` + leaseStatesSQL + ` AND rr.artifact_id = ? AND rr.superseded_by IS NULL`
+		arg = a.ID
+	}
 	if a.Kind == "source_bundle" {
 		// An imported repository's bundle: only while holding a run for work in that repository.
 		query = `SELECT COUNT(*) FROM runs r JOIN jobs j ON j.id = r.job_id JOIN repos rp ON rp.id = j.repo_id

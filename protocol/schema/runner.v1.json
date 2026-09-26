@@ -340,6 +340,16 @@
         "resumeSessionId": {
           "type": "string"
         },
+        "reviewArtifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "runId": {
           "type": "string"
         },

@@ -518,8 +518,8 @@ func (r *Runner) uploadAndRecord(ctx context.Context, ar *activeRun, path, kind,
 	return art, json.Unmarshal(raw, &art)
 }
 
-// fetchBundle downloads a code bundle and verifies its hash.
-func (r *Runner) fetchBundle(ctx context.Context, a protocol.Artifact) (string, error) {
+// fetchArtifact downloads an authorized artifact and verifies its hash.
+func (r *Runner) fetchArtifact(ctx context.Context, a protocol.Artifact) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(r.id.HubURL, "/")+"/v1/runner/artifacts/"+a.ID, nil)
 	if err != nil {
 		return "", err
@@ -530,9 +530,9 @@ func (r *Runner) fetchBundle(ctx context.Context, a protocol.Artifact) (string, 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("fetch bundle: HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("fetch artifact: HTTP %d", resp.StatusCode)
 	}
-	f, err := os.CreateTemp("", "yip-fetch-*.bundle")
+	f, err := os.CreateTemp("", "yip-fetch-*")
 	if err != nil {
 		return "", err
 	}
@@ -545,7 +545,7 @@ func (r *Runner) fetchBundle(ctx context.Context, a protocol.Artifact) (string, 
 	f.Close()
 	if got := hex.EncodeToString(h.Sum(nil)); got != a.Hash {
 		os.Remove(f.Name())
-		return "", fmt.Errorf("bundle checksum mismatch (%s != %s)", got, a.Hash)
+		return "", fmt.Errorf("artifact checksum mismatch (%s != %s)", got, a.Hash)
 	}
 	return f.Name(), nil
 }

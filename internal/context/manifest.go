@@ -94,6 +94,7 @@ type Review struct {
 	Base        string    `json:"base,omitempty"`
 	Head        string    `json:"head,omitempty"`
 	ArtifactID  string    `json:"artifactId,omitempty"`
+	Hash        string    `json:"hash,omitempty"`
 	PullRequest string    `json:"pullRequest,omitempty"`
 	Verdict     string    `json:"verdict,omitempty"`
 	Findings    []Finding `json:"findings"`
@@ -362,13 +363,13 @@ func (m *Manifest) Prompt() string {
 		case "pr":
 			fmt.Fprintf(&b, "pull request %s at head %s (base %s). Your workspace is a read-only snapshot of that head.\n", r.PullRequest, short(r.Head), short(r.Base))
 		default:
-			fmt.Fprintf(&b, "artifact %s.\n", r.ArtifactID)
+			fmt.Fprintf(&b, "the file `review-artifact` in your workspace, with SHA-256 %s. Pass this exact hash as expectedHash.\n", r.Hash)
 		}
 		if r.Criteria != "" {
 			fmt.Fprintf(&b, "Focus requested: %s\n", r.Criteria)
 		}
 		writeFindings(&b, r.Findings)
-		b.WriteString("Verify important claims yourself, distinguish blocking defects from suggestions, and record your verdict with work_review, passing expectedHead exactly. Never approve what you could not check; use unable_to_review instead.\n")
+		b.WriteString("Verify important claims yourself, distinguish blocking defects from suggestions, and record your verdict with work_review, passing expectedHead exactly for code or expectedHash exactly for a document. Never approve what you could not check; use unable_to_review instead.\n")
 	}
 	if r := m.OwnReview; r != nil {
 		fmt.Fprintf(&b, "\n## Review of your work by %s (round %d: %s)\n", r.Reviewer, r.Round, strings.ReplaceAll(r.Verdict, "_", " "))

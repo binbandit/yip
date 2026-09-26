@@ -3,6 +3,7 @@
   // file:line and evidence, the author's replies, and superseded rounds. An
   // earlier "requested changes" stays visible beside the later approval.
   import { app } from '../lib/state/app.svelte';
+  import { artifactUrl } from '../lib/api/endpoints';
   import type { Review } from '../lib/api/types.gen';
   import { findingStatusLabel, reviewShape, reviewStateLabel, reviewTone, severityLabel, verdictPhrase } from '../lib/util/labels';
   import { atTime, shortSha } from '../lib/util/time';
@@ -22,7 +23,7 @@
   const author = $derived(app.engineerName(review.authorId));
   const latest = $derived(rounds[rounds.length - 1]);
   const staleApproval = $derived(
-    !!latest && latest.state === 'approved' && !!currentHead && !!latest.target.head && latest.target.head !== currentHead,
+    !!latest && latest.state === 'approved' && !!currentHead && !!(latest.target.head || latest.target.hash) && (latest.target.head || latest.target.hash) !== currentHead,
   );
 </script>
 
@@ -35,13 +36,13 @@
       </p>
       <p class="state tone-{reviewTone(review.state)}">
         <StateIcon shape={reviewShape(review.state)} tone={reviewTone(review.state)} size={13} />
-        {reviewStateLabel(review.state)}{#if latest?.target.head}&nbsp;<span class="meta">on <span class="mono">{shortSha(latest.target.head)}</span></span>{/if}
+        {reviewStateLabel(review.state)}{#if (latest?.target.head || latest?.target.hash)}&nbsp;<span class="meta">on <span class="mono">{shortSha(latest.target.head || latest.target.hash)}</span></span>{/if}
       </p>
     </div>
   </header>
   {#if review.criteria}<p class="criteria"><span class="meta">Asked to check:</span> {review.criteria}</p>{/if}
   {#if staleApproval}
-    <p class="notice attention">This approval is for <span class="mono">{shortSha(latest.target.head)}</span>. The work has moved to <span class="mono">{shortSha(currentHead)}</span>, so it no longer counts until the new revision is reviewed.</p>
+    <p class="notice attention">This approval is for <span class="mono">{shortSha(latest.target.head || latest.target.hash)}</span>. The work has moved to <span class="mono">{shortSha(currentHead)}</span>, so it no longer counts until the new revision is reviewed.</p>
   {/if}
 
   <ol class="rounds">
@@ -52,7 +53,7 @@
           <span>
             <strong>Round {r.number}:</strong> {reviewer} {verdictPhrase(r.state)}
             {r.number === 1 && rounds.length > 1 ? 'the first revision' : r === latest && rounds.length > 1 ? 'the updated revision' : 'the revision'}
-            {#if r.target.head}<span class="mono">{shortSha(r.target.head)}</span>{/if}
+            {#if r.target.artifactId}<a class="mono" href={artifactUrl(r.target.artifactId)} target="_blank" rel="noreferrer">{shortSha(r.target.hash)} · document</a>{:else if r.target.head}<span class="mono">{shortSha(r.target.head)}</span>{/if}
           </span>
           {#if r.decidedAt}<span class="meta">{atTime(r.decidedAt)}</span>{/if}
           {#if r.supersededBy}<span class="tag">Superseded by a newer revision</span>{/if}

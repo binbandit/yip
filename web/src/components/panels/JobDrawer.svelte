@@ -9,6 +9,7 @@
   import { ApiError, errorMessage } from '../../lib/api/client';
   import type { Artifact, RunActivity } from '../../lib/api/types.gen';
   import { parseUnifiedDiff, type DiffFile } from '../../lib/util/diff';
+  import { workResultKey } from '../../lib/util/reviews';
   import { isLiveJob } from '../../lib/state/data';
   import {
     billingLabel,
@@ -74,7 +75,8 @@
       !stoppingRun &&
       (job.state === 'failed' || job.state === 'cancelled' || (job.state === 'waiting' && (job.waitingReason === 'recovery' || job.waitingReason === 'stalled')) || !!unknownRun),
   );
-  const canAccept = $derived(!!job && job.requiresHumanReview && job.state === 'review_ready' && !!job.revision?.head);
+  const resultKey = $derived(job ? workResultKey(job, Object.values(app.data.artifacts)) : undefined);
+  const canAccept = $derived(!!job && job.requiresHumanReview && job.state === 'review_ready' && !!resultKey);
 
   const TABS = ['evidence', 'review', 'activity', 'runs'] as const;
   type Tab = (typeof TABS)[number];
@@ -193,13 +195,13 @@
   }
 
   async function accept() {
-    if (!job?.revision?.head) return;
+    if (!job || !resultKey) return;
     busy = 'accept';
     actionError = '';
     try {
-      const j = await api.acceptJob(jobId, { revision: job.revision.head, version: job.version, note: '' });
+      const j = await api.acceptJob(jobId, { revision: resultKey, version: job.version, note: '' });
       app.data.jobs[j.id] = j;
-      app.announce(`Accepted revision ${shortSha(job.revision.head)}.`);
+      app.announce(`Accepted ${job.kind === 'code' ? 'revision' : 'document'} ${shortSha(resultKey)}.`);
       void details.refreshJob(jobId);
     } catch (err) {
       if (err instanceof ApiError && err.conflict) {
@@ -363,7 +365,7 @@
       <div class="actions">
         {#if canAccept}
           <button class="btn btn-primary btn-sm" disabled={busy === 'accept'} onclick={accept}>
-            <Icon name="check" size={15} />Accept revision {shortSha(job.revision?.head)}
+            <Icon name="check" size={15} />Accept {job.kind === 'code' ? 'revision' : 'document'} {shortSha(resultKey)}
           </button>
         {/if}
         {#if live}
@@ -579,7 +581,7 @@
           <p class="meta">{job.requiresPeerReview ? 'No review has been requested yet. The owner asks a colleague when the work is ready.' : 'No review on this work.'}</p>
         {/if}
         {#each d.reviews as r (r.id)}
-          <section class="block"><ReviewDetail review={app.data.reviews[r.id] ?? r} currentHead={job.revision?.head} /></section>
+          <section class="block"><ReviewDetail review={app.data.reviews[r.id] ?? r} currentHead={resultKey} /></section>
         {/each}
         {#each d.pullRequests as pr (pr.id)}
           <section class="block">

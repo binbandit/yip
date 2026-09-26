@@ -182,6 +182,7 @@ type ExecutionManifest struct {
 	Mode              string          `json:"mode"`
 	ExecutionProfile  string          `json:"executionProfile"`
 	Repo              *RepoSpec       `json:"repo,omitempty"`
+	ReviewArtifact    *Artifact       `json:"reviewArtifact,omitempty"`
 	Instructions      string          `json:"instructions"`
 	Prompt            string          `json:"prompt"`
 	ResumeSessionID   string          `json:"resumeSessionId,omitempty"`

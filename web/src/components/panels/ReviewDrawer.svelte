@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import { app } from '../../lib/state/app.svelte';
   import { details } from '../../lib/state/details.svelte';
+  import { workResultKey } from '../../lib/util/reviews';
   import { errorMessage } from '../../lib/api/client';
   import RightPanel, { type PanelMode } from '../RightPanel.svelte';
   import ReviewDetail from '../ReviewDetail.svelte';
@@ -24,7 +25,8 @@
   const job = $derived(review ? app.data.jobs[review.jobId] : undefined);
   $effect(() => {
     const id = review?.jobId;
-    if (id && !app.data.jobs[id]) untrack(() => details.ensureJob(id, app.data.touched.jobs[id] ?? 0));
+    const touch = id ? app.data.touched.jobs[id] ?? 0 : 0;
+    if (id) untrack(() => details.ensureJob(id, touch));
   });
   $effect(() => {
     const pr = review?.pullRequestId;
@@ -42,12 +44,12 @@
       <p class="meta">Loading the review…</p>
     {:else}
       <div class="links">
-        <button class="btn btn-sm" onclick={() => app.openPanel({ kind: 'job', id: review.jobId }, 'evidence')}><Icon name="file" size={15} />View diff</button>
+        <button class="btn btn-sm" onclick={() => app.openPanel({ kind: 'job', id: review.jobId }, 'evidence')}><Icon name="file" size={15} />View evidence</button>
         <a class="btn btn-sm btn-quiet" href="/rooms/{review.source.roomId}{review.source.messageId ? `?msg=${review.source.messageId}` : ''}">
           Source conversation
         </a>
       </div>
-      <ReviewDetail {review} currentHead={job?.revision?.head} />
+      <ReviewDetail {review} currentHead={job ? workResultKey(job, Object.values(app.data.artifacts)) : undefined} />
       {#if pr}
         <section class="pr-block">
           <h3>Pull request</h3>

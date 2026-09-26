@@ -58,7 +58,7 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	}
 
 	r.emit(m.RunID, ar.epoch, protocol.RunEvent{Kind: protocol.RunEvStatus, Text: "Preparing the workspace"})
-	ws, err := r.ws.Prepare(ctx, m, r.fetchBundle)
+	ws, err := r.ws.Prepare(ctx, m, r.fetchArtifact)
 	if err != nil {
 		finish(protocol.RunTerminal{Outcome: protocol.OutcomeFailed, Error: "workspace: " + err.Error(), ExitConfirmed: true})
 		return

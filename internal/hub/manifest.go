@@ -301,6 +301,13 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 		Provider: run.Provider, Model: firstNonEmpty(run.Model, ver.Provider.Model), Mode: run.Mode, ExecutionProfile: run.ExecutionProfile,
 		ScopeFingerprint: m.ScopeFingerprint, Tools: bridge.NamesForMode(run.Mode), TimeoutMs: h.lim.RunTimeout.Milliseconds(),
 	}
+	if snapshot != nil && snapshot.ArtifactID != "" {
+		a, err := store.GetArtifact(ctx, q, snapshot.ArtifactID)
+		if err != nil {
+			return x, m, err
+		}
+		x.ReviewArtifact = &a
+	}
 	if repo != nil {
 		spec := &protocol.RepoSpec{RepoID: repo.ID, Name: repo.Name, RemoteURL: repo.RemoteURL, DefaultBranch: repo.DefaultBranch,
 			BaseRev: jf.Base, Branch: jf.Branch}
@@ -375,7 +382,7 @@ func (h *Hub) actorNames(ctx context.Context, q store.Q) map[string]actorName {
 func (h *Hub) reviewFacts(ctx context.Context, q store.Q, rev protocol.Review, round protocol.ReviewRound, names map[string]actorName) manifest.Review {
 	r := manifest.Review{ReviewID: rev.ID, Round: round.Number, Author: names["engineer:"+rev.AuthorID].name,
 		Reviewer: names["engineer:"+rev.ReviewerID].name, Criteria: rev.Criteria, TargetKind: round.Target.Kind,
-		Base: round.Target.Base, Head: round.Target.Head, ArtifactID: round.Target.ArtifactID, Verdict: string(round.State),
+		Base: round.Target.Base, Head: round.Target.Head, Hash: round.Target.Hash, ArtifactID: round.Target.ArtifactID, Verdict: string(round.State),
 		RoundsLeft: h.lim.MaxReviewRounds - round.Number}
 	if round.Target.PullRequestID != "" {
 		if pr, err := store.GetPR(ctx, q, round.Target.PullRequestID); err == nil {
@@ -392,7 +399,7 @@ func (h *Hub) reviewFacts(ctx context.Context, q store.Q, rev protocol.Review, r
 			r.Findings = append(r.Findings, mf)
 		}
 		if rd.Number < round.Number {
-			r.PriorRounds = append(r.PriorRounds, "round "+itoa(rd.Number)+" on "+shortRev(rd.Target.Head)+": "+string(rd.State))
+			r.PriorRounds = append(r.PriorRounds, "round "+itoa(rd.Number)+" on "+shortRev(targetKey(rd.Target))+": "+string(rd.State))
 		}
 	}
 	return r

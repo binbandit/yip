@@ -474,17 +474,11 @@ func (h *Hub) completionMissing(ctx context.Context, q store.Q, job store.JobRow
 		if job.RequiresPeerReview {
 			// The approval must be of the document as it stands now: a newer
 			// published artifact needs a new round.
-			key := ""
-			arts, err := store.ListJobArtifacts(ctx, q, job.ID)
+			art, err := latestDocument(ctx, q, job.ID)
 			if err != nil {
 				return nil, false, err
 			}
-			for i := len(arts) - 1; i >= 0; i-- {
-				if arts[i].Kind == "document" || arts[i].Kind == "file" {
-					key = arts[i].Hash
-					break
-				}
-			}
+			key := art.Hash
 			if key == "" {
 				missing = append(missing, "the published document or artifact to review (artifact_publish)")
 				reviewOnly = false
@@ -600,10 +594,11 @@ func (h *Hub) requestCompletion(ctx context.Context, t *txn, job store.JobRow, s
 // an explicit human-review requirement applies.
 func (h *Hub) finishOrAwaitHuman(ctx context.Context, t *txn, job store.JobRow) (string, error) {
 	if job.RequiresHumanReview {
-		rev := ""
-		if job.Revision != nil {
-			rev = shortRev(job.Revision.Head)
+		key, err := resultKey(ctx, t.tx, job)
+		if err != nil {
+			return "", err
 		}
+		rev := shortRev(key)
 		detail := "Checks and reviews pass. Waiting for the owner to accept " + firstNonEmpty(rev, "the result") + " (required by policy)."
 		if _, err := h.setJobState(ctx, t, job.ID, protocol.JobReviewReady, "", detail); err != nil {
 			return "", err
@@ -1023,9 +1018,9 @@ func (h *Hub) AcceptJob(ctx context.Context, userID, jobID string, req protocol.
 		if job.State != protocol.JobReviewReady {
 			return domain.Conflict("The work isn't ready for acceptance (%s).", job.State)
 		}
-		head := ""
-		if job.Revision != nil {
-			head = job.Revision.Head
+		head, err := resultKey(ctx, t.tx, job)
+		if err != nil {
+			return err
 		}
 		if req.Revision != head {
 			return domain.Conflict("You reviewed %s, but the current result is %s.", shortRev(req.Revision), shortRev(head))

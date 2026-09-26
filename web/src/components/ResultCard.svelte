@@ -8,6 +8,7 @@
   import { app } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
   import { jobShape, jobStateLabel, jobTone, reviewShape, reviewTone, verdictPhrase } from '../lib/util/labels';
+  import { currentReviewRound } from '../lib/util/reviews';
   import { shortSha } from '../lib/util/time';
   import type { Review } from '../lib/api/types.gen';
   import StateIcon from './StateIcon.svelte';
@@ -54,6 +55,7 @@
       .map(({ r, cur }) => {
         const who = app.engineerName(r.reviewerId);
         const id = r.id;
+        if (job && !currentReviewRound(job, r, d?.artifacts ?? [])) return { id, text: `${who}'s review applies to an earlier version`, tone: 'neutral' };
         switch (cur!.state) {
           case 'approved':
             return { id, text: `approved by ${who}`, tone: 'success' };
@@ -179,10 +181,10 @@
                     <StateIcon shape={reviewShape(rr.current.state)} tone={reviewTone(rr.current.state)} size={13} />
                     <span
                       >{app.engineerName(r.reviewerId)} {verdictPhrase(rr.current.state)}
-                      <span class="mono">{shortSha(rr.current.target.head) || 'the work'}</span></span
+                      <span class="mono">{shortSha(rr.current.target.head || rr.current.target.hash) || 'the work'}</span></span
                     >
                     {#each rr.earlier as e (e.id)}
-                      <span class="meta">· {verdictPhrase(e.state)} <span class="mono">{shortSha(e.target.head)}</span> first</span>
+                      <span class="meta">· {verdictPhrase(e.state)} <span class="mono">{shortSha(e.target.head || e.target.hash)}</span> first</span>
                     {/each}
                   {:else}
                     <span>{app.engineerName(r.reviewerId)} was asked to review</span>

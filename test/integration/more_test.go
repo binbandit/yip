@@ -113,7 +113,7 @@ func TestDocumentReviewWithoutForge(t *testing.T) {
 		case replyTo(m, "Engineering", "plan"):
 			return script(toolStep("work_create", map[string]any{"title": "Write the plan", "objective": "x", "kind": "document", "project": "Beacon", "repo": "beacon-gateway"}, ""))
 		case m.Review != nil && m.Review.Round == 1:
-			return script(toolStep("work_review", map[string]any{"verdict": "changes_requested", "expectedHead": "", "summary": "Missing rollback.",
+			return script(toolStep("work_review", map[string]any{"verdict": "changes_requested", "expectedHead": "", "expectedHash": m.Review.Hash, "summary": "Missing rollback.",
 				"findings": []map[string]any{{"severity": "blocking", "body": "The plan has no rollback step.", "evidence": "docs/plan.md has no rollback section"}},
 				"message":  "The plan needs a rollback step."}, ""))
 		case m.Review != nil:
@@ -121,7 +121,7 @@ func TestDocumentReviewWithoutForge(t *testing.T) {
 			for _, f := range m.Review.Findings {
 				resolve = append(resolve, f.ID)
 			}
-			return script(toolStep("work_review", map[string]any{"verdict": "approved", "expectedHead": "", "summary": "Rollback added.", "resolve": resolve,
+			return script(toolStep("work_review", map[string]any{"verdict": "approved", "expectedHead": "", "expectedHash": m.Review.Hash, "summary": "Rollback added.", "resolve": resolve,
 				"message": "Approved."}, ""))
 		case m.Job.Title == "Write the plan" && m.OwnReview != nil:
 			var resp []map[string]any

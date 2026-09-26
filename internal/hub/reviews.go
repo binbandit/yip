@@ -25,7 +25,7 @@ func (h *Hub) GetReview(ctx context.Context, userID, id string) (protocol.Review
 
 // reviewTarget resolves what an author is asking to have reviewed.
 func (h *Hub) reviewTarget(ctx context.Context, q store.Q, job store.JobRow, prNumber int) (protocol.ReviewTarget, error) {
-	if prNumber > 0 {
+	if prNumber > 0 && job.Kind == protocol.JobKindCode {
 		prs, _ := store.ListPRs(ctx, q, "job_id = ? AND number = ?", job.ID, prNumber)
 		if len(prs) == 0 {
 			return protocol.ReviewTarget{}, domain.Invalid("PR #%d isn't linked to this job. Link it with forge_link_pr first.", prNumber)
@@ -33,19 +33,41 @@ func (h *Hub) reviewTarget(ctx context.Context, q store.Q, job store.JobRow, prN
 		pr := prs[0]
 		return protocol.ReviewTarget{Kind: "pr", RepoID: pr.RepoID, Base: pr.Base, Head: pr.Head, PullRequestID: pr.ID}, nil
 	}
-	if job.Revision != nil && job.Revision.Head != "" {
+	if job.Kind == protocol.JobKindCode && job.Revision != nil && job.Revision.Head != "" {
 		return protocol.ReviewTarget{Kind: "patch", RepoID: job.RepoID, Base: job.Revision.Base, Head: job.Revision.Head}, nil
 	}
 	if job.Kind == protocol.JobKindCode {
 		return protocol.ReviewTarget{}, domain.Invalid("Publish your revision with work_publish_revision before requesting review, so the reviewer sees an immutable result.")
 	}
-	arts, _ := store.ListJobArtifacts(ctx, q, job.ID)
-	for i := len(arts) - 1; i >= 0; i-- {
-		if arts[i].Kind == "document" || arts[i].Kind == "file" {
-			return protocol.ReviewTarget{Kind: "artifact", ArtifactID: arts[i].ID, Hash: arts[i].Hash}, nil
-		}
+	art, err := latestDocument(ctx, q, job.ID)
+	if err != nil {
+		return protocol.ReviewTarget{}, err
+	}
+	if art.ID != "" {
+		return protocol.ReviewTarget{Kind: "artifact", ArtifactID: art.ID, Hash: art.Hash}, nil
 	}
 	return protocol.ReviewTarget{}, domain.Invalid("Publish the document or artifact to review first (artifact_publish).")
+}
+
+func latestDocument(ctx context.Context, q store.Q, jobID string) (protocol.Artifact, error) {
+	arts, err := store.ListJobArtifacts(ctx, q, jobID)
+	if err != nil {
+		return protocol.Artifact{}, err
+	}
+	for i := len(arts) - 1; i >= 0; i-- {
+		if arts[i].Kind == "document" || arts[i].Kind == "file" {
+			return arts[i], nil
+		}
+	}
+	return protocol.Artifact{}, nil
+}
+
+func resultKey(ctx context.Context, q store.Q, job store.JobRow) (string, error) {
+	if job.Kind == protocol.JobKindCode && job.Revision != nil {
+		return job.Revision.Head, nil
+	}
+	a, err := latestDocument(ctx, q, job.ID)
+	return a.Hash, err
 }
 
 // Both initial review and re-review retain the original room and project boundary.
@@ -208,8 +230,11 @@ func (h *Hub) toolReview(ctx context.Context, t *txn, env toolEnv, a bridge.Work
 	if !domain.ReviewOpen(round.State) || round.SupersededBy != "" {
 		return nil, domain.Conflict("This review round is no longer current (%s).", round.State)
 	}
-	if round.Target.Head != "" && a.ExpectedHead != round.Target.Head && !strings.HasPrefix(round.Target.Head, a.ExpectedHead) {
+	if round.Target.Head != "" && a.ExpectedHead != round.Target.Head {
 		return nil, domain.Conflict("You reviewed %s, but this round is for %s. Review the current revision.", shortRev(a.ExpectedHead), shortRev(round.Target.Head))
+	}
+	if round.Target.Hash != "" && a.ExpectedHash != round.Target.Hash {
+		return nil, domain.Conflict("This review is for document hash %s. Read the supplied artifact and pass its exact expectedHash.", round.Target.Hash)
 	}
 	// A PR target was re-synchronised with the forge just before this
 	// transaction (see dispatchTool); a moved head supersedes the round.
@@ -305,7 +330,7 @@ func (h *Hub) toolReview(ctx context.Context, t *txn, env toolEnv, a bridge.Work
 	if err := h.afterVerdict(ctx, t, review, round, verdict); err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true, "verdict": verdict, "round": round.Number, "revision": round.Target.Head,
+	return map[string]any{"ok": true, "verdict": verdict, "round": round.Number, "revision": targetKey(round.Target),
 		"note": "Recorded for this exact revision. Finish your turn."}, nil
 }
 
@@ -330,7 +355,7 @@ func (h *Hub) afterVerdict(ctx context.Context, t *txn, review protocol.Review, 
 			}
 		}
 		_, err := h.enqueueRun(ctx, t, job, runReason{Purpose: "continue", Cause: round.ID, Automatic: true,
-			Note: h.engineerName(ctx, t.tx, review.ReviewerID) + " approved " + shortRev(round.Target.Head) + ". Complete the job if its evidence is in place."})
+			Note: h.engineerName(ctx, t.tx, review.ReviewerID) + " approved " + shortRev(targetKey(round.Target)) + ". Complete the job if its evidence is in place."})
 		if isLimit(err) {
 			return nil
 		}
@@ -359,10 +384,11 @@ func (h *Hub) toolRespondReview(ctx context.Context, t *txn, env toolEnv, a brid
 	if len(reviews) == 0 {
 		return nil, domain.Invalid("This job has no reviews.")
 	}
-	head := ""
-	if job.Revision != nil {
-		head = job.Revision.Head
+	target, err := h.reviewTarget(ctx, t.tx, job, 0)
+	if err != nil {
+		return nil, err
 	}
+	head := targetKey(target)
 	touched := map[string]protocol.Review{}
 	for _, r := range a.Responses {
 		f, rid, err := store.GetFinding(ctx, t.tx, r.FindingID)
@@ -405,18 +431,14 @@ func (h *Hub) toolRespondReview(ctx context.Context, t *txn, env toolEnv, a brid
 	var rounds []int
 	for _, review := range reviews {
 		last := review.Rounds[len(review.Rounds)-1]
-		if domain.ReviewOpen(last.State) || last.State == protocol.ReviewApproved && last.Target.Head == head {
+		if domain.ReviewOpen(last.State) || last.State == protocol.ReviewApproved && targetKey(last.Target) == head {
 			continue
-		}
-		target, err := h.reviewTarget(ctx, t.tx, job, 0)
-		if err != nil {
-			return nil, err
 		}
 		if last.Number >= h.lim.MaxReviewRounds {
 			return nil, domain.Limit("This review has used its %d rounds. Summarize the remaining disagreement with the reviewer in the conversation; another qualified colleague can arbitrate, or ask the owner only if a product decision is needed.", h.lim.MaxReviewRounds)
 		}
 		if targetKey(target) == targetKey(last.Target) && !allDisputes(a.Responses) {
-			return nil, domain.Invalid("Publish your revised work first (work_publish_revision); re-review applies to a new revision. To dispute a finding without changes, mark each response disputed with evidence.")
+			return nil, domain.Invalid("Publish your revised work first (artifact_publish for a document, work_publish_revision for code); re-review applies to a new revision. To dispute a finding without changes, mark each response disputed with evidence.")
 		}
 		reviewer, _ := store.GetEngineer(ctx, t.tx, review.ReviewerID)
 		if err := h.requireReviewerAccess(ctx, t.tx, job, reviewer); err != nil {
@@ -437,7 +459,7 @@ func (h *Hub) toolRespondReview(ctx context.Context, t *txn, env toolEnv, a brid
 		rounds = append(rounds, round.Number)
 		msg := strings.TrimSpace(a.Message)
 		if msg == "" {
-			msg = "Ready for another look at " + shortRev(target.Head) + "."
+			msg = "Ready for another look at " + shortRev(targetKey(target)) + "."
 		}
 		if !strings.Contains(strings.ToLower(msg), "@"+reviewer.Handle) {
 			msg = "@" + reviewer.Handle + " " + msg
