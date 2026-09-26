@@ -66,20 +66,21 @@ export class EventStream {
 
   stop(): void {
     this.stopped = true;
-    if (this.retryTimer) clearTimeout(this.retryTimer);
-    this.retryTimer = null;
-    this.es?.close();
-    this.es = null;
+    this.close();
   }
 
   /** Close and reopen from our own cursor (used after "slow" or coming back online). */
   reconnect(): void {
     if (this.stopped) return;
+    this.close();
+    this.open();
+  }
+
+  private close(): void {
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
     this.es?.close();
     this.es = null;
-    this.open();
   }
 
   private open(): void {

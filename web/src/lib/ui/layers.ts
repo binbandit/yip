@@ -49,10 +49,6 @@ export function pushLayer(close: () => void, opts: { returnFocus?: HTMLElement |
   };
 }
 
-export function layerCount(): number {
-  return stack.length;
-}
-
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), summary';
 
