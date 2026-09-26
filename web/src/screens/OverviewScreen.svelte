@@ -14,6 +14,7 @@
   import MessageList from '../components/MessageList.svelte';
   import Composer from '../components/Composer.svelte';
   import Icon from '../components/Icon.svelte';
+  import GettingStarted from '../components/GettingStarted.svelte';
 
   let ov = $state<Overview | null>(null);
   let error = $state('');
@@ -106,6 +107,8 @@
           <a class="btn" href="/rooms/{overviewRoom.id}"><Icon name="reply" size={16} />Ask where things stand</a>
         {/if}
       </header>
+
+      <GettingStarted />
 
       {#if error}
         <div class="notice danger" role="alert">

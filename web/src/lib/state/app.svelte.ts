@@ -199,6 +199,11 @@ class AppState {
     this.stream.start();
   }
 
+  /** "Try now" on the connection notice: skip the backoff and check the hub. */
+  retryConnection(): void {
+    void this.verifySession();
+  }
+
   private async verifySession(): Promise<void> {
     try {
       await api.bootstrap({ quiet401: true });
