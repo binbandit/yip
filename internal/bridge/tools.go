@@ -50,6 +50,7 @@ const (
 	HumanAsk           = "human_ask"
 	DecisionPropose    = "decision_propose"
 	KnowledgeSearch    = "knowledge_search"
+	NoteRecord         = "note_record"
 	ForgeReadPR        = "forge_read_pr"
 	ForgeLinkPR        = "forge_link_pr"
 	ForgePublishReview = "forge_publish_review"
@@ -89,6 +90,8 @@ var Tools = []Tool{
 		InputSchema: schema(`{"type":"object","required":["question","missingFact","contextChecked"],"properties":{"question":{"type":"string","description":"the message to post"},"missingFact":{"type":"string"},"contextChecked":{"type":"string"},"dependentStep":{"type":"string"},"continuingWith":{"type":"string"}},"additionalProperties":false}`)},
 	{Name: DecisionPropose, Modes: all, Description: "Record a scoped, sourced decision (e.g. an implementation contract you established). Cite the message or job IDs it came from. It becomes shared knowledge only where its sources are visible.",
 		InputSchema: schema(`{"type":"object","required":["title","body","sources"],"properties":{"title":{"type":"string"},"body":{"type":"string"},"project":{"type":"string"},"sources":{"type":"array","items":{"type":"string"},"description":"message or job IDs"},"supersedes":{"type":"string"}},"additionalProperties":false}`)},
+	{Name: NoteRecord, Modes: all, Description: "Keep a short note for your own future work: a conclusion with where it came from (e.g. \"Atlas's integration tests need the fake clock; see job X\"). Not a transcript, and not your reasoning. Cite message or job IDs; the note is used only where those sources are visible. Notes from your own finished work are kept automatically; others wait as suggestions for the owner. Supersede an outdated note instead of adding a new one.",
+		InputSchema: schema(`{"type":"object","required":["body","sources"],"properties":{"body":{"type":"string","maxLength":400},"project":{"type":"string"},"sources":{"type":"array","items":{"type":"string"},"description":"message or job IDs"},"supersedes":{"type":"string","description":"the ID of your note this replaces"}},"additionalProperties":false}`)},
 	{Name: KnowledgeSearch, Modes: all, Description: "Search accepted decisions and conversation history visible from this conversation. Results carry source IDs you can cite.",
 		InputSchema: schema(`{"type":"object","required":["query"],"properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":25}},"additionalProperties":false}`)},
 	{Name: ForgeReadPR, Modes: all, Description: "Read a pull request on the job's repository: canonical URL, base/head revisions, changed files, remote reviews, checks, and merge status as reported by the forge.",
@@ -237,6 +240,13 @@ type HumanAskArgs struct {
 
 type DecisionProposeArgs struct {
 	Title      string   `json:"title"`
+	Body       string   `json:"body"`
+	Project    string   `json:"project"`
+	Sources    []string `json:"sources"`
+	Supersedes string   `json:"supersedes"`
+}
+
+type NoteRecordArgs struct {
 	Body       string   `json:"body"`
 	Project    string   `json:"project"`
 	Sources    []string `json:"sources"`

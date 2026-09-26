@@ -230,6 +230,19 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 		m.Decisions = append(m.Decisions, manifest.Decision{ID: d.ID, Title: d.Title, Body: d.Body, Scope: scope, Source: src})
 	}
 
+	// The engineer's own notes usable here (layer 5).
+	for _, n := range h.notesForContext(ctx, q, eng.ID, room) {
+		scope := n.Scope.Kind
+		if n.Scope.Kind == "project" {
+			scope = "project " + projectNames[n.Scope.ID]
+		}
+		src := "the owner"
+		if len(n.Sources) > 0 {
+			src = n.Sources[0].Kind + " " + n.Sources[0].ID
+		}
+		m.Notes = append(m.Notes, manifest.Note{ID: n.ID, Body: n.Body, Scope: scope, Source: src})
+	}
+
 	// Colleagues and their permitted access.
 	engineers, _ := store.ListEngineers(ctx, q)
 	for _, e := range engineers {

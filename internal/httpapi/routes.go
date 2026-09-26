@@ -87,6 +87,9 @@ func (s *Server) routes() {
 
 	a("GET /v1/decisions", s.listDecisions)
 	a("POST /v1/decisions", s.createDecision)
+	a("GET /v1/engineers/{id}/notes", s.listNotes)
+	a("POST /v1/engineers/{id}/notes", s.createNote)
+	a("POST /v1/notes/{id}", s.decideNote)
 	a("POST /v1/decisions/{id}", s.decideDecision)
 
 	a("GET /v1/overview", s.getOverview)
@@ -431,6 +434,31 @@ func (s *Server) importRepo(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	p, err := s.hub.ImportRepo(r.Context(), userFrom(r).ID, r.PathValue("id"), q.Get("repo"), q.Get("name"), q.Get("branch"), body)
 	respond(s, w, r, p, err)
+}
+
+func (s *Server) listNotes(w http.ResponseWriter, r *http.Request) {
+	ns, err := s.hub.ListNotes(r.Context(), userFrom(r).ID, r.PathValue("id"))
+	respond(s, w, r, ns, err)
+}
+
+func (s *Server) createNote(w http.ResponseWriter, r *http.Request) {
+	req, err := decodeJSON[protocol.NoteRequest](w, r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	n, err := s.hub.CreateNote(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
+	respond(s, w, r, n, err)
+}
+
+func (s *Server) decideNote(w http.ResponseWriter, r *http.Request) {
+	req, err := decodeJSON[protocol.NoteActionRequest](w, r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	n, err := s.hub.DecideNote(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
+	respond(s, w, r, n, err)
 }
 
 func (s *Server) restartJob(w http.ResponseWriter, r *http.Request) {

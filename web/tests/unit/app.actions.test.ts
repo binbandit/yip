@@ -309,6 +309,31 @@ describe('action flows', () => {
     expect(text()).toContain("there's nothing to push to");
   });
 
+  it("shows an engineer's notes, keeps a suggestion and renews one due for review", async () => {
+    const mira = engineer('Mira');
+    const proj = Object.values(app.data.projects)[0];
+    const base = { engineerId: mira.id, scope: { kind: 'project', id: proj.id }, sources: [], visibleRoomIds: null as unknown as string[], createdBy: { kind: 'engineer', id: mira.id }, createdAt: new Date().toISOString() };
+    const notes = [
+      { ...base, id: 'n-due', body: 'The queue lives in worker/queue.go', status: 'accepted', reviewAfter: new Date(Date.now() - 1000).toISOString(), version: 3 },
+      { ...base, id: 'n-sug', body: 'Retries back off exponentially', status: 'proposed', reviewAfter: new Date(Date.now() + 1e9).toISOString(), version: 1 },
+    ];
+    hub.override('GET', new RegExp(`^/v1/engineers/${mira.id}/notes$`), () => ({ body: notes }));
+    hub.override('POST', /^\/v1\/notes\/n-sug$/, () => ({ body: { ...notes[1], status: 'accepted', version: 2 } }));
+    hub.override('POST', /^\/v1\/notes\/n-due$/, () => ({ body: { ...notes[0], reviewAfter: new Date(Date.now() + 1e9).toISOString(), version: 4 } }));
+    app.go({ name: 'engineer', id: mira.id });
+    await waitFor(() => text().includes('Retries back off exponentially'), 'notes loaded');
+    expect(text()).toContain('due for review — not used until renewed');
+    expect(text()).toContain('Suggested by Mira');
+    byText('button', 'Keep')!.click();
+    await waitFor(() => hub.last('POST', /\/v1\/notes\/n-sug$/), 'keep posted');
+    expect(hub.last('POST', /\/v1\/notes\/n-sug$/)!.body).toEqual({ action: 'accept', version: 1 });
+    await waitFor(() => !text().includes('Suggested by Mira'), 'suggestion kept');
+    byText('button', 'Still true')!.click();
+    await waitFor(() => hub.last('POST', /\/v1\/notes\/n-due$/), 'renew posted');
+    expect(hub.last('POST', /\/v1\/notes\/n-due$/)!.body).toEqual({ action: 'renew', version: 3 });
+    await waitFor(() => !text().includes('not used until renewed'), 'renewed');
+  });
+
   it('shows an unconfirmed outcome from WorkRow.runState in the strip', async () => {
     const engRoom = roomId('Engineering');
     const unk = { ...codeDetail.job, id: 'job-unk', title: 'Refactor gateway retries', state: 'running' as const, currentRunId: 'run-unk', source: { roomId: engRoom } };

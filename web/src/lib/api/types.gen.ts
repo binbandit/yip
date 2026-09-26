@@ -303,6 +303,24 @@ export interface Engineer {
   updatedAt: string;
 }
 
+export interface EngineerNote {
+  id: string;
+  engineerId: string;
+  scope: DecisionScope;
+  body: string;
+  status: string;
+  supersedesId?: string;
+  supersededById?: string;
+  createdBy: Actor;
+  acceptedBy?: Actor | null;
+  sources: Source[];
+  visibleRoomIds: string[];
+  reviewAfter: string;
+  version: number;
+  createdAt: string;
+  acceptedAt?: string | null;
+}
+
 export interface EngineerVersion {
   id: string;
   engineerId: string;
@@ -590,6 +608,17 @@ export interface NodeWorkspace {
   jobState?: string;
   published: boolean;
   blocked?: string;
+}
+
+export interface NoteActionRequest {
+  action: string;
+  version: number;
+}
+
+export interface NoteRequest {
+  scope: DecisionScope;
+  body: string;
+  supersedesId?: string;
 }
 
 export interface Org {

@@ -1168,6 +1168,93 @@
       ],
       "type": "object"
     },
+    "EngineerNote": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acceptedBy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Actor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "body": {
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "createdBy": {
+          "$ref": "#/$defs/Actor"
+        },
+        "engineerId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reviewAfter": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/DecisionScope"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/Source"
+          },
+          "type": "array"
+        },
+        "status": {
+          "type": "string"
+        },
+        "supersededById": {
+          "type": "string"
+        },
+        "supersedesId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "visibleRoomIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "engineerId",
+        "scope",
+        "body",
+        "status",
+        "createdBy",
+        "sources",
+        "visibleRoomIds",
+        "reviewAfter",
+        "version",
+        "createdAt"
+      ],
+      "type": "object"
+    },
     "EngineerVersion": {
       "additionalProperties": false,
       "properties": {
@@ -2351,6 +2438,41 @@
         "modifiedAt",
         "inUse",
         "published"
+      ],
+      "type": "object"
+    },
+    "NoteActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action",
+        "version"
+      ],
+      "type": "object"
+    },
+    "NoteRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/DecisionScope"
+        },
+        "supersedesId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "body"
       ],
       "type": "object"
     },

@@ -40,6 +40,14 @@ type Decision struct {
 	Source string `json:"source"`
 }
 
+// Note is one of the engineer's own kept notes (context layer 5).
+type Note struct {
+	ID     string `json:"id"`
+	Body   string `json:"body"`
+	Scope  string `json:"scope"`
+	Source string `json:"source"`
+}
+
 type Colleague struct {
 	ID     string   `json:"id"`
 	Name   string   `json:"name"`
@@ -160,6 +168,7 @@ type Manifest struct {
 	OwnReview            *Review     `json:"ownReview,omitempty"`
 	Inputs               []Input     `json:"inputs,omitempty"`
 	Decisions            []Decision  `json:"decisions,omitempty"`
+	Notes                []Note      `json:"notes,omitempty"`
 	Colleagues           []Colleague `json:"colleagues,omitempty"`
 	Projects             []string    `json:"projects,omitempty"`
 	Omitted              []string    `json:"omitted,omitempty"`
@@ -359,6 +368,12 @@ func (m *Manifest) Prompt() string {
 		b.WriteString("\n## Accepted decisions you may rely on (cite by ID)\n")
 		for _, d := range m.Decisions {
 			fmt.Fprintf(&b, "- %s [%s, %s, source %s]: %s\n", d.Title, d.ID, d.Scope, d.Source, oneLine(d.Body))
+		}
+	}
+	if len(m.Notes) > 0 {
+		b.WriteString("\n## Your notes from earlier work (cite as your notes; supersede any that are out of date with note_record)\n")
+		for _, n := range m.Notes {
+			fmt.Fprintf(&b, "- %s [%s, %s, source %s]\n", oneLine(n.Body), n.ID, n.Scope, n.Source)
 		}
 	}
 	if len(m.Colleagues) > 0 {

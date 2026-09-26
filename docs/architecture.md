@@ -55,6 +55,17 @@ the code that enforces them and the tests that prove it.
    colleague who doesn't exist. A colleague who is present but lacks access is
    not waived: the author asks in the room (A42).
 
+**Engineer notes.** Context layer 5 (spec §8) is each engineer's short
+notes from earlier work (`engineer_notes`). An engineer keeps one with
+`note_record`, citing messages or jobs; the note is scoped to a project or
+room and is visible only where its sources are (a private room's note stays
+in that room). The narrow auto-accept policy keeps a note whose sources are
+all the engineer's own completed work; anything else waits on the profile
+as a suggestion, with no notification or queue. A run's context includes
+up to 12 kept notes usable in its conversation, in projects the engineer
+can still access, and not due for review (90 days, renewable). Corrections
+supersede; nothing is overwritten.
+
 **Late output.** A machine that reports for an attempt under an old lease
 epoch is refused, and what it sent (run events, its final report, tool
 calls) is kept, redacted and once, in `quarantined_output`. The work's

@@ -311,6 +311,13 @@ func (h *Hub) dispatchTool(ctx context.Context, run store.RunRow, call protocol.
 			}
 			out, err = h.toolDecisionPropose(ctx, t, env, a)
 			return err
+		case bridge.NoteRecord:
+			a, err := decode[bridge.NoteRecordArgs](call.Args)
+			if err != nil {
+				return err
+			}
+			out, err = h.toolNoteRecord(ctx, t, env, a)
+			return err
 		case bridge.RecordCheck:
 			var c protocol.CheckRecord
 			if err := json.Unmarshal(call.Args, &c); err != nil {

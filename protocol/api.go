@@ -823,6 +823,43 @@ type SetupStatus struct {
 	Version    string `json:"version"`
 }
 
+// EngineerNote is a short note an engineer keeps from earlier work (spec §8,
+// context layer 5). Accepted, current notes enter the engineer's context
+// only in conversations where all of their sources are visible.
+type EngineerNote struct {
+	ID             string        `json:"id"`
+	EngineerID     string        `json:"engineerId"`
+	Scope          DecisionScope `json:"scope"` // project | room
+	Body           string        `json:"body"`
+	Status         string        `json:"status"` // proposed | accepted | superseded | rejected
+	SupersedesID   string        `json:"supersedesId,omitempty"`
+	SupersededByID string        `json:"supersededById,omitempty"`
+	CreatedBy      Actor         `json:"createdBy"`
+	AcceptedBy     *Actor        `json:"acceptedBy,omitempty"`
+	Sources        []Source      `json:"sources"`
+	VisibleRoomIDs []string      `json:"visibleRoomIds"`
+	// ReviewAfter is when the note is due for review; past it the note is
+	// left out of context until renewed.
+	ReviewAfter time.Time  `json:"reviewAfter"`
+	Version     int64      `json:"version"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	AcceptedAt  *time.Time `json:"acceptedAt,omitempty"`
+}
+
+// NoteRequest is an owner-written note for an engineer (accepted at once),
+// optionally correcting an earlier one.
+type NoteRequest struct {
+	Scope        DecisionScope `json:"scope"`
+	Body         string        `json:"body"`
+	SupersedesID string        `json:"supersedesId,omitempty"`
+}
+
+// NoteActionRequest accepts, rejects, renews, or removes a note.
+type NoteActionRequest struct {
+	Action  string `json:"action"` // accept | reject | renew | remove
+	Version int64  `json:"version"`
+}
+
 // QuarantinedOutput is output an attempt sent after it lost its lease. It
 // never changed the work; it's kept so a person can see what happened.
 type QuarantinedOutput struct {
