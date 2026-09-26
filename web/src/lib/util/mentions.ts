@@ -153,3 +153,19 @@ export function parseSerializedMentions(raw: string | null | undefined): Selecte
     return [];
   }
 }
+
+/**
+ * The projects a message names in plain text ("fix Atlas's expiry"), as whole
+ * words, case-insensitively. The composer turns them into project chips.
+ */
+export function projectsNamedIn(text: string, projects: { id: string; name: string }[]): string[] {
+  const lower = text.toLowerCase();
+  return projects
+    .filter((p) => {
+      const name = p.name.trim().toLowerCase();
+      if (!name) return false;
+      const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(^|[^\\p{L}\\p{N}_-])${esc}(?=$|[^\\p{L}\\p{N}_-])`, 'u').test(lower);
+    })
+    .map((p) => p.id);
+}

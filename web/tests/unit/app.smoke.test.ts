@@ -267,6 +267,34 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect((hub.last('POST', /messages$/)!.body as { mentions: unknown[] }).mentions).toEqual([{ kind: 'engineer', id: eng('Oren').id }]);
   });
 
+  it('turns a linked project named in the text into a project chip', async () => {
+    const sec = roomId('Security');
+    const atlas = Object.values(app.data.projects).find((p) => p.name === 'Atlas')!.id;
+    const ta = document.querySelector<HTMLTextAreaElement>('.room-composer textarea')!;
+    const chip = () => document.querySelector('.room-composer .projects button.set');
+    type(ta, 'fix atlas please');
+    await waitFor(() => chip()?.textContent?.includes('Atlas'), 'Atlas chip');
+    key(ta, 'Enter');
+    await waitFor(() => (hub.last('POST', new RegExp(`${sec}/messages$`))?.body as { body: string }).body === 'fix atlas please', 'post');
+    expect((hub.last('POST', /messages$/)!.body as { projectIds: string[] }).projectIds).toEqual([atlas]);
+    await settle();
+    expect(chip()).toBeNull(); // a detected chip belonged to that message only
+
+    // Removing the chip keeps it removed while the name stays in the text.
+    type(ta, 'is atlas deployed?');
+    await waitFor(() => chip(), 'chip again');
+    chip()!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await settle();
+    document.querySelector<HTMLInputElement>('.room-composer .project-pop input[type=checkbox]')!.click();
+    await settle();
+    type(ta, 'is atlas deployed yet?');
+    await settle();
+    expect(chip()).toBeNull();
+    key(ta, 'Enter');
+    await waitFor(() => (hub.last('POST', /messages$/)?.body as { body: string }).body === 'is atlas deployed yet?', 'second post');
+    expect((hub.last('POST', /messages$/)!.body as { projectIds: string[] }).projectIds).toEqual([]);
+  });
+
   it('keeps a failed send with Retry and says the draft is safe when offline', async () => {
     const sec = roomId('Security');
     hub.override('POST', new RegExp(`^/v1/rooms/${sec}/messages$`), () => {
