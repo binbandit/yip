@@ -153,13 +153,21 @@ session cookie off the network in clear text.
 ## Backups and restores
 
 ```sh
-yip backup --data ~/.yip/hub --out /Volumes/Backups/yip-2026-09-25
-yip restore --from /Volumes/Backups/yip-2026-09-25 --data ~/.yip/hub-restored
+yip backup --data ~/.yip/hub --out /Volumes/Backups/yip-2026-09-25.yipenc --encrypt
+yip restore --from /Volumes/Backups/yip-2026-09-25.yipenc --data ~/.yip/hub-restored
 ```
 
 - Backups are **online** (SQLite `VACUUM INTO`, safe while the hub runs) and
-  include the database, every artifact, the hub CA, and the hub key — **store
-  them encrypted**. Copying only `hub.db` while WAL is active is not a backup.
+  include the database, every artifact, the hub CA, and the hub key. Copying
+  only `hub.db` while WAL is active is not a backup.
+- `--encrypt` writes one file encrypted with your passphrase (Argon2id key,
+  AES-256-GCM in authenticated chunks, so a wrong passphrase, an altered
+  file, or a truncated one is refused). The passphrase comes from
+  `--passphrase-file`, `YIP_BACKUP_PASSPHRASE`, or is asked for twice; it is
+  at least 12 characters, and without it the backup can't be restored. The
+  backup is staged unencrypted in a private temporary directory while it's
+  verified and packed, then removed. Without `--encrypt` you get a plain
+  directory: keep it on an encrypted volume.
 - Restores go into a **new, empty directory** and verify database integrity,
   every artifact hash, and record counts before you point the hub at it.
 - Provider sign-ins are never in backups; re-establish them on runners.
