@@ -70,13 +70,13 @@ type Hub struct {
 	mu sync.Mutex
 	// excluded temporarily keeps a node out of scheduling for a run after
 	// the runner rejected an offer.
-	excluded   map[string]time.Time
+	excluded map[string]time.Time
 	// failedCalls counts identical failing tool calls per run, so an engineer
 	// stuck repeating the same call is stopped (RepeatedFailureLimit).
 	failedCalls map[string]int
-	closed     chan struct{}
-	wg         sync.WaitGroup
-	lastPRPoll time.Time
+	closed      chan struct{}
+	wg          sync.WaitGroup
+	lastPRPoll  time.Time
 }
 
 // Open opens the hub's data directory: database, CA, hub key, artifacts.

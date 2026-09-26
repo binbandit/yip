@@ -481,3 +481,8 @@ export function runStateNote(runState: string | undefined): string | undefined {
   }
   return undefined;
 }
+
+/** The short work ID people can quote and search for: the ID's last six characters. */
+export function workId(id: string): string {
+  return id.slice(-6);
+}

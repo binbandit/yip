@@ -586,7 +586,7 @@ func (s *Server) getOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
-	res, err := s.hub.Search(r.Context(), userFrom(r).ID, r.URL.Query().Get("q"), r.URL.Query().Get("room"))
+	res, err := s.hub.Search(r.Context(), userFrom(r).ID, r.URL.Query().Get("q"), r.URL.Query().Get("room"), r.URL.Query().Get("project"))
 	respond(s, w, r, res, err)
 }
 

@@ -21,6 +21,7 @@
     runStateLabel,
     runTone,
     waitingReasonLabel,
+    workId,
   } from '../../lib/util/labels';
   import { atTime, bytes, clock, duration, fullTime, relative, shortSha } from '../../lib/util/time';
   import RightPanel, { type PanelMode } from '../RightPanel.svelte';
@@ -52,6 +53,20 @@
   // A stop is only confirmed once the machine reports the attempt ended.
   const stoppingRun = $derived(runs.find((r) => r.state === 'stopping'));
   const project = $derived(job?.projectId ? app.data.projects[job.projectId] : undefined);
+  const repo = $derived(project?.repos.find((r) => r.id === job?.repoId));
+  // Waits a person fixes outside the work itself get a link to where to fix them.
+  const setupLink = $derived.by(() => {
+    if (job?.state !== 'waiting') return null;
+    switch (job.waitingReason) {
+      case 'provider_sign_in':
+      case 'provider_allowance':
+      case 'machine_availability':
+        return { href: '/machines', label: 'View machines and sign-ins' };
+      case 'engineer_capacity':
+        return { href: `/engineers/${job.ownerId}`, label: `View ${app.engineerName(job.ownerId)}'s setup` };
+    }
+    return null;
+  });
   const room = $derived(job ? app.data.rooms[job.source.roomId] : undefined);
   const live = $derived(!!job && isLiveJob(job));
   const canRetry = $derived(
@@ -248,7 +263,11 @@
       {/if}
 
       {#if (job.state === 'waiting' || job.state === 'failed' || job.state === 'review_ready') && job.stateDetail}
-        <p class="notice {job.state === 'failed' ? 'danger' : 'attention'}">{job.stateDetail}</p>
+        <p class="notice {job.state === 'failed' ? 'danger' : 'attention'}">
+          {job.stateDetail}{#if setupLink}{' '}<a href={setupLink.href}>{setupLink.label}</a>{/if}
+        </p>
+      {:else if setupLink}
+        <p class="notice attention">{waitingReasonLabel(job.waitingReason)}. <a href={setupLink.href}>{setupLink.label}</a></p>
       {/if}
       {#if unknownRun}
         <p class="notice attention">
@@ -282,6 +301,16 @@
             </dd>
           </div>
         {/if}
+        {#if project}
+          <div>
+            <dt>Project</dt>
+            <dd>
+              <a href="/projects/{project.id}">{project.name}</a>{#if repo}{' '}<span class="meta"
+                  >· <span class="mono">{repo.forgeRepo || repo.name}</span></span
+                >{/if}
+            </dd>
+          </div>
+        {/if}
         <div>
           <dt>Machine</dt>
           <dd>{job.nodeId ? app.nodeName(job.nodeId) || 'A paired machine' : 'Not assigned yet'}</dd>
@@ -297,6 +326,10 @@
           <dd>
             {job.lastActivity || 'Nothing yet'}{#if job.lastActivityAt}{' '}<span class="meta" title={fullTime(job.lastActivityAt)}>· {relative(job.lastActivityAt, app.now)}</span>{/if}
           </dd>
+        </div>
+        <div>
+          <dt>Work ID</dt>
+          <dd><span class="mono" title={job.id}>#{workId(job.id)}</span></dd>
         </div>
         <div>
           <dt>From</dt>
