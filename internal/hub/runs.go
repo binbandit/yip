@@ -525,6 +525,13 @@ func (h *Hub) onRunAck(ctx context.Context, nodeID string, f protocol.Frame, a p
 }
 
 func (h *Hub) onCommandAck(ctx context.Context, nodeID string, f protocol.Frame, a protocol.CommandAck) error {
+	if w, ok := h.ackWaiters.LoadAndDelete(nodeID + "|" + a.CommandID); ok {
+		select {
+		case w.(chan protocol.CommandAck) <- a:
+		default:
+		}
+		return nil
+	}
 	return h.do(ctx, func(t *txn) error {
 		if err := store.AckOutbox(ctx, t.tx, a.CommandID); err != nil {
 			return err

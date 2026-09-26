@@ -86,6 +86,7 @@ func (r *Runner) Probe(ctx context.Context) protocol.RunnerCapabilities {
 	}
 	wg.Wait()
 	caps.Profiles = r.profiles(caps)
+	caps.Workspaces = r.listWorkspaces(ctx)
 	return caps
 }
 

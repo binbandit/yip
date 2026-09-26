@@ -82,8 +82,6 @@ now closed (each with a test):
 
 Still open (not blocking the scenario, recorded here so they aren't lost):
 
-- Workspace cleanup is CLI-only (`yip runner workspaces` / `cleanup`); the
-  UI shows storage pressure but can't delete a workspace.
 - Repository registration needs a reachable remote; importing a local
   snapshot or bundle (§ Repository access) isn't implemented.
 - Idempotency keys cover messages, job input, review requests, and forge
@@ -121,7 +119,7 @@ Still open (not blocking the scenario, recorded here so they aren't lost):
 | A21 | Verified | Overview conversation answers from the ledger with timestamps and no engineer run, covering every project and what waits on you (`TestRegressionOverviewStatusCoversAllProjects`) |
 | A22 | Verified | `TestDecisionCorrection`; correction from the decision drawer keeps the sources (unit test) |
 | A23 | Verified | `TestIncompatibleMachineExplains`, `TestRegressionBillingGateAndAccountPin`, `TestRegressionProjectToolchainRequirement` |
-| A24 | Implemented | Workspaces are never deleted automatically; `yip runner workspaces` / `yip runner cleanup --workspace X --confirm X`. |
+| A24 | Verified | Workspaces are never deleted automatically. Machines lists them with their work and what deleting loses; removal needs explicit selection, a named confirmation, and `force` for uncommitted/unpublished work, and is refused for open or in-use work (`TestRegressionRemoveWorkspaceFromMachines`, Machines unit test). CLI: `yip runner workspaces` / `cleanup`. |
 | A25 | Verified (manual) | `yip backup` against a running hub, `yip restore` into a new directory: integrity, 12 artifact hashes, and record counts matched (recorded 25 Sep). |
 | A26 | Incomplete | Keyboard/zoom not verified in a browser. |
 | A27 | Incomplete | Layouts not visually inspected in a browser. |

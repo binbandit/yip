@@ -661,6 +661,21 @@ type Node struct {
 	LastActivity  string                 `json:"lastActivity,omitempty"`
 	CreatedAt     time.Time              `json:"createdAt"`
 	RevokedAt     *time.Time             `json:"revokedAt,omitempty"`
+	// Workspaces on the machine, as last reported, with the work they hold.
+	Workspaces []NodeWorkspace `json:"workspaces"`
+}
+
+// NodeWorkspace is a runner workspace joined with the work it belongs to.
+type NodeWorkspace struct {
+	WorkspaceInfo
+	JobID    string `json:"jobId,omitempty"`
+	JobTitle string `json:"jobTitle,omitempty"`
+	JobState string `json:"jobState,omitempty"`
+	// Published is true when the branch head is the work's published
+	// revision and nothing is uncommitted: removing it loses nothing.
+	Published bool `json:"published"`
+	// Blocked explains why it can't be removed now (in use, open work).
+	Blocked string `json:"blocked,omitempty"`
 }
 
 const (

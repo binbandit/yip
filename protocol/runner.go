@@ -95,6 +95,21 @@ type RunnerCapabilities struct {
 	Toolchains   map[string]string      `json:"toolchains"`
 	Replicas     []string               `json:"replicas"`
 	ServiceState string                 `json:"serviceState"`
+	// Workspaces are the per-job worktrees and review snapshots on disk.
+	Workspaces []WorkspaceInfo `json:"workspaces"`
+}
+
+// WorkspaceInfo describes one workspace directory on a runner.
+type WorkspaceInfo struct {
+	Name       string    `json:"name"` // directory name under the runner's work dir
+	Kind       string    `json:"kind"` // job | review | scratch
+	Ref        string    `json:"ref"`  // short job ID (job) or run ID (review, scratch)
+	Branch     string    `json:"branch,omitempty"`
+	Head       string    `json:"head,omitempty"`
+	Changes    int       `json:"changes"` // uncommitted files
+	SizeMB     int64     `json:"sizeMb"`
+	ModifiedAt time.Time `json:"modifiedAt"`
+	InUse      bool      `json:"inUse"` // an active attempt is using it
 }
 
 type ActiveRun struct {
@@ -342,7 +357,9 @@ type Reconcile struct {
 	Runs []Lease `json:"runs"`
 }
 
+// CleanupWorkspace asks a runner to delete one workspace. The runner
+// refuses one in use, and one with uncommitted changes unless Force.
 type CleanupWorkspace struct {
-	JobID string `json:"jobId"`
-	Force bool   `json:"force"`
+	Workspace string `json:"workspace"`
+	Force     bool   `json:"force"`
 }

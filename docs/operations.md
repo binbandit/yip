@@ -61,6 +61,14 @@ The runner reports git, go, node, python3, docker, cargo, swift and
 xcodebuild; work only goes to machines that have what the project needs, and
 otherwise waits with the missing piece named.
 
+Workspaces (a git worktree per piece of work, plus review snapshots) are
+never deleted automatically. **Machines → Workspaces** lists each with its
+work, size, and whether deleting it loses anything; *Delete…* states the
+consequence first, needs a second confirmation when uncommitted or
+unpublished work would be lost, and is refused while the work is open or an
+attempt is using it. The machine removes the files itself. The same is
+available on the machine as `yip runner workspaces` / `yip runner cleanup`.
+
 Revoke a machine from Machines. It can't regain authority by replaying its
 queue; its in-flight runs are marked unknown until reconciled.
 

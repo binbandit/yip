@@ -67,6 +67,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `GET /v1/nodes`, `POST /v1/nodes/enrollments` | → `Node[]` / `Enrollment` (token + pairing `command`, shown once) |
 | `POST /v1/nodes/{id}/drain` (`{drain}`), `POST /v1/nodes/{id}/stop`, `DELETE /v1/nodes/{id}/credential` | drain / stop its work / revoke |
 | `POST /v1/nodes/{id}/probe` | ask a connected machine to re-check its providers now (e.g. after `codex login`); the result arrives as `node.updated` |
+| `POST /v1/nodes/{id}/workspaces/{name}/remove` | `CleanupWorkspaceRequest` (`confirm` repeats the name; `force` when uncommitted or unpublished work would be lost) → `Node`. The machine deletes the files and confirms; open work's workspace and one in use are refused. `Node.workspaces` lists what each machine last reported, joined with its work |
 | `GET /v1/provider-profiles`, `PUT /v1/provider-profiles/{id}` | → `ProviderProfile[]` / `ProviderProfileRequest` (`maxConcurrency` 1–16; default 1 — runs on one account share its allowance). `pausedUntil` is set while the account's allowance is exhausted; its queued work waits until then |
 | `GET /v1/decisions?status=`, `POST /v1/decisions`, `POST /v1/decisions/{id}` | `DecisionRequest` / `DecisionActionRequest` |
 | `GET /v1/overview?seen=1` | → `Overview` (catch-up since last visit, work rows, decisions, open questions, `roomId` of the personal Overview conversation). `seen=1` records the visit. |

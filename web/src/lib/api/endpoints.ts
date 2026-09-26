@@ -6,6 +6,7 @@ import type {
   ApprovalDecisionRequest,
   Bootstrap,
   CancelJobRequest,
+  CleanupWorkspaceRequest,
   CreateEngineerRequest,
   CreateEnrollmentRequest,
   CreateProjectRequest,
@@ -109,6 +110,8 @@ export const api = {
   jobInput: (jobId: string, req: JobInputRequest) => post<JobInputResponse>(`/v1/jobs/${q(jobId)}/input`, req),
   cancelJob: (jobId: string, req: CancelJobRequest) => post<Job>(`/v1/jobs/${q(jobId)}/cancel`, req),
   restartJob: (jobId: string) => post<Job>(`/v1/jobs/${q(jobId)}/restart`, {}),
+  removeWorkspace: (nodeId: string, name: string, req: CleanupWorkspaceRequest) =>
+    post<Node>(`/v1/nodes/${q(nodeId)}/workspaces/${q(name)}/remove`, req),
   retryJob: (jobId: string, req: RetryJobRequest) => post<Job>(`/v1/jobs/${q(jobId)}/retry`, req),
   acceptJob: (jobId: string, req: AcceptJobRequest) => post<Job>(`/v1/jobs/${q(jobId)}/accept`, req),
   /** Attempts queued or executing in your rooms (for "working" indicators). */

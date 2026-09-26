@@ -258,7 +258,10 @@ type NodeActionRequest struct {
 	Drain bool `json:"drain"`
 }
 
+// CleanupWorkspaceRequest deletes one workspace on a machine. Confirm must
+// repeat the workspace name; Force is required when unpublished or
+// uncommitted work would be lost.
 type CleanupWorkspaceRequest struct {
-	JobID   string `json:"jobId"`
-	Confirm string `json:"confirm"` // must equal the job ID; dirty work is only removed explicitly
+	Confirm string `json:"confirm"`
+	Force   bool   `json:"force"`
 }

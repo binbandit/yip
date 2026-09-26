@@ -74,9 +74,12 @@ type Hub struct {
 	// failedCalls counts identical failing tool calls per run, so an engineer
 	// stuck repeating the same call is stopped (RepeatedFailureLimit).
 	failedCalls map[string]int
-	closed      chan struct{}
-	wg          sync.WaitGroup
-	lastPRPoll  time.Time
+	// ackWaiters receive a runner's acknowledgement of a direct command an
+	// owner is waiting on (e.g. deleting a workspace), keyed by command ID.
+	ackWaiters sync.Map
+	closed     chan struct{}
+	wg         sync.WaitGroup
+	lastPRPoll time.Time
 }
 
 // Open opens the hub's data directory: database, CA, hub key, artifacts.

@@ -6,7 +6,7 @@
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
-  import type { Node } from '../lib/api/types.gen';
+  import type { Node, NodeWorkspace } from '../lib/api/types.gen';
   import { authStateLabel, billingLabel, nodeShape, nodeStatusLabel, nodeTone, providerLabel } from '../lib/util/labels';
   import { atTime, bytes, clock, relative } from '../lib/util/time';
   import StateIcon from '../components/StateIcon.svelte';
@@ -53,7 +53,18 @@
   }
 
   let adding = $state(false);
-  let confirm = $state<null | { kind: 'drain' | 'undrain' | 'stop' | 'revoke'; node: Node }>(null);
+  let confirm = $state<null | { kind: 'drain' | 'undrain' | 'stop' | 'revoke' | 'workspace'; node: Node; ws?: NodeWorkspace }>(null);
+  // Workspaces list collapses past a few; most machines hold a handful.
+  let showAllWs = $state<Record<string, boolean>>({});
+  function wsLabel(w: NodeWorkspace): string {
+    if (w.jobTitle) return w.kind === 'job' ? w.jobTitle : `Review snapshot · ${w.jobTitle}`;
+    return w.kind === 'job' ? 'Work no longer on this hub' : w.kind === 'review' ? 'Review snapshot' : 'Conversation scratch space';
+  }
+  function wsLoss(w: NodeWorkspace): string {
+    if (w.published) return 'Nothing is lost: its result is published and nothing is uncommitted.';
+    if (w.changes > 0) return `${w.changes} uncommitted ${w.changes === 1 ? 'change' : 'changes'} will be lost.`;
+    return w.jobId ? 'Commits on its branch that were never published as a revision will be lost.' : 'Anything in it that wasn’t pushed elsewhere will be lost.';
+  }
 
   onMount(() => {
     api
@@ -89,6 +100,10 @@
     if (kind === 'drain' || kind === 'undrain') {
       app.data.nodes[node.id] = await api.drainNode(node.id, kind === 'drain');
       app.announce(kind === 'drain' ? `${node.name} will finish its current work and take nothing new.` : `${node.name} accepts new work again.`);
+    } else if (kind === 'workspace' && confirm.ws) {
+      const ws = confirm.ws;
+      app.data.nodes[node.id] = await api.removeWorkspace(node.id, ws.name, { confirm: ws.name, force: !ws.published });
+      app.announce(`Removed ${ws.name} from ${node.name}.`);
     } else if (kind === 'stop') {
       await api.stopNodeWork(node.id);
       app.announce(`Stopping the work running on ${node.name}.`);
@@ -114,6 +129,15 @@
           label: 'Stop its work',
           danger: true,
         };
+      case 'workspace': {
+        const w = confirm.ws!;
+        return {
+          title: `Delete ${w.name} on ${n}?`,
+          body: `${wsLabel(w)} · ${bytes(w.sizeMb * 1024 * 1024)}. ${wsLoss(w)} The files are deleted from ${n}; the work's record, revisions and reviews on the hub stay.`,
+          label: w.published ? 'Delete workspace' : 'Delete, losing that work',
+          danger: true,
+        };
+      }
       case 'revoke':
         return {
           title: `Revoke ${n}?`,
@@ -241,6 +265,40 @@
               </section>
             {/if}
 
+            {#if (n.workspaces ?? []).length}
+              {@const all = n.workspaces ?? []}
+              {@const shown = showAllWs[n.id] ? all : all.slice(0, 4)}
+              <section class="sub">
+                <div class="sub-head">
+                  <h3>Workspaces</h3>
+                  <span class="meta">{all.length} · {bytes(all.reduce((t, w) => t + w.sizeMb, 0) * 1024 * 1024)}</span>
+                </div>
+                <ul class="wss">
+                  {#each shown as w (w.name)}
+                    <li>
+                      <div class="ws-main">
+                        {#if w.jobId}
+                          <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: w.jobId! })}>{wsLabel(w)}</button>
+                        {:else}<span>{wsLabel(w)}</span>{/if}
+                        <span class="meta">
+                          <span class="mono">{w.name}</span>{w.branch ? ` · ${w.branch}` : ''} · {bytes(w.sizeMb * 1024 * 1024)} · {relative(w.modifiedAt, app.now)}
+                        </span>
+                        <span class="meta" class:tone-attention={!w.published && !w.blocked}>
+                          {w.blocked ? `In use — ${w.blocked}` : w.published ? 'Result published; safe to delete' : w.changes > 0 ? `${w.changes} uncommitted ${w.changes === 1 ? 'change' : 'changes'}` : 'Not published'}
+                        </span>
+                      </div>
+                      {#if !w.blocked && n.status === 'online'}
+                        <button class="btn btn-sm btn-quiet" onclick={() => (confirm = { kind: 'workspace', node: n, ws: w })}>Delete…</button>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+                {#if all.length > 4}
+                  <button class="btn btn-sm btn-quiet" onclick={() => (showAllWs[n.id] = !showAllWs[n.id])}>{showAllWs[n.id] ? 'Show fewer' : `Show all ${all.length}`}</button>
+                {/if}
+              </section>
+            {/if}
+
             {#if Object.keys(n.toolchains ?? {}).length}
               <p class="meta tools">Toolchains: {Object.entries(n.toolchains).map(([k, v]) => (v.toLowerCase().startsWith(k.toLowerCase()) ? v : `${k} ${v}`)).join(' · ')}</p>
             {/if}
@@ -279,6 +337,31 @@
 {/if}
 
 <style>
+  .wss {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+  }
+  .wss li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-top: 1px solid var(--line-soft);
+  }
+  .wss li:first-child {
+    border-top: 0;
+  }
+  .ws-main {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+  }
+  .ws-main .mono {
+    overflow-wrap: anywhere;
+  }
   .conc {
     display: flex;
     align-items: center;
