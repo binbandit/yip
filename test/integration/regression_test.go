@@ -1583,8 +1583,18 @@ func TestRegressionClarificationToWaitingWork(t *testing.T) {
 		}
 		return nil
 	}})
+	// Waiting is a job state; the provider can still be finishing its turn.
+	// This test specifically exercises the idle-engineer reply path.
+	waitIdle := func() {
+		e.waitFor("the engineer's attempts to finish", 15*time.Second, func() bool {
+			runs, err := store.RunsInStates(e.ctx, e.hub.Store().R(), protocol.RunCreated, protocol.RunOffered,
+				protocol.RunPreparing, protocol.RunRunning, protocol.RunAwaitingInput, protocol.RunStopping, protocol.RunUnknown)
+			return err == nil && len(runs) == 0
+		})
+	}
 	e.post("Security", "@Mira can you fix Atlas accepting expired sessions?", []string{"mira"}, nil)
 	fix := e.waitJob("Fix Atlas session expiry", protocol.JobWaiting)
+	waitIdle()
 	clar := e.post("Security", "@Mira also keep the existing API response shape", []string{"mira"}, nil)
 	e.waitFor("the reply to add it to the fix", 15*time.Second, func() bool {
 		for _, in := range e.jobDetail(fix.ID).Inputs {
@@ -1594,6 +1604,7 @@ func TestRegressionClarificationToWaitingWork(t *testing.T) {
 		}
 		return false
 	})
+	waitIdle()
 	e.post("Security", "@Mira can you fix the Atlas refresh bug?", []string{"mira"}, nil)
 	e.waitFor("a second waiting assignment", 20*time.Second, func() bool {
 		n := 0
@@ -1604,6 +1615,7 @@ func TestRegressionClarificationToWaitingWork(t *testing.T) {
 		}
 		return n == 2
 	})
+	waitIdle()
 	amb := e.post("Security", "@Mira also log the rejected token's age", []string{"mira"}, nil)
 	e.waitMessage("Security", "Which one is that for:")
 	for _, j := range e.jobs() {
