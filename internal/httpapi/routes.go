@@ -59,6 +59,7 @@ func (s *Server) routes() {
 	a("GET /v1/jobs/{id}", s.getJob)
 	a("GET /v1/jobs/{id}/runs/{runId}/activity", s.runActivity)
 	a("POST /v1/jobs/{id}/input", s.jobInput)
+	a("POST /v1/jobs/{id}/restart", s.restartJob)
 	a("POST /v1/jobs/{id}/cancel", s.cancelJob)
 	a("POST /v1/jobs/{id}/retry", s.retryJob)
 	a("POST /v1/jobs/{id}/accept", s.acceptJob)
@@ -410,6 +411,11 @@ func (s *Server) getJob(w http.ResponseWriter, r *http.Request) {
 func (s *Server) runActivity(w http.ResponseWriter, r *http.Request) {
 	acts, err := s.hub.RunActivity(r.Context(), userFrom(r).ID, r.PathValue("id"), r.PathValue("runId"))
 	respond(s, w, r, acts, err)
+}
+
+func (s *Server) restartJob(w http.ResponseWriter, r *http.Request) {
+	j, err := s.hub.RestartWithInput(r.Context(), userFrom(r).ID, r.PathValue("id"))
+	respond(s, w, r, j, err)
 }
 
 func (s *Server) jobInput(w http.ResponseWriter, r *http.Request) {

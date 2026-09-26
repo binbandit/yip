@@ -825,6 +825,15 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		}
 		return status(fmt.Sprintf("%s went quiet on %s%s while working on %s. yip can't confirm how it ended yet.", engName, nodeName, at, job.Title))
 	case protocol.RunCancelled:
+		// An explicit interrupt-and-restart starts the next attempt now.
+		if pw, err := store.TakePendingWake(ctx, t.tx, job.ID); err != nil {
+			return err
+		} else if pw != nil && pw.Purpose == "restart" {
+			_, err := h.enqueueRun(ctx, t, job, runReason{Purpose: "restart", Cause: pw.Cause, Note: pw.Note})
+			return err
+		} else if pw != nil {
+			return store.SetPendingWake(ctx, t.tx, job.ID, pw) // not ours: keep it for whoever resumes the work
+		}
 		return nil
 	}
 	// Completion already requested and waiting on review: a later attempt

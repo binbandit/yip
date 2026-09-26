@@ -430,6 +430,8 @@ func purposeLabel(p string) string {
 		return "an answer to your question"
 	case "input":
 		return "new input on your job"
+	case "restart":
+		return "the owner interrupted your last attempt to give you new input"
 	case "help":
 		return "a colleague's help request"
 	case "help_answered":

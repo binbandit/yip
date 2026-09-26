@@ -224,6 +224,17 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     );
     await waitFor(() => text().includes("Queued for Pip's next step"), 'queued receipt');
     expect(text()).not.toContain('Pip received your update');
+    // Waiting work takes the update when it resumes; nothing to interrupt.
+    expect(byText('.room-composer button', 'Interrupt and restart now')).toBeFalsy();
+    // Queued on running work: the explicit interrupt-and-restart is offered.
+    const before = app.data.jobs[pipJob.id].state;
+    app.data.jobs[pipJob.id].state = 'running';
+    hub.override('POST', new RegExp(`^/v1/jobs/${pipJob.id}/restart$`), () => ({ body: app.data.jobs[pipJob.id] }));
+    const restart = await waitFor(() => byText('.room-composer button', 'Interrupt and restart now'), 'restart offered');
+    restart.click();
+    await waitFor(() => hub.last('POST', /\/restart$/), 'restart posted');
+    await waitFor(() => text().includes('Restarting Pip with your update.'), 'restart note');
+    app.data.jobs[pipJob.id].state = before;
     // The optimistic copy reconciled to one message.
     expect(document.querySelectorAll('[data-message-id="m-steer"]').length).toBe(1);
     expect(document.querySelector('article.pending')).toBeNull();

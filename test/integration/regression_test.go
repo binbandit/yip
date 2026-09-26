@@ -921,3 +921,39 @@ func TestRegressionFollowUpLinksOriginal(t *testing.T) {
 		t.Fatalf("the engineer's context should say what the work follows up")
 	}
 }
+
+// §8D: "interrupt and restart" stops the current attempt without closing the
+// work and starts the next one at once, told why.
+func TestRegressionInterruptAndRestart(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Reverse engineering", "investigate"):
+			return script(toolStep("work_create", map[string]any{"title": "Investigate retries", "objective": "Investigate retries", "kind": "investigation", "project": "Beacon"}, ""))
+		case m.Job.Title == "Investigate retries" && m.Purpose == "restart":
+			return script(toolStep("work_update", map[string]any{"state": "completed", "summary": "Restarted and done."}, ""))
+		case m.Job.Title == "Investigate retries":
+			return script(fake.Step{Status: "Working"}, fake.Step{Fault: "hang"})
+		}
+		return nil
+	}})
+	e.post("Reverse engineering", "@Pip investigate retries please", []string{"pip"}, nil)
+	j := e.waitJob("Investigate retries", protocol.JobRunning)
+	e.waitFor("attempt running", 10*time.Second, func() bool {
+		d := e.jobDetail(j.ID)
+		return len(d.Runs) > 0 && d.Runs[len(d.Runs)-1].State == protocol.RunRunning
+	})
+	e.c.must("POST", "/v1/jobs/"+j.ID+"/restart", struct{}{}, nil)
+	j = e.waitJob("Investigate retries", protocol.JobCompleted)
+	states := map[protocol.RunState]int{}
+	e.waitFor("both attempts settled", 10*time.Second, func() bool {
+		states = map[protocol.RunState]int{}
+		for _, r := range e.jobDetail(j.ID).Runs {
+			states[r.State]++
+		}
+		return states[protocol.RunCancelled] == 1 && states[protocol.RunSucceeded] == 1 && len(e.jobDetail(j.ID).Runs) == 2
+	})
+	// Nothing is running any more: a second restart is refused.
+	if err := e.c.do("POST", "/v1/jobs/"+j.ID+"/restart", struct{}{}, nil); !isStatus(err, 409) {
+		t.Fatalf("restarting finished work should conflict: %v", err)
+	}
+}
