@@ -691,6 +691,7 @@ func (h *Hub) toolWorkCreate(ctx context.Context, t *txn, env toolEnv, a bridge.
 		p := env.job
 		spec.Parent = &p
 	}
+	spec.Follows = h.followTarget(ctx, t.tx, env.job)
 	if delegated {
 		spec.Depth = env.job.Depth + 1
 		if env.job.Kind == protocol.JobKindReply {

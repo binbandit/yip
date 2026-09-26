@@ -127,6 +127,15 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 	jf := manifest.Job{ID: job.ID, Kind: job.Kind, Title: job.Title, Objective: job.Objective, Acceptance: job.Acceptance,
 		State: string(job.State), Project: projectNames[job.ProjectID], PeerReview: job.RequiresPeerReview,
 		HumanReview: job.RequiresHumanReview, Parent: job.ParentID, Summary: job.Summary}
+	if job.FollowsID != "" {
+		if f, err := store.GetJob(ctx, q, job.FollowsID); err == nil && f.Source.RoomID == room.ID {
+			fj := &manifest.FollowedJob{ID: f.ID, Title: f.Title, State: string(f.State), Summary: truncate(f.Summary, 600)}
+			if f.Revision != nil {
+				fj.Head = f.Revision.Head
+			}
+			jf.FollowsUp = fj
+		}
+	}
 	var repo *protocol.Repo
 	if job.RepoID != "" {
 		if r, err := store.GetRepo(ctx, q, job.RepoID); err == nil {

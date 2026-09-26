@@ -886,3 +886,38 @@ func TestRegressionProjectToolchainRequirement(t *testing.T) {
 		t.Fatalf("the run should not have been placed on a machine: %+v", e.jobDetail(j.ID).Runs)
 	}
 }
+
+// A request made in the thread of finished work starts follow-up work that
+// links to the original, and the engineer sees what it follows (spec §8).
+func TestRegressionFollowUpLinksOriginal(t *testing.T) {
+	var sawFollow atomic.Bool
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Engineering", "map the queue"):
+			return script(toolStep("work_create", map[string]any{"title": "Map the queue", "objective": "Map the queue", "kind": "investigation", "project": "Beacon"}, ""))
+		case m.Job.Title == "Map the queue":
+			return script(toolStep("work_update", map[string]any{"state": "completed", "summary": "The queue lives in worker/queue.go."}, ""))
+		case replyTo(m, "Engineering", "also map retries"):
+			return script(toolStep("work_create", map[string]any{"title": "Map the retries", "objective": "Map retries too", "kind": "investigation", "project": "Beacon"}, ""))
+		case m.Job.Title == "Map the retries":
+			if m.Job.FollowsUp != nil && m.Job.FollowsUp.Title == "Map the queue" && strings.Contains(m.Job.FollowsUp.Summary, "worker/queue.go") {
+				sawFollow.Store(true)
+			}
+			return script(toolStep("work_update", map[string]any{"state": "completed", "summary": "Retries are in worker/retry.go."}, ""))
+		}
+		return nil
+	}})
+	first := e.post("Engineering", "@Pip can you map the queue?", []string{"pip"}, nil)
+	orig := e.waitJob("Map the queue", protocol.JobCompleted)
+	e.post("Engineering", "@Pip also map retries please", []string{"pip"}, func(r *protocol.PostMessageRequest) { r.ThreadID = first.Message.ID })
+	next := e.waitJob("Map the retries", protocol.JobCompleted)
+	if next.FollowsID != orig.ID {
+		t.Fatalf("follow-up should link to %s, got %q", orig.ID, next.FollowsID)
+	}
+	if d := e.jobDetail(orig.ID); len(d.FollowUps) != 1 || d.FollowUps[0].ID != next.ID {
+		t.Fatalf("the original should list its follow-up: %+v", d.FollowUps)
+	}
+	if !sawFollow.Load() {
+		t.Fatalf("the engineer's context should say what the work follows up")
+	}
+}
