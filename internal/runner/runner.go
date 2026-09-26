@@ -7,10 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -205,11 +208,11 @@ func (r *Runner) Run(ctx context.Context) error {
 		start := time.Now()
 		err := r.session(ctx)
 		if ctx.Err() != nil {
-			r.stopAll("runner shutting down")
+			r.stopAll()
 			return nil
 		}
 		if errors.Is(err, errRevoked) {
-			r.stopAll("machine credential revoked")
+			r.stopAll()
 			return err
 		}
 		if time.Since(start) > 30*time.Second {
@@ -218,7 +221,7 @@ func (r *Runner) Run(ctx context.Context) error {
 		r.log.Warn("hub connection ended; reconnecting", "err", err, "in", backoff)
 		select {
 		case <-ctx.Done():
-			r.stopAll("runner shutting down")
+			r.stopAll()
 			return nil
 		case <-time.After(backoff):
 		}
@@ -274,7 +277,7 @@ func (r *Runner) session(ctx context.Context) error {
 
 	host, _ := os.Hostname()
 	hello := protocol.Hello{NodeID: r.id.NodeID, ProtocolVersion: protocol.RunnerProtocolVersion, RunnerVersion: r.opts.Version,
-		Hostname: host, OS: runtimeOS(), Arch: runtimeArch(), BootTime: bootTime}
+		Hostname: host, OS: runtime.GOOS, Arch: runtime.GOARCH, BootTime: bootTime}
 	jruns, _ := r.journal.Runs()
 	for _, jr := range jruns {
 		js := protocol.JournalRunState{RunID: jr.RunID, LeaseEpoch: jr.Epoch, State: jr.State, Terminal: jr.Terminal, LastSeq: jr.LastSeq,
@@ -428,15 +431,16 @@ func (r *Runner) resendUnacked(c *websocket.Conn) {
 	}
 }
 
-func (r *Runner) sendHeartbeat(c *websocket.Conn) {
-	hb := protocol.Heartbeat{DiskFreeMB: diskFreeMB(r.paths.Dir)}
+// activeRuns snapshots the runs this runner currently holds.
+func (r *Runner) activeRuns() []*activeRun {
 	r.mu.Lock()
-	all := make([]*activeRun, 0, len(r.runs))
-	for _, ar := range r.runs {
-		all = append(all, ar)
-	}
-	hb.FreeSlots = r.opts.Slots - len(r.runs)
-	r.mu.Unlock()
+	defer r.mu.Unlock()
+	return slices.Collect(maps.Values(r.runs))
+}
+
+func (r *Runner) sendHeartbeat(c *websocket.Conn) {
+	all := r.activeRuns()
+	hb := protocol.Heartbeat{DiskFreeMB: diskFreeMB(r.paths.Dir), FreeSlots: r.opts.Slots - len(all)}
 	for _, ar := range all {
 		ar.mu.Lock()
 		state := "accepted"
@@ -462,13 +466,7 @@ func (r *Runner) leaseMonitor(ctx context.Context) {
 		}
 		now := time.Now()
 		margin := time.Duration(r.stopMargin.Load())
-		r.mu.Lock()
-		all := make([]*activeRun, 0, len(r.runs))
-		for _, ar := range r.runs {
-			all = append(all, ar)
-		}
-		r.mu.Unlock()
-		for _, ar := range all {
+		for _, ar := range r.activeRuns() {
 			ar.mu.Lock()
 			expired := now.After(ar.leaseUntil.Add(-margin))
 			ar.mu.Unlock()
@@ -479,13 +477,13 @@ func (r *Runner) leaseMonitor(ctx context.Context) {
 			ar.leaseLost.Store(true)
 			ar.admit.Store(false)
 			if !r.dropUnstarted(ar, protocol.OutcomeLeaseLost, "the lease expired before this attempt started") {
-				r.stopRun(ar, "lease expired")
+				r.stopRun(ar)
 			}
 		}
 	}
 }
 
-func (r *Runner) stopRun(ar *activeRun, reason string) {
+func (r *Runner) stopRun(ar *activeRun) {
 	ar.mu.Lock()
 	sess, cancel := ar.session, ar.cancel
 	ar.mu.Unlock()
@@ -538,18 +536,13 @@ func (r *Runner) drop(ar *activeRun, outcome, reason string, report bool) bool {
 	return true
 }
 
-func (r *Runner) stopAll(reason string) {
+func (r *Runner) stopAll() {
 	r.shutdown.Store(true)
-	r.mu.Lock()
-	var all []*activeRun
-	for _, ar := range r.runs {
-		all = append(all, ar)
-	}
-	r.mu.Unlock()
+	all := r.activeRuns()
 	for _, ar := range all {
 		ar.admit.Store(false)
 		if !r.dropUnstarted(ar, protocol.OutcomeFailed, "the runner stopped before this attempt started") {
-			r.stopRun(ar, reason)
+			r.stopRun(ar)
 		}
 	}
 	for _, ar := range all {
@@ -607,7 +600,7 @@ func (r *Runner) handle(ctx context.Context, c *websocket.Conn, f protocol.Frame
 			ar.cancelled.Store(true)
 			ar.admit.Store(false)
 			if !r.dropUnstarted(ar, protocol.OutcomeCancelled, "cancelled before it started") {
-				r.stopRun(ar, "cancelled")
+				r.stopRun(ar)
 			}
 		}
 		return r.writeFrame(c, protocol.EvCommandAck, f.RunID, f.LeaseEpoch, protocol.CommandAck{CommandID: f.ID, OK: true})
@@ -675,7 +668,7 @@ func (r *Runner) handle(ctx context.Context, c *websocket.Conn, f protocol.Frame
 				ar.leaseLost.Store(true)
 				ar.admit.Store(false)
 				if !r.dropUnstarted(ar, protocol.OutcomeLeaseLost, "the hub revoked this attempt before it started") {
-					r.stopRun(ar, l.Reason)
+					r.stopRun(ar)
 				}
 				continue
 			}
@@ -807,7 +800,7 @@ func (r *Runner) onInput(c *websocket.Conn, f protocol.Frame) error {
 	ar := r.runs[f.RunID]
 	r.mu.Unlock()
 	if ar == nil {
-		r.emitInputDelivered(nil, f.RunID, f.LeaseEpoch, in.InputID, "unsupported", "The attempt has ended; the update is kept for the next attempt.")
+		r.emitInputDelivered(f.RunID, f.LeaseEpoch, in.InputID, "unsupported", "The attempt has ended; the update is kept for the next attempt.")
 		return ack()
 	}
 	ar.mu.Lock()
@@ -833,10 +826,10 @@ func (r *Runner) deliver(ar *activeRun, in protocol.DeliverInput) {
 		mode, detail = "unsupported", err.Error()
 	}
 	r.journal.MarkInputDelivered(in.InputID)
-	r.emitInputDelivered(ar, ar.m.RunID, ar.epoch, in.InputID, mode, detail)
+	r.emitInputDelivered(ar.m.RunID, ar.epoch, in.InputID, mode, detail)
 }
 
-func (r *Runner) emitInputDelivered(ar *activeRun, runID string, epoch int64, inputID, mode, detail string) {
+func (r *Runner) emitInputDelivered(runID string, epoch int64, inputID, mode, detail string) {
 	data, _ := json.Marshal(protocol.InputDelivered{InputID: inputID, Mode: mode, Detail: detail})
 	text := map[string]string{"immediate": "Received an update from the owner", "queued": "Queued the owner's update for the next step"}[mode]
 	r.emit(runID, epoch, protocol.RunEvent{Kind: protocol.RunEvInputDelivered, Text: text, Data: data})

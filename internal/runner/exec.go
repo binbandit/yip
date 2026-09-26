@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -40,9 +39,7 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 			t.Error = "the runner on " + r.id.Name + " shut down during this attempt"
 		}
 		if ar.ws != nil && !ar.ws.ReadOnly && !ar.ws.Scratch {
-			if cp := r.checkpoint(context.Background(), ar); cp != nil {
-				t.Checkpoint = cp
-			}
+			t.Checkpoint = r.checkpoint(context.Background(), ar)
 		}
 		t.LastSeq = r.journal.LastSeq(m.RunID)
 		if err := r.journal.SetTerminal(m.RunID, t); err != nil {
@@ -107,7 +104,7 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	ar.queued = nil
 	ar.mu.Unlock()
 	if ar.leaseLost.Load() || ar.cancelled.Load() {
-		r.stopRun(ar, "stopped before start")
+		r.stopRun(ar)
 	}
 	for _, in := range queued {
 		go r.deliver(ar, in)
@@ -261,7 +258,7 @@ func (r *Runner) checkpoint(ctx context.Context, ar *activeRun) *protocol.Checkp
 	head, dirty, _, _ := ar.ws.Head(ctx)
 	cp := &protocol.CheckpointInfo{Head: commit, Dirty: dirty || commit != head, Untracked: untracked}
 	if cp.Dirty {
-		if path, err := ar.ws.Bundle(ctx, ar.ws.Base, commit, ""); err == nil {
+		if path, err := ar.ws.Bundle(ctx, ar.ws.Base, commit); err == nil {
 			defer os.Remove(path)
 			if a, err := r.uploadAndRecord(ctx, ar, path, "checkpoint", "checkpoint "+shortRev(commit)+".bundle", "application/octet-stream", commit); err == nil {
 				cp.ArtifactID, cp.Hash = a.ID, a.Hash
@@ -286,5 +283,3 @@ func shortRev(r string) string {
 	}
 	return r
 }
-
-var _ = fmt.Sprintf

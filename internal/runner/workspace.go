@@ -95,10 +95,9 @@ func (w *Workspaces) replica(ctx context.Context, repo protocol.RepoSpec, fetch 
 			return "", err
 		}
 	}
-	if _, err := git(ctx, path, "fetch", "--quiet", "--prune", "origin"); err != nil {
-		// A stale replica is still usable for a recorded base; report, don't fail.
-		return path, nil
-	}
+	// A stale replica is still usable for a recorded base, so a failed fetch
+	// is not an error.
+	_, _ = git(ctx, path, "fetch", "--quiet", "--prune", "origin")
 	return path, nil
 }
 
@@ -373,7 +372,7 @@ func (ws *Workspace) Diff(ctx context.Context, base, head string) (diff string, 
 
 // Bundle writes a git bundle of base..head so another machine (a reviewer's,
 // or a recovery target) can reproduce exactly this revision.
-func (ws *Workspace) Bundle(ctx context.Context, base, head, ref string) (string, error) {
+func (ws *Workspace) Bundle(ctx context.Context, base, head string) (string, error) {
 	f, err := os.CreateTemp("", "yip-bundle-*.bundle")
 	if err != nil {
 		return "", err
@@ -384,15 +383,11 @@ func (ws *Workspace) Bundle(ctx context.Context, base, head, ref string) (string
 		return "", err
 	}
 	defer git(ctx, ws.Dir, "update-ref", "-d", tmpRef)
-	rangeArg := tmpRef
+	args := []string{"bundle", "create", f.Name(), tmpRef}
 	if base != "" && base != head {
-		rangeArg = "^" + base
-		if _, err := git(ctx, ws.Dir, "bundle", "create", f.Name(), tmpRef, rangeArg); err != nil {
-			return "", err
-		}
-		return f.Name(), nil
+		args = append(args, "^"+base)
 	}
-	if _, err := git(ctx, ws.Dir, "bundle", "create", f.Name(), tmpRef); err != nil {
+	if _, err := git(ctx, ws.Dir, args...); err != nil {
 		return "", err
 	}
 	return f.Name(), nil
