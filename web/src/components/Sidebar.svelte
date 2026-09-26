@@ -163,6 +163,9 @@
                 {#if eng}<Avatar actor={{ kind: 'engineer', id: eng.id }} size={22} />{:else}<span class="glyph"><Icon name="reply" size={15} /></span>{/if}
                 <span class="label truncate">{eng?.name ?? r.name}</span>
                 {#if unread}<span class="vh">, {r.unreadCount} unread</span>{/if}
+                {#if drafts.has(r.id) && !isCurrentRoom(r.id)}
+                  <span class="draft" title="Draft saved"><Icon name="pencil" size={13} /><span class="vh">, draft saved</span></span>
+                {/if}
                 {#if w}
                   <span class="working" title="{w.names.join(', ')} working">{w.elapsed}<span class="vh">, working</span></span>
                 {/if}

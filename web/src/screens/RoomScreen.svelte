@@ -125,6 +125,7 @@
           {/if}
           {#if room.kind === 'room' && room.projectIds.length === 0}
             <p class="muted">You can talk here now. Connect a project when you want the team to inspect or change code.</p>
+            <button class="btn btn-sm" onclick={() => app.openPanel({ kind: 'room', id: roomId })}>Connect a project</button>
           {/if}
         </div>
       {/snippet}
