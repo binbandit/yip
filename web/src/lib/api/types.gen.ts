@@ -607,6 +607,7 @@ export interface Preferences {
   sendKey: string;
   notify: string;
   lastSeenAt: string;
+  mutedRoomIds?: string[];
 }
 
 export interface PreferencesRequest {
