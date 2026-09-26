@@ -633,6 +633,9 @@ func (h *Hub) finishJob(ctx context.Context, t *txn, job store.JobRow) error {
 		if err := h.autoAcceptDecisions(ctx, t, job); err != nil {
 			return err
 		}
+		if err := h.autoAcceptNotes(ctx, t, job); err != nil {
+			return err
+		}
 	}
 	return h.resolveJobDependency(ctx, t, job)
 }

@@ -1232,3 +1232,118 @@ func TestRegressionIdempotencyKeys(t *testing.T) {
 	// Without a key, requests behave as before.
 	e.c.must("POST", "/v1/projects", protocol.CreateProjectRequest{Name: "Epsilon"}, nil)
 }
+
+// Engineer notes (spec §8 layer 5): kept automatically from the engineer's
+// own finished work, used only where their sources are visible, proposals
+// otherwise (no queue), correctable by supersession, and left out of
+// context once due for review until renewed.
+func TestRegressionEngineerNotes(t *testing.T) {
+	var seen sync.Map // room name → notes Pip saw
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		if m.Job.Kind == "reply" {
+			var bodies []string
+			for _, n := range m.Notes {
+				bodies = append(bodies, n.Body)
+			}
+			seen.Store(m.RoomName+"|"+m.Request.Body, strings.Join(bodies, "\n"))
+		}
+		switch {
+		case replyTo(m, "Reverse engineering", "map the queue"):
+			return script(toolStep("work_create", map[string]any{"title": "Map the queue", "objective": "Map it", "kind": "investigation", "project": "Beacon"}, ""))
+		case m.Job.Title == "Map the queue":
+			return script(toolStep("note_record", map[string]any{"body": "Beacon's queue lives in worker/queue.go", "sources": []string{}}, "n"),
+				toolStep("work_update", map[string]any{"state": "completed", "summary": "Mapped: {{n.status}}"}, ""))
+		case replyTo(m, "Hush", "secret"):
+			return script(toolStep("note_record", map[string]any{"body": "The incident was caused by the retry storm", "sources": []string{m.Request.ID}}, ""),
+				fake.Step{Final: "Noted."})
+		}
+		return script(fake.Step{Final: "OK"})
+	}})
+	pip := e.engineerID("pip")
+	beacon := e.project("Beacon")
+	e.c.must("POST", "/v1/rooms", protocol.CreateRoomRequest{Name: "Hush", Private: true, EngineerIDs: []string{pip}, ProjectIDs: []string{beacon.ID}}, nil)
+
+	e.post("Reverse engineering", "@Pip please map the queue", []string{"pip"}, nil)
+	j := e.waitJob("Map the queue", protocol.JobCompleted)
+	if !strings.Contains(e.jobDetail(j.ID).Job.Summary, "proposed") {
+		t.Fatalf("a note from open work should start as a proposal: %q", e.jobDetail(j.ID).Job.Summary)
+	}
+	notes := func() []protocol.EngineerNote {
+		var ns []protocol.EngineerNote
+		e.c.must("GET", "/v1/engineers/"+pip+"/notes", nil, &ns)
+		return ns
+	}
+	e.waitFor("the note is kept once the work is finished", 10*time.Second, func() bool {
+		ns := notes()
+		return len(ns) == 1 && ns[0].Status == "accepted" && ns[0].AcceptedBy != nil && ns[0].AcceptedBy.Kind == protocol.ActorSystem
+	})
+	// A private room's note is a proposal (message source) and stays there.
+	e.post("Hush", "@Pip this is secret: the retry storm did it", []string{"pip"}, nil)
+	var secret protocol.EngineerNote
+	e.waitFor("the private note is proposed", 10*time.Second, func() bool {
+		for _, n := range notes() {
+			if strings.Contains(n.Body, "retry storm") {
+				secret = n
+			}
+		}
+		return secret.ID != ""
+	})
+	if secret.Status != "proposed" || len(secret.VisibleRoomIDs) != 1 || secret.VisibleRoomIDs[0] != e.roomID("Hush") {
+		t.Fatalf("a private note should be a proposal visible only in its room: %+v", secret)
+	}
+	e.c.must("POST", "/v1/notes/"+secret.ID, protocol.NoteActionRequest{Action: "accept", Version: secret.Version}, &secret)
+
+	ask := func(room, body string) string {
+		e.post(room, body, []string{"pip"}, nil)
+		var got string
+		e.waitFor("Pip's context in "+room, 10*time.Second, func() bool {
+			v, ok := seen.Load(room + "|" + body)
+			if ok {
+				got = v.(string)
+			}
+			return ok
+		})
+		return got
+	}
+	got := ask("Reverse engineering", "@Pip where is the queue?")
+	if !strings.Contains(got, "worker/queue.go") || strings.Contains(got, "retry storm") {
+		t.Fatalf("Reverse engineering should see the Beacon note and not the private one:\n%s", got)
+	}
+	if got := ask("Hush", "@Pip anything to recall here?"); !strings.Contains(got, "retry storm") || !strings.Contains(got, "worker/queue.go") {
+		t.Fatalf("Hush (linked to Beacon) should see both notes:\n%s", got)
+	}
+	// The owner corrects the queue note; the old one is superseded.
+	var queue protocol.EngineerNote
+	for _, n := range notes() {
+		if strings.Contains(n.Body, "queue.go") {
+			queue = n
+		}
+	}
+	var fixed protocol.EngineerNote
+	e.c.must("POST", "/v1/engineers/"+pip+"/notes", protocol.NoteRequest{Body: "Beacon's queue moved to worker/jobs/queue.go", SupersedesID: queue.ID}, &fixed)
+	if fixed.Status != "accepted" || fixed.Scope != queue.Scope {
+		t.Fatalf("a correction is kept at once with the original's scope: %+v", fixed)
+	}
+	if got := ask("Reverse engineering", "@Pip where is it now?"); !strings.Contains(got, "worker/jobs/queue.go") || strings.Contains(got, "lives in worker/queue.go") {
+		t.Fatalf("the correction should replace the old note in context:\n%s", got)
+	}
+	// Due for review: left out of context until renewed.
+	if err := e.hub.Store().Tx(e.ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(e.ctx, `UPDATE engineer_notes SET review_after = ? WHERE id = ?`, store.TS(time.Now().Add(-time.Hour)), fixed.ID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := ask("Reverse engineering", "@Pip still there?"); strings.Contains(got, "queue") {
+		t.Fatalf("a note due for review should be left out:\n%s", got)
+	}
+	for _, n := range notes() {
+		if n.ID == fixed.ID {
+			fixed = n
+		}
+	}
+	e.c.must("POST", "/v1/notes/"+fixed.ID, protocol.NoteActionRequest{Action: "renew", Version: fixed.Version}, &fixed)
+	if got := ask("Reverse engineering", "@Pip and now?"); !strings.Contains(got, "worker/jobs/queue.go") {
+		t.Fatalf("a renewed note is back in context:\n%s", got)
+	}
+}

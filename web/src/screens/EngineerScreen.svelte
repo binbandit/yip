@@ -15,6 +15,7 @@
   import MessageBody from '../components/MessageBody.svelte';
   import ProviderSelect from '../components/ProviderSelect.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
+  import EngineerNotes from '../components/EngineerNotes.svelte';
 
   interface Props {
     id: string;
@@ -258,6 +259,8 @@
               </ul>
             {/if}
           </section>
+
+          <EngineerNotes engineerId={id} name={e.name} />
 
           <section class="section" aria-labelledby="eng-dec">
             <h2 class="section-title" id="eng-dec">Decisions they recorded</h2>

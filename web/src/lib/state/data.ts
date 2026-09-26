@@ -13,6 +13,7 @@ import type {
   Check,
   Decision,
   Engineer,
+  EngineerNote,
   Event,
   Job,
   JobInput,
@@ -89,6 +90,8 @@ export interface DataState {
   approvals: Record<string, Approval>;
   questions: Record<string, Question>;
   decisions: Record<string, Decision>;
+  /** Engineers' notes, loaded by profile views and kept current by events. */
+  notes: Record<string, EngineerNote>;
   prs: Record<string, PullRequest>;
   inputs: Record<string, JobInput>;
   checks: Record<string, Check>;
@@ -132,6 +135,7 @@ export function emptyState(): DataState {
     approvals: {},
     questions: {},
     decisions: {},
+    notes: {},
     prs: {},
     inputs: {},
     checks: {},
@@ -439,6 +443,11 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
     case 'decision.updated': {
       const d = asPayload<Decision>(ev);
       if (newer(s.decisions[d.id], d)) s.decisions[d.id] = d;
+      break;
+    }
+    case 'note.updated': {
+      const n = asPayload<EngineerNote>(ev);
+      if (newer(s.notes[n.id], n)) s.notes[n.id] = n;
       break;
     }
     case 'node.updated': {

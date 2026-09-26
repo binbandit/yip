@@ -82,8 +82,6 @@ now closed (each with a test):
 
 Still open (not blocking the scenario, recorded here so they aren't lost):
 
-- Engineer memory beyond accepted decisions (promoted notes with provenance)
-  isn't implemented.
 - The GitHub contract test needs a real repository and token; browser e2e
   specs need a browser on the build machine.
 
