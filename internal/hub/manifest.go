@@ -240,7 +240,18 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 		if len(n.Sources) > 0 {
 			src = n.Sources[0].Kind + " " + n.Sources[0].ID
 		}
-		m.Notes = append(m.Notes, manifest.Note{ID: n.ID, Body: n.Body, Scope: scope, Source: src})
+		mn := manifest.Note{ID: n.ID, Kind: n.Kind, Body: n.Body, Scope: scope, Source: src}
+		if n.SupersedesID != "" {
+			if prev, err := store.GetNote(ctx, q, n.SupersedesID); err == nil && noteVisibleIn(prev, room) {
+				mn.Previously = prev.Body
+				mn.UpdatedBy = names[n.CreatedBy.Kind+":"+n.CreatedBy.ID].name
+				if n.CreatedBy.Kind == protocol.ActorEngineer && n.CreatedBy.ID == eng.ID {
+					mn.UpdatedBy = "you"
+				}
+				mn.UpdatedOn = n.CreatedAt.Format("2 Jan")
+			}
+		}
+		m.Notes = append(m.Notes, mn)
 	}
 
 	// Colleagues and their permitted access.

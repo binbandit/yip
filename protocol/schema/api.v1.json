@@ -1208,6 +1208,9 @@
         "id": {
           "type": "string"
         },
+        "kind": {
+          "type": "string"
+        },
         "reviewAfter": {
           "format": "date-time",
           "type": "string"
@@ -1243,6 +1246,7 @@
       "required": [
         "id",
         "engineerId",
+        "kind",
         "scope",
         "body",
         "status",

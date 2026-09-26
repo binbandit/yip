@@ -8,14 +8,14 @@ import (
 	"github.com/binbandit/yip/protocol"
 )
 
-const noteCols = `id, engineer_id, scope_kind, scope_id, body, status, COALESCE(supersedes_id, ''), COALESCE(superseded_by_id, ''),
+const noteCols = `id, engineer_id, kind, scope_kind, scope_id, body, status, COALESCE(supersedes_id, ''), COALESCE(superseded_by_id, ''),
 	created_by_kind, created_by_id, accepted_by_kind, accepted_by_id, visible_room_ids, review_after, version, created_at, accepted_at`
 
 func scanNote(s scanner) (protocol.EngineerNote, error) {
 	var n protocol.EngineerNote
 	var abk, abi, visible, accepted sql.NullString
 	var review, created string
-	err := s.Scan(&n.ID, &n.EngineerID, &n.Scope.Kind, &n.Scope.ID, &n.Body, &n.Status, &n.SupersedesID, &n.SupersededByID,
+	err := s.Scan(&n.ID, &n.EngineerID, &n.Kind, &n.Scope.Kind, &n.Scope.ID, &n.Body, &n.Status, &n.SupersedesID, &n.SupersededByID,
 		&n.CreatedBy.Kind, &n.CreatedBy.ID, &abk, &abi, &visible, &review, &n.Version, &created, &accepted)
 	if abk.Valid {
 		n.AcceptedBy = &protocol.Actor{Kind: abk.String, ID: abi.String}
@@ -39,9 +39,12 @@ func InsertNote(ctx context.Context, q Q, n protocol.EngineerNote) error {
 	if n.AcceptedBy != nil {
 		abk, abi = n.AcceptedBy.Kind, n.AcceptedBy.ID
 	}
-	if _, err := q.ExecContext(ctx, `INSERT INTO engineer_notes(id, engineer_id, scope_kind, scope_id, body, status, supersedes_id,
+	if n.Kind == "" {
+		n.Kind = "note"
+	}
+	if _, err := q.ExecContext(ctx, `INSERT INTO engineer_notes(id, engineer_id, kind, scope_kind, scope_id, body, status, supersedes_id,
 		created_by_kind, created_by_id, accepted_by_kind, accepted_by_id, visible_room_ids, review_after, version, created_at, accepted_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`, n.ID, n.EngineerID, n.Scope.Kind, n.Scope.ID, n.Body, n.Status,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`, n.ID, n.EngineerID, n.Kind, n.Scope.Kind, n.Scope.ID, n.Body, n.Status,
 		nullStr(n.SupersedesID), n.CreatedBy.Kind, n.CreatedBy.ID, abk, abi, visible, ts(n.ReviewAfter), ts(n.CreatedAt), tsp(n.AcceptedAt)); err != nil {
 		return err
 	}

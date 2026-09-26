@@ -306,6 +306,7 @@ export interface Engineer {
 export interface EngineerNote {
   id: string;
   engineerId: string;
+  kind: string;
   scope: DecisionScope;
   body: string;
   status: string;

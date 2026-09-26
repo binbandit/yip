@@ -827,8 +827,11 @@ type SetupStatus struct {
 // context layer 5). Accepted, current notes enter the engineer's context
 // only in conversations where all of their sources are visible.
 type EngineerNote struct {
-	ID             string        `json:"id"`
-	EngineerID     string        `json:"engineerId"`
+	ID         string `json:"id"`
+	EngineerID string `json:"engineerId"`
+	// Kind is "note" (kept by the engineer or the owner) or "record" (written
+	// by yip from finished work: outcome, revision, approvals, checks).
+	Kind           string        `json:"kind"`
 	Scope          DecisionScope `json:"scope"` // project | room
 	Body           string        `json:"body"`
 	Status         string        `json:"status"` // proposed | accepted | superseded | rejected

@@ -1243,7 +1243,9 @@ func TestRegressionEngineerNotes(t *testing.T) {
 		if m.Job.Kind == "reply" {
 			var bodies []string
 			for _, n := range m.Notes {
-				bodies = append(bodies, n.Body)
+				if n.Kind != "record" { // work records are covered by their own test
+					bodies = append(bodies, n.Body)
+				}
 			}
 			seen.Store(m.RoomName+"|"+m.Request.Body, strings.Join(bodies, "\n"))
 		}
@@ -1268,16 +1270,31 @@ func TestRegressionEngineerNotes(t *testing.T) {
 	if !strings.Contains(e.jobDetail(j.ID).Job.Summary, "proposed") {
 		t.Fatalf("a note from open work should start as a proposal: %q", e.jobDetail(j.ID).Job.Summary)
 	}
+	// Ordinary notes (finished work also leaves a work record, checked below).
 	notes := func() []protocol.EngineerNote {
-		var ns []protocol.EngineerNote
+		var ns, out []protocol.EngineerNote
 		e.c.must("GET", "/v1/engineers/"+pip+"/notes", nil, &ns)
-		return ns
+		for _, n := range ns {
+			if n.Kind != "record" {
+				out = append(out, n)
+			}
+		}
+		return out
 	}
 	e.waitFor("the note is kept once the work is finished", 10*time.Second, func() bool {
 		ns := notes()
 		return len(ns) == 1 && ns[0].Status == "accepted" && ns[0].AcceptedBy != nil && ns[0].AcceptedBy.Kind == protocol.ActorSystem
 	})
-	// A private room's note is a proposal (message source) and stays there.
+	var all []protocol.EngineerNote
+	e.c.must("GET", "/v1/engineers/"+pip+"/notes", nil, &all)
+	hasRecord := false
+	for _, n := range all {
+		hasRecord = hasRecord || (n.Kind == "record" && strings.Contains(n.Body, "Map the queue"))
+	}
+	if !hasRecord {
+		t.Fatalf("finishing the work should leave a work record: %+v", all)
+	}
+	// A private room's note stays there.
 	e.post("Hush", "@Pip this is secret: the retry storm did it", []string{"pip"}, nil)
 	var secret protocol.EngineerNote
 	e.waitFor("the private note is proposed", 10*time.Second, func() bool {
@@ -1288,10 +1305,10 @@ func TestRegressionEngineerNotes(t *testing.T) {
 		}
 		return secret.ID != ""
 	})
-	if secret.Status != "proposed" || len(secret.VisibleRoomIDs) != 1 || secret.VisibleRoomIDs[0] != e.roomID("Hush") {
-		t.Fatalf("a private note should be a proposal visible only in its room: %+v", secret)
+	// It cites the owner's own words, so it's kept; it stays in its room.
+	if secret.Status != "accepted" || len(secret.VisibleRoomIDs) != 1 || secret.VisibleRoomIDs[0] != e.roomID("Hush") {
+		t.Fatalf("a private note should be visible only in its room: %+v", secret)
 	}
-	e.c.must("POST", "/v1/notes/"+secret.ID, protocol.NoteActionRequest{Action: "accept", Version: secret.Version}, &secret)
 
 	ask := func(room, body string) string {
 		e.post(room, body, []string{"pip"}, nil)
@@ -1345,5 +1362,82 @@ func TestRegressionEngineerNotes(t *testing.T) {
 	e.c.must("POST", "/v1/notes/"+fixed.ID, protocol.NoteActionRequest{Action: "renew", Version: fixed.Version}, &fixed)
 	if got := ask("Reverse engineering", "@Pip and now?"); !strings.Contains(got, "worker/jobs/queue.go") {
 		t.Fatalf("a renewed note is back in context:\n%s", got)
+	}
+}
+
+// Finishing reviewed work becomes memory without the owner curating it: the
+// author and the reviewer both get a record with the approved revision,
+// checks, and how review findings ended, and the author recalls it in
+// another room. A corrected note carries its history into context.
+func TestRegressionFinishedWorkIsRemembered(t *testing.T) {
+	var ctxNotes sync.Map // request body → rendered context of the reply
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		if m.Job.Kind == "reply" && m.RoomName == "Engineering" && m.Request != nil {
+			ctxNotes.Store(m.Request.Body, m.Prompt())
+			return script(fake.Step{Final: "OK"})
+		}
+		if replyTo(m, "Security", "remember what I said") {
+			return script(toolStep("note_record", map[string]any{"body": "The owner wants expiry errors logged at warn level", "sources": []string{m.Request.ID}}, "n"),
+				fake.Step{Final: "Noted: {{n.status}}"})
+		}
+		return nil // the scripted Atlas scenario
+	}})
+	e.post("Security", "@Mira can you fix Atlas accepting expired sessions?", []string{"mira"}, nil)
+	j := e.waitJob("Fix Atlas session expiry", protocol.JobCompleted)
+	head := j.Revision.Head[:8]
+	notesOf := func(handle string) []protocol.EngineerNote {
+		var ns []protocol.EngineerNote
+		e.c.must("GET", "/v1/engineers/"+e.engineerID(handle)+"/notes", nil, &ns)
+		return ns
+	}
+	var mine protocol.EngineerNote
+	e.waitFor("Mira's record of the finished work", 10*time.Second, func() bool {
+		for _, n := range notesOf("mira") {
+			if n.Kind == "record" && n.Status == "accepted" {
+				mine = n
+			}
+		}
+		return mine.ID != ""
+	})
+	for _, want := range []string{"Fix Atlas session expiry", "final revision " + head, "approved by Oren", "go test ./...", "blocking", "resolved"} {
+		if !strings.Contains(mine.Body, want) {
+			t.Errorf("Mira's record should mention %q:\n%s", want, mine.Body)
+		}
+	}
+	found := false
+	for _, n := range notesOf("oren") {
+		found = found || (n.Kind == "record" && n.Status == "accepted" && strings.Contains(n.Body, "You reviewed Mira's work") && strings.Contains(n.Body, head))
+	}
+	if !found {
+		t.Errorf("Oren should remember the review too: %+v", notesOf("oren"))
+	}
+	// Another room (Engineering links Atlas): Mira recalls it unprompted.
+	ask := func(body string) string {
+		e.post("Engineering", body, []string{"mira"}, nil)
+		var got string
+		e.waitFor("Mira's context", 10*time.Second, func() bool {
+			if v, ok := ctxNotes.Load(body); ok {
+				got = v.(string)
+				return true
+			}
+			return false
+		})
+		return got
+	}
+	got := ask("@Mira where did we land on the Atlas expiry fix?")
+	if !strings.Contains(got, "Work you finished") || !strings.Contains(got, "final revision "+head) || !strings.Contains(got, "approved by Oren") {
+		t.Fatalf("Mira's context in Engineering should carry the record:\n%s", got)
+	}
+	// A note citing the owner's own words is kept without a click.
+	e.post("Security", "@Mira remember what I said: log expiry errors at warn level", []string{"mira"}, nil)
+	e.waitMessage("Security", "Noted: accepted")
+	// Correction history reaches the context.
+	var cedar, maple protocol.EngineerNote
+	atlas := e.project("Atlas")
+	e.c.must("POST", "/v1/engineers/"+e.engineerID("mira")+"/notes", protocol.NoteRequest{Body: "The checkpoint label is cedar", Scope: protocol.DecisionScope{Kind: "project", ID: atlas.ID}}, &cedar)
+	e.c.must("POST", "/v1/engineers/"+e.engineerID("mira")+"/notes", protocol.NoteRequest{Body: "The checkpoint label is maple", SupersedesID: cedar.ID}, &maple)
+	got = ask("@Mira what is the checkpoint label?")
+	if !strings.Contains(got, "label is maple") || !strings.Contains(got, `previously said: "The checkpoint label is cedar"`) || !strings.Contains(got, "updated by Brayden") {
+		t.Fatalf("a corrected note should say what it replaced and who changed it:\n%s", got)
 	}
 }
