@@ -63,6 +63,8 @@
             <span class="title truncate">{j.title}</span>
             <span class="who truncate">{handoff(j)}</span>
             <span class="last truncate">
+              <!-- The machine comes first so truncation never hides where work runs. -->
+              {#if j.nodeId && app.nodeName(j.nodeId)}<span class="where">{j.state === 'running' ? 'Running on' : 'On'} {app.nodeName(j.nodeId)} ·</span>{' '}{/if}
               {#if unconfirmed}
                 {app.nodeName(j.nodeId) || 'The machine'} stopped reporting; the last attempt's outcome is not confirmed{j.lastActivity ? ` — last confirmed: ${j.lastActivity.toLowerCase()}` : ''}
               {:else if note && live}
@@ -72,7 +74,7 @@
               {:else if j.lastActivity}
                 {j.lastActivity}{#if j.lastActivityAt}{' '}<span class="when">· {relative(j.lastActivityAt, app.now)}</span>{/if}
               {/if}
-              {#if j.nodeId && app.nodeName(j.nodeId)}{' '}<span class="when">· on {app.nodeName(j.nodeId)}</span>{/if}
+
             </span>
           </button>
           {#if live}
@@ -98,6 +100,9 @@
 {/if}
 
 <style>
+  .where {
+    color: var(--ink);
+  }
   .strip {
     flex: none;
     border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);

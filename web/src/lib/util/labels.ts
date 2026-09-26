@@ -81,6 +81,8 @@ export function waitingReasonLabel(reason: string | undefined): string {
       return 'Engineer busy';
     case 'stalled':
       return 'Stalled';
+    case 'review':
+      return 'Waiting for review';
     default:
       return 'Waiting';
   }
@@ -265,7 +267,7 @@ export function approvalStatusLabel(s: string): string {
     case 'expired':
       return 'Expired — it can no longer run';
     case 'consumed':
-      return 'Allowed and used';
+      return 'Allowed · delivered to the machine';
     case 'cancelled':
       return 'Withdrawn';
   }
@@ -417,6 +419,8 @@ export function catchupKindLabel(kind: string): string {
       return 'Failed';
     case 'unknown':
       return 'Not confirmed';
+    case 'approval':
+      return 'Needs permission';
   }
   return kind;
 }
@@ -435,6 +439,8 @@ export function catchupShape(kind: string): Shape {
       return 'question';
     case 'question':
       return 'question';
+    case 'approval':
+      return 'pause';
   }
   return 'circle';
 }
@@ -446,6 +452,7 @@ export function catchupTone(kind: string): Tone {
     case 'blocker':
     case 'question':
     case 'unknown':
+    case 'approval':
       return 'attention';
     case 'failed':
       return 'danger';
