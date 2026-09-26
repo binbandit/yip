@@ -11,7 +11,8 @@ export async function signIn(page: Page): Promise<void> {
 
 export async function openRoom(page: Page, name: string): Promise<void> {
   await page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name: new RegExp(`^${name}`) }).click();
-  await expect(page.locator('#room-title')).toHaveText(name);
+  // The title carries a decorative "#" before the name.
+  await expect(page.locator('#room-title')).toHaveText(new RegExp(`^#?${name}$`));
 }
 
 /** Types into the room composer and picks a mention from the list by keyboard. */

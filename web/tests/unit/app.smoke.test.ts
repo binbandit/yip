@@ -331,6 +331,13 @@ describe('app smoke (jsdom, captured fixtures)', () => {
   });
 
   it('searches with ⌘K and opens the actual source', async () => {
+    // Escape closes search even while its results list is showing.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
+    await settle();
+    const first = await waitFor(() => document.querySelector<HTMLInputElement>('dialog.search input'), 'search input');
+    expect(first.getAttribute('aria-expanded')).toBe('true');
+    key(first, 'Escape');
+    await waitFor(() => !document.querySelector('dialog.search'), 'search closed by Escape');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
     await settle();
     const input = await waitFor(() => document.querySelector<HTMLInputElement>('dialog.search input'), 'search input');
