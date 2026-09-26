@@ -49,5 +49,17 @@ the code that enforces them and the tests that prove it.
    result, and auto-accepts the author's sourced decisions. There is no Accept
    click unless policy requires one.
 
+   When nobody else is in the conversation to review (a direct message, or a
+   workspace with one engineer), `work_create` records owner review in place
+   of peer review, so the work waits for your acceptance rather than for a
+   colleague who doesn't exist. A colleague who is present but lacks access is
+   not waived: the author asks in the room (A42).
+
+**Provider allowance.** An exhausted allowance pauses the whole provider
+account (`provider_profiles.paused_until`), not just the run that hit it: the
+scheduler holds other work for that account with the reason and resumes it
+at the reset time the provider reported (or after a short wait). Work on
+other accounts carries on. The pause shows on Machines.
+
 Every step emits an event in the same transaction. Clients stream events from
 a cursor and can always rebuild from `GET /v1/bootstrap`.

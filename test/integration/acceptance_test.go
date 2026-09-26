@@ -2,6 +2,7 @@ package integration
 
 import (
 	"crypto/tls"
+	"database/sql"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -305,8 +306,10 @@ func TestOutboxRedeliveryExecutesOnce(t *testing.T) {
 	}
 }
 
-// A15: an exhausted allowance waits without busy-looping or paid fallback,
-// and unaffected work continues.
+// A15: an exhausted allowance waits without busy-looping or paid fallback.
+// The allowance belongs to the account, so other work on that account is
+// held (with the reason) until it resets instead of hitting the same limit,
+// and then continues by itself.
 func TestProviderAllowanceWaits(t *testing.T) {
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
@@ -324,9 +327,30 @@ func TestProviderAllowanceWaits(t *testing.T) {
 	if j.WaitingReason != protocol.WaitProviderLimit || !strings.Contains(j.StateDetail, "resets at") {
 		t.Fatalf("expected an allowance wait with the vendor's reset time: %s / %s", j.WaitingReason, j.StateDetail)
 	}
+	var profiles []protocol.ProviderProfile
+	e.c.must("GET", "/v1/provider-profiles", nil, &profiles)
+	if len(profiles) == 0 || profiles[0].PausedUntil == nil {
+		t.Fatalf("the account should be paused until it resets: %+v", profiles)
+	}
 	e.post("Security", "@Mira are you still working?", []string{"mira"}, nil)
+	e.waitFor("the reply is held with the account's pause", 15*time.Second, func() bool {
+		for _, x := range e.jobsWithReplies() {
+			if x.Kind == protocol.JobKindReply && x.OwnerID == e.engineerID("mira") && strings.Contains(x.StateDetail, "paused until") {
+				return true
+			}
+		}
+		e.hub.Tick(e.ctx)
+		return false
+	})
+	// The allowance resets: held work carries on without anyone retrying it.
+	if err := e.hub.Store().Tx(e.ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(e.ctx, `UPDATE provider_profiles SET paused_until = NULL`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.hub.Tick(e.ctx)
 	e.waitMessage("Security", "Still working fine.")
-	time.Sleep(2 * time.Second)
 	if n := len(e.jobDetail(j.ID).Runs); n != 1 {
 		t.Fatalf("busy retry loop: %d attempts", n)
 	}

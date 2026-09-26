@@ -6,8 +6,10 @@
   import { errorMessage } from '../lib/api/client';
   import type { Enrollment } from '../lib/api/types.gen';
   import { atTime, relative } from '../lib/util/time';
+  import { authStateLabel, billingLabel, providerLabel } from '../lib/util/labels';
   import Dialog from './Dialog.svelte';
   import Icon from './Icon.svelte';
+  import StateIcon from './StateIcon.svelte';
 
   interface Props {
     onclose: () => void;
@@ -18,6 +20,15 @@
   let error = $state('');
   let enrollment = $state<Enrollment | null>(null);
   let copied = $state('');
+  // Machines already here when the command was made; a new one is the pairing.
+  let known = new Set<string>();
+  const paired = $derived.by(() => {
+    if (!enrollment) return undefined;
+    const fresh = Object.values(app.data.nodes).filter((n) => !known.has(n.id));
+    return fresh.find((n) => n.name === enrollment!.name) ?? fresh[0];
+  });
+  const SIGN_IN: Record<string, string> = { codex: 'codex login', claude: 'claude auth login', cursor: 'agent login' };
+  const realProviders = $derived((paired?.providers ?? []).filter((p) => p.provider !== 'fake' && p.authState !== 'not_installed'));
 
   async function create(e: SubmitEvent) {
     e.preventDefault();
@@ -28,6 +39,7 @@
     busy = true;
     error = '';
     try {
+      known = new Set(Object.keys(app.data.nodes));
       enrollment = await api.createEnrollment({ name: name.trim() });
     } catch (err) {
       error = errorMessage(err);
@@ -77,12 +89,34 @@
         <div><dt>Expires</dt><dd>{relative(enrollment.expiresAt, app.now)} ({atTime(enrollment.expiresAt)})</dd></div>
       </dl>
       <p class="notice attention">Check that the fingerprint the machine prints matches this one before confirming. This command is shown only once; if it expires, add the machine again.</p>
-      <p class="meta">The machine appears in the list as soon as it connects.</p>
+      <div class="watch" role="status">
+        {#if !paired}
+          <StateIcon shape="circle" size={16} />
+          <span>Waiting for {enrollment.name} to connect… this updates by itself.</span>
+        {:else}
+          <StateIcon shape="check-filled" tone="success" size={16} />
+          <div class="paired">
+            <strong>{paired.name} is paired{paired.status === 'online' ? ' and connected' : ''}.</strong>
+            {#if realProviders.length === 0}
+              <span class="meta">No Codex, Claude Code or Cursor found on it yet. Install one and sign in with its own tool; yip picks it up on the next check.</span>
+            {:else}
+              <ul>
+                {#each realProviders as p (p.provider)}
+                  <li>
+                    {providerLabel(p.provider)} · {authStateLabel(p.authState, p.authDetail)}{#if p.authState === 'ready'}{' · '}{billingLabel(p.billing)}{#if p.account}{' · '}{p.account}{/if}
+                    {:else if SIGN_IN[p.provider]}{' · run '}<code>{SIGN_IN[p.provider]}</code>{' on it'}{/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        {/if}
+      </div>
     </div>
   {/if}
   {#snippet footer()}
     {#if enrollment}
-      <button class="btn btn-primary" onclick={onclose}>Done</button>
+      <button class="btn btn-primary" onclick={onclose}>{paired ? 'Done' : 'Close'}</button>
     {:else}
       <button class="btn" onclick={onclose}>Cancel</button>
       <button class="btn btn-primary" type="submit" form="add-machine" disabled={busy}>{busy ? 'Creating…' : 'Create pairing command'}</button>
@@ -134,6 +168,22 @@
     gap: 8px;
     flex-wrap: wrap;
     min-width: 0;
+  }
+  .watch {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border-radius: var(--r-artifact);
+    background: var(--surface-subtle);
+  }
+  .paired {
+    display: grid;
+    gap: 4px;
+  }
+  .paired ul {
+    margin: 0;
+    padding-left: 18px;
   }
   .fp {
     overflow-wrap: anywhere;

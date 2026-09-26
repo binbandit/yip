@@ -8,7 +8,7 @@
   import { errorMessage } from '../lib/api/client';
   import type { Node } from '../lib/api/types.gen';
   import { authStateLabel, billingLabel, nodeShape, nodeStatusLabel, nodeTone, providerLabel } from '../lib/util/labels';
-  import { atTime, bytes, relative } from '../lib/util/time';
+  import { atTime, bytes, clock, relative } from '../lib/util/time';
   import StateIcon from '../components/StateIcon.svelte';
   import Icon from '../components/Icon.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
@@ -21,7 +21,14 @@
   // Per-account concurrency: runs on one account share its allowance, so the
   // default is one at a time (brief §7) until the owner raises it.
   let profiles = $state<import('../lib/api/types.gen').ProviderProfile[]>([]);
+  // Re-read when a machine reports a change (sign-in, an allowance pause).
+  const nodesKey = $derived(
+    Object.values(app.data.nodes)
+      .map((n) => `${n.id}:${n.status}:${n.providers.map((p) => p.updatedAt + p.authState).join(',')}:${n.lastActivity ?? ''}`)
+      .join('|'),
+  );
   $effect(() => {
+    void nodesKey;
     void api.providerProfiles().then((p) => (profiles = p), () => {});
   });
   async function setConcurrency(profileId: string, max: number) {
@@ -194,6 +201,11 @@
                           </select>
                           <span class="meta">They share the account's allowance.</span>
                         </label>
+                      {/if}
+                      {#if prof?.pausedUntil && new Date(prof.pausedUntil).getTime() > app.now}
+                        <p class="notice attention">
+                          This account's allowance ran out. Its work waits until {clock(prof.pausedUntil)}, then carries on by itself.
+                        </p>
                       {/if}
                       {#if pv.authState === 'needs_signin'}
                         <p class="meta">

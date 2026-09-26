@@ -843,6 +843,17 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		if err := store.SetJobRetry(ctx, t.tx, job.ID, &at, job.AutoRetries); err != nil {
 			return err
 		}
+		// The whole account shares the allowance: pause it, so other queued
+		// work waits for the reset instead of hitting the same limit.
+		if run.ProfileID != "" {
+			if _, err := t.tx.ExecContext(ctx, `UPDATE provider_profiles SET paused_until = ? WHERE id = ? AND (paused_until IS NULL OR paused_until < ?)`,
+				store.TS(at), run.ProfileID, store.TS(at)); err != nil {
+				return err
+			}
+			if run.NodeID != "" {
+				_ = h.emitNode(ctx, t, run.NodeID) // machine views re-read the account's state
+			}
+		}
 		if _, err := h.setJobState(ctx, t, job.ID, protocol.JobWaiting, protocol.WaitProviderLimit, detail); err != nil {
 			return err
 		}

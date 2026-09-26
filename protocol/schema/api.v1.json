@@ -2526,6 +2526,17 @@
         "maxConcurrency": {
           "type": "integer"
         },
+        "pausedUntil": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "provider": {
           "type": "string"
         }

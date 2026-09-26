@@ -93,6 +93,9 @@ type ProviderProfile struct {
 	Label          string `json:"label"`
 	Billing        string `json:"billing"`
 	MaxConcurrency int    `json:"maxConcurrency"`
+	// PausedUntil is set while the account's allowance is exhausted; queued
+	// work for it waits until then.
+	PausedUntil *time.Time `json:"pausedUntil,omitempty"`
 }
 
 type ProviderProfileRequest struct {

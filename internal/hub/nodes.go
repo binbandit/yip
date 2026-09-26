@@ -136,7 +136,7 @@ func (h *Hub) SetDraining(ctx context.Context, userID, nodeID string, draining b
 // from draining.
 // ProviderProfiles lists provider accounts and their concurrency limits.
 func (h *Hub) ProviderProfiles(ctx context.Context) ([]protocol.ProviderProfile, error) {
-	rows, err := h.st.R().QueryContext(ctx, `SELECT id, provider, label, billing, max_concurrency FROM provider_profiles ORDER BY provider, label`)
+	rows, err := h.st.R().QueryContext(ctx, `SELECT id, provider, label, billing, max_concurrency, COALESCE(paused_until, '') FROM provider_profiles ORDER BY provider, label`)
 	if err != nil {
 		return nil, err
 	}
@@ -144,8 +144,12 @@ func (h *Hub) ProviderProfiles(ctx context.Context) ([]protocol.ProviderProfile,
 	out := []protocol.ProviderProfile{}
 	for rows.Next() {
 		var p protocol.ProviderProfile
-		if err := rows.Scan(&p.ID, &p.Provider, &p.Label, &p.Billing, &p.MaxConcurrency); err != nil {
+		var paused string
+		if err := rows.Scan(&p.ID, &p.Provider, &p.Label, &p.Billing, &p.MaxConcurrency, &paused); err != nil {
 			return nil, err
+		}
+		if t := store.ParseTS(paused); !t.IsZero() && h.now().Before(t) {
+			p.PausedUntil = &t
 		}
 		out = append(out, p)
 	}
