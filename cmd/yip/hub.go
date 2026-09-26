@@ -118,19 +118,10 @@ func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*
 	}
 	h.Start(ctx)
 
-	opts := httpapi.Options{SecureCookies: f.secureCookies || f.tlsCert != "", Web: httpapi.WebFS(web.Dist, "dist"), Logger: log}
-	for _, o := range strings.Split(f.allowedOrigins, ",") {
-		if o = strings.TrimSpace(o); o != "" {
-			opts.AllowedOrigins = append(opts.AllowedOrigins, o)
-		}
-	}
+	opts := httpapi.Options{SecureCookies: f.secureCookies || f.tlsCert != "", Web: httpapi.WebFS(web.Dist, "dist"), Logger: log,
+		AllowedOrigins: splitList(f.allowedOrigins)}
 	browser := &http.Server{Addr: f.listen, Handler: httpapi.New(h, opts), ReadHeaderTimeout: 10 * time.Second}
-	hosts := []string{hostname}
-	for _, x := range strings.Split(f.runnerHosts, ",") {
-		if x = strings.TrimSpace(x); x != "" {
-			hosts = append(hosts, x)
-		}
-	}
+	hosts := append([]string{hostname}, splitList(f.runnerHosts)...)
 	if u := strings.TrimPrefix(f.runnerURL, "https://"); u != "" {
 		if host, _, err := net.SplitHostPort(u); err == nil {
 			hosts = append(hosts, host)
@@ -182,6 +173,22 @@ func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*
 		_ = h.Close()
 	}
 	return h, stop, nil
+}
+
+// splitList splits a comma-separated flag value, dropping blank entries.
+func splitList(s string) []string {
+	var out []string
+	for _, x := range strings.Split(s, ",") {
+		if x = strings.TrimSpace(x); x != "" {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// openHub opens the hub in a data directory for a one-off operator command.
+func openHub(ctx context.Context, data string) (*hub.Hub, error) {
+	return hub.Open(ctx, hub.Config{DataDir: data, Version: buildinfo.Version, Logger: logger()})
 }
 
 // isLoopbackAddr reports a listen address reachable only from this machine.
@@ -241,7 +248,7 @@ func runSetupCode(args []string) error {
 	data := fs.String("data", defaultDataDir(), "hub data directory")
 	_ = fs.Parse(args)
 	ctx := context.Background()
-	h, err := hub.Open(ctx, hub.Config{DataDir: *data, Version: buildinfo.Version, Logger: logger()})
+	h, err := openHub(ctx, *data)
 	if err != nil {
 		return err
 	}

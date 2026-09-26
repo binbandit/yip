@@ -11,10 +11,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/binbandit/yip/internal/backupcrypt"
 	"io"
 	"io/fs"
-	iofs "io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +21,7 @@ import (
 	"time"
 
 	"github.com/binbandit/yip/internal/auth"
+	"github.com/binbandit/yip/internal/backupcrypt"
 	"github.com/binbandit/yip/internal/buildinfo"
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/hub"
@@ -336,7 +335,7 @@ func writeBackup(data, out string) (backupManifest, error) {
 	if err := os.WriteFile(filepath.Join(out, "backup.json"), mb, 0o600); err != nil {
 		return m, err
 	}
-	_ = st.Tx(ctx, func(tx *sqlTx) error { return store.SetSetting(ctx, tx, "last_backup_at", m.CreatedAt) })
+	_ = st.Tx(ctx, func(tx *sql.Tx) error { return store.SetSetting(ctx, tx, "last_backup_at", m.CreatedAt) })
 	return m, nil
 }
 
@@ -384,7 +383,7 @@ func sealBackup(dir, out string, pass []byte) error {
 		return err
 	}
 	tw := tar.NewWriter(w)
-	err = filepath.WalkDir(dir, func(path string, d iofs.DirEntry, err error) error {
+	err = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || path == dir {
 			return err
 		}
@@ -661,7 +660,7 @@ func runOwner(args []string) error {
 		}
 	}
 	ctx := context.Background()
-	h, err := hub.Open(ctx, hub.Config{DataDir: *data, Version: buildinfo.Version, Logger: logger()})
+	h, err := openHub(ctx, *data)
 	if err != nil {
 		return err
 	}
@@ -679,7 +678,7 @@ func runForge(args []string) error {
 		data := fs.String("data", defaultDataDir(), "hub data directory")
 		_ = fs.Parse(args[2:])
 		ctx := context.Background()
-		h, err := hub.Open(ctx, hub.Config{DataDir: *data, Version: buildinfo.Version, Logger: logger()})
+		h, err := openHub(ctx, *data)
 		if err != nil {
 			return err
 		}
@@ -707,7 +706,7 @@ func runForge(args []string) error {
 		return errors.New("no token provided")
 	}
 	ctx := context.Background()
-	h, err := hub.Open(ctx, hub.Config{DataDir: *data, Version: buildinfo.Version, Logger: logger()})
+	h, err := openHub(ctx, *data)
 	if err != nil {
 		return err
 	}
@@ -738,8 +737,8 @@ func runWorkspaces(args []string) error {
 		out, _ := exec.Command("git", "-C", p, "status", "--porcelain").Output()
 		branch, _ := exec.Command("git", "-C", p, "branch", "--show-current").Output()
 		status := "clean"
-		if n := strings.Count(strings.TrimSpace(string(out)), "\n"); len(strings.TrimSpace(string(out))) > 0 {
-			status = fmt.Sprintf("DIRTY (%d changes)", n+1)
+		if st := strings.TrimSpace(string(out)); st != "" {
+			status = fmt.Sprintf("DIRTY (%d changes)", strings.Count(st, "\n")+1)
 		}
 		fmt.Printf("%-24s %-40s %s\n", e.Name(), strings.TrimSpace(string(branch)), status)
 	}
@@ -786,5 +785,3 @@ func globReplicas(state string) []string {
 	m, _ := filepath.Glob(filepath.Join(state, "replicas", "*.git"))
 	return m
 }
-
-type sqlTx = sql.Tx
