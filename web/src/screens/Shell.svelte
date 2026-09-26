@@ -119,6 +119,7 @@
           <p class="conn" role="status">
             <Icon name={app.connection === 'offline' || !app.online ? 'wifiOff' : 'refresh'} size={14} />
             {connectionText}
+            {#if app.connection !== 'connecting'}<button class="btn btn-sm btn-quiet" onclick={() => app.retryConnection()}>Try now</button>{/if}
           </p>
         {/if}
       </div>
