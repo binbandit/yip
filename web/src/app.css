@@ -685,10 +685,14 @@ button.chip {
 }
 .section-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   margin-bottom: 10px;
+}
+.section-head > .row {
+  flex-wrap: wrap;
 }
 .section-title {
   font-size: 15px;

@@ -140,6 +140,14 @@
   }
 
   function onKey(e: KeyboardEvent) {
+    // The results list is this dialog's content, so Escape closes the dialog
+    // (the layer stack leaves an expanded combobox's Escape to the combobox).
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      onclose();
+      return;
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       active = Math.min(shown.length - 1, active + 1);

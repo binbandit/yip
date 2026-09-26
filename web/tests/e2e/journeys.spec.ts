@@ -25,12 +25,14 @@ test('post with a structured mention chosen by keyboard', async ({ page }) => {
   await expect(page.getByRole('region', { name: /^Result:/ }).first()).toBeVisible({ timeout: 45_000 });
 });
 
-test('steering a live job shows the actual delivery receipt', async ({ page }) => {
+test('steering open work shows the actual delivery receipt', async ({ page }) => {
+  // Pip's Beacon investigation waits on a question, so it stays open long
+  // enough to steer (the Atlas fix can finish before the update is sent).
   await signIn(page);
-  await openRoom(page, 'Security');
-  await mention(page, 'mi');
+  await openRoom(page, 'Reverse engineering');
+  await mention(page, 'pi');
   const box = page.getByRole('combobox', { name: /^Message / });
-  await box.pressSequentially('can you fix Atlas accepting expired sessions?');
+  await box.pressSequentially('how does Beacon retry requests?');
   await box.press('Enter');
   const add = page.locator('.strip').getByRole('button', { name: 'Add to this' }).first();
   await expect(add).toBeVisible({ timeout: 30_000 });
@@ -39,8 +41,8 @@ test('steering a live job shows the actual delivery receipt', async ({ page }) =
   await box.fill('Keep the existing API response shape.');
   await box.press('Enter');
   // Never claims immediate delivery unless the hub confirmed it.
-  await expect(page.getByText(/Delivering to Mira…|Mira received your update|Queued for Mira's next step/)).toBeVisible();
-  await expect(page.getByText(/Mira received your update|Queued for Mira's next step/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/Delivering to Pip…|Pip received your update|Queued for Pip's next step/)).toBeVisible();
+  await expect(page.getByText(/Pip received your update|Queued for Pip's next step/)).toBeVisible({ timeout: 30_000 });
 });
 
 test('job drawer traps focus when overlaid and Escape returns focus', async ({ page }) => {
@@ -86,7 +88,7 @@ test('390px layout: no horizontal scroll, rooms sheet, full-screen thread', asyn
   const sheet = page.getByRole('dialog', { name: 'Rooms and navigation' });
   await expect(sheet).toBeVisible();
   await sheet.getByRole('link', { name: /^Reverse engineering/ }).click();
-  await expect(page.locator('#room-title')).toHaveText('Reverse engineering');
+  await expect(page.locator('#room-title')).toHaveText(/^#?Reverse engineering$/);
   const composer = page.getByRole('combobox', { name: /^Message / });
   await expect(composer).toBeVisible();
   const box = await composer.boundingBox();
