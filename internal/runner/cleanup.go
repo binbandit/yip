@@ -49,7 +49,8 @@ func (r *Runner) listWorkspaces(ctx context.Context) []protocol.WorkspaceInfo {
 			}
 			cancel()
 		}
-		info.SizeMB = dirSizeMB(dir)
+		info.SizeBytes, info.SizeKnown, info.SizeApprox = measureDir(dir)
+		info.SizeMB = info.SizeBytes / (1 << 20)
 		out = append(out, info)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ModifiedAt.After(out[j].ModifiedAt) })
@@ -84,26 +85,45 @@ func (r *Runner) workspaceInUse(kind, ref, dir string) bool {
 	return false
 }
 
-// dirSizeMB sums file sizes under dir, stopping after 200,000 entries so a
-// huge dependency tree can't stall a probe (the size is then a lower bound).
-func dirSizeMB(dir string) int64 {
-	var total int64
+// sizeWalkLimit is how many entries measureDir visits before it stops, so a
+// huge dependency tree can't stall a probe.
+var sizeWalkLimit = 200_000
+
+// measureDir sums the sizes of the files under dir. known is false when dir
+// couldn't be read at all, so nothing was measured; approx is true when the
+// walk stopped at sizeWalkLimit or skipped something it couldn't read, so
+// the total is a lower bound.
+func measureDir(dir string) (total int64, known, approx bool) {
 	n := 0
-	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+	rootErr := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if p == dir {
+				return err
+			}
+			approx = true
+			if d != nil && d.IsDir() {
+				return fs.SkipDir
+			}
 			return nil
 		}
-		if n++; n > 200_000 {
+		if n++; n > sizeWalkLimit {
+			approx = true
 			return fs.SkipAll
 		}
 		if d.Type().IsRegular() {
-			if fi, err := d.Info(); err == nil {
-				total += fi.Size()
+			fi, err := d.Info()
+			if err != nil {
+				approx = true
+				return nil
 			}
+			total += fi.Size()
 		}
 		return nil
 	})
-	return total / (1 << 20)
+	if rootErr != nil {
+		return 0, false, false
+	}
+	return total, true, approx
 }
 
 // cleanupWorkspace deletes one workspace on the owner's explicit request.

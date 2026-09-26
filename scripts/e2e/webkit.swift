@@ -110,6 +110,8 @@ final class Runner: NSObject, WKNavigationDelegate, WKScriptMessageHandlerWithRe
         let table: [String: (String, UInt16)] = [
             "Tab": ("\t", 48), "Enter": ("\r", 36), "Escape": ("\u{1b}", 53),
             "ArrowDown": (String(UnicodeScalar(NSDownArrowFunctionKey)!), 125), "ArrowUp": (String(UnicodeScalar(NSUpArrowFunctionKey)!), 126),
+            "ArrowLeft": (String(UnicodeScalar(NSLeftArrowFunctionKey)!), 123), "ArrowRight": (String(UnicodeScalar(NSRightArrowFunctionKey)!), 124),
+            "Home": (String(UnicodeScalar(NSHomeFunctionKey)!), 115), "End": (String(UnicodeScalar(NSEndFunctionKey)!), 119), " ": (" ", 49),
             "k": ("k", 40), "Backspace": ("\u{7f}", 51),
         ]
         guard let (chars, code) = table[key] else { return }

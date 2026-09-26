@@ -13,7 +13,7 @@
 *.db-shm
 
 # Web client
-/web/node_modules/
+/web/node_modules
 /web/dist/*
 !/web/dist/.gitkeep
 /web/.svelte-kit/

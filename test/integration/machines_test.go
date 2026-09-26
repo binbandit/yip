@@ -87,3 +87,52 @@ func TestTwoMachinesAndCheckpointMove(t *testing.T) {
 		t.Fatalf("the retry ran on the revoked machine")
 	}
 }
+
+// Machines → Storage names each workspace for what it is. A reply's scratch
+// space joins through its run to the conversation reply (it is not a review
+// snapshot); a working checkout joins to its job. Sizes say whether they
+// were measured, so a tiny workspace isn't shown as a measured zero.
+func TestMachineWorkspaceKindsAndSizes(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Reverse engineering", "map the gateway"):
+			return script(toolStep("work_create", map[string]any{"title": "Map the gateway", "objective": "Map it", "kind": "investigation", "project": "Beacon", "repo": "beacon-gateway"}, ""))
+		case m.Job.Title == "Map the gateway":
+			return script(fake.Step{Write: &fake.WriteFile{Path: "notes.txt", Content: "draft notes"}},
+				toolStep("work_update", map[string]any{"state": "completed", "summary": "Mapped."}, ""))
+		}
+		return nil
+	}})
+	e.post("Reverse engineering", "@Pip can you map the gateway?", []string{"pip"}, nil)
+	done := e.waitJob("Map the gateway", protocol.JobCompleted)
+	node := e.nodeByName("Test mini")
+	var scratch, checkout protocol.NodeWorkspace
+	e.waitFor("both workspaces reported", 20*time.Second, func() bool {
+		e.c.must("POST", "/v1/nodes/"+node.ID+"/probe", struct{}{}, nil)
+		time.Sleep(200 * time.Millisecond)
+		scratch, checkout = protocol.NodeWorkspace{}, protocol.NodeWorkspace{}
+		for _, w := range e.nodeByName("Test mini").Workspaces {
+			switch {
+			case w.Kind == "scratch" && strings.Contains(w.JobTitle, "map the gateway"):
+				scratch = w
+			case w.Kind == "job" && w.JobID == done.ID:
+				checkout = w
+			}
+		}
+		return scratch.Name != "" && checkout.Name != ""
+	})
+	if scratch.JobKind != protocol.JobKindReply || !strings.HasPrefix(scratch.Name, "scratch-") {
+		t.Fatalf("a reply's scratch space should join to the reply: %+v", scratch)
+	}
+	if checkout.JobKind != protocol.JobKindInvestigation || checkout.JobTitle != "Map the gateway" {
+		t.Fatalf("a working checkout should join to its job: %+v", checkout)
+	}
+	for _, w := range []protocol.NodeWorkspace{scratch, checkout} {
+		if !w.SizeKnown || w.SizeApprox || w.SizeMB != w.SizeBytes>>20 {
+			t.Fatalf("%s should report a measured size: %+v", w.Name, w)
+		}
+	}
+	if checkout.SizeBytes == 0 {
+		t.Fatalf("a checkout with files can't measure zero bytes: %+v", checkout)
+	}
+}

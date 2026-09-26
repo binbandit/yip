@@ -1296,6 +1296,15 @@
         "ref": {
           "type": "string"
         },
+        "sizeApprox": {
+          "type": "boolean"
+        },
+        "sizeBytes": {
+          "type": "integer"
+        },
+        "sizeKnown": {
+          "type": "boolean"
+        },
         "sizeMb": {
           "type": "integer"
         }
@@ -1306,6 +1315,8 @@
         "ref",
         "changes",
         "sizeMb",
+        "sizeBytes",
+        "sizeKnown",
         "modifiedAt",
         "inUse"
       ],

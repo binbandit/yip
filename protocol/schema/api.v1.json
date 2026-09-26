@@ -2407,6 +2407,9 @@
         "jobId": {
           "type": "string"
         },
+        "jobKind": {
+          "type": "string"
+        },
         "jobState": {
           "type": "string"
         },
@@ -2429,6 +2432,15 @@
         "ref": {
           "type": "string"
         },
+        "sizeApprox": {
+          "type": "boolean"
+        },
+        "sizeBytes": {
+          "type": "integer"
+        },
+        "sizeKnown": {
+          "type": "boolean"
+        },
         "sizeMb": {
           "type": "integer"
         }
@@ -2439,6 +2451,8 @@
         "ref",
         "changes",
         "sizeMb",
+        "sizeBytes",
+        "sizeKnown",
         "modifiedAt",
         "inUse",
         "published"
@@ -4468,6 +4482,15 @@
         "ref": {
           "type": "string"
         },
+        "sizeApprox": {
+          "type": "boolean"
+        },
+        "sizeBytes": {
+          "type": "integer"
+        },
+        "sizeKnown": {
+          "type": "boolean"
+        },
         "sizeMb": {
           "type": "integer"
         }
@@ -4478,6 +4501,8 @@
         "ref",
         "changes",
         "sizeMb",
+        "sizeBytes",
+        "sizeKnown",
         "modifiedAt",
         "inUse"
       ],

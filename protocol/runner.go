@@ -101,13 +101,22 @@ type RunnerCapabilities struct {
 
 // WorkspaceInfo describes one workspace directory on a runner.
 type WorkspaceInfo struct {
-	Name       string    `json:"name"` // directory name under the runner's work dir
-	Kind       string    `json:"kind"` // job | review | scratch
-	Ref        string    `json:"ref"`  // short job ID (job) or run ID (review, scratch)
-	Branch     string    `json:"branch,omitempty"`
-	Head       string    `json:"head,omitempty"`
-	Changes    int       `json:"changes"` // uncommitted files
-	SizeMB     int64     `json:"sizeMb"`
+	Name    string `json:"name"` // directory name under the runner's work dir
+	Kind    string `json:"kind"` // job | review | scratch
+	Ref     string `json:"ref"`  // short job ID (job) or run ID (review, scratch)
+	Branch  string `json:"branch,omitempty"`
+	Head    string `json:"head,omitempty"`
+	Changes int    `json:"changes"` // uncommitted files
+	// SizeMB is SizeBytes in whole megabytes, rounded down (a tiny
+	// workspace reports 0). Read the other size fields before showing it.
+	SizeMB int64 `json:"sizeMb"`
+	// SizeBytes is what the runner counted. SizeKnown is false when it
+	// couldn't measure the workspace at all (then the size is unknown, not
+	// zero). SizeApprox is true when it stopped counting early, on a very
+	// large tree or unreadable parts: the size is then a lower bound.
+	SizeBytes  int64     `json:"sizeBytes"`
+	SizeKnown  bool      `json:"sizeKnown"`
+	SizeApprox bool      `json:"sizeApprox,omitempty"`
 	ModifiedAt time.Time `json:"modifiedAt"`
 	InUse      bool      `json:"inUse"` // an active attempt is using it
 }

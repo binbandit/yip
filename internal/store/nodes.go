@@ -92,8 +92,12 @@ func nonNilWorkspaces(w []protocol.WorkspaceInfo) []protocol.WorkspaceInfo {
 }
 
 // nodeWorkspaces joins reported workspaces with their work. A job workspace
-// whose work is still open is blocked (later attempts reuse it); one whose
-// head is the published revision with nothing uncommitted loses nothing.
+// (a working checkout) is named for its job; a review snapshot and a scratch
+// space are named for their run, so they join through that run to its job:
+// the review's job for a snapshot, and for a scratch space usually a
+// conversation reply (JobKind says which). A job workspace whose work is
+// still open is blocked (later attempts reuse it); one whose head is the
+// published revision with nothing uncommitted loses nothing.
 func nodeWorkspaces(ctx context.Context, q Q, raw []protocol.WorkspaceInfo) []protocol.NodeWorkspace {
 	out := make([]protocol.NodeWorkspace, 0, len(raw))
 	for _, w := range raw {
@@ -102,12 +106,12 @@ func nodeWorkspaces(ctx context.Context, q Q, raw []protocol.WorkspaceInfo) []pr
 		switch w.Kind {
 		case "job":
 			_ = q.QueryRowContext(ctx, `SELECT id FROM jobs WHERE substr(replace(id, '-', ''), -12) = ?`, w.Ref).Scan(&jobID)
-		default:
+		case "review", "scratch":
 			_ = q.QueryRowContext(ctx, `SELECT job_id FROM runs WHERE substr(replace(id, '-', ''), -12) = ?`, w.Ref).Scan(&jobID)
 		}
 		if jobID != "" {
 			if j, err := GetJob(ctx, q, jobID); err == nil {
-				nw.JobID, nw.JobTitle, nw.JobState = j.ID, j.Title, string(j.State)
+				nw.JobID, nw.JobTitle, nw.JobState, nw.JobKind = j.ID, j.Title, string(j.State), j.Kind
 				live := j.State != protocol.JobCompleted && j.State != protocol.JobFailed && j.State != protocol.JobCancelled
 				if w.Kind == "job" && live {
 					nw.Blocked = "its work is still open; later attempts continue in it"

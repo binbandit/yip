@@ -671,6 +671,9 @@ type NodeWorkspace struct {
 	JobID    string `json:"jobId,omitempty"`
 	JobTitle string `json:"jobTitle,omitempty"`
 	JobState string `json:"jobState,omitempty"`
+	// JobKind is the kind of that work (code, review, reply, …): a scratch
+	// space belongs to a conversation reply or to work without a repository.
+	JobKind string `json:"jobKind,omitempty"`
 	// Published is true when the branch head is the work's published
 	// revision and nothing is uncommitted: removing it loses nothing.
 	Published bool `json:"published"`
