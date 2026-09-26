@@ -631,6 +631,7 @@
         {/if}
         <ul class="plain runs">
           {#each runs as r (r.id)}
+            {@const late = (d.quarantined ?? []).filter((q) => q.runId === r.id)}
             <li class="run">
               <p class="run-head tone-{runTone(r.state)}">
                 <StateIcon shape={runShape(r.state)} tone={runTone(r.state)} live={r.state === 'running'} />
@@ -655,6 +656,19 @@
                 {#if r.lastActivity}<div><dt>Last confirmed</dt><dd>{r.lastActivity}{r.lastActivityAt ? ` · ${relative(r.lastActivityAt, app.now)}` : ''}</dd></div>{/if}
                 {#if r.resultRev}<div><dt>Result</dt><dd class="mono">{shortSha(r.resultRev)}{r.branch ? ` on ${r.branch}` : ''}</dd></div>{/if}
               </dl>
+              {#if late.length}
+                <details class="late">
+                  <summary>{late.length} late {late.length === 1 ? 'report' : 'reports'} kept for diagnosis</summary>
+                  <p class="meta">
+                    {app.nodeName(late[0].nodeId) || 'The machine'} sent these after this attempt had lost its lease. They didn't change the work.
+                  </p>
+                  <ul class="plain">
+                    {#each late as q (q.id)}
+                      <li><span class="meta">{clock(q.receivedAt)} · {q.kind === 'tool_call' ? 'tool call' : q.kind === 'terminal' ? 'final report' : 'event'} ·</span> <span class="mono">{q.summary}</span></li>
+                    {/each}
+                  </ul>
+                </details>
+              {/if}
             </li>
           {/each}
         </ul>
@@ -675,6 +689,17 @@
 {/if}
 
 <style>
+  .late {
+    margin-top: 8px;
+    font-size: 13px;
+  }
+  .late summary {
+    cursor: pointer;
+    color: var(--ink-secondary);
+  }
+  .late .mono {
+    overflow-wrap: anywhere;
+  }
   .pad {
     padding: 14px 18px;
   }

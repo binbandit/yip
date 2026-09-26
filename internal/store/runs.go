@@ -306,3 +306,22 @@ func InvalidateProviderSessions(ctx context.Context, q Q, engineerID, why string
 	_, err := q.ExecContext(ctx, query, args...)
 	return err
 }
+
+// Quarantine records late output from a stale lease epoch. Redelivery of the
+// same output (same dedupe key) is recorded once.
+func Quarantine(ctx context.Context, q Q, o protocol.QuarantinedOutput, jobID, dedupeKey string) error {
+	_, err := q.ExecContext(ctx, `INSERT OR IGNORE INTO quarantined_output(id, run_id, job_id, node_id, epoch, current_epoch, kind, dedupe_key, summary, received_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, o.ID, o.RunID, jobID, o.NodeID, o.Epoch, o.CurrentEpoch, o.Kind, dedupeKey, o.Summary, ts(o.ReceivedAt))
+	return err
+}
+
+// ListQuarantine returns a job's quarantined output, oldest first.
+func ListQuarantine(ctx context.Context, q Q, jobID string) ([]protocol.QuarantinedOutput, error) {
+	return list(ctx, q, func(s scanner) (protocol.QuarantinedOutput, error) {
+		var o protocol.QuarantinedOutput
+		var at string
+		err := s.Scan(&o.ID, &o.RunID, &o.NodeID, &o.Epoch, &o.CurrentEpoch, &o.Kind, &o.Summary, &at)
+		o.ReceivedAt = parseTS(at)
+		return o, err
+	}, `SELECT id, run_id, node_id, epoch, current_epoch, kind, summary, received_at FROM quarantined_output WHERE job_id = ? ORDER BY received_at`, jobID)
+}

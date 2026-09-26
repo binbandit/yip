@@ -55,6 +55,12 @@ the code that enforces them and the tests that prove it.
    colleague who doesn't exist. A colleague who is present but lacks access is
    not waived: the author asks in the room (A42).
 
+**Late output.** A machine that reports for an attempt under an old lease
+epoch is refused, and what it sent (run events, its final report, tool
+calls) is kept, redacted and once, in `quarantined_output`. The work's
+drawer shows it under that attempt as diagnostic evidence; it never posts,
+completes, or publishes anything.
+
 **Automatic retries.** A provider crash is retried automatically at most
 twice (`MaxAutoRetries`), after 30 seconds and then 2 minutes, each with up
 to 25% jitter, and only when the crashed attempt was not allowed any push,
