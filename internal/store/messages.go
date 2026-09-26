@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"strings"
 
 	"github.com/binbandit/yip/protocol"
@@ -67,13 +68,7 @@ func AppendMessageRefs(ctx context.Context, q Q, id string, refs ...protocol.Ref
 		return err
 	}
 	for _, r := range refs {
-		dup := false
-		for _, e := range m.Refs {
-			if e == r {
-				dup = true
-			}
-		}
-		if !dup {
+		if !slices.Contains(m.Refs, r) {
 			m.Refs = append(m.Refs, r)
 		}
 	}
@@ -82,20 +77,12 @@ func AppendMessageRefs(ctx context.Context, q Q, id string, refs ...protocol.Ref
 }
 
 func GetMessage(ctx context.Context, q Q, id string) (protocol.Message, error) {
-	m, err := scanMessage(q.QueryRowContext(ctx, `SELECT `+messageCols+` FROM messages WHERE id = ?`, id))
-	if err != nil {
-		return m, notFound(err)
-	}
-	return m, fillMessages(ctx, q, []*protocol.Message{&m}, "")
+	return getFilled(ctx, q, scanMessage, fillMessage, `SELECT `+messageCols+` FROM messages WHERE id = ?`, id)
 }
 
 // GetMessageByClientKey finds an earlier send with the same idempotency key.
 func GetMessageByClientKey(ctx context.Context, q Q, orgID, key string) (protocol.Message, error) {
-	m, err := scanMessage(q.QueryRowContext(ctx, `SELECT `+messageCols+` FROM messages WHERE org_id = ? AND client_key = ?`, orgID, key))
-	if err != nil {
-		return m, notFound(err)
-	}
-	return m, fillMessages(ctx, q, []*protocol.Message{&m}, "")
+	return getFilled(ctx, q, scanMessage, fillMessage, `SELECT `+messageCols+` FROM messages WHERE org_id = ? AND client_key = ?`, orgID, key)
 }
 
 // ListRoomMessages returns top-level messages before a sequence (0 = latest),
@@ -113,14 +100,8 @@ func ListRoomMessages(ctx context.Context, q Q, roomID string, beforeSeq int64, 
 	if hasMore {
 		msgs = msgs[:limit]
 	}
-	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
-		msgs[i], msgs[j] = msgs[j], msgs[i]
-	}
-	ptrs := make([]*protocol.Message, len(msgs))
-	for i := range msgs {
-		ptrs[i] = &msgs[i]
-	}
-	return msgs, hasMore, fillMessages(ctx, q, ptrs, viewerID)
+	slices.Reverse(msgs)
+	return msgs, hasMore, fillMessages(ctx, q, msgs, viewerID)
 }
 
 // ListThread returns the root message followed by its replies.
@@ -129,11 +110,7 @@ func ListThread(ctx context.Context, q Q, threadID, viewerID string) ([]protocol
 	if err != nil {
 		return nil, err
 	}
-	ptrs := make([]*protocol.Message, len(msgs))
-	for i := range msgs {
-		ptrs[i] = &msgs[i]
-	}
-	return msgs, fillMessages(ctx, q, ptrs, viewerID)
+	return msgs, fillMessages(ctx, q, msgs, viewerID)
 }
 
 // RecentMessages returns the latest messages in a room (optionally a thread),
@@ -151,75 +128,73 @@ func RecentMessages(ctx context.Context, q Q, roomID, threadID string, limit int
 	if err != nil {
 		return nil, err
 	}
-	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
-		msgs[i], msgs[j] = msgs[j], msgs[i]
-	}
-	ptrs := make([]*protocol.Message, len(msgs))
-	for i := range msgs {
-		ptrs[i] = &msgs[i]
-	}
-	return msgs, fillMessages(ctx, q, ptrs, "")
+	slices.Reverse(msgs)
+	return msgs, fillMessages(ctx, q, msgs, "")
 }
 
-func fillMessages(ctx context.Context, q Q, msgs []*protocol.Message, viewerID string) error {
+func fillMessage(ctx context.Context, q Q, m *protocol.Message) error {
+	msgs := []protocol.Message{*m}
+	err := fillMessages(ctx, q, msgs, "")
+	*m = msgs[0]
+	return err
+}
+
+// fillMessages adds mentions, reactions (as seen by viewerID), and thread
+// summaries to msgs in place.
+func fillMessages(ctx context.Context, q Q, msgs []protocol.Message, viewerID string) error {
 	if len(msgs) == 0 {
 		return nil
 	}
-	ids := make([]any, len(msgs))
 	idx := map[string]*protocol.Message{}
-	for i, m := range msgs {
-		ids[i] = m.ID
-		idx[m.ID] = m
+	ids := make([]string, len(msgs))
+	for i := range msgs {
+		ids[i] = msgs[i].ID
+		idx[ids[i]] = &msgs[i]
 	}
-	in := "(" + strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",") + ")"
-	rows, err := q.QueryContext(ctx, `SELECT message_id, member_kind, member_id FROM mentions WHERE message_id IN `+in, ids...)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
+	in, idArgs := inList(ids)
+	err := each(ctx, q, func(s scanner) error {
 		var mid string
 		var mn protocol.Mention
-		if err := rows.Scan(&mid, &mn.Kind, &mn.ID); err != nil {
-			rows.Close()
+		if err := s.Scan(&mid, &mn.Kind, &mn.ID); err != nil {
 			return err
 		}
 		idx[mid].Mentions = append(idx[mid].Mentions, mn)
-	}
-	rows.Close()
-	rows, err = q.QueryContext(ctx, `SELECT message_id, emoji, COUNT(*), SUM(CASE WHEN actor_kind = 'user' AND actor_id = ? THEN 1 ELSE 0 END)
-		FROM reactions WHERE message_id IN `+in+` GROUP BY message_id, emoji ORDER BY MIN(created_at)`, append([]any{viewerID}, ids...)...)
+		return nil
+	}, `SELECT message_id, member_kind, member_id FROM mentions WHERE message_id IN `+in, idArgs...)
 	if err != nil {
 		return err
 	}
-	for rows.Next() {
+	err = each(ctx, q, func(s scanner) error {
 		var mid string
 		var r protocol.ReactionSummary
 		var mine int
-		if err := rows.Scan(&mid, &r.Emoji, &r.Count, &mine); err != nil {
-			rows.Close()
+		if err := s.Scan(&mid, &r.Emoji, &r.Count, &mine); err != nil {
 			return err
 		}
 		r.Mine = mine > 0
 		idx[mid].Reactions = append(idx[mid].Reactions, r)
-	}
-	rows.Close()
-	rows, err = q.QueryContext(ctx, `SELECT id, reply_count, COALESCE(last_reply_at, '') FROM threads WHERE id IN `+in, ids...)
+		return nil
+	}, `SELECT message_id, emoji, COUNT(*), SUM(CASE WHEN actor_kind = 'user' AND actor_id = ? THEN 1 ELSE 0 END)
+		FROM reactions WHERE message_id IN `+in+` GROUP BY message_id, emoji ORDER BY MIN(created_at)`, append([]any{viewerID}, idArgs...)...)
 	if err != nil {
 		return err
 	}
-	for rows.Next() {
+	err = each(ctx, q, func(s scanner) error {
 		var id, last string
 		var n int
-		if err := rows.Scan(&id, &n, &last); err != nil {
-			rows.Close()
+		if err := s.Scan(&id, &n, &last); err != nil {
 			return err
 		}
 		if n > 0 {
 			idx[id].Thread = &protocol.ThreadSummary{ReplyCount: n, LastReplyAt: parseTS(last), Participants: []protocol.Actor{}}
 		}
+		return nil
+	}, `SELECT id, reply_count, COALESCE(last_reply_at, '') FROM threads WHERE id IN `+in, idArgs...)
+	if err != nil {
+		return err
 	}
-	rows.Close()
-	for _, m := range msgs {
+	for i := range msgs {
+		m := &msgs[i]
 		if m.Thread != nil {
 			parts, err := list(ctx, q, func(s scanner) (protocol.Actor, error) {
 				var a protocol.Actor
@@ -350,12 +325,8 @@ func SearchMessages(ctx context.Context, q Q, match string, roomIDs []string, li
 	if len(roomIDs) == 0 {
 		return []protocol.SearchResult{}, nil
 	}
-	args := []any{match}
-	for _, r := range roomIDs {
-		args = append(args, r)
-	}
-	args = append(args, limit)
-	in := "(" + strings.TrimSuffix(strings.Repeat("?,", len(roomIDs)), ",") + ")"
+	in, rooms := inList(roomIDs)
+	args := append(append([]any{match}, rooms...), limit)
 	return list(ctx, q, func(s scanner) (protocol.SearchResult, error) {
 		var r protocol.SearchResult
 		var thread, created string

@@ -29,36 +29,19 @@ func InsertReview(ctx context.Context, q Q, orgID string, r protocol.Review) err
 }
 
 func GetReview(ctx context.Context, q Q, id string) (protocol.Review, error) {
-	r, err := scanReview(q.QueryRowContext(ctx, `SELECT `+reviewCols+` FROM reviews WHERE id = ?`, id))
-	if err != nil {
-		return r, notFound(err)
-	}
-	return r, fillReview(ctx, q, &r)
+	return getFilled(ctx, q, scanReview, fillReview, `SELECT `+reviewCols+` FROM reviews WHERE id = ?`, id)
 }
 
 // GetReviewForJob returns the review of a job by a given reviewer.
 func GetReviewForJob(ctx context.Context, q Q, jobID, reviewerID string) (protocol.Review, error) {
-	r, err := scanReview(q.QueryRowContext(ctx, `SELECT `+reviewCols+` FROM reviews WHERE job_id = ? AND reviewer_id = ?`, jobID, reviewerID))
-	if err != nil {
-		return r, notFound(err)
-	}
-	return r, fillReview(ctx, q, &r)
+	return getFilled(ctx, q, scanReview, fillReview, `SELECT `+reviewCols+` FROM reviews WHERE job_id = ? AND reviewer_id = ?`, jobID, reviewerID)
 }
 
 func ListJobReviews(ctx context.Context, q Q, jobID string) ([]protocol.Review, error) {
-	rs, err := list(ctx, q, scanReview, `SELECT `+reviewCols+` FROM reviews WHERE job_id = ? ORDER BY created_at`, jobID)
-	if err != nil {
-		return nil, err
-	}
-	for i := range rs {
-		if err := fillReview(ctx, q, &rs[i]); err != nil {
-			return nil, err
-		}
-	}
-	return rs, nil
+	return listFilled(ctx, q, scanReview, fillReview, `SELECT `+reviewCols+` FROM reviews WHERE job_id = ? ORDER BY created_at`, jobID)
 }
 
-// ReviewByRoundJob finds the review whose round is served by a reviewer job.
+// ReviewByReviewJob finds the review whose round is served by a reviewer job.
 func ReviewByReviewJob(ctx context.Context, q Q, reviewJobID string) (protocol.Review, protocol.ReviewRound, error) {
 	var reviewID, roundID string
 	err := q.QueryRowContext(ctx, `SELECT review_id, id FROM review_rounds WHERE review_job_id = ? ORDER BY number DESC LIMIT 1`, reviewJobID).Scan(&reviewID, &roundID)
@@ -79,11 +62,6 @@ func ReviewByReviewJob(ctx context.Context, q Q, reviewJobID string) (protocol.R
 
 func SetReviewState(ctx context.Context, q Q, id string, state protocol.ReviewState, round int) error {
 	_, err := q.ExecContext(ctx, `UPDATE reviews SET state = ?, current_round = ?, updated_at = ? WHERE id = ?`, string(state), round, ts(nowUTC()), id)
-	return err
-}
-
-func SetReviewPR(ctx context.Context, q Q, id, prID string) error {
-	_, err := q.ExecContext(ctx, `UPDATE reviews SET pull_request_id = ? WHERE id = ?`, nullStr(prID), id)
 	return err
 }
 
@@ -115,15 +93,6 @@ func InsertRound(ctx context.Context, q Q, r protocol.ReviewRound, causeKey stri
 func RoundByCauseKey(ctx context.Context, q Q, causeKey string) (protocol.ReviewRound, error) {
 	r, err := scanRound(q.QueryRowContext(ctx, `SELECT `+roundCols+` FROM review_rounds WHERE cause_key = ?`, causeKey))
 	return r, notFound(err)
-}
-
-func GetRound(ctx context.Context, q Q, id string) (protocol.ReviewRound, error) {
-	r, err := scanRound(q.QueryRowContext(ctx, `SELECT `+roundCols+` FROM review_rounds WHERE id = ?`, id))
-	if err != nil {
-		return r, notFound(err)
-	}
-	r.Findings, err = listFindings(ctx, q, `round_id = ?`, r.ID)
-	return r, err
 }
 
 func SetRoundState(ctx context.Context, q Q, id string, state protocol.ReviewState, summary string, decided bool) error {

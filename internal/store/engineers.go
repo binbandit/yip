@@ -49,52 +49,25 @@ func InsertEngineerVersion(ctx context.Context, q Q, v protocol.EngineerVersion)
 // SetEngineerVersion points the engineer at a new config version. Active runs
 // keep the snapshot they started with.
 func SetEngineerVersion(ctx context.Context, q Q, id, versionID, handle string, expectVersion int64) (bool, error) {
-	res, err := q.ExecContext(ctx, `UPDATE engineers SET current_version_id = ?, handle = ?, updated_at = ?, version = version + 1
-		WHERE id = ? AND version = ?`, versionID, handle, ts(nowUTC()), id, expectVersion)
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	return oneRow(q.ExecContext(ctx, `UPDATE engineers SET current_version_id = ?, handle = ?, updated_at = ?, version = version + 1
+		WHERE id = ? AND version = ?`, versionID, handle, ts(nowUTC()), id, expectVersion))
 }
 
 func SetEngineerArchived(ctx context.Context, q Q, id string, archived bool, expectVersion int64) (bool, error) {
-	res, err := q.ExecContext(ctx, `UPDATE engineers SET archived = ?, updated_at = ?, version = version + 1 WHERE id = ? AND version = ?`,
-		b2i(archived), ts(nowUTC()), id, expectVersion)
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	return oneRow(q.ExecContext(ctx, `UPDATE engineers SET archived = ?, updated_at = ?, version = version + 1 WHERE id = ? AND version = ?`,
+		b2i(archived), ts(nowUTC()), id, expectVersion))
 }
 
 func GetEngineer(ctx context.Context, q Q, id string) (protocol.Engineer, error) {
-	e, err := scanEngineer(q.QueryRowContext(ctx, `SELECT `+engineerCols+engineerFrom+` WHERE e.id = ?`, id))
-	if err != nil {
-		return e, notFound(err)
-	}
-	return e, fillEngineer(ctx, q, &e)
+	return getFilled(ctx, q, scanEngineer, fillEngineer, `SELECT `+engineerCols+engineerFrom+` WHERE e.id = ?`, id)
 }
 
 func GetEngineerByHandle(ctx context.Context, q Q, handle string) (protocol.Engineer, error) {
-	e, err := scanEngineer(q.QueryRowContext(ctx, `SELECT `+engineerCols+engineerFrom+` WHERE e.handle = ?`, handle))
-	if err != nil {
-		return e, notFound(err)
-	}
-	return e, fillEngineer(ctx, q, &e)
+	return getFilled(ctx, q, scanEngineer, fillEngineer, `SELECT `+engineerCols+engineerFrom+` WHERE e.handle = ?`, handle)
 }
 
 func ListEngineers(ctx context.Context, q Q) ([]protocol.Engineer, error) {
-	out, err := list(ctx, q, scanEngineer, `SELECT `+engineerCols+engineerFrom+` ORDER BY v.name`)
-	if err != nil {
-		return nil, err
-	}
-	for i := range out {
-		if err := fillEngineer(ctx, q, &out[i]); err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
+	return listFilled(ctx, q, scanEngineer, fillEngineer, `SELECT `+engineerCols+engineerFrom+` ORDER BY v.name`)
 }
 
 func fillEngineer(ctx context.Context, q Q, e *protocol.Engineer) error {

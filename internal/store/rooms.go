@@ -29,21 +29,12 @@ func InsertRoom(ctx context.Context, q Q, r protocol.Room) error {
 
 // UpdateRoom writes mutable room fields under an optimistic version check.
 func UpdateRoom(ctx context.Context, q Q, r protocol.Room, expectVersion int64) (bool, error) {
-	res, err := q.ExecContext(ctx, `UPDATE rooms SET name = ?, purpose = ?, private = ?, reply_mode = ?, steward_id = ?, archived = ?, version = version + 1
-		WHERE id = ? AND version = ?`, r.Name, r.Purpose, b2i(r.Private), r.ReplyMode, nullStr(r.StewardID), b2i(r.Archived), r.ID, expectVersion)
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	return oneRow(q.ExecContext(ctx, `UPDATE rooms SET name = ?, purpose = ?, private = ?, reply_mode = ?, steward_id = ?, archived = ?, version = version + 1
+		WHERE id = ? AND version = ?`, r.Name, r.Purpose, b2i(r.Private), r.ReplyMode, nullStr(r.StewardID), b2i(r.Archived), r.ID, expectVersion))
 }
 
 func GetRoom(ctx context.Context, q Q, id string) (protocol.Room, error) {
-	r, err := scanRoom(q.QueryRowContext(ctx, `SELECT `+roomCols+` FROM rooms WHERE id = ?`, id))
-	if err != nil {
-		return r, notFound(err)
-	}
-	return r, fillRoom(ctx, q, &r)
+	return getFilled(ctx, q, scanRoom, fillRoom, `SELECT `+roomCols+` FROM rooms WHERE id = ?`, id)
 }
 
 // ListRoomsForUser returns non-archived rooms the user belongs to, with
@@ -59,7 +50,7 @@ func ListRoomsForUser(ctx context.Context, q Q, userID string) ([]protocol.Room,
 		if err := fillRoom(ctx, q, &rooms[i]); err != nil {
 			return nil, err
 		}
-		if err := fillReadState(ctx, q, &rooms[i], userID); err != nil {
+		if err := FillReadState(ctx, q, &rooms[i], userID); err != nil {
 			return nil, err
 		}
 	}
@@ -80,7 +71,8 @@ func fillRoom(ctx context.Context, q Q, r *protocol.Room) error {
 	return err
 }
 
-func fillReadState(ctx context.Context, q Q, r *protocol.Room, userID string) error {
+// FillReadState populates per-user read counters on a room.
+func FillReadState(ctx context.Context, q Q, r *protocol.Room, userID string) error {
 	_ = q.QueryRowContext(ctx, `SELECT last_read_seq FROM room_reads WHERE room_id = ? AND user_id = ?`, r.ID, userID).Scan(&r.LastReadSeq)
 	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE room_id = ? AND thread_id IS NULL AND seq > ?
 		AND deleted_at IS NULL AND NOT (author_kind = 'user' AND author_id = ?)`, r.ID, r.LastReadSeq, userID).Scan(&r.UnreadCount); err != nil {
@@ -91,34 +83,26 @@ func fillReadState(ctx context.Context, q Q, r *protocol.Room, userID string) er
 		r.ID, r.LastReadSeq, userID).Scan(&r.MentionCount)
 }
 
-// FillReadState populates per-user read counters on a room.
-func FillReadState(ctx context.Context, q Q, r *protocol.Room, userID string) error {
-	return fillReadState(ctx, q, r, userID)
-}
-
 func AddMember(ctx context.Context, q Q, roomID string, m protocol.Member) (bool, error) {
-	res, err := q.ExecContext(ctx, `INSERT OR IGNORE INTO room_memberships(room_id, member_kind, member_id, created_at) VALUES (?, ?, ?, ?)`,
-		roomID, m.Kind, m.ID, ts(nowUTC()))
-	if err != nil {
-		return false, err
+	added, err := oneRow(q.ExecContext(ctx, `INSERT OR IGNORE INTO room_memberships(room_id, member_kind, member_id, created_at) VALUES (?, ?, ?, ?)`,
+		roomID, m.Kind, m.ID, ts(nowUTC())))
+	if added {
+		err = bumpMembersVersion(ctx, q, roomID)
 	}
-	n, _ := res.RowsAffected()
-	if n == 1 {
-		_, err = q.ExecContext(ctx, `UPDATE rooms SET members_version = members_version + 1 WHERE id = ?`, roomID)
-	}
-	return n == 1, err
+	return added, err
 }
 
 func RemoveMember(ctx context.Context, q Q, roomID string, m protocol.Member) (bool, error) {
-	res, err := q.ExecContext(ctx, `DELETE FROM room_memberships WHERE room_id = ? AND member_kind = ? AND member_id = ?`, roomID, m.Kind, m.ID)
-	if err != nil {
-		return false, err
+	removed, err := oneRow(q.ExecContext(ctx, `DELETE FROM room_memberships WHERE room_id = ? AND member_kind = ? AND member_id = ?`, roomID, m.Kind, m.ID))
+	if removed {
+		err = bumpMembersVersion(ctx, q, roomID)
 	}
-	n, _ := res.RowsAffected()
-	if n == 1 {
-		_, err = q.ExecContext(ctx, `UPDATE rooms SET members_version = members_version + 1 WHERE id = ?`, roomID)
-	}
-	return n == 1, err
+	return removed, err
+}
+
+func bumpMembersVersion(ctx context.Context, q Q, roomID string) error {
+	_, err := q.ExecContext(ctx, `UPDATE rooms SET members_version = members_version + 1 WHERE id = ?`, roomID)
+	return err
 }
 
 func IsMember(ctx context.Context, q Q, roomID, kind, id string) (bool, error) {
@@ -149,8 +133,7 @@ func SetRoomProjects(ctx context.Context, q Q, roomID string, projectIDs []strin
 			return err
 		}
 	}
-	_, err := q.ExecContext(ctx, `UPDATE rooms SET members_version = members_version + 1 WHERE id = ?`, roomID)
-	return err
+	return bumpMembersVersion(ctx, q, roomID)
 }
 
 // NextRoomSeq allocates the next message sequence number in a room.

@@ -51,24 +51,11 @@ func InsertNode(ctx context.Context, q Q, orgID string, n NodeRow) error {
 }
 
 func GetNode(ctx context.Context, q Q, id string) (NodeRow, error) {
-	n, err := scanNode(q.QueryRowContext(ctx, `SELECT `+nodeCols+` FROM nodes WHERE id = ?`, id))
-	if err != nil {
-		return n, notFound(err)
-	}
-	return n, fillNode(ctx, q, &n)
+	return getFilled(ctx, q, scanNode, fillNode, `SELECT `+nodeCols+` FROM nodes WHERE id = ?`, id)
 }
 
 func ListNodes(ctx context.Context, q Q) ([]NodeRow, error) {
-	ns, err := list(ctx, q, scanNode, `SELECT `+nodeCols+` FROM nodes ORDER BY created_at`)
-	if err != nil {
-		return nil, err
-	}
-	for i := range ns {
-		if err := fillNode(ctx, q, &ns[i]); err != nil {
-			return nil, err
-		}
-	}
-	return ns, nil
+	return listFilled(ctx, q, scanNode, fillNode, `SELECT `+nodeCols+` FROM nodes ORDER BY created_at`)
 }
 
 func fillNode(ctx context.Context, q Q, n *NodeRow) error {
@@ -225,12 +212,11 @@ func RedeemEnrollment(ctx context.Context, q Q, tokenHash, nodeID string, now ti
 	if err != nil {
 		return "", false, err
 	}
-	res, err := q.ExecContext(ctx, `UPDATE node_enrollments SET used_at = ?, node_id = ? WHERE id = ? AND used_at IS NULL`, ts(now), nodeID, id)
+	ok, err = oneRow(q.ExecContext(ctx, `UPDATE node_enrollments SET used_at = ?, node_id = ? WHERE id = ? AND used_at IS NULL`, ts(now), nodeID, id))
 	if err != nil {
 		return "", false, err
 	}
-	n, _ := res.RowsAffected()
-	return name, n == 1, nil
+	return name, ok, nil
 }
 
 // ---- events ----
@@ -287,12 +273,9 @@ func EventsForJob(ctx context.Context, q Q, jobID string, limit int) ([]EventRow
 }
 
 func EventsSince(ctx context.Context, q Q, since time.Time, types []string, limit int) ([]EventRow, error) {
-	args := []any{ts(since)}
-	for _, t := range types {
-		args = append(args, t)
-	}
-	args = append(args, limit)
-	return list(ctx, q, scanEvent, `SELECT `+eventCols+` FROM events WHERE occurred_at >= ? AND type IN `+InClause(len(types))+`
+	in, typeArgs := inList(types)
+	args := append(append([]any{ts(since)}, typeArgs...), limit)
+	return list(ctx, q, scanEvent, `SELECT `+eventCols+` FROM events WHERE occurred_at >= ? AND type IN `+in+`
 		ORDER BY seq DESC LIMIT ?`, args...)
 }
 

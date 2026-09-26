@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/binbandit/yip/protocol"
@@ -21,21 +22,81 @@ func notFound(err error) error {
 	return err
 }
 
-func list[T any](ctx context.Context, q Q, scan func(scanner) (T, error), query string, args ...any) ([]T, error) {
+// each runs query and calls fn for every row.
+func each(ctx context.Context, q Q, fn func(scanner) error, query string, args ...any) error {
 	rows, err := q.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := fn(rows); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+func list[T any](ctx context.Context, q Q, scan func(scanner) (T, error), query string, args ...any) ([]T, error) {
+	out := []T{}
+	err := each(ctx, q, func(s scanner) error {
+		v, err := scan(s)
+		out = append(out, v)
+		return err
+	}, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []T{}
-	for rows.Next() {
-		v, err := scan(rows)
-		if err != nil {
+	return out, nil
+}
+
+// getFilled reads one row and completes it with fill.
+func getFilled[T any](ctx context.Context, q Q, scan func(scanner) (T, error), fill func(context.Context, Q, *T) error, query string, args ...any) (T, error) {
+	v, err := scan(q.QueryRowContext(ctx, query, args...))
+	if err != nil {
+		return v, notFound(err)
+	}
+	return v, fill(ctx, q, &v)
+}
+
+// listFilled lists rows and completes each one with fill.
+func listFilled[T any](ctx context.Context, q Q, scan func(scanner) (T, error), fill func(context.Context, Q, *T) error, query string, args ...any) ([]T, error) {
+	out, err := list(ctx, q, scan, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if err := fill(ctx, q, &out[i]); err != nil {
 			return nil, err
 		}
-		out = append(out, v)
 	}
-	return out, rows.Err()
+	return out, nil
+}
+
+// oneRow reports whether an exec changed exactly one row.
+func oneRow(res sql.Result, err error) (bool, error) {
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// inList returns an "(?,?,…)" placeholder list for vs, and vs as arguments.
+func inList[T ~string](vs []T) (string, []any) {
+	args := make([]any, len(vs))
+	for i, v := range vs {
+		args[i] = string(v)
+	}
+	return "(" + strings.TrimSuffix(strings.Repeat("?,", len(vs)), ",") + ")", args
+}
+
+// whereClause returns " WHERE cond", or nothing when cond is empty.
+func whereClause(cond string) string {
+	if cond == "" {
+		return ""
+	}
+	return " WHERE " + cond
 }
 
 func stringsCol(ctx context.Context, q Q, query string, args ...any) ([]string, error) {
@@ -169,13 +230,8 @@ func InsertBootstrapSecret(ctx context.Context, q Q, hash string, expires time.T
 // ConsumeBootstrapSecret marks an unexpired, unused secret as used. It returns
 // false when the secret is unknown, expired, or already used.
 func ConsumeBootstrapSecret(ctx context.Context, q Q, hash string, now time.Time) (bool, error) {
-	res, err := q.ExecContext(ctx, `UPDATE bootstrap_secrets SET used_at = ?
-		WHERE hash = ? AND used_at IS NULL AND expires_at > ?`, ts(now), hash, ts(now))
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	return oneRow(q.ExecContext(ctx, `UPDATE bootstrap_secrets SET used_at = ?
+		WHERE hash = ? AND used_at IS NULL AND expires_at > ?`, ts(now), hash, ts(now)))
 }
 
 // ---- audit ----

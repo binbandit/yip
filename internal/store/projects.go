@@ -27,34 +27,16 @@ func InsertProject(ctx context.Context, q Q, p protocol.Project) error {
 }
 
 func UpdateProject(ctx context.Context, q Q, p protocol.Project, expectVersion int64) (bool, error) {
-	res, err := q.ExecContext(ctx, `UPDATE projects SET name = ?, description = ?, instructions = ?, policy = ?, version = version + 1
-		WHERE id = ? AND version = ?`, p.Name, p.Description, p.Instructions, js(p.Policy), p.ID, expectVersion)
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	return oneRow(q.ExecContext(ctx, `UPDATE projects SET name = ?, description = ?, instructions = ?, policy = ?, version = version + 1
+		WHERE id = ? AND version = ?`, p.Name, p.Description, p.Instructions, js(p.Policy), p.ID, expectVersion))
 }
 
 func GetProject(ctx context.Context, q Q, id string) (protocol.Project, error) {
-	p, err := scanProject(q.QueryRowContext(ctx, `SELECT `+projectCols+` FROM projects WHERE id = ?`, id))
-	if err != nil {
-		return p, notFound(err)
-	}
-	return p, fillProject(ctx, q, &p)
+	return getFilled(ctx, q, scanProject, fillProject, `SELECT `+projectCols+` FROM projects WHERE id = ?`, id)
 }
 
 func ListProjects(ctx context.Context, q Q) ([]protocol.Project, error) {
-	ps, err := list(ctx, q, scanProject, `SELECT `+projectCols+` FROM projects ORDER BY name`)
-	if err != nil {
-		return nil, err
-	}
-	for i := range ps {
-		if err := fillProject(ctx, q, &ps[i]); err != nil {
-			return nil, err
-		}
-	}
-	return ps, nil
+	return listFilled(ctx, q, scanProject, fillProject, `SELECT `+projectCols+` FROM projects ORDER BY name`)
 }
 
 func fillProject(ctx context.Context, q Q, p *protocol.Project) error {
@@ -129,7 +111,7 @@ func GetGrant(ctx context.Context, q Q, projectID, engineerID string) (protocol.
 	return g, notFound(err)
 }
 
-// GrantsVersion summarises an engineer's grants for scope fingerprints.
+// GrantsDigest summarises an engineer's grants for scope fingerprints.
 func GrantsDigest(ctx context.Context, q Q, engineerID string) (string, error) {
 	gs, err := list(ctx, q, scanGrant, `SELECT `+grantCols+` FROM project_grants WHERE engineer_id = ? ORDER BY project_id`, engineerID)
 	if err != nil {

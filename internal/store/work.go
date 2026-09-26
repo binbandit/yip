@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"strings"
 	"time"
 
 	"github.com/binbandit/yip/protocol"
@@ -73,19 +72,6 @@ func InsertCheckpoint(ctx context.Context, q Q, id, runID, jobID, nodeID string,
 	return err
 }
 
-// LatestCheckpoint returns the newest checkpoint of a job with an uploaded,
-// verified artifact (the only kind another node can resume from).
-func LatestCheckpoint(ctx context.Context, q Q, jobID string) (protocol.CheckpointInfo, string, error) {
-	var c protocol.CheckpointInfo
-	var nodeID string
-	var dirty int
-	err := q.QueryRowContext(ctx, `SELECT c.head, COALESCE(c.artifact_id, ''), COALESCE(a.hash, ''), c.dirty, c.untracked, c.node_id
-		FROM checkpoints c LEFT JOIN artifacts a ON a.id = c.artifact_id AND a.verified = 1
-		WHERE c.job_id = ? ORDER BY c.created_at DESC LIMIT 1`, jobID).Scan(&c.Head, &c.ArtifactID, &c.Hash, &dirty, &c.Untracked, &nodeID)
-	c.Dirty = dirty == 1
-	return c, nodeID, notFound(err)
-}
-
 // ---- approvals ----
 
 type ApprovalRow struct {
@@ -129,22 +115,13 @@ func GetApprovalByRequest(ctx context.Context, q Q, runID, requestID string) (Ap
 }
 
 func ListApprovals(ctx context.Context, q Q, where string, args ...any) ([]ApprovalRow, error) {
-	query := `SELECT ` + approvalCols + ` FROM approvals`
-	if where != "" {
-		query += " WHERE " + where
-	}
-	return list(ctx, q, scanApproval, query+` ORDER BY created_at`, args...)
+	return list(ctx, q, scanApproval, `SELECT `+approvalCols+` FROM approvals`+whereClause(where)+` ORDER BY created_at`, args...)
 }
 
 // DecideApproval applies an exact-action decision under an optimistic version.
 func DecideApproval(ctx context.Context, q Q, id string, expectVersion int64, status string, by protocol.Actor, now time.Time) (bool, error) {
-	res, err := q.ExecContext(ctx, `UPDATE approvals SET status = ?, decided_by_kind = ?, decided_by_id = ?, decided_at = ?, version = version + 1
-		WHERE id = ? AND version = ? AND status = 'pending' AND expires_at > ?`, status, by.Kind, by.ID, ts(now), id, expectVersion, ts(now))
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	return oneRow(q.ExecContext(ctx, `UPDATE approvals SET status = ?, decided_by_kind = ?, decided_by_id = ?, decided_at = ?, version = version + 1
+		WHERE id = ? AND version = ? AND status = 'pending' AND expires_at > ?`, status, by.Kind, by.ID, ts(now), id, expectVersion, ts(now)))
 }
 
 func SetApprovalStatus(ctx context.Context, q Q, id, from, to string) (bool, error) {
@@ -152,13 +129,8 @@ func SetApprovalStatus(ctx context.Context, q Q, id, from, to string) (bool, err
 	if to == "consumed" {
 		consumed = ts(nowUTC())
 	}
-	res, err := q.ExecContext(ctx, `UPDATE approvals SET status = ?, consumed_at = COALESCE(?, consumed_at), version = version + 1 WHERE id = ? AND status = ?`,
-		to, consumed, id, from)
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	return oneRow(q.ExecContext(ctx, `UPDATE approvals SET status = ?, consumed_at = COALESCE(?, consumed_at), version = version + 1 WHERE id = ? AND status = ?`,
+		to, consumed, id, from))
 }
 
 func SetApprovalMessage(ctx context.Context, q Q, id, messageID string) error {
@@ -196,23 +168,14 @@ func GetQuestion(ctx context.Context, q Q, id string) (protocol.Question, error)
 }
 
 func ListQuestions(ctx context.Context, q Q, where string, args ...any) ([]protocol.Question, error) {
-	query := `SELECT ` + questionCols + ` FROM questions`
-	if where != "" {
-		query += " WHERE " + where
-	}
-	return list(ctx, q, scanQuestion, query+` ORDER BY created_at`, args...)
+	return list(ctx, q, scanQuestion, `SELECT `+questionCols+` FROM questions`+whereClause(where)+` ORDER BY created_at`, args...)
 }
 
 // AnswerQuestion resolves an open question exactly once. Duplicate or late
 // replies (after answer or cancellation) change nothing.
 func AnswerQuestion(ctx context.Context, q Q, id, answerMessageID string, now time.Time) (bool, error) {
-	res, err := q.ExecContext(ctx, `UPDATE questions SET status = 'answered', answer_message_id = ?, answered_at = ? WHERE id = ? AND status = 'open'`,
-		answerMessageID, ts(now), id)
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	return oneRow(q.ExecContext(ctx, `UPDATE questions SET status = 'answered', answer_message_id = ?, answered_at = ? WHERE id = ? AND status = 'open'`,
+		answerMessageID, ts(now), id))
 }
 
 func CancelJobQuestions(ctx context.Context, q Q, jobID string) ([]string, error) {
@@ -273,11 +236,7 @@ func GetPR(ctx context.Context, q Q, id string) (protocol.PullRequest, error) {
 }
 
 func ListPRs(ctx context.Context, q Q, where string, args ...any) ([]protocol.PullRequest, error) {
-	query := `SELECT ` + prCols + ` FROM pull_requests`
-	if where != "" {
-		query += " WHERE " + where
-	}
-	return list(ctx, q, scanPR, query+` ORDER BY created_at`, args...)
+	return list(ctx, q, scanPR, `SELECT `+prCols+` FROM pull_requests`+whereClause(where)+` ORDER BY created_at`, args...)
 }
 
 // ---- forge deliveries ----
@@ -298,14 +257,9 @@ type ForgeDelivery struct {
 // InsertForgeDelivery records an outgoing publication or inbound webhook.
 // It reports false when the dedupe key already exists.
 func InsertForgeDelivery(ctx context.Context, q Q, d ForgeDelivery) (bool, error) {
-	res, err := q.ExecContext(ctx, `INSERT OR IGNORE INTO forge_deliveries(id, pr_id, kind, dedupe_key, external_id, status, engineer_id, review_round_id,
+	return oneRow(q.ExecContext(ctx, `INSERT OR IGNORE INTO forge_deliveries(id, pr_id, kind, dedupe_key, external_id, status, engineer_id, review_round_id,
 		payload, attempted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, d.ID, nullStr(d.PRID), d.Kind, d.DedupeKey, d.ExternalID, d.Status,
-		nullStr(d.EngineerID), nullStr(d.ReviewRoundID), d.Payload, ts(nowUTC()))
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+		nullStr(d.EngineerID), nullStr(d.ReviewRoundID), d.Payload, ts(nowUTC())))
 }
 
 func GetForgeDelivery(ctx context.Context, q Q, dedupeKey string) (ForgeDelivery, error) {
@@ -320,15 +274,6 @@ func SetForgeDelivery(ctx context.Context, q Q, id, status, externalID, errText 
 	_, err := q.ExecContext(ctx, `UPDATE forge_deliveries SET status = ?, external_id = CASE WHEN ? = '' THEN external_id ELSE ? END, error = ?,
 		completed_at = ? WHERE id = ?`, status, externalID, externalID, errText, ts(nowUTC()), id)
 	return err
-}
-
-func ListForgeDeliveries(ctx context.Context, q Q, prID string) ([]ForgeDelivery, error) {
-	return list(ctx, q, func(s scanner) (ForgeDelivery, error) {
-		var d ForgeDelivery
-		err := s.Scan(&d.ID, &d.PRID, &d.Kind, &d.DedupeKey, &d.ExternalID, &d.Status, &d.EngineerID, &d.ReviewRoundID, &d.Payload, &d.Error)
-		return d, err
-	}, `SELECT id, COALESCE(pr_id, ''), kind, dedupe_key, external_id, status, COALESCE(engineer_id, ''), COALESCE(review_round_id, ''), payload, error
-		FROM forge_deliveries WHERE pr_id = ? ORDER BY attempted_at`, prID)
 }
 
 // ---- decisions ----
@@ -380,28 +325,11 @@ func InsertDecision(ctx context.Context, q Q, orgID string, d protocol.Decision)
 }
 
 func GetDecision(ctx context.Context, q Q, id string) (protocol.Decision, error) {
-	d, err := scanDecision(q.QueryRowContext(ctx, `SELECT `+decisionCols+` FROM decisions WHERE id = ?`, id))
-	if err != nil {
-		return d, notFound(err)
-	}
-	return d, fillDecision(ctx, q, &d)
+	return getFilled(ctx, q, scanDecision, fillDecision, `SELECT `+decisionCols+` FROM decisions WHERE id = ?`, id)
 }
 
 func ListDecisions(ctx context.Context, q Q, where string, args ...any) ([]protocol.Decision, error) {
-	query := `SELECT ` + decisionCols + ` FROM decisions`
-	if where != "" {
-		query += " WHERE " + where
-	}
-	ds, err := list(ctx, q, scanDecision, query+` ORDER BY created_at DESC`, args...)
-	if err != nil {
-		return nil, err
-	}
-	for i := range ds {
-		if err := fillDecision(ctx, q, &ds[i]); err != nil {
-			return nil, err
-		}
-	}
-	return ds, nil
+	return listFilled(ctx, q, scanDecision, fillDecision, `SELECT `+decisionCols+` FROM decisions`+whereClause(where)+` ORDER BY created_at DESC`, args...)
 }
 
 func fillDecision(ctx context.Context, q Q, d *protocol.Decision) error {
@@ -426,16 +354,9 @@ func SetDecisionStatus(ctx context.Context, q Q, id string, expectVersion int64,
 		query += ` AND version = ?`
 		args = append(args, expectVersion)
 	}
-	res, err := q.ExecContext(ctx, query, args...)
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	return oneRow(q.ExecContext(ctx, query, args...))
 }
 
-// SearchDecisions returns accepted decision IDs matching a query; callers
-// filter visibility.
 // SearchDecisions ranks accepted-or-proposed decisions by text, limited to
 // those whose visibility allows at least one of rooms (or that carry no room
 // restriction). Visibility is applied before ranking and the limit, so
@@ -444,10 +365,9 @@ func SearchDecisions(ctx context.Context, q Q, match string, rooms []string, lim
 	args := []any{match}
 	cond := `d.visible_room_ids IS NULL`
 	if len(rooms) > 0 {
-		cond += ` OR EXISTS (SELECT 1 FROM json_each(d.visible_room_ids) WHERE value IN (` + strings.TrimSuffix(strings.Repeat("?,", len(rooms)), ",") + `))`
-		for _, r := range rooms {
-			args = append(args, r)
-		}
+		in, roomArgs := inList(rooms)
+		cond += ` OR EXISTS (SELECT 1 FROM json_each(d.visible_room_ids) WHERE value IN ` + in + `)`
+		args = append(args, roomArgs...)
 	}
 	args = append(args, limit)
 	return stringsCol(ctx, q, `SELECT f.decision_id FROM decisions_fts f JOIN decisions d ON d.id = f.decision_id
@@ -473,10 +393,6 @@ func PutCredential(ctx context.Context, q Q, id, orgID, kind, label, host string
 func GetCredential(ctx context.Context, q Q, kind, host string) (id string, secret []byte, err error) {
 	err = q.QueryRowContext(ctx, `SELECT id, secret FROM credentials WHERE kind = ? AND host = ? ORDER BY created_at DESC LIMIT 1`, kind, host).Scan(&id, &secret)
 	return id, secret, notFound(err)
-}
-
-func InClause(n int) string {
-	return "(" + strings.TrimSuffix(strings.Repeat("?,", n), ",") + ")"
 }
 
 // ---- tool call idempotency ----
