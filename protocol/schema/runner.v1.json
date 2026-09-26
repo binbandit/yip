@@ -874,6 +874,16 @@
         },
         "snapshotRev": {
           "type": "string"
+        },
+        "sourceBundle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

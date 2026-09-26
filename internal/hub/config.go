@@ -279,7 +279,7 @@ func (h *Hub) UpdateProject(ctx context.Context, userID, id string, req protocol
 func (h *Hub) PutRepo(ctx context.Context, userID, projectID, repoID string, req protocol.PutRepoRequest) (protocol.Project, error) {
 	req.Name, req.RemoteURL = strings.TrimSpace(req.Name), strings.TrimSpace(req.RemoteURL)
 	if req.Name == "" || req.RemoteURL == "" {
-		return protocol.Project{}, domain.Invalid("A repository needs a name and a remote URL reachable from your machines.")
+		return protocol.Project{}, domain.Invalid("A repository needs a name and a remote URL reachable from your machines, or import it from a bundle.")
 	}
 	if req.DefaultBranch == "" {
 		req.DefaultBranch = "main"
@@ -304,6 +304,7 @@ func (h *Hub) PutRepo(ctx context.Context, userID, projectID, repoID string, req
 		if existing, err := store.GetRepo(ctx, t.tx, repoID); err == nil && existing.ProjectID != projectID {
 			return domain.Conflict("That repository belongs to another project.")
 		}
+		// Giving an imported repository a remote switches it to that remote.
 		if err := store.PutRepo(ctx, t.tx, protocol.Repo{ID: repoID, ProjectID: projectID, Name: req.Name, RemoteURL: req.RemoteURL,
 			DefaultBranch: req.DefaultBranch, Forge: req.Forge, ForgeRepo: req.ForgeRepo, CreatedAt: h.now()}); err != nil {
 			return err

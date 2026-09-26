@@ -141,6 +141,7 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 		if r, err := store.GetRepo(ctx, q, job.RepoID); err == nil {
 			repo = &r
 			jf.Repo = r.Name
+			jf.NoRemote = r.RemoteURL == ""
 		}
 	}
 	if job.Revision != nil {
@@ -267,6 +268,11 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 	if repo != nil {
 		spec := &protocol.RepoSpec{RepoID: repo.ID, Name: repo.Name, RemoteURL: repo.RemoteURL, DefaultBranch: repo.DefaultBranch,
 			BaseRev: jf.Base, Branch: jf.Branch}
+		if repo.SourceBundleID != "" && repo.RemoteURL == "" {
+			if a, err := store.GetArtifact(ctx, q, repo.SourceBundleID); err == nil {
+				spec.SourceBundle = &a
+			}
+		}
 		if snapshot != nil && snapshot.Head != "" {
 			spec.SnapshotRev, spec.BaseRev, spec.Branch = snapshot.Head, snapshot.Base, ""
 			if snapshot.PullRequestID != "" {

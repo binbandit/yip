@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/binbandit/yip/protocol"
 )
@@ -68,22 +69,24 @@ func fillProject(ctx context.Context, q Q, p *protocol.Project) error {
 	return err
 }
 
-const repoCols = `id, project_id, name, remote_url, default_branch, forge, forge_repo, created_at`
+const repoCols = `id, project_id, name, remote_url, default_branch, forge, forge_repo, created_at, COALESCE(source_bundle_id, ''), imported_at`
 
 func scanRepo(s scanner) (protocol.Repo, error) {
 	var r protocol.Repo
 	var created string
-	err := s.Scan(&r.ID, &r.ProjectID, &r.Name, &r.RemoteURL, &r.DefaultBranch, &r.Forge, &r.ForgeRepo, &created)
+	var imported sql.NullString
+	err := s.Scan(&r.ID, &r.ProjectID, &r.Name, &r.RemoteURL, &r.DefaultBranch, &r.Forge, &r.ForgeRepo, &created, &r.SourceBundleID, &imported)
 	r.CreatedAt = parseTS(created)
+	r.ImportedAt = parseTSP(imported)
 	return r, err
 }
 
 func PutRepo(ctx context.Context, q Q, r protocol.Repo) error {
-	_, err := q.ExecContext(ctx, `INSERT INTO repos(id, project_id, name, remote_url, default_branch, forge, forge_repo, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := q.ExecContext(ctx, `INSERT INTO repos(id, project_id, name, remote_url, default_branch, forge, forge_repo, created_at, source_bundle_id, imported_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET name = excluded.name, remote_url = excluded.remote_url, default_branch = excluded.default_branch,
-			forge = excluded.forge, forge_repo = excluded.forge_repo`,
-		r.ID, r.ProjectID, r.Name, r.RemoteURL, r.DefaultBranch, r.Forge, r.ForgeRepo, ts(r.CreatedAt))
+			forge = excluded.forge, forge_repo = excluded.forge_repo, source_bundle_id = excluded.source_bundle_id, imported_at = excluded.imported_at`,
+		r.ID, r.ProjectID, r.Name, r.RemoteURL, r.DefaultBranch, r.Forge, r.ForgeRepo, ts(r.CreatedAt), nullStr(r.SourceBundleID), tsp(r.ImportedAt))
 	return err
 }
 

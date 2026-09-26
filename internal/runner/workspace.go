@@ -80,10 +80,13 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 // replica ensures a bare replica of the repository exists and is fresh.
 // Remote branches are fetched into refs/remotes/origin/*; local job branches
 // (refs/heads/yip/...) live beside them and are never pruned by a fetch.
-func (w *Workspaces) replica(ctx context.Context, repo protocol.RepoSpec) (string, error) {
+func (w *Workspaces) replica(ctx context.Context, repo protocol.RepoSpec, fetch bundleFetcher) (string, error) {
 	path := filepath.Join(w.paths.replicas(), repo.RepoID+".git")
 	unlock := w.lock("replica:" + repo.RepoID)
 	defer unlock()
+	if repo.RemoteURL == "" && repo.SourceBundle != nil {
+		return path, bundleReplica(ctx, path, repo, fetch)
+	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		if _, err := git(ctx, w.paths.replicas(), "clone", "--quiet", "--bare", repo.RemoteURL, path); err != nil {
 			return "", fmt.Errorf("clone %s: %w", repo.Name, err)
@@ -97,6 +100,36 @@ func (w *Workspaces) replica(ctx context.Context, repo protocol.RepoSpec) (strin
 		return path, nil
 	}
 	return path, nil
+}
+
+// bundleReplica builds (or refreshes) the replica of a repository imported
+// from a git bundle: its branches become refs/remotes/origin/*, exactly as a
+// clone's would. A replica already at this bundle is left alone.
+func bundleReplica(ctx context.Context, path string, repo protocol.RepoSpec, fetch bundleFetcher) error {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		if _, err := git(ctx, filepath.Dir(path), "init", "--quiet", "--bare", path); err != nil {
+			return fmt.Errorf("create replica for %s: %w", repo.Name, err)
+		}
+	}
+	if cur, _ := git(ctx, path, "config", "--get", "yip.sourceBundle"); cur == repo.SourceBundle.Hash {
+		return nil
+	}
+	if fetch == nil {
+		return fmt.Errorf("%s was imported from a bundle this machine hasn't received", repo.Name)
+	}
+	file, err := fetch(ctx, *repo.SourceBundle)
+	if err != nil {
+		return fmt.Errorf("fetch the imported bundle for %s: %w", repo.Name, err)
+	}
+	defer os.Remove(file)
+	if _, err := git(ctx, path, "bundle", "verify", "--quiet", file); err != nil {
+		return fmt.Errorf("the imported bundle for %s didn't verify: %w", repo.Name, err)
+	}
+	if _, err := git(ctx, path, "fetch", "--quiet", "--prune", file, "+refs/heads/*:refs/remotes/origin/*"); err != nil {
+		return err
+	}
+	_, err = git(ctx, path, "config", "yip.sourceBundle", repo.SourceBundle.Hash)
+	return err
 }
 
 // defaultHead resolves the remote default branch in a replica.
@@ -154,7 +187,7 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		}
 		return &Workspace{Dir: dir, Scratch: true}, nil
 	}
-	rep, err := w.replica(ctx, *m.Repo)
+	rep, err := w.replica(ctx, *m.Repo, fetch)
 	if err != nil {
 		return nil, err
 	}

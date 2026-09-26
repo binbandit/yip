@@ -72,6 +72,16 @@ available on the machine as `yip runner workspaces` / `yip runner cleanup`.
 Revoke a machine from Machines. It can't regain authority by replaying its
 queue; its in-flight runs are marked unknown until reconciled.
 
+## Code with no remote
+
+A repository your machines can't reach (a folder on your laptop, a remote
+behind a VPN) can be imported instead: in the folder run
+`git bundle create repo.bundle --all`, then **Project → Import from a
+folder**. Only committed work is included. Machines build their copy from
+the bundle and engineers publish revisions to yip as usual; there is no
+remote to push to. **Import a newer bundle** refreshes it; **Add a remote**
+switches the repository to a remote.
+
 ## Keep it running
 
 ```sh
