@@ -359,9 +359,9 @@ func (m *Manifest) Prompt() string {
 		switch r.TargetKind {
 		case "patch":
 			fmt.Fprintf(&b, "the revision %s (base %s). Your workspace is a read-only snapshot of exactly that revision; inspect `git diff %s %s` and the surrounding code.\n",
-				short(r.Head), short(r.Base), short(r.Base), short(r.Head))
+				r.Head, short(r.Base), short(r.Base), short(r.Head))
 		case "pr":
-			fmt.Fprintf(&b, "pull request %s at head %s (base %s). Your workspace is a read-only snapshot of that head.\n", r.PullRequest, short(r.Head), short(r.Base))
+			fmt.Fprintf(&b, "pull request %s at head %s (base %s). Your workspace is a read-only snapshot of that head.\n", r.PullRequest, r.Head, short(r.Base))
 		default:
 			fmt.Fprintf(&b, "the file `review-artifact` in your workspace, with SHA-256 %s. Pass this exact hash as expectedHash.\n", r.Hash)
 		}

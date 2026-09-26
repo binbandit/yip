@@ -41,3 +41,22 @@ func TestPromptOnlyContainsManifestFacts(t *testing.T) {
 		t.Fatalf("instructions should state AI identity and the question protocol")
 	}
 }
+
+// The verdict validator requires the full immutable identity. The prompt
+// must supply it without relying on a provider to expand an abbreviated ID.
+func TestReviewPromptSuppliesExactTarget(t *testing.T) {
+	for _, target := range []Review{
+		{TargetKind: "patch", Head: strings.Repeat("a", 40)},
+		{TargetKind: "pr", Head: strings.Repeat("b", 40)},
+		{TargetKind: "artifact", Hash: strings.Repeat("c", 64)},
+	} {
+		m := &Manifest{Purpose: "review", Review: &target}
+		key := target.Head
+		if key == "" {
+			key = target.Hash
+		}
+		if !strings.Contains(m.Prompt(), key) {
+			t.Fatalf("%s review prompt omitted the exact target", target.TargetKind)
+		}
+	}
+}
