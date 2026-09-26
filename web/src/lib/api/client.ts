@@ -53,27 +53,46 @@ export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface RequestOptions {
   signal?: AbortSignal;
+  /** Reuse a key across user-initiated retries of one action. */
+  idempotencyKey?: string;
   /** Do not trigger the global sign-in redirect on 401 (sign-in/setup forms). */
   quiet401?: boolean;
   headers?: Record<string, string>;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function request<T>(method: Method, path: string, body?: unknown, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (method !== 'GET' && csrfToken) headers['X-Yip-Csrf'] = csrfToken;
-  let res: Response;
-  try {
-    res = await fetch(path, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      credentials: 'same-origin',
-      signal: opts.signal,
-    });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') throw err;
-    throw new ApiError(0, { code: 'offline', message: OFFLINE_MESSAGE, recoverable: true });
+  // Every change carries an idempotency key, so a retry (ours after a dropped
+  // connection, or a double send) acts once and gets the first result.
+  if (method !== 'GET') headers['Idempotency-Key'] = opts.idempotencyKey ?? newClientKey();
+  let res: Response | undefined;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(path, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        credentials: 'same-origin',
+        signal: opts.signal,
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
+      if (method !== 'GET' && attempt === 0) {
+        await sleep(400); // the connection dropped: retry once with the same key
+        continue;
+      }
+      throw new ApiError(0, { code: 'offline', message: OFFLINE_MESSAGE, recoverable: true });
+    }
+    // The first copy is still being processed: wait for its result.
+    if (res.status === 409 && res.headers.get('Retry-After') && method !== 'GET' && attempt < 4) {
+      await sleep(1000);
+      continue;
+    }
+    break;
   }
   const text = await res.text();
   let parsed: unknown = undefined;
@@ -168,6 +187,13 @@ export function errorMessage(err: unknown): string {
 }
 
 export function newClientKey(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  if (typeof crypto !== 'undefined') {
+    // randomUUID needs a secure context; getRandomValues works over plain HTTP too.
+    if ('randomUUID' in crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    if (typeof crypto.getRandomValues === 'function') {
+      const b = crypto.getRandomValues(new Uint8Array(16));
+      return 'ck-' + Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+    }
+  }
   return 'ck-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 }
