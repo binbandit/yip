@@ -41,5 +41,29 @@ containment/return, resizing and 200% zoom. Counts and real-provider gaps
 are recorded in [the release checklist](../../release-checklist.md).
 
 All 34 scripted journeys passed in one invocation, followed by all eight
-room capture checks. Overview also has a dedicated viewport sweep covering
-its summary, expanded setup and keyboard access to review evidence.
+room capture checks.
+
+## Overview layouts
+
+After correcting the overlapping side panels, all 16 Overview checks passed
+at four widths in both themes. Review evidence replaces the optional
+conversation panel; catch-up rows and setup controls wrap to their available
+column width. Setup starts compact once recorded work exists.
+
+Each check expands and collapses setup and checks for clipped controls and
+horizontal overflow. Review checks open evidence with Enter, close it with
+Escape, verify that the conversation returns where space permits, and reopen
+the evidence for the capture.
+
+| Width | Light summary | Light review | Dark summary | Dark review |
+|---|---|---|---|---|
+| 390px | [Summary](overview/overview-summary-390-light.png) | [Review](overview/overview-review-390-light.png) | [Summary](overview/overview-summary-390-dark.png) | [Review](overview/overview-review-390-dark.png) |
+| 900px | [Summary](overview/overview-summary-900-light.png) | [Review](overview/overview-review-900-light.png) | [Summary](overview/overview-summary-900-dark.png) | [Review](overview/overview-review-900-dark.png) |
+| 1280px | [Summary](overview/overview-summary-1280-light.png) | [Review](overview/overview-review-1280-light.png) | [Summary](overview/overview-summary-1280-dark.png) | [Review](overview/overview-review-1280-dark.png) |
+| 1440px | [Summary](overview/overview-summary-1440-light.png) | [Review](overview/overview-review-1440-light.png) | [Summary](overview/overview-summary-1440-dark.png) | [Review](overview/overview-review-1440-dark.png) |
+
+Retake with an already built binary and existing dependencies:
+
+```sh
+scripts/e2e/run-webkit.sh docs/screenshots/team-conversation/overview scripts/e2e/shots/overview.js
+```

@@ -118,7 +118,9 @@ both clarification paths; the idle path then passed ten repetitions.
 
 [Before/after room captures](screenshots/team-conversation/README.md) cover
 390, 900, 1280 and 1440px in both themes, with the existing supplied baseline
-preserved. Architecture and design docs describe the resulting behaviour.
+preserved. The same gallery includes 16 corrected Overview captures, covering
+the summary and review evidence at each width and theme. Architecture and
+design docs describe the resulting behaviour.
 
 Final verification results:
 
@@ -128,6 +130,11 @@ Final verification results:
 | Web unit and mounted-app tests | 133 | 0 | 0 |
 | System WebKit journeys (all four files together) | 34 | 0 | 0 |
 | Room captures, four widths in both themes | 8 | 0 | 0 |
+| Overview summary and review, four widths in both themes | 16 | 0 | 0 |
+
+The combined journey and room capture run preceded the final Overview layout
+correction. All 133 web tests and the 16 targeted Overview checks passed
+afterward, including expanded setup controls and Enter/Escape review access.
 
 Formatting and Go vet pass. Svelte check reports zero errors and warnings;
 the production build succeeds. Generated schemas are current. The WebKit
