@@ -259,6 +259,10 @@ type client struct {
 	hc   *http.Client
 	csrf string
 	boot protocol.Bootstrap
+	// idemKey, when set, is sent as the Idempotency-Key header.
+	idemKey string
+	// lastReplayed reports whether the last response was an idempotent replay.
+	lastReplayed *bool
 }
 
 func (e *env) signIn() *client {
@@ -281,6 +285,13 @@ type apiError struct {
 
 func (a *apiError) Error() string { return fmt.Sprintf("HTTP %d %s: %s", a.status, a.Code, a.Message) }
 
+// withKey sends the next requests with an Idempotency-Key.
+func (c *client) withKey(key string) *client {
+	cp := *c
+	cp.idemKey = key
+	return &cp
+}
+
 func (c *client) do(method, path string, body, out any) error {
 	var rd io.Reader
 	ctype := "application/json"
@@ -296,11 +307,17 @@ func (c *client) do(method, path string, body, out any) error {
 	if c.csrf != "" {
 		req.Header.Set("X-Yip-Csrf", c.csrf)
 	}
+	if c.idemKey != "" {
+		req.Header.Set("Idempotency-Key", c.idemKey)
+	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	if c.lastReplayed != nil {
+		*c.lastReplayed = resp.Header.Get("Idempotent-Replayed") == "true"
+	}
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
 		ae := &apiError{status: resp.StatusCode}

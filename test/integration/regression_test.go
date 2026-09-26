@@ -1190,3 +1190,45 @@ func TestRegressionImportRepoFromBundle(t *testing.T) {
 		t.Fatalf("a remote-backed repository must not be replaced by a bundle: %v", err)
 	}
 }
+
+// A change sent twice with the same Idempotency-Key acts once and replays its
+// first result; the key can't be reused for a different request.
+func TestRegressionIdempotencyKeys(t *testing.T) {
+	e := newEnv(t, envOptions{noRunner: true})
+	var replayed bool
+	c := e.c.withKey("create-project-once-123")
+	c.lastReplayed = &replayed
+	var a, b protocol.Project
+	c.must("POST", "/v1/projects", protocol.CreateProjectRequest{Name: "Gamma"}, &a)
+	if replayed {
+		t.Fatalf("the first request must run, not replay")
+	}
+	c.must("POST", "/v1/projects", protocol.CreateProjectRequest{Name: "Gamma"}, &b)
+	if !replayed || a.ID != b.ID {
+		t.Fatalf("the repeat should replay the first result: %s vs %s (replayed %v)", a.ID, b.ID, replayed)
+	}
+	var ps []protocol.Project
+	e.c.must("GET", "/v1/projects", nil, &ps)
+	n := 0
+	for _, p := range ps {
+		if p.Name == "Gamma" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("expected one Gamma project, got %d", n)
+	}
+	if err := c.do("POST", "/v1/projects", protocol.CreateProjectRequest{Name: "Delta"}, nil); !isStatus(err, 400) {
+		t.Fatalf("reusing a key for a different request must be refused: %v", err)
+	}
+	// A request that failed validation replays the same answer, not a new attempt.
+	bad := e.c.withKey("bad-project-once-456")
+	if err := bad.do("POST", "/v1/projects", protocol.CreateProjectRequest{Name: ""}, nil); !isStatus(err, 400) {
+		t.Fatalf("expected a validation error: %v", err)
+	}
+	if err := bad.do("POST", "/v1/projects", protocol.CreateProjectRequest{Name: ""}, nil); !isStatus(err, 400) {
+		t.Fatalf("expected the same validation error on replay: %v", err)
+	}
+	// Without a key, requests behave as before.
+	e.c.must("POST", "/v1/projects", protocol.CreateProjectRequest{Name: "Epsilon"}, nil)
+}

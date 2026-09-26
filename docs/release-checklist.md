@@ -82,8 +82,6 @@ now closed (each with a test):
 
 Still open (not blocking the scenario, recorded here so they aren't lost):
 
-- Idempotency keys cover messages, job input, review requests, and forge
-  publications; other mutations rely on optimistic versions.
 - Engineer memory beyond accepted decisions (promoted notes with provenance)
   isn't implemented.
 - The GitHub contract test needs a real repository and token; browser e2e
