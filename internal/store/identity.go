@@ -82,13 +82,18 @@ func oneRow(res sql.Result, err error) (bool, error) {
 	return n == 1, nil
 }
 
-// inList returns an "(?,?,…)" placeholder list for vs, and vs as arguments.
+// InClause returns an "(?,?,…)" placeholder list for n values.
+func InClause(n int) string {
+	return "(" + strings.TrimSuffix(strings.Repeat("?,", n), ",") + ")"
+}
+
+// inList returns the placeholder list for vs, and vs as query arguments.
 func inList[T ~string](vs []T) (string, []any) {
 	args := make([]any, len(vs))
 	for i, v := range vs {
 		args[i] = string(v)
 	}
-	return "(" + strings.TrimSuffix(strings.Repeat("?,", len(vs)), ",") + ")", args
+	return InClause(len(vs)), args
 }
 
 // whereClause returns " WHERE cond", or nothing when cond is empty.
