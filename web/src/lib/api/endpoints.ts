@@ -12,6 +12,7 @@ import type {
   CreateRoomRequest,
   Decision,
   DecisionActionRequest,
+  DecisionRequest,
   DiagnosticBundle,
   Diagnostics,
   Engineer,
@@ -133,6 +134,7 @@ export const api = {
   decisions: (status?: string) => get<Decision[]>(`/v1/decisions${status ? `?status=${q(status)}` : ''}`),
   decision: (id: string) => get<Decision>(`/v1/decisions/${q(id)}`),
   decideDecision: (id: string, req: DecisionActionRequest) => post<Decision>(`/v1/decisions/${q(id)}`, req),
+  createDecision: (req: DecisionRequest) => post<Decision>('/v1/decisions', req),
   overview: () => get<Overview>('/v1/overview'),
   /** Records the visit that "Since you were here" is measured from. */
   overviewSeen: () => post<{ ok: boolean }>('/v1/overview/seen'),

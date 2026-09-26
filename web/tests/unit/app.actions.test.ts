@@ -7,7 +7,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
 import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
-import type { Approval, Bootstrap, JobDetail, Message } from '../../src/lib/api/types.gen';
+import type { Approval, Bootstrap, Decision, DecisionRequest, JobDetail, Message } from '../../src/lib/api/types.gen';
 
 let hub: FakeHub;
 let component: ReturnType<typeof mount>;
@@ -285,6 +285,28 @@ describe('action flows', () => {
     expect(d.visibleRoomIds).toBeNull();
     expect(text()).toContain('Visible wherever its scope allows.');
     expect(text()).toContain('accepted automatically under the project policy');
+    app.closePanel();
+  });
+
+  it('corrects an accepted decision with a replacement that keeps its sources', async () => {
+    const d = fixture<Decision>('decision.json');
+    delete app.data.decisions[d.id];
+    hub.override('POST', /^\/v1\/decisions$/, (c) => {
+      const b = c.body as DecisionRequest;
+      return { status: 201, body: { ...d, id: 'd-new', title: b.title, body: b.body, supersedesId: b.supersedesId, status: 'accepted', version: 1 } };
+    });
+    app.openPanel({ kind: 'decision', id: d.id });
+    const btn = await waitFor(() => byText('aside button', 'Correct this decision'), 'correct button');
+    btn.click();
+    await settle();
+    const body = document.querySelector<HTMLTextAreaElement>('aside form.correct textarea')!;
+    type(body, 'Refresh allows 30 seconds of clock skew; validation stays strict.');
+    byText('aside button', 'Record correction')!.click();
+    await waitFor(() => app.loc.panel?.id === 'd-new', 'new decision opened');
+    const sent = hub.last('POST', /^\/v1\/decisions$/)!.body as DecisionRequest;
+    expect(sent.supersedesId).toBe(d.id);
+    expect(sent.accept).toBe(true);
+    expect(sent.sources).toEqual(d.sources);
     app.closePanel();
   });
 
