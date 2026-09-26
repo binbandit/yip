@@ -6,18 +6,37 @@
 
   interface Props {
     files: DiffFile[];
+    /** A location to bring into view and mark (a review finding's file:line). */
+    focus?: { file: string; line?: number; at: number } | null;
   }
-  let { files }: Props = $props();
+  let { files, focus = null }: Props = $props();
   let collapsed = $state<Record<string, boolean>>({});
+  let root: HTMLDivElement | undefined = $state();
+
+  const matches = (path: string, file: string) => path === file || path.endsWith('/' + file) || file.endsWith('/' + path);
+  const focusPath = $derived(focus ? files.map(filePath).find((p) => matches(p, focus!.file)) : undefined);
+
+  $effect(() => {
+    if (!focus || !focusPath || !root) return;
+    void focus.at;
+    collapsed[focusPath] = false;
+    requestAnimationFrame(() => {
+      const el =
+        (focus?.line && root?.querySelector<HTMLElement>(`[data-path="${CSS.escape(focusPath)}"] [data-new="${focus.line}"]`)) ||
+        root?.querySelector<HTMLElement>(`[data-path="${CSS.escape(focusPath)}"]`);
+      el?.scrollIntoView({ block: 'center' });
+    });
+  });
 </script>
 
 {#if files.length === 0}
   <p class="meta">The diff is empty.</p>
 {:else}
-  <div class="diff">
+  {#if focus && !focusPath}<p class="meta">{focus.file} isn't part of this diff.</p>{/if}
+  <div class="diff" bind:this={root}>
     {#each files as f (filePath(f))}
       {@const path = filePath(f)}
-      <section class="file" aria-label="Changes in {path}">
+      <section class="file" aria-label="Changes in {path}" data-path={path}>
         <header>
           <button class="toggle" aria-expanded={!collapsed[path]} onclick={() => (collapsed[path] = !collapsed[path])}>
             <Icon name={collapsed[path] ? 'chevronRight' : 'chevronDown'} size={15} />
@@ -34,7 +53,12 @@
               {#each f.hunks as h, hi (hi)}
                 <div class="hunk" role="row"><span role="cell" class="mono">{h.header}</span></div>
                 {#each h.lines as l, li (li)}
-                  <div class="line {l.kind}" role="row">
+                  <div
+                    class="line {l.kind}"
+                    class:focus={focusPath === path && !!focus?.line && l.newNo === focus.line}
+                    role="row"
+                    data-new={l.newNo ?? undefined}
+                  >
                     <span class="no" role="cell" aria-label={l.oldNo ? `old line ${l.oldNo}` : undefined}>{l.oldNo ?? ''}</span>
                     <span class="no" role="cell" aria-label={l.newNo ? `new line ${l.newNo}` : undefined}>{l.newNo ?? ''}</span>
                     <span class="sign" role="cell" aria-label={l.kind === 'add' ? 'added' : l.kind === 'del' ? 'removed' : undefined}
@@ -53,6 +77,10 @@
 {/if}
 
 <style>
+  .line.focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
   .diff {
     display: grid;
     gap: 10px;

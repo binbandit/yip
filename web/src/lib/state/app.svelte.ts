@@ -61,6 +61,8 @@ class AppState {
   searchOpen = $state(false);
   sidebarOpen = $state(false);
   createRoom = $state<null | { kind: 'room' | 'dm' }>(null);
+  /** A review finding's location to show in its work's diff (file:line at a revision). */
+  diffFocus = $state<null | { jobId: string; file: string; line?: number; head?: string; at: number }>(null);
   viewport = $state(typeof window === 'undefined' ? 1440 : window.innerWidth);
 
   /** The room whose newest message is on screen (not reactive; read by the reducer). */
@@ -339,6 +341,12 @@ class AppState {
 
   closePanel(): void {
     this.navigate(withPanel(this.loc, null));
+  }
+
+  /** Open a job's evidence at a finding's file and line. */
+  showInDiff(jobId: string, file: string, line?: number, head?: string): void {
+    this.diffFocus = { jobId, file, line, head, at: Date.now() };
+    this.openPanel({ kind: 'job', id: jobId }, 'evidence');
   }
 
   setTab(tab: string): void {
