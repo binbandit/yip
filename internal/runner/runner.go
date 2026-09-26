@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -277,7 +276,7 @@ func (r *Runner) session(ctx context.Context) error {
 
 	host, _ := os.Hostname()
 	hello := protocol.Hello{NodeID: r.id.NodeID, ProtocolVersion: protocol.RunnerProtocolVersion, RunnerVersion: r.opts.Version,
-		Hostname: host, OS: runtime.GOOS, Arch: runtime.GOARCH, BootTime: bootTime}
+		Hostname: host, OS: runtimeOS(), Arch: runtimeArch(), BootTime: bootTime}
 	jruns, _ := r.journal.Runs()
 	for _, jr := range jruns {
 		js := protocol.JournalRunState{RunID: jr.RunID, LeaseEpoch: jr.Epoch, State: jr.State, Terminal: jr.Terminal, LastSeq: jr.LastSeq,

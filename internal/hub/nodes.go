@@ -136,6 +136,8 @@ func (h *Hub) SetDraining(ctx context.Context, userID, nodeID string, draining b
 	return out, err
 }
 
+// StopNodeWork cancels every job with an active run on a machine. Distinct
+// from draining.
 // ProviderProfiles lists provider accounts and their concurrency limits.
 func (h *Hub) ProviderProfiles(ctx context.Context) ([]protocol.ProviderProfile, error) {
 	rows, err := h.st.R().QueryContext(ctx, `SELECT id, provider, label, billing, max_concurrency, COALESCE(paused_until, '') FROM provider_profiles ORDER BY provider, label`)
@@ -284,8 +286,6 @@ func (h *Hub) RemoveWorkspace(ctx context.Context, userID, nodeID, name string, 
 	return out.Node, err
 }
 
-// StopNodeWork cancels every job with an active run on a machine. Distinct
-// from draining.
 func (h *Hub) StopNodeWork(ctx context.Context, userID, nodeID string) error {
 	runs, err := store.RunsOnNode(ctx, h.st.R(), nodeID)
 	if err != nil {
