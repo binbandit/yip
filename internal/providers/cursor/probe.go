@@ -3,9 +3,11 @@ package cursor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -98,7 +100,7 @@ func (a *Adapter) probeInstalled(ctx context.Context, exe string, inst protocol.
 			inst.Limitations = append(inst.Limitations, "Cursor's user config sets approvalMode \""+cfg.ApprovalMode+"\": Cursor may approve some actions itself without asking yip.")
 		}
 		if n := len(cfg.Permissions.Allow); n > 0 {
-			inst.Limitations = append(inst.Limitations, "Cursor's user config pre-approves "+itoa(n)+" permission rule(s) (permissions.allow); matching actions run without a yip approval request.")
+			inst.Limitations = append(inst.Limitations, "Cursor's user config pre-approves "+strconv.Itoa(n)+" permission rule(s) (permissions.allow); matching actions run without a yip approval request.")
 		}
 	}
 	inst.Capabilities = caps
@@ -122,7 +124,7 @@ func (a *Adapter) probeInitialize(ctx context.Context, exe string, env []string)
 	if err != nil {
 		ap.waitExit(time.Second)
 		if tail := strings.TrimSpace(ap.stderr.String()); tail != "" {
-			return init, errorf("%v (stderr: %s)", err, lastLines(tail, 4, 400))
+			return init, fmt.Errorf("%v (stderr: %s)", err, lastLines(tail, 4, 400))
 		}
 	}
 	return init, err
@@ -307,7 +309,7 @@ func (a *Adapter) readUserConfig() (userConfig, bool) {
 		dir = os.Getenv("CURSOR_CONFIG_DIR")
 	}
 	if dir == "" {
-		h := homeDir()
+		h, _ := os.UserHomeDir()
 		if h == "" {
 			return userConfig{}, false
 		}
@@ -330,9 +332,4 @@ func firstLine(s string) string {
 		s = s[:i]
 	}
 	return strings.TrimSpace(s)
-}
-
-func itoa(n int) string {
-	b, _ := json.Marshal(n)
-	return string(b)
 }
