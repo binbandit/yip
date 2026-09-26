@@ -55,6 +55,14 @@ the code that enforces them and the tests that prove it.
    colleague who doesn't exist. A colleague who is present but lacks access is
    not waived: the author asks in the room (A42).
 
+**Automatic retries.** A provider crash is retried automatically at most
+twice (`MaxAutoRetries`), after 30 seconds and then 2 minutes, each with up
+to 25% jitter, and only when the crashed attempt was not allowed any push,
+publish, merge, or network action. Otherwise, and after the last automatic
+retry, the work fails with its reason and waits for an explicit Retry. A
+machine that goes quiet is different: its run becomes *not confirmed* and is
+never retried blindly (invariant 8).
+
 **Provider allowance.** An exhausted allowance pauses the whole provider
 account (`provider_profiles.paused_until`), not just the run that hit it: the
 scheduler holds other work for that account with the reason and resumes it
