@@ -321,9 +321,10 @@ func detailSuffix(s string) string {
 }
 
 // Search finds rooms, engineers, projects, messages, work, and decisions the
-// user may see. Every result opens its actual source. Room filters apply
-// inside the queries, before ranking.
-func (h *Hub) Search(ctx context.Context, userID, query, roomScope string) ([]protocol.SearchResult, error) {
+// user may see. Every result opens its actual source. Room and project
+// filters apply inside the queries, before ranking. A work ID (whole, or six
+// or more characters from either end) finds that work directly.
+func (h *Hub) Search(ctx context.Context, userID, query, roomScope, projectScope string) ([]protocol.SearchResult, error) {
 	q := h.st.R()
 	query = strings.TrimSpace(query)
 	out := []protocol.SearchResult{}
@@ -334,10 +335,16 @@ func (h *Hub) Search(ctx context.Context, userID, query, roomScope string) ([]pr
 	if err != nil {
 		return nil, err
 	}
-	var roomIDs []string
+	// visible: every room the scope allows (work is filtered by its own
+	// project); inProject: the rooms linked to the project, for messages.
+	var visible, roomIDs []string
 	lower := strings.ToLower(query)
 	for _, r := range rooms {
 		if roomScope != "" && r.ID != roomScope {
+			continue
+		}
+		visible = append(visible, r.ID)
+		if projectScope != "" && !contains(r.ProjectIDs, projectScope) {
 			continue
 		}
 		roomIDs = append(roomIDs, r.ID)
@@ -345,7 +352,14 @@ func (h *Hub) Search(ctx context.Context, userID, query, roomScope string) ([]pr
 			out = append(out, protocol.SearchResult{Kind: "room", ID: r.ID, Title: r.Name, Snippet: r.Purpose, RoomID: r.ID})
 		}
 	}
-	if roomScope == "" {
+	if byID, err := store.FindJobsByID(ctx, q, query, visible, 5); err == nil {
+		for _, j := range byID {
+			if projectScope == "" || h.jobInProject(ctx, j.ID, projectScope) {
+				out = append(out, j)
+			}
+		}
+	}
+	if roomScope == "" && projectScope == "" {
 		if engs, err := store.ListEngineers(ctx, q); err == nil {
 			for _, e := range engs {
 				if strings.Contains(strings.ToLower(e.Name+" "+e.Handle+" "+e.Role+" "+strings.Join(e.CapabilityTags, " ")), lower) {
@@ -362,8 +376,16 @@ func (h *Hub) Search(ctx context.Context, userID, query, roomScope string) ([]pr
 		}
 	}
 	fts := ftsQuery(query)
-	if jobs, err := store.SearchJobs(ctx, q, fts, roomIDs, 15); err == nil {
-		out = append(out, jobs...)
+	jobRooms := roomIDs
+	if projectScope != "" {
+		jobRooms = visible
+	}
+	if jobs, err := store.SearchJobs(ctx, q, fts, jobRooms, projectScope, 15); err == nil {
+		for _, j := range jobs {
+			if !containsResult(out, j) {
+				out = append(out, j)
+			}
+		}
 	}
 	if msgs, err := store.SearchMessages(ctx, q, fts, roomIDs, 30); err == nil {
 		names := h.actorNames(ctx, q)
@@ -387,10 +409,27 @@ func (h *Hub) Search(ctx context.Context, userID, query, roomScope string) ([]pr
 					continue
 				}
 			}
+			if projectScope != "" && !(d.Scope.Kind == "project" && d.Scope.ID == projectScope) && !anyIn(d.VisibleRoomIDs, roomIDs) {
+				continue
+			}
 			out = append(out, protocol.SearchResult{Kind: "decision", ID: d.ID, Title: d.Title, Snippet: truncate(d.Body, 160), RoomID: firstSourceRoom(d)})
 		}
 	}
 	return out, nil
+}
+
+func (h *Hub) jobInProject(ctx context.Context, jobID, projectID string) bool {
+	j, err := store.GetJob(ctx, h.st.R(), jobID)
+	return err == nil && j.ProjectID == projectID
+}
+
+func containsResult(rs []protocol.SearchResult, r protocol.SearchResult) bool {
+	for _, x := range rs {
+		if x.Kind == r.Kind && x.ID == r.ID {
+			return true
+		}
+	}
+	return false
 }
 
 // describeEvent renders a human-readable activity line for a job's history.

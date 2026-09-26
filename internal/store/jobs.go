@@ -372,11 +372,41 @@ func WakeupsUsed(ctx context.Context, q Q, rootID string) (used, max int, err er
 
 // SearchJobs runs a full-text query over job titles and objectives for jobs
 // whose source room is permitted.
-func SearchJobs(ctx context.Context, q Q, match string, roomIDs []string, limit int) ([]protocol.SearchResult, error) {
+// SearchJobs ranks work in the given rooms; projectID, when set, narrows it
+// to that project before ranking.
+func SearchJobs(ctx context.Context, q Q, match string, roomIDs []string, projectID string, limit int) ([]protocol.SearchResult, error) {
 	if len(roomIDs) == 0 {
 		return []protocol.SearchResult{}, nil
 	}
 	args := []any{match}
+	for _, r := range roomIDs {
+		args = append(args, r)
+	}
+	args = append(args, projectID, projectID, limit)
+	in := "(" + strings.TrimSuffix(strings.Repeat("?,", len(roomIDs)), ",") + ")"
+	return list(ctx, q, func(s scanner) (protocol.SearchResult, error) {
+		var r protocol.SearchResult
+		var updated string
+		err := s.Scan(&r.ID, &r.Title, &r.Snippet, &r.RoomID, &updated)
+		r.Kind, r.JobID = "job", r.ID
+		t := parseTS(updated)
+		r.At = &t
+		return r, err
+	}, `SELECT j.id, j.title, snippet(jobs_fts, 1, '[', ']', '…', 12), j.source_room_id, j.updated_at
+		FROM jobs_fts f JOIN jobs j ON j.id = f.job_id WHERE jobs_fts MATCH ? AND j.source_room_id IN `+in+`
+		AND (? = '' OR j.project_id = ?)
+		ORDER BY rank LIMIT ?`, args...)
+}
+
+// FindJobsByID looks work up by its ID: the whole ID, or at least six
+// characters from its start or end (the short work ID shown on the work).
+// Only work from the given rooms is returned.
+func FindJobsByID(ctx context.Context, q Q, frag string, roomIDs []string, limit int) ([]protocol.SearchResult, error) {
+	frag = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(frag), "#"))
+	if len(roomIDs) == 0 || len(frag) < 6 || strings.Trim(frag, "0123456789abcdef-") != "" {
+		return []protocol.SearchResult{}, nil
+	}
+	args := []any{frag, frag + "%", "%" + frag}
 	for _, r := range roomIDs {
 		args = append(args, r)
 	}
@@ -390,9 +420,9 @@ func SearchJobs(ctx context.Context, q Q, match string, roomIDs []string, limit 
 		t := parseTS(updated)
 		r.At = &t
 		return r, err
-	}, `SELECT j.id, j.title, snippet(jobs_fts, 1, '[', ']', '…', 12), j.source_room_id, j.updated_at
-		FROM jobs_fts f JOIN jobs j ON j.id = f.job_id WHERE jobs_fts MATCH ? AND j.source_room_id IN `+in+`
-		ORDER BY rank LIMIT ?`, args...)
+	}, `SELECT id, title, objective, source_room_id, updated_at FROM jobs
+		WHERE (id = ? OR id LIKE ? OR id LIKE ?) AND source_room_id IN `+in+`
+		ORDER BY updated_at DESC LIMIT ?`, args...)
 }
 
 // PendingWake is a deferred continuation for a job with an active attempt.

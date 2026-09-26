@@ -17,6 +17,9 @@
   let { onclose }: Props = $props();
 
   let q = $state('');
+  // Narrow everything to one project (rooms linked to it, its work, its decisions).
+  let project = $state('');
+  const projects = $derived(Object.values(app.data.projects).sort((a, b) => a.name.localeCompare(b.name)));
   let results = $state<SearchResult[]>([]);
   let loading = $state(false);
   let error = $state('');
@@ -41,10 +44,10 @@
   const quick: SearchResult[] = $derived.by(() => {
     const s = q.trim().toLowerCase();
     const rooms = app.rooms
-      .filter((r) => r.kind !== 'overview' && (!s || r.name.toLowerCase().includes(s)))
+      .filter((r) => r.kind !== 'overview' && (!s || r.name.toLowerCase().includes(s)) && (!project || r.projectIds.includes(project)))
       .map((r) => ({ kind: 'room', id: r.id, title: r.kind === 'dm' ? `${r.name} (direct)` : r.name, snippet: r.purpose, roomId: r.id }));
     const people = Object.values(app.data.engineers)
-      .filter((e) => !s || e.name.toLowerCase().includes(s) || e.role.toLowerCase().includes(s))
+      .filter((e) => !project && (!s || e.name.toLowerCase().includes(s) || e.role.toLowerCase().includes(s)))
       .map((e) => ({ kind: 'engineer', id: e.id, title: e.name, snippet: e.role }));
     return [...rooms, ...people];
   });
@@ -98,7 +101,7 @@
       ctrl?.abort();
       ctrl = new AbortController();
       try {
-        results = (await api.search(term, undefined, ctrl.signal)) ?? [];
+        results = (await api.search(term, { project: project || undefined }, ctrl.signal)) ?? [];
         loading = false;
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
@@ -168,7 +171,7 @@
       bind:value={q}
       class="q"
       type="search"
-      placeholder="Search rooms, people, work, messages and decisions"
+      placeholder="Search rooms, people, work, work IDs and decisions"
       aria-label="Search"
       role="combobox"
       aria-expanded={shown.length > 0}
@@ -180,6 +183,15 @@
       oninput={onInput}
       onkeydown={onKey}
     />
+    {#if projects.length}
+      <label class="scope">
+        <span class="vh">Project</span>
+        <select class="select" bind:value={project} onchange={onInput}>
+          <option value="">All projects</option>
+          {#each projects as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+        </select>
+      </label>
+    {/if}
     <kbd>Esc</kbd>
   </div>
   <div class="results" id="search-results" role="listbox" aria-label="Results" aria-busy={loading}>
@@ -259,6 +271,16 @@
     background: transparent;
     font-size: 15px;
     color: var(--ink);
+  }
+  .scope .select {
+    height: 30px;
+    max-width: 160px;
+    font-size: 13px;
+  }
+  @media (max-width: 520px) {
+    kbd {
+      display: none;
+    }
   }
   .q:focus-visible {
     outline: none;

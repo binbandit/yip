@@ -135,8 +135,10 @@ export const api = {
   overview: () => get<Overview>('/v1/overview'),
   /** Records the visit that "Since you were here" is measured from. */
   overviewSeen: () => post<{ ok: boolean }>('/v1/overview/seen'),
-  search: (query: string, room?: string, signal?: AbortSignal) =>
-    get<SearchResult[]>(`/v1/search?q=${q(query)}${room ? `&room=${q(room)}` : ''}`, { signal }),
+  search: (query: string, scope: { room?: string; project?: string } = {}, signal?: AbortSignal) =>
+    get<SearchResult[]>(`/v1/search?q=${q(query)}${scope.room ? `&room=${q(scope.room)}` : ''}${scope.project ? `&project=${q(scope.project)}` : ''}`, {
+      signal,
+    }),
   diagnostics: () => get<Diagnostics>('/v1/diagnostics'),
 };
 

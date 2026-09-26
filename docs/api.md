@@ -69,7 +69,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `GET /v1/provider-profiles`, `PUT /v1/provider-profiles/{id}` | → `ProviderProfile[]` / `ProviderProfileRequest` (`maxConcurrency` 1–16; default 1 — runs on one account share its allowance) |
 | `GET /v1/decisions?status=`, `POST /v1/decisions`, `POST /v1/decisions/{id}` | `DecisionRequest` / `DecisionActionRequest` |
 | `GET /v1/overview?seen=1` | → `Overview` (catch-up since last visit, work rows, decisions, open questions, `roomId` of the personal Overview conversation). `seen=1` records the visit. |
-| `GET /v1/search?q=&room=` | → `SearchResult[]` (kinds: room, engineer, project, job, message, decision) |
+| `GET /v1/search?q=&room=&project=` | → `SearchResult[]` (kinds: room, engineer, project, job, message, decision). `project` narrows to rooms linked to it, its work and its decisions, before ranking. A work ID (whole, `#`-prefixed, or six or more characters from either end; the UI shows the last six) finds that work directly |
 | `GET /v1/artifacts/{id}[?download=1]` | artifact bytes; text types render as plain text, never HTML |
 | `GET /v1/diagnostics` | → `Diagnostics` |
 | `GET /v1/export` | zip of rooms, messages, jobs, decisions, artifacts |

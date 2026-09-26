@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"encoding/pem"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -739,5 +740,44 @@ func TestRegressionCatchupShowsCurrentState(t *testing.T) {
 		if strings.Contains(c.Title, "Plan migration") && c.Kind == "blocker" {
 			t.Fatalf("a job that is running again was reported as blocked: %+v", c)
 		}
+	}
+}
+
+// Search finds work by its short ID, and a project filter narrows results
+// to that project before ranking.
+func TestRegressionSearchByWorkIDAndProject(t *testing.T) {
+	e := newEnv(t, envOptions{noRunner: true})
+	e.post("Engineering", "@Mira look at the quartzite cache", []string{"mira"}, nil)
+	var job protocol.Job
+	e.waitFor("the work exists", 5*time.Second, func() bool {
+		for _, j := range e.jobsWithReplies() {
+			job = j
+			return true
+		}
+		return false
+	})
+	short := job.ID[len(job.ID)-6:]
+	for _, q := range []string{short, "#" + short, job.ID} {
+		var rs []protocol.SearchResult
+		e.c.must("GET", "/v1/search?q="+url.QueryEscape(q), nil, &rs)
+		found := false
+		for _, r := range rs {
+			found = found || (r.Kind == "job" && r.ID == job.ID)
+		}
+		if !found {
+			t.Errorf("searching %q did not find the work: %+v", q, rs)
+		}
+	}
+	// A project no room here is linked to hides the room's messages and work.
+	var p protocol.Project
+	e.c.must("POST", "/v1/projects", protocol.CreateProjectRequest{Name: "Elsewhere"}, &p)
+	var rs []protocol.SearchResult
+	e.c.must("GET", "/v1/search?q=quartzite&project="+p.ID, nil, &rs)
+	if len(rs) != 0 {
+		t.Errorf("the project filter let other rooms through: %+v", rs)
+	}
+	e.c.must("GET", "/v1/search?q=quartzite", nil, &rs)
+	if len(rs) == 0 {
+		t.Errorf("unfiltered search found nothing")
 	}
 }
