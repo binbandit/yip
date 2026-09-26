@@ -70,6 +70,9 @@ type Preferences struct {
 	SendKey    string `json:"sendKey"`    // enter | mod-enter
 	Notify     string `json:"notify"`     // mentions | all | none
 	LastSeenAt string `json:"lastSeenAt"` // RFC3339 of last overview visit
+	// MutedRoomIDs are rooms whose notifications are silenced (execution is
+	// unaffected; a question or mention for you still notifies).
+	MutedRoomIDs []string `json:"mutedRoomIds,omitempty"`
 }
 
 // ProviderPreference is an engineer's configured provider route.

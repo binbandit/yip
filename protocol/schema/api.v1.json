@@ -2425,6 +2425,12 @@
         "lastSeenAt": {
           "type": "string"
         },
+        "mutedRoomIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "notify": {
           "type": "string"
         },

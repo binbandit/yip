@@ -125,6 +125,7 @@
                 <span class="glyph" aria-hidden="true">{#if r.private}<Icon name="lock" size={14} />{:else}<Icon name="hash" size={15} />{/if}</span>
                 <span class="label truncate">{r.name}</span>
                 {#if r.private}<span class="vh">, private</span>{/if}
+                {#if app.isMuted(r.id)}<span class="muted-mark" title="Muted"><Icon name="bellOff" size={13} /><span class="vh">, muted</span></span>{/if}
                 {#if unread}<span class="vh">, {r.unreadCount} unread</span>{/if}
                 {#if drafts.has(r.id) && !isCurrentRoom(r.id)}
                   <span class="draft" title="Draft saved"><Icon name="pencil" size={13} /><span class="vh">, draft saved</span></span>
@@ -331,6 +332,10 @@
     place-items: center;
     width: 18px;
     color: color-mix(in srgb, var(--ink) 72%, transparent);
+  }
+  .muted-mark {
+    display: inline-flex;
+    color: var(--ink-tertiary, var(--ink-secondary));
   }
   .draft {
     display: inline-flex;

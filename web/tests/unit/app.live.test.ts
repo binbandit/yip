@@ -112,4 +112,54 @@ describe('live updates from a captured stream', () => {
     expect(row.classList.contains('unread')).toBe(true);
     expect(row.textContent).toContain('1 mention');
   });
+
+  it('notifies in the background for failures and questions, and not from muted rooms', async () => {
+    const shown: string[] = [];
+    const Real = (globalThis as { Notification?: unknown }).Notification;
+    class FakeNotification {
+      static permission = 'granted';
+      onclick: (() => void) | null = null;
+      constructor(title: string, opts: { body: string }) {
+        shown.push(`${title} — ${opts.body}`);
+      }
+    }
+    (globalThis as { Notification?: unknown }).Notification = FakeNotification;
+    const vis = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    const es = FakeEventSource.latest();
+    let n = 0;
+    const send = (roomId: string, body: string, extra: Partial<Message>) => {
+      const seq = app.data.lastSeq + 1;
+      const m: Message = {
+        id: `bg-${++n}`, orgId: boot.org.id, roomId, seq: (app.data.rooms[roomId].lastSeq ?? 0) + 1, author: { kind: 'system', id: 'hub' },
+        body, kind: 'text', mentions: [], projectIds: [], refs: [], reactions: [], revision: 1, createdAt: new Date().toISOString(), ...extra,
+      };
+      es.emit('message.created', { schemaVersion: 1, eventId: m.id, orgId: boot.org.id, sequence: seq, type: 'message.created', actor: m.author, roomId, occurredAt: m.createdAt, payload: m }, seq);
+    };
+    try {
+      app.data.preferences = { ...app.data.preferences, notify: 'mentions', mutedRoomIds: [] };
+      // A routine status line stays quiet; a failed job's status notifies.
+      app.data.jobs[job.job.id] = { ...app.data.jobs[job.job.id], state: 'running' };
+      send(eng, 'Mira is working on it', { kind: 'status', refs: [{ kind: 'job', id: job.job.id }] });
+      await settle();
+      expect(shown).toEqual([]);
+      app.data.jobs[job.job.id] = { ...app.data.jobs[job.job.id], state: 'failed' };
+      send(eng, 'Mira: the fix failed — tests did not build', { kind: 'status', refs: [{ kind: 'job', id: job.job.id }] });
+      await settle();
+      expect(shown.length).toBe(1);
+      // Muted: a result stays quiet, a question for you still notifies.
+      app.data.preferences = { ...app.data.preferences, mutedRoomIds: [eng] };
+      send(eng, 'Done: result', { kind: 'result', author: { kind: 'engineer', id: boot.engineers[0].id } });
+      await settle();
+      expect(shown.length).toBe(1);
+      send(eng, 'Which branch should I use?', { kind: 'question', author: { kind: 'engineer', id: boot.engineers[0].id } });
+      await settle();
+      expect(shown.length).toBe(2);
+    } finally {
+      (globalThis as { Notification?: unknown }).Notification = Real;
+      if (vis) Object.defineProperty(document, 'visibilityState', vis);
+      else delete (document as { visibilityState?: string }).visibilityState;
+      app.data.preferences = { ...app.data.preferences, mutedRoomIds: [] };
+    }
+  });
 });

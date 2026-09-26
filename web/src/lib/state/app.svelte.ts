@@ -245,9 +245,20 @@ class AppState {
     if (pref === 'none' || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     if (document.visibilityState === 'visible') return;
     const mentionsMe = m.mentions.some((x) => x.kind === 'user' && x.id === this.me?.id);
-    const meaningful = mentionsMe || m.kind === 'result' || m.kind === 'approval' || m.kind === 'question';
+    const forMe = mentionsMe || m.kind === 'approval' || m.kind === 'question';
+    // A muted room stays quiet, except for a question or permission for you.
+    if (this.isMuted(m.roomId) && !forMe) return;
+    // A failure worth knowing about: work that failed, or is stuck until
+    // someone acts (sign-in, an unconfirmed outcome), not routine progress.
+    const failure =
+      m.kind === 'status' &&
+      m.refs.some((r) => {
+        const j = r.kind === 'job' ? this.data.jobs[r.id] : undefined;
+        return !!j && (j.state === 'failed' || (j.state === 'waiting' && (j.waitingReason === 'provider_sign_in' || j.waitingReason === 'recovery')));
+      });
+    const meaningful = forMe || failure || m.kind === 'result';
     if (pref === 'mentions' && !meaningful) return;
-    if (m.kind === 'status' && pref !== 'all') return;
+    if (m.kind === 'status' && pref !== 'all' && !failure) return;
     try {
       const room = this.data.rooms[m.roomId];
       const n = new Notification(`${this.actorName(m.author)} · ${room?.name ?? 'yip'}`, {
@@ -521,6 +532,18 @@ class AppState {
   }
 
   // ---- preferences & appearance ----
+
+  isMuted(roomId: string): boolean {
+    return (this.data.preferences.mutedRoomIds ?? []).includes(roomId);
+  }
+
+  /** Mute or unmute a room's notifications for you (never its work). */
+  toggleMute(roomId: string): void {
+    const cur = this.data.preferences.mutedRoomIds ?? [];
+    const muted = cur.includes(roomId);
+    void this.setPreferences({ mutedRoomIds: muted ? cur.filter((r) => r !== roomId) : [...cur, roomId] });
+    this.toast(muted ? 'Notifications from this room are on.' : 'Muted: this room won’t notify you unless someone asks you something. Work carries on.');
+  }
 
   async setPreferences(patch: Partial<Preferences>): Promise<void> {
     const next = { ...defaultPreferences, ...this.data.preferences, ...patch };

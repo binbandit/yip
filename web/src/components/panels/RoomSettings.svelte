@@ -143,6 +143,10 @@
     <p class="pad meta">This room isn't available.</p>
   {:else}
     <div class="pad">
+      <label class="check mute">
+        <input type="checkbox" checked={app.isMuted(roomId)} onchange={() => app.toggleMute(roomId)} />
+        <span>Mute notifications<br /><span class="meta">Only for you. Questions and permission requests for you still notify; the work carries on.</span></span>
+      </label>
       <section aria-labelledby="rs-members">
         <h3 id="rs-members">Engineers in this room</h3>
         {#if members.length === 0}
@@ -264,6 +268,9 @@
 {/if}
 
 <style>
+  .mute {
+    margin-bottom: 16px;
+  }
   .pad {
     padding: 16px 18px 28px;
     display: grid;

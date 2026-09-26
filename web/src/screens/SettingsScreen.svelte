@@ -88,10 +88,10 @@
 
     <section class="group" aria-labelledby="set-notify">
       <h2 id="set-notify" class="section-title">Notifications</h2>
-      <p class="meta">Only while this tab is in the background. Muting never changes what engineers do.</p>
+      <p class="meta">Only while this tab is in the background. Failed work and work stuck until someone acts always count. Mute a single room from its settings; muting never changes what engineers do.</p>
       <fieldset class="opts col">
         <legend class="vh">Notify me about</legend>
-        <label class="opt"><input type="radio" name="notify" checked={prefs.notify === 'mentions' || !prefs.notify} onchange={() => app.setPreferences({ notify: 'mentions' })} /><span>Questions for me, results and permission requests</span></label>
+        <label class="opt"><input type="radio" name="notify" checked={prefs.notify === 'mentions' || !prefs.notify} onchange={() => app.setPreferences({ notify: 'mentions' })} /><span>Questions for me, results, failures and permission requests</span></label>
         <label class="opt"><input type="radio" name="notify" checked={prefs.notify === 'all'} onchange={() => app.setPreferences({ notify: 'all' })} /><span>Every message from engineers</span></label>
         <label class="opt"><input type="radio" name="notify" checked={prefs.notify === 'none'} onchange={() => app.setPreferences({ notify: 'none' })} /><span>Nothing</span></label>
       </fieldset>
