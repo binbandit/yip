@@ -319,7 +319,7 @@ var launchOverrides = []string{
 type server struct {
 	proc   *providers.Process
 	c      *conn
-	stderr *tailBuffer
+	stderr *providers.TailBuffer
 }
 
 func (a *Adapter) launch(ctx context.Context, exe, dir string, env []string) (*server, error) {
@@ -337,7 +337,7 @@ func (a *Adapter) launch(ctx context.Context, exe, dir string, env []string) (*s
 		return nil, err
 	}
 	cmd.Stdout = pw
-	tail := &tailBuffer{max: 8 << 10}
+	tail := providers.NewTailBuffer(8 << 10)
 	cmd.Stderr = tail
 	// Descendants that keep stderr open must not wedge Wait forever.
 	cmd.WaitDelay = 2 * time.Second
@@ -379,7 +379,7 @@ func (s *server) initialize(ctx context.Context) error {
 func (s *server) describe(err error) string {
 	msg := err.Error()
 	if errors.Is(err, errConnClosed) || s.proc.Exited() {
-		if tail := s.stderr.String(); tail != "" {
+		if tail := strings.TrimSpace(s.stderr.String()); tail != "" {
 			msg += ": " + lastLines(tail, 8)
 		}
 	}

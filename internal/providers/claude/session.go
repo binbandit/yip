@@ -2,8 +2,8 @@ package claude
 
 import (
 	"bufio"
+	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/binbandit/yip/internal/providers"
 	"github.com/binbandit/yip/protocol"
@@ -44,7 +46,7 @@ type session struct {
 	stdin   io.WriteCloser
 	stdoutR *os.File // our read end; exec.Cmd.Wait never closes it
 	events  chan providers.Event
-	stderr  *tailBuffer
+	stderr  *providers.TailBuffer
 
 	emitMu       sync.Mutex
 	eventsClosed bool
@@ -110,7 +112,7 @@ func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (provider
 		return nil, err
 	}
 	cmd.Stdout = stdoutW
-	stderrBuf := newTailBuffer(16 << 10)
+	stderrBuf := providers.NewTailBuffer(16 << 10)
 	cmd.Stderr = stderrBuf
 
 	billing := a.probeBilling()
@@ -143,7 +145,7 @@ func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (provider
 	go s.supervise()
 
 	// The first user turn travels over stdin like every later one.
-	id := newUUID()
+	id := uuid.NewString()
 	s.mu.Lock()
 	s.pending = append(s.pending, id)
 	s.mu.Unlock()
@@ -227,7 +229,7 @@ func (s *session) SendInput(ctx context.Context, text string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", errors.New("claude: empty input")
 	}
-	id := newUUID()
+	id := uuid.NewString()
 	s.mu.Lock()
 	if s.inputClosed || s.cancelled || s.finished {
 		s.mu.Unlock()
@@ -307,7 +309,7 @@ func (s *session) stop(ctx context.Context) error {
 			if cancelQueued {
 				req["cancel_queued"] = true
 			}
-			if err := s.writeJSON(controlRequest{Type: "control_request", RequestID: "yip-interrupt-" + newUUID(), Request: req}); err == nil {
+			if err := s.writeJSON(controlRequest{Type: "control_request", RequestID: "yip-interrupt-" + uuid.NewString(), Request: req}); err == nil {
 				wait(ctx, s.a.opts.InterruptWait, waiter, s.proc.Done())
 			}
 			// Ending input also cancels any pending permission prompt.
@@ -364,7 +366,7 @@ func (s *session) readLoop(stdout io.Reader) {
 	for {
 		line, err := r.ReadBytes('\n')
 		if len(line) > 0 {
-			line = trimSpaceBytes(line)
+			line = bytes.TrimSpace(line)
 			if len(line) > 0 {
 				var m wireMsg
 				if jerr := json.Unmarshal(line, &m); jerr != nil {
@@ -496,7 +498,7 @@ func (s *session) supervise() {
 	timedOut := s.timedOut
 	s.mu.Unlock()
 
-	oi := classify(s.st, s.proc.Err(), s.stderr.String(), cancelled, timedOut, time.Now())
+	oi := classify(s.st, s.proc.Err(), tailClip(s.stderr.String(), 2000), cancelled, timedOut, time.Now())
 	res := providers.Result{
 		Outcome:         oi.Outcome,
 		FinalText:       oi.FinalText,
@@ -525,49 +527,4 @@ func (s *session) supervise() {
 	s.mu.Unlock()
 	s.closeEvents()
 	close(s.done)
-}
-
-// tailBuffer keeps the last n bytes written (stderr tail for diagnostics).
-type tailBuffer struct {
-	mu  sync.Mutex
-	n   int
-	buf []byte
-}
-
-func newTailBuffer(n int) *tailBuffer { return &tailBuffer{n: n} }
-
-func (t *tailBuffer) Write(p []byte) (int, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.buf = append(t.buf, p...)
-	if len(t.buf) > t.n {
-		t.buf = append([]byte{}, t.buf[len(t.buf)-t.n:]...)
-	}
-	return len(p), nil
-}
-
-func (t *tailBuffer) String() string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return tailClip(string(t.buf), 2000)
-}
-
-func trimSpaceBytes(b []byte) []byte {
-	i, j := 0, len(b)
-	for i < j && (b[i] == ' ' || b[i] == '\n' || b[i] == '\r' || b[i] == '\t') {
-		i++
-	}
-	for j > i && (b[j-1] == ' ' || b[j-1] == '\n' || b[j-1] == '\r' || b[j-1] == '\t') {
-		j--
-	}
-	return b[i:j]
-}
-
-// newUUID returns a random RFC 4122 version 4 UUID.
-func newUUID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }

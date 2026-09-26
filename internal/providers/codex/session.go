@@ -774,7 +774,7 @@ func (s *session) connectionLost() providers.Result {
 	if s.srv.proc.Exited() {
 		msg = fmt.Sprintf("%s (exit code %d)", msg, providers.ExitCode(s.srv.proc.Err()))
 	}
-	if tail := s.srv.stderr.String(); tail != "" {
+	if tail := strings.TrimSpace(s.srv.stderr.String()); tail != "" {
 		msg += ": " + lastLines(tail, 12)
 	}
 	return providers.Result{Outcome: protocol.OutcomeFailed, Error: msg, VendorSessionID: thread}

@@ -19,8 +19,7 @@ package cursor
 
 import (
 	"context"
-	"fmt"
-	"os"
+	"strings"
 	"time"
 
 	"github.com/binbandit/yip/internal/providers"
@@ -133,7 +132,7 @@ func launchEnv(env []string) []string {
 	}
 	out := make([]string, 0, len(env)+1)
 	for _, kv := range env {
-		if len(kv) >= len("NO_OPEN_BROWSER=") && kv[:len("NO_OPEN_BROWSER=")] == "NO_OPEN_BROWSER=" {
+		if strings.HasPrefix(kv, "NO_OPEN_BROWSER=") {
 			continue
 		}
 		out = append(out, kv)
@@ -161,11 +160,4 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 	}
 	inst.Path = exe
 	return a.probeInstalled(ctx, exe, inst)
-}
-
-func errorf(format string, args ...any) error { return fmt.Errorf(format, args...) }
-
-func homeDir() string {
-	h, _ := os.UserHomeDir()
-	return h
 }

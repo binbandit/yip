@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -195,7 +196,7 @@ func (a *Adapter) launchEnv(specEnv []string) []string {
 	// Ask for a result message naming why startup was refused.
 	set("CLAUDE_CODE_STARTUP_FAILURE_RESULTS", "1")
 	if a.opts.MCPToolIdleTimeout > 0 {
-		setDefault("CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT", itoa(a.opts.MCPToolIdleTimeout.Milliseconds()))
+		setDefault("CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT", strconv.FormatInt(a.opts.MCPToolIdleTimeout.Milliseconds(), 10))
 	}
 	return env
 }

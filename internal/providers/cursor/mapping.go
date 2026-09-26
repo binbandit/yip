@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/binbandit/yip/internal/providers/acp"
 	"github.com/binbandit/yip/protocol"
@@ -678,15 +679,13 @@ func oneLine(s string, max int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if max > 0 && len(s) > max {
 		cut := max
-		for cut > 0 && !utf8Start(s[cut]) {
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
 			cut--
 		}
 		s = s[:cut] + "…"
 	}
 	return s
 }
-
-func utf8Start(b byte) bool { return b&0xC0 != 0x80 }
 
 func countLines(s string) int {
 	if s == "" {

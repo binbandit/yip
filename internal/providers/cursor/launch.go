@@ -29,7 +29,7 @@ type agentProc struct {
 	conn   *acp.Conn
 	stdin  io.WriteCloser
 	stdout *os.File
-	stderr *tailBuffer
+	stderr *providers.TailBuffer
 	served chan struct{}
 
 	stopOnce sync.Once
@@ -51,7 +51,7 @@ func launch(exe, dir string, env []string, h acp.Handler) (*agentProc, error) {
 		return nil, err
 	}
 	cmd.Stdout = pw
-	tail := newTailBuffer(16 << 10)
+	tail := providers.NewTailBuffer(16 << 10)
 	cmd.Stderr = tail
 	// Bound how long Wait blocks on stderr held open by stray grandchildren.
 	cmd.WaitDelay = 3 * time.Second
@@ -145,31 +145,6 @@ func hasAuthMethod(init acp.InitializeResult, id string) bool {
 		}
 	}
 	return false
-}
-
-// tailBuffer keeps the last max bytes written (stderr tail for diagnostics).
-type tailBuffer struct {
-	mu  sync.Mutex
-	max int
-	buf []byte
-}
-
-func newTailBuffer(max int) *tailBuffer { return &tailBuffer{max: max} }
-
-func (t *tailBuffer) Write(p []byte) (int, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.buf = append(t.buf, p...)
-	if over := len(t.buf) - t.max; over > 0 {
-		t.buf = append([]byte(nil), t.buf[over:]...)
-	}
-	return len(p), nil
-}
-
-func (t *tailBuffer) String() string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return string(t.buf)
 }
 
 func lastLines(s string, n, maxBytes int) string {

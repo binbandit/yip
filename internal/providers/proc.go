@@ -52,6 +52,34 @@ func BaseEnv(extraKeys []string, overrides ...string) []string {
 	return env
 }
 
+// TailBuffer keeps the last bytes written to it, up to a limit (a provider's
+// stderr tail, for diagnostics). It is safe for concurrent use.
+type TailBuffer struct {
+	mu  sync.Mutex
+	max int
+	buf []byte
+}
+
+// NewTailBuffer returns a TailBuffer that keeps at most max bytes.
+func NewTailBuffer(max int) *TailBuffer { return &TailBuffer{max: max} }
+
+func (t *TailBuffer) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(t.buf, p...)
+	if over := len(t.buf) - t.max; over > 0 {
+		t.buf = append([]byte(nil), t.buf[over:]...)
+	}
+	return len(p), nil
+}
+
+// String returns the kept bytes.
+func (t *TailBuffer) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return string(t.buf)
+}
+
 // Process wraps a provider subprocess running in its own process group so
 // cancellation reaches every child the provider spawned.
 type Process struct {
