@@ -27,7 +27,9 @@ scripts/e2e/run-webkit.sh docs/screenshots/team-conversation/after scripts/e2e/s
 
 The helper disables animations, opens the completed conversation, scrolls to
 the result and checks for page overflow. `YIP_ROOM_SHOT_BIN` can select a
-preserved baseline binary. Both themes use the same fixture. A difference
+preserved baseline binary. The original 390px baseline is a 2x capture
+(780 image pixels); both represent a 390 CSS-pixel viewport. The 1280px
+views retain the original 800px height. Both themes use the same fixture. A difference
 in message positions can also reflect the shorter text and scroll position.
 
 The complete scripted journey is `web/tests/webkit/team-conversation.js`.
@@ -37,3 +39,7 @@ Overview review evidence with Enter. The shared room journeys additionally
 exercise mention navigation, Tab, Shift-Tab, Escape, search shortcuts, focus
 containment/return, resizing and 200% zoom. Counts and real-provider gaps
 are recorded in [the release checklist](../../release-checklist.md).
+
+All 34 scripted journeys passed in one invocation, followed by all eight
+room capture checks. Overview also has a dedicated viewport sweep covering
+its summary, expanded setup and keyboard access to review evidence.

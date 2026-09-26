@@ -1,7 +1,7 @@
 // Comparable completed Security conversations in both themes at four widths.
 window.__journeys = [390, 900, 1280, 1440].flatMap((width) => ['light', 'dark'].map((mode) => ({
   name: `room-security-${width}-${mode}`,
-  width, height: width === 390 ? 844 : 900,
+  width, height: width === 390 ? 844 : width === 1280 ? 800 : 900,
   run: async (t) => {
     if (width < 760) {
       await t.click(await t.waitFor(() => t.q('button[aria-label="Rooms and navigation"]'), 'navigation menu'));

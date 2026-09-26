@@ -10,6 +10,9 @@
 
   const KEY = 'yip.gettingStarted.dismissed';
   let dismissed = $state(false);
+  let expanded = $state(false);
+  const hasRecordedWork = $derived(Object.values(app.data.jobs).some((j) => j.kind !== 'reply' && j.kind !== 'review' && !j.parentId));
+  const showSteps = $derived(expanded || !hasRecordedWork);
   try {
     dismissed = localStorage.getItem(KEY) === '1';
   } catch {
@@ -108,9 +111,12 @@
     <header>
       <h2 id="gs-title" class="section-title">Getting started</h2>
       <span class="meta">{steps.length - remaining} of {steps.length} done</span>
-      <button class="btn btn-sm btn-quiet" onclick={dismiss}>Hide</button>
+      <div class="actions">
+        {#if hasRecordedWork}<button class="btn btn-sm btn-quiet" aria-expanded={showSteps} aria-controls="gs-steps" onclick={() => (expanded = !expanded)}>{showSteps ? 'Show less' : 'Show steps'}</button>{/if}
+        <button class="btn btn-sm btn-quiet" onclick={dismiss}>Hide</button>
+      </div>
     </header>
-    <ol>
+    <ol id="gs-steps" hidden={!showSteps}>
       {#each steps as s, i (s.title)}
         {@const next = !s.done && steps.slice(0, i).every((x) => x.done)}
         <li class:done={s.done} class:next>
@@ -131,6 +137,7 @@
 
 <style>
   .start {
+    container-type: inline-size;
     margin-bottom: 28px;
     padding: 14px 16px 10px;
     border: 1px solid var(--line-strong);
@@ -139,11 +146,17 @@
   header {
     display: flex;
     align-items: baseline;
+    flex-wrap: wrap;
     gap: 10px;
     margin-bottom: 6px;
   }
-  header .btn {
+  .actions {
+    display: flex;
+    gap: 4px;
     margin-left: auto;
+  }
+  ol[hidden] {
+    display: none;
   }
   ol {
     list-style: none;
@@ -169,5 +182,19 @@
   .done strong {
     color: var(--ink-secondary);
     font-weight: 500;
+  }
+  @container (max-width: 440px) {
+    li {
+      display: grid;
+      grid-template-columns: 15px minmax(0, 1fr);
+      align-items: start;
+      row-gap: 6px;
+    }
+    li .btn {
+      grid-column: 2;
+      justify-self: start;
+      max-width: 100%;
+      white-space: normal;
+    }
   }
 </style>

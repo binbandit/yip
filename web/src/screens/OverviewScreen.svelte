@@ -74,7 +74,8 @@
   );
 
   const overviewRoom = $derived(app.overviewRoom);
-  const wide = $derived(app.viewport >= 1180);
+  // Evidence uses the same side space as the optional Overview conversation.
+  const wide = $derived(app.viewport >= 1180 && !app.loc.panel);
   const tl = $derived(overviewRoom ? app.data.timelines[overviewRoom.id] : undefined);
   const convo = $derived(tl ? tl.ids.map((id) => app.data.messages[id]).filter(Boolean) : []);
   const convoPending = $derived(overviewRoom ? Object.values(app.data.pending).filter((p) => p.roomId === overviewRoom.id && !p.threadId) : []);
@@ -241,12 +242,15 @@
 <style>
   .overview {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     display: flex;
   }
   .main {
     flex: 1;
     min-width: 0;
+    container-type: inline-size;
+    container-name: overview-main;
   }
   .first {
     margin-top: 0;
@@ -342,7 +346,7 @@
   .convo-empty {
     padding: 20px;
   }
-  @media (max-width: 760px) {
+  @container overview-main (max-width: 560px) {
     .catchup li {
       grid-template-columns: 1fr;
       gap: 2px;

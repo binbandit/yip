@@ -6,8 +6,8 @@ means the behaviour exists but lacks a dedicated automated check. **Incomplete**
 means it is not done or not verified; it blocks declaring the MVP complete.
 
 Performance (§9 fixture, `TestLargeHistoryReadLatency`: 10,100 messages across
-ten rooms and 100 jobs, this build machine): p95 bootstrap 20 ms, room page
-0.9 ms, older page 0.9 ms, search 21 ms, jobs 0.25 ms, overview 5.5 ms —
+ten rooms and 100 jobs, this build machine): p95 bootstrap 26.7 ms, room page
+1.15 ms, older page 1.08 ms, search 18.6 ms, jobs 0.49 ms, overview 12.7 ms,
 within the 200 ms target. Measured, not an advertised capacity.
 
 Automated evidence: `go test ./...` (unit tests; `test/integration` runs the
@@ -31,7 +31,8 @@ These must be done before the MVP can be called complete (MVP brief §10):
    this ran on a single host; a run across two physical machines has not been
    recorded.
 3. **Browser verification (A26, A27).** Verified in the system WebKit
-   (`make e2e-webkit`, 26 September): 11 journeys pass, including real Tab,
+   (`scripts/e2e/run-webkit.sh`, 26 September): the full room and Machines
+   journey set passes together, including real Tab,
    Enter, Escape and ⌘K key presses, focus trapping and return, and
    390/1024/1440 px and 200% zoom sweeps with no sideways scrolling or
    clipped controls. It found and fixed two defects (Escape didn't close
@@ -91,6 +92,56 @@ Still open (not blocking the scenario, recorded here so they aren't lost):
   Playwright specs (Chromium/Firefox) need a browser on the build machine;
   the WebKit journeys cover the same paths.
 
+## Team conversation verification (26 September)
+
+The scripted acceptance path now covers one assignment, a clarification,
+a genuine question, an explicit answer, peer requested changes, an author
+correction and re-review, completion, and recall from another room. The
+owner sends only the assignment, clarification and answer. The final
+reviewed revision includes the clarified rollout scope. Overview links the
+completed work to its review evidence, which can be opened with Enter.
+
+Code verdicts bind to the full Git head; document verdicts and completion
+bind to the same published content hash. Review labels distinguish queued,
+active, requested changes, approved and older-version evidence. Catch-up
+uses the current ledger, preserves unconfirmed outcomes and links open
+questions and permission requests without duplicating assignments.
+
+The final visual review also caught overlapping Overview side panels. Evidence
+now replaces the optional conversation, narrow columns wrap their controls,
+and setup starts compact once recorded work exists.
+
+The verification pass also fixed a late-input race in the scripted provider
+and synchronized the idle-engineer test with the end of its actual attempt.
+The race detector passed three repetitions of the provider regression and
+both clarification paths; the idle path then passed ten repetitions.
+
+[Before/after room captures](screenshots/team-conversation/README.md) cover
+390, 900, 1280 and 1440px in both themes, with the existing supplied baseline
+preserved. Architecture and design docs describe the resulting behaviour.
+
+Final verification results:
+
+| Check | Passed | Failed | Intentionally skipped |
+|---|---:|---:|---:|
+| Go tests, including named subtests | 262 | 0 | 7 |
+| Web unit and mounted-app tests | 133 | 0 | 0 |
+| System WebKit journeys (all four files together) | 34 | 0 | 0 |
+| Room captures, four widths in both themes | 8 | 0 | 0 |
+
+Formatting and Go vet pass. Svelte check reports zero errors and warnings;
+the production build succeeds. Generated schemas are current. The WebKit
+run uses the scripted provider with `YIP_FAKE_DELAY=300ms`; its Machines
+fixture already uses the same pace. Keyboard events come from the system
+WebKit runner, including focus containment and return, mention selection,
+search shortcuts, tab navigation, and opening review evidence with Enter.
+
+Real-provider prompts and account/auth checks were **not run in this pass**.
+The six gated provider tests and the GitHub contract test remain owner-run
+checks. No dependencies or browsers were downloaded, and the LAN hub and
+other chats' test hubs were not used. Builds reused installed web dependencies
+(`make -o web-deps all`) and the existing Go module cache offline.
+
 ## Matrix
 
 | ID | Status | Evidence / note |
@@ -115,7 +166,7 @@ Still open (not blocking the scenario, recorded here so they aren't lost):
 | A18 | Verified | `TestAccessRevokedMidJob`; grant/membership changes invalidate provider sessions |
 | A19 | Partial | Separate worktree and branch per job; reviews on fixed revisions. A project-level integration lock for merges is not implemented (yip performs no merges itself). |
 | A20 | Verified | `TestDoneWithoutEvidence`; `work_respond` can't complete the caller's own job (`TestRegressionWorkRespondCannotSelfComplete`) |
-| A21 | Verified | Overview conversation answers from the ledger with timestamps and no engineer run, covering every project and what waits on you (`TestRegressionOverviewStatusCoversAllProjects`) |
+| A21 | Verified | Overview conversation answers from the ledger without reciting raw timestamps or waking an engineer, covering every project and what waits on you (`TestRegressionOverviewStatusCoversAllProjects`) |
 | A22 | Verified | `TestDecisionCorrection`; correction from the decision drawer keeps the sources (unit test) |
 | A23 | Verified | `TestIncompatibleMachineExplains`, `TestRegressionBillingGateAndAccountPin`, `TestRegressionProjectToolchainRequirement` |
 | A24 | Verified | Workspaces are never deleted automatically. Machines lists them with their work and what deleting loses; removal needs explicit selection, a named confirmation, and `force` for uncommitted/unpublished work, and is refused for open or in-use work (`TestRegressionRemoveWorkspaceFromMachines`, Machines unit test). CLI: `yip runner workspaces` / `cleanup`. |
@@ -129,13 +180,13 @@ Still open (not blocking the scenario, recorded here so they aren't lost):
 | A32 | Verified | `TestAtlasFixReviewLoop` |
 | A33 | Verified | `TestQuestionFlowAndLateReplies` |
 | A34 | Verified | `TestQuestionFlowAndLateReplies`, `TestReplyAfterCancelDoesNotRestart` |
-| A35 | Verified | `TestExactActionApprovals` (granted push proceeds without asking; exceptional request inline; engineers have no approval tool); commands are parsed, so `git -C . push` and similar spellings reach the same decision (`internal/hub/policy_test.go`) |
+| A35 | Verified | `TestExactActionApprovals` (granted push proceeds without asking; exceptional request inline; engineers have no approval tool); commands are parsed, so `git -C . push` and similar spellings reach the same decision (`internal/hub/policy_test.go`). Routine checkout heredoc edits run without approval, while substitutions and consequential trailing commands retain exact-action approval (`TestRegressionHeredocEditNeedsNoApproval`). Decided cards collapse and reopen the exact action (web action tests). |
 | A36 | Verified | `TestHumanReviewPolicy` |
 | A37 | Verified | `TestAtlasFixReviewLoop` (author selects the security reviewer) |
 | A38 | Verified | `TestAtlasFixReviewLoop` (finding with file/line evidence; approval only of the revised head) |
 | A39 | Verified | `TestReviewDedupeAndRevisionBinding` (an old approval can't satisfy a new head); `TestWebhookSupersedesReviewOnNewCommits` (new PR commits supersede the open round and schedule exactly one new round). Every active reviewer must be satisfied on the current head (`TestRegressionCompletionNeedsEveryReviewer`). Not yet exercised against real GitHub. |
 | A40 | Verified | `TestSharedCredentialCannotFabricateApproval` |
 | A41 | Verified | Duplicate review requests map to one round (`TestReviewDedupeAndRevisionBinding`); a replayed webhook delivery changes nothing (`TestWebhookSupersedesReviewOnNewCommits`); publications reconcile by marker before retry. |
-| A42 | Verified | `TestNoPermittedReviewer`; with no colleague in the conversation at all, the owner reviews instead (`TestRegressionSoloEngineerOwnerReviews`) |
-| A43 | Verified | `TestDocumentReviewWithoutForge` (changes requested on one document version, approval of the revised version, no forge). |
+| A42 | Verified | `TestNoPermittedReviewer` names the missing project read access; initial and subsequent rounds also check room membership. With no colleague in the conversation at all, the owner reviews instead (`TestRegressionSoloEngineerOwnerReviews`) |
+| A43 | Verified | `TestDocumentReviewWithoutForge`, `TestRegressionDocumentCorrectionAndRereview`, `TestRegressionCorrectingApprovedDocumentRequiresNewApproval`: document review and completion use the same content hash, with or without a Git revision; corrected content requires re-review; reviewers inspect the exact stored artifact and reject a mismatched hash. |
 | A44 | Verified | `TestSharedCredentialCannotFabricateApproval` (failing checks, blocked merge, and internal approval shown as separate facts; nothing merged) |

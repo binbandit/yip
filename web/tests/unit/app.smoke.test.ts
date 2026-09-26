@@ -92,6 +92,25 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect(hub.calls.some((c) => c.method === 'GET' && c.path === '/v1/runs')).toBe(true);
   });
 
+  it('gives Overview evidence the side space and restores the conversation on close', async () => {
+    app.viewport = 1440;
+    await settle();
+    expect(document.querySelector('.overview .convo')).toBeTruthy();
+    expect(document.querySelector('#gs-steps')?.hasAttribute('hidden')).toBe(true);
+    byText('.start button', 'Show steps')!.click();
+    await settle();
+    expect(document.querySelector('#gs-steps')?.hasAttribute('hidden')).toBe(false);
+    byText('.start button', 'Show less')!.click();
+    await settle();
+    byText('.catchup button', 'view decision')!.click();
+    await waitFor(() => document.querySelector('.panel'), 'decision evidence');
+    expect(document.querySelector('.overview .convo')).toBeNull();
+    expect(text()).toContain('Ask where things stand');
+    key(document.activeElement ?? document.body, 'Escape');
+    await waitFor(() => !document.querySelector('.panel'), 'evidence closes');
+    expect(document.querySelector('.overview .convo')).toBeTruthy();
+  });
+
   it('shows unread by weight and mention counts in the sidebar', () => {
     const re = byText('nav a.row', 'Reverse engineering')!;
     expect(re.classList.contains('unread')).toBe(true);
