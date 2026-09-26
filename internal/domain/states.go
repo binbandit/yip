@@ -4,6 +4,7 @@ package domain
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/binbandit/yip/protocol"
 )
@@ -37,15 +38,7 @@ var jobTransitions = map[protocol.JobState][]protocol.JobState{
 
 // CanTransitionJob reports whether a job may move from one state to another.
 func CanTransitionJob(from, to protocol.JobState) bool {
-	if from == to {
-		return true
-	}
-	for _, s := range jobTransitions[from] {
-		if s == to {
-			return true
-		}
-	}
-	return false
+	return from == to || slices.Contains(jobTransitions[from], to)
 }
 
 // CheckJobTransition returns a descriptive error for an invalid transition.
@@ -102,22 +95,7 @@ var runTransitions = map[protocol.RunState][]protocol.RunState{
 }
 
 func CanTransitionRun(from, to protocol.RunState) bool {
-	if from == to {
-		return true
-	}
-	for _, s := range runTransitions[from] {
-		if s == to {
-			return true
-		}
-	}
-	return false
-}
-
-func CheckRunTransition(from, to protocol.RunState) error {
-	if !CanTransitionRun(from, to) {
-		return fmt.Errorf("run cannot move from %s to %s", from, to)
-	}
-	return nil
+	return from == to || slices.Contains(runTransitions[from], to)
 }
 
 // RunTerminal reports whether a run attempt is finished.
@@ -135,12 +113,6 @@ func RunHoldsLease(s protocol.RunState) bool {
 	return false
 }
 
-// RunActive reports whether a run is scheduled or executing (for per-engineer
-// and per-account concurrency).
-func RunActive(s protocol.RunState) bool {
-	return s == protocol.RunCreated || RunHoldsLease(s)
-}
-
 var reviewTransitions = map[protocol.ReviewState][]protocol.ReviewState{
 	protocol.ReviewRequested: {protocol.ReviewQueued, protocol.ReviewReviewing, protocol.ReviewCancelled, protocol.ReviewUnable},
 	protocol.ReviewQueued:    {protocol.ReviewReviewing, protocol.ReviewCancelled, protocol.ReviewUnable},
@@ -156,15 +128,7 @@ var reviewTransitions = map[protocol.ReviewState][]protocol.ReviewState{
 }
 
 func CanTransitionReview(from, to protocol.ReviewState) bool {
-	if from == to {
-		return true
-	}
-	for _, s := range reviewTransitions[from] {
-		if s == to {
-			return true
-		}
-	}
-	return false
+	return from == to || slices.Contains(reviewTransitions[from], to)
 }
 
 // ReviewVerdict reports whether a state is a reviewer's decision.
