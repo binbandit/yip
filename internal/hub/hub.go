@@ -66,7 +66,7 @@ type Hub struct {
 	nodes *nodeRegistry
 	kick  chan struct{}
 
-	// toolWaiters holds approval requests blocked on a human decision.
+	// mu guards excluded and failedCalls.
 	mu sync.Mutex
 	// excluded temporarily keeps a node out of scheduling for a run after
 	// the runner rejected an offer.
@@ -321,7 +321,7 @@ func (t *txn) postMessage(m newMessage) (protocol.Message, error) {
 	}
 	msg := protocol.Message{
 		ID: domain.NewID(), OrgID: t.h.Org().ID, RoomID: m.Room, ThreadID: m.Thread, Seq: seq, Author: m.Author,
-		Body: m.Body, Kind: m.Kind, Mentions: nonNilMentions(m.Mentions), ProjectIDs: nonNil(m.ProjectIDs), Refs: nonNilRefs(m.Refs),
+		Body: m.Body, Kind: m.Kind, Mentions: nonNil(m.Mentions), ProjectIDs: nonNil(m.ProjectIDs), Refs: nonNil(m.Refs),
 		ReplyToID: m.ReplyTo, RunID: m.RunID, JobID: m.JobID, ClientKey: m.ClientKey, Revision: 1, CreatedAt: t.h.now(),
 		Reactions: []protocol.ReactionSummary{},
 	}
@@ -342,25 +342,12 @@ func (t *txn) postMessage(m newMessage) (protocol.Message, error) {
 	return msg, nil
 }
 
-func nonNil(s []string) []string {
+// nonNil returns s, or an empty slice for nil (so it encodes as [], not null).
+func nonNil[T any](s []T) []T {
 	if s == nil {
-		return []string{}
+		return []T{}
 	}
 	return s
-}
-
-func nonNilRefs(r []protocol.Ref) []protocol.Ref {
-	if r == nil {
-		return []protocol.Ref{}
-	}
-	return r
-}
-
-func nonNilMentions(m []protocol.Mention) []protocol.Mention {
-	if m == nil {
-		return []protocol.Mention{}
-	}
-	return m
 }
 
 // ---- common lookups ----

@@ -6,8 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/binbandit/yip/internal/domain"
@@ -86,14 +87,7 @@ func (b bundleHeader) defaultBranch(requested string) (string, error) {
 	return names[0], nil
 }
 
-func (b bundleHeader) branches() []string {
-	out := make([]string, 0, len(b.Heads))
-	for n := range b.Heads {
-		out = append(out, n)
-	}
-	sort.Strings(out)
-	return out
-}
+func (b bundleHeader) branches() []string { return slices.Sorted(maps.Keys(b.Heads)) }
 
 // ImportRepo adds (or refreshes) a repository from a git bundle the owner
 // uploads, for code with no remote the machines can reach (spec: register a

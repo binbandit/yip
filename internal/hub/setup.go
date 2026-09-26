@@ -91,10 +91,10 @@ func (h *Hub) Setup(ctx context.Context, req protocol.SetupRequest) (protocol.Us
 		if _, err := store.AddMember(ctx, t.tx, overview.ID, protocol.Member{Kind: protocol.ActorUser, ID: user.ID}); err != nil {
 			return err
 		}
-		if err := t.audit(protocol.Actor{Kind: protocol.ActorUser, ID: user.ID}, "bootstrap_secret", "owner.create", user.ID, "ok", ""); err != nil {
+		if err := t.audit(userActor(user.ID), "bootstrap_secret", "owner.create", user.ID, "ok", ""); err != nil {
 			return err
 		}
-		return t.emit(ev{Type: "org.created", Actor: protocol.Actor{Kind: protocol.ActorUser, ID: user.ID}, Payload: org})
+		return t.emit(ev{Type: "org.created", Actor: userActor(user.ID), Payload: org})
 	})
 	return user, err
 }
@@ -138,7 +138,7 @@ func (h *Hub) SignIn(ctx context.Context, handle, password, clientKey, userAgent
 		if err := store.InsertSession(ctx, t.tx, s, truncate(userAgent, 200)); err != nil {
 			return err
 		}
-		return t.audit(protocol.Actor{Kind: protocol.ActorUser, ID: u.ID}, "password", "session.create", s.ID[:12], "ok", "")
+		return t.audit(userActor(u.ID), "password", "session.create", s.ID[:12], "ok", "")
 	})
 	return token, s, err
 }

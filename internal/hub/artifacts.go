@@ -68,67 +68,62 @@ func (a *ArtifactStore) Put(r io.Reader, declaredHash string, declaredSize int64
 		_, _ = io.Copy(io.Discard, io.LimitReader(r, declaredSize))
 		return nil
 	}
-	tmp, err := os.CreateTemp(filepath.Join(a.dir, "tmp"), "upload-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(r, declaredSize+1))
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
+	tmp, got, n, err := a.spool(r, declaredSize+1)
+	defer os.Remove(tmp)
 	if err != nil {
 		return err
 	}
 	if n != declaredSize {
 		return fmt.Errorf("artifact size mismatch: declared %d, received %d", declaredSize, n)
 	}
-	if got := hex.EncodeToString(h.Sum(nil)); got != declaredHash {
+	if got != declaredHash {
 		return fmt.Errorf("artifact checksum mismatch: declared %s, received %s", declaredHash, got)
 	}
-	dest, _ := a.Path(declaredHash)
-	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), dest)
+	return a.place(tmp, declaredHash)
 }
 
 // PutStream stores content whose hash isn't known in advance (an owner's
 // upload), hashing it as it streams, up to max bytes.
 func (a *ArtifactStore) PutStream(r io.Reader, max int64) (hash string, size int64, err error) {
-	tmp, err := os.CreateTemp(filepath.Join(a.dir, "tmp"), "upload-*")
-	if err != nil {
-		return "", 0, err
-	}
-	defer os.Remove(tmp.Name())
-	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(r, max+1))
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
+	tmp, hash, n, err := a.spool(r, max+1)
+	defer os.Remove(tmp)
 	if err != nil {
 		return "", 0, err
 	}
 	if n > max {
 		return "", 0, fmt.Errorf("the upload is larger than %d MB", max>>20)
 	}
-	hash = hex.EncodeToString(h.Sum(nil))
 	if a.Has(hash) {
 		return hash, n, nil
 	}
-	dest, _ := a.Path(hash)
-	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+	if err := a.place(tmp, hash); err != nil {
 		return "", 0, err
 	}
-	return hash, n, os.Rename(tmp.Name(), dest)
+	return hash, n, nil
 }
 
-// PutBytes stores small content produced by the hub itself.
-func (a *ArtifactStore) PutBytes(b []byte) (string, error) {
-	sum := sha256.Sum256(b)
-	hash := hex.EncodeToString(sum[:])
-	return hash, a.Put(strings.NewReader(string(b)), hash, int64(len(b)))
+// spool copies up to limit bytes of r into a temporary file, hashing them as
+// they stream. The caller removes the file.
+func (a *ArtifactStore) spool(r io.Reader, limit int64) (path, hash string, n int64, err error) {
+	tmp, err := os.CreateTemp(filepath.Join(a.dir, "tmp"), "upload-*")
+	if err != nil {
+		return "", "", 0, err
+	}
+	h := sha256.New()
+	n, err = io.Copy(io.MultiWriter(tmp, h), io.LimitReader(r, limit))
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	return tmp.Name(), hex.EncodeToString(h.Sum(nil)), n, err
+}
+
+// place moves a verified temporary file to its content-addressed path.
+func (a *ArtifactStore) place(tmp, hash string) error {
+	dest, _ := a.Path(hash)
+	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+		return err
+	}
+	return os.Rename(tmp, dest)
 }
 
 // Open opens stored content for reading.
