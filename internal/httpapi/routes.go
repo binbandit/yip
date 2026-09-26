@@ -53,6 +53,7 @@ func (s *Server) routes() {
 	a("GET /v1/projects/{id}", s.getProject)
 	a("PATCH /v1/projects/{id}", s.patchProject)
 	a("PUT /v1/projects/{id}/repos/{repoId}", s.putRepo)
+	a("POST /v1/projects/{id}/repos/import", s.importRepo)
 	a("PUT /v1/projects/{id}/grants/{engineerId}", s.putGrant)
 
 	a("GET /v1/jobs", s.listJobs)
@@ -422,6 +423,14 @@ func (s *Server) removeWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 	n, err := s.hub.RemoveWorkspace(r.Context(), userFrom(r).ID, r.PathValue("id"), r.PathValue("name"), req)
 	respond(s, w, r, n, err)
+}
+
+// importRepo takes a raw git bundle body (?name=&branch=&repo= to refresh).
+func (s *Server) importRepo(w http.ResponseWriter, r *http.Request) {
+	body := http.MaxBytesReader(w, r.Body, hub.MaxArtifactBytes+1)
+	q := r.URL.Query()
+	p, err := s.hub.ImportRepo(r.Context(), userFrom(r).ID, r.PathValue("id"), q.Get("repo"), q.Get("name"), q.Get("branch"), body)
+	respond(s, w, r, p, err)
 }
 
 func (s *Server) restartJob(w http.ResponseWriter, r *http.Request) {

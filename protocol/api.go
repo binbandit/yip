@@ -716,6 +716,11 @@ type Repo struct {
 	Forge         string    `json:"forge"` // github | none
 	ForgeRepo     string    `json:"forgeRepo,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
+	// SourceBundleID is set for a repository imported from a git bundle
+	// (no remote): machines build their copy from it, and nothing can be
+	// pushed anywhere. ImportedAt is when the current bundle was imported.
+	SourceBundleID string     `json:"sourceBundleId,omitempty"`
+	ImportedAt     *time.Time `json:"importedAt,omitempty"`
 }
 
 type Grant struct {

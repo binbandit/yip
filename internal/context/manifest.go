@@ -113,6 +113,8 @@ type Job struct {
 	Checks      []Check  `json:"checks,omitempty"`
 	Summary     string   `json:"summary,omitempty"`
 	HelpFrom    string   `json:"helpFrom,omitempty"` // for help requests: who asked
+	// NoRemote is set for a repository imported from a bundle.
+	NoRemote bool `json:"noRemote,omitempty"`
 	// FollowsUp is the finished work this job follows up, with its outcome.
 	FollowsUp *FollowedJob `json:"followsUp,omitempty"`
 }
@@ -283,6 +285,9 @@ func (m *Manifest) Prompt() string {
 			for _, a := range j.Acceptance {
 				fmt.Fprintf(&b, "- %s\n", a)
 			}
+		}
+		if j.Repo != "" && j.NoRemote {
+			b.WriteString("Note: this repository was imported from a bundle and has no remote. There is nothing to push to; publish revisions with work_publish_revision.\n")
 		}
 		if j.Repo != "" {
 			fmt.Fprintf(&b, "Repository: %s (project %s). Your workspace is the current directory: a dedicated git worktree", j.Repo, j.Project)

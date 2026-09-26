@@ -151,6 +151,9 @@ type RepoSpec struct {
 	SnapshotRev string `json:"snapshotRev,omitempty"`
 	// CheckpointArtifact restores a verified checkpoint bundle instead of the base.
 	CheckpointArtifact *Artifact `json:"checkpointArtifact,omitempty"`
+	// SourceBundle is the imported git bundle for a repository without a
+	// remote; the replica is built (and refreshed) from it.
+	SourceBundle *Artifact `json:"sourceBundle,omitempty"`
 	// FetchRefs are extra remote refs to fetch when a revision isn't local,
 	// e.g. "refs/pull/42/head" for a pull request under review.
 	FetchRefs []string `json:"fetchRefs,omitempty"`

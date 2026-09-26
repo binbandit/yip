@@ -1110,3 +1110,83 @@ func TestRegressionRemoveWorkspaceFromMachines(t *testing.T) {
 		}
 	}
 }
+
+// A repository with no reachable remote is imported from a git bundle; the
+// machine builds its copy from the bundle, and a newer bundle refreshes it.
+func TestRegressionImportRepoFromBundle(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Reverse engineering", "read the notes"):
+			return script(toolStep("work_create", map[string]any{"title": "Read the notes " + strings.Fields(m.Request.Body)[len(strings.Fields(m.Request.Body))-1],
+				"objective": "Read them", "kind": "investigation", "project": "Beacon", "repo": "laptop-notes"}, ""))
+		case strings.HasPrefix(m.Job.Title, "Read the notes"):
+			return script(fake.Step{Shell: "cat NOTES.md", Save: "n"}, toolStep("work_update", map[string]any{"state": "completed", "summary": "Notes: {{n.out}}"}, ""))
+		}
+		return nil
+	}})
+	// A folder on the laptop: a repository with history but no remote.
+	src := filepath.Join(e.dir, "laptop-notes")
+	gitOut(t, "", "init", "-q", "-b", "trunk", src)
+	commit := func(text string) {
+		if err := os.WriteFile(filepath.Join(src, "NOTES.md"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitOut(t, src, "add", "-A")
+		gitOut(t, src, "-c", "user.name=Owner", "-c", "user.email=owner@example.com", "commit", "-q", "-m", text)
+	}
+	bundle := func() []byte {
+		out := filepath.Join(e.dir, "notes.bundle")
+		gitOut(t, src, "bundle", "create", "-q", out, "--all")
+		b, err := os.ReadFile(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	commit("first draft")
+	beacon := e.project("Beacon")
+	base := "/v1/projects/" + beacon.ID + "/repos/import"
+	if err := e.c.do("POST", base+"?name=junk", []byte("not a bundle at all"), nil); !isStatus(err, 400) {
+		t.Fatalf("a non-bundle must be refused: %v", err)
+	}
+	commit("second draft")
+	gitOut(t, src, "bundle", "create", "-q", filepath.Join(e.dir, "partial.bundle"), "HEAD~1..HEAD")
+	partial, _ := os.ReadFile(filepath.Join(e.dir, "partial.bundle"))
+	if err := e.c.do("POST", base+"?name=partial", partial, nil); !isStatus(err, 400) || !strings.Contains(err.Error(), "--all") {
+		t.Fatalf("a bundle missing history must be refused with how to fix it: %v", err)
+	}
+	var p protocol.Project
+	e.c.must("POST", base+"?name=laptop-notes", bundle(), &p)
+	var repo protocol.Repo
+	for _, r := range p.Repos {
+		if r.Name == "laptop-notes" {
+			repo = r
+		}
+	}
+	if repo.SourceBundleID == "" || repo.RemoteURL != "" || repo.DefaultBranch != "trunk" || repo.ImportedAt == nil {
+		t.Fatalf("imported repository not recorded as expected: %+v", repo)
+	}
+	e.post("Reverse engineering", "@Pip please read the notes v1", []string{"pip"}, nil)
+	j := e.waitJob("Read the notes v1", protocol.JobCompleted)
+	if !strings.Contains(e.jobDetail(j.ID).Job.Summary, "second draft") {
+		t.Fatalf("the machine should read the imported code: %q", e.jobDetail(j.ID).Job.Summary)
+	}
+	// A newer bundle replaces the old one; the machine refreshes its copy.
+	commit("third draft")
+	e.c.must("POST", base+"?repo="+repo.ID, bundle(), &p)
+	e.post("Reverse engineering", "@Pip please read the notes v2", []string{"pip"}, nil)
+	j = e.waitJob("Read the notes v2", protocol.JobCompleted)
+	if !strings.Contains(e.jobDetail(j.ID).Job.Summary, "third draft") {
+		t.Fatalf("the machine should use the newer bundle: %q", e.jobDetail(j.ID).Job.Summary)
+	}
+	// A repository with a remote can't be replaced by a bundle.
+	var gw protocol.Repo
+	for _, r := range p.Repos {
+		if r.RemoteURL != "" {
+			gw = r
+		}
+	}
+	if err := e.c.do("POST", base+"?repo="+gw.ID, bundle(), nil); !isStatus(err, 409) {
+		t.Fatalf("a remote-backed repository must not be replaced by a bundle: %v", err)
+	}
+}

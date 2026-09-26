@@ -283,12 +283,15 @@ func (a *apiError) Error() string { return fmt.Sprintf("HTTP %d %s: %s", a.statu
 
 func (c *client) do(method, path string, body, out any) error {
 	var rd io.Reader
-	if body != nil {
+	ctype := "application/json"
+	if raw, ok := body.([]byte); ok {
+		rd, ctype = bytes.NewReader(raw), "application/octet-stream" // an upload
+	} else if body != nil {
 		b, _ := json.Marshal(body)
 		rd = bytes.NewReader(b)
 	}
 	req, _ := http.NewRequest(method, c.base+path, rd)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", ctype)
 	req.Header.Set("Origin", c.base)
 	if c.csrf != "" {
 		req.Header.Set("X-Yip-Csrf", c.csrf)

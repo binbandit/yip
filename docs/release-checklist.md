@@ -82,8 +82,6 @@ now closed (each with a test):
 
 Still open (not blocking the scenario, recorded here so they aren't lost):
 
-- Repository registration needs a reachable remote; importing a local
-  snapshot or bundle (§ Repository access) isn't implemented.
 - Idempotency keys cover messages, job input, review requests, and forge
   publications; other mutations rely on optimistic versions.
 - Backups aren't encrypted by yip; keep them on an encrypted volume.
