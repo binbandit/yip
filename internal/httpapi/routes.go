@@ -78,6 +78,8 @@ func (s *Server) routes() {
 	a("POST /v1/nodes/{id}/drain", s.drainNode)
 	a("POST /v1/nodes/{id}/stop", s.stopNode)
 	a("POST /v1/nodes/{id}/probe", s.probeNode)
+	a("GET /v1/provider-profiles", s.providerProfiles)
+	a("PUT /v1/provider-profiles/{id}", s.putProviderProfile)
 	a("DELETE /v1/nodes/{id}/credential", s.revokeNode)
 
 	a("GET /v1/decisions", s.listDecisions)
@@ -519,6 +521,21 @@ func (s *Server) drainNode(w http.ResponseWriter, r *http.Request) {
 	}
 	n, err := s.hub.SetDraining(r.Context(), userFrom(r).ID, r.PathValue("id"), req.Drain)
 	respond(s, w, r, n, err)
+}
+
+func (s *Server) providerProfiles(w http.ResponseWriter, r *http.Request) {
+	out, err := s.hub.ProviderProfiles(r.Context())
+	respond(s, w, r, out, err)
+}
+
+func (s *Server) putProviderProfile(w http.ResponseWriter, r *http.Request) {
+	req, err := decodeJSON[protocol.ProviderProfileRequest](w, r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	out, err := s.hub.SetProviderConcurrency(r.Context(), userFrom(r).ID, r.PathValue("id"), req.MaxConcurrency)
+	respond(s, w, r, out, err)
 }
 
 func (s *Server) probeNode(w http.ResponseWriter, r *http.Request) {

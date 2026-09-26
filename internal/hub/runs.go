@@ -721,7 +721,11 @@ func (h *Hub) applyTerminal(ctx context.Context, t *txn, run store.RunRow, term 
 	if err := store.SetRunResult(ctx, t.tx, run.ID, term.FinalText, "", term.Usage); err != nil {
 		return err
 	}
-	if term.VendorSessionID != "" {
+	if state == protocol.RunFailed {
+		// A failed attempt's session (possibly one that failed to resume) is
+		// not resumed again: the next attempt starts a fresh one.
+		_ = store.InvalidateProviderSessionFor(ctx, t.tx, run.EngineerID, run.Provider, contextKey(run), run.NodeID, "the last attempt failed")
+	} else if term.VendorSessionID != "" {
 		_ = store.SetRunVendorSession(ctx, t.tx, run.ID, term.VendorSessionID)
 		var fp string
 		_ = t.tx.QueryRowContext(ctx, `SELECT scope_fingerprint FROM runs WHERE id = ?`, run.ID).Scan(&fp)

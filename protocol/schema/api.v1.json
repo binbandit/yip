@@ -2487,6 +2487,9 @@
     "ProviderPreference": {
       "additionalProperties": false,
       "properties": {
+        "allowApiBilling": {
+          "type": "boolean"
+        },
         "alternatives": {
           "items": {
             "type": "string"
@@ -2505,6 +2508,46 @@
       },
       "required": [
         "provider"
+      ],
+      "type": "object"
+    },
+    "ProviderProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "billing": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "maxConcurrency": {
+          "type": "integer"
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "provider",
+        "label",
+        "billing",
+        "maxConcurrency"
+      ],
+      "type": "object"
+    },
+    "ProviderProfileRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "maxConcurrency": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maxConcurrency"
       ],
       "type": "object"
     },

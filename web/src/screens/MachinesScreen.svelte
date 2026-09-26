@@ -18,6 +18,21 @@
   // the result. "Check again" asks the machine to re-read it right away.
   const SIGN_IN: Record<string, string> = { codex: 'codex login', claude: 'claude auth login', cursor: 'agent login' };
   let checking = $state<Record<string, boolean>>({});
+  // Per-account concurrency: runs on one account share its allowance, so the
+  // default is one at a time (brief §7) until the owner raises it.
+  let profiles = $state<import('../lib/api/types.gen').ProviderProfile[]>([]);
+  $effect(() => {
+    void api.providerProfiles().then((p) => (profiles = p), () => {});
+  });
+  async function setConcurrency(profileId: string, max: number) {
+    try {
+      const p = await api.setProviderConcurrency(profileId, max);
+      profiles = profiles.map((x) => (x.id === p.id ? p : x));
+      app.toast(`${p.label} can now run ${max} ${max === 1 ? 'job' : 'jobs'} at once.`);
+    } catch (err) {
+      app.toast(errorMessage(err), 'error');
+    }
+  }
   async function recheck(n: Node) {
     checking[n.id] = true;
     try {
@@ -163,6 +178,7 @@
               {:else}
                 <ul class="providers">
                   {#each n.providers as pv (pv.provider + pv.profileId)}
+                    {@const prof = profiles.find((p) => p.id === pv.profileId)}
                     <li>
                       <p class="pv-head">
                         <StateIcon shape={pv.authState === 'ready' ? 'check-filled' : pv.authState === 'needs_signin' ? 'pause' : 'circle'} tone={pv.authState === 'ready' ? 'success' : pv.authState === 'needs_signin' || pv.authState === 'error' ? 'attention' : 'neutral'} size={13} />
@@ -170,6 +186,15 @@
                         <span>{authStateLabel(pv.authState, pv.authDetail)}</span>
                         <span class="meta">· {billingLabel(pv.billing)}{pv.account ? ` · ${pv.account}` : ''}</span>
                       </p>
+                      {#if pv.authState === 'ready' && prof && pv.provider !== 'fake'}
+                        <label class="conc">
+                          <span>Runs at once on this account</span>
+                          <select class="select" value={String(prof.maxConcurrency)} onchange={(ev) => setConcurrency(prof.id, Number((ev.target as HTMLSelectElement).value))}>
+                            {#each [...new Set([1, 2, 3, 4, 6, 8, prof.maxConcurrency])].sort((a, b) => a - b) as n (n)}<option value={String(n)}>{n}</option>{/each}
+                          </select>
+                          <span class="meta">They share the account's allowance.</span>
+                        </label>
+                      {/if}
                       {#if pv.authState === 'needs_signin'}
                         <p class="meta">
                           {providerLabel(pv.provider)} needs sign-in on {n.name}.
@@ -242,6 +267,19 @@
 {/if}
 
 <style>
+  .conc {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 4px 0;
+    font-size: 13px;
+  }
+  .conc .select {
+    width: auto;
+    min-height: 28px;
+    padding: 2px 8px;
+  }
   .sub-head {
     display: flex;
     align-items: center;

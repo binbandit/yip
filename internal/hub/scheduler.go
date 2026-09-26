@@ -165,6 +165,14 @@ func (h *Hub) schedule(ctx context.Context) {
 // provider, sign-in, capability), as opposed to temporarily busy.
 func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes []store.NodeRow, counts schedCounts) (*placement, string, bool) {
 	provider := ProviderLabel(r.Provider)
+	// The engineer's current preference applies to queued work too.
+	allowAPI, pin := false, r.ProfileID
+	if eng, err := store.GetEngineer(ctx, h.st.R(), r.EngineerID); err == nil {
+		allowAPI = eng.Provider.AllowAPIBilling
+		if eng.Provider.ProfileID != "" {
+			pin = eng.Provider.ProfileID
+		}
+	}
 	// Workspace affinity: edit work continues where its worktree lives unless
 	// a verified checkpoint of its published revision exists.
 	affinity := ""
@@ -203,6 +211,16 @@ func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes [
 		}
 		if inst.AuthState != protocol.AuthReady {
 			reasons = append(reasons, provider+" needs sign-in on "+n.Name+".")
+			continue
+		}
+		// An engineer pinned to one account never runs on another (A23).
+		if pin != "" && inst.ProfileID != pin {
+			reasons = append(reasons, provider+" on "+n.Name+" is signed in to a different account ("+firstNonEmpty(inst.Account, inst.ProfileID)+") than this engineer uses.")
+			continue
+		}
+		// No silent fallback to paid API usage (brief §7).
+		if inst.Billing == protocol.BillingAPI && !allowAPI {
+			reasons = append(reasons, provider+" on "+n.Name+" is billed to an API key; allow API billing for this engineer to use it.")
 			continue
 		}
 		if r.Mode == protocol.ModeReadOnly && !inst.Capabilities.ReadOnly {

@@ -629,6 +629,19 @@ export interface ProviderPreference {
   model?: string;
   profileId?: string;
   alternatives?: string[];
+  allowApiBilling?: boolean;
+}
+
+export interface ProviderProfile {
+  id: string;
+  provider: string;
+  label: string;
+  billing: string;
+  maxConcurrency: number;
+}
+
+export interface ProviderProfileRequest {
+  maxConcurrency: number;
 }
 
 export interface ProviderSummary {

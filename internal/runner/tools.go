@@ -222,22 +222,51 @@ func (r *Runner) toolRunCheck(ctx context.Context, ar *activeRun, raw json.RawMe
 		return nil, apiErr("internal", "Could not prepare the check environment: %s", err.Error())
 	}
 	r.emit(ar.m.RunID, ar.epoch, protocol.RunEvent{Kind: protocol.RunEvToolStarted, Tool: bridge.WorkRunCheck, Text: "Running " + truncate(a.Command, 120)})
-	cctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	cmd := exec.CommandContext(cctx, "/bin/sh", "-c", a.Command)
+	cmd := exec.Command("/bin/sh", "-c", a.Command)
 	cmd.Dir = ar.ws.Dir
 	cmd.Env = env
 	var out bytes.Buffer
 	lw := &limitWriter{w: &out, n: 4 << 20}
 	cmd.Stdout, cmd.Stderr = lw, lw
-	providers.PrepareCommand(cmd)
 	start := time.Now()
-	runErr := cmd.Run()
+	proc, err := providers.StartProcess(cmd)
+	if err != nil {
+		return nil, apiErr("internal", "Could not start the check: %s", err.Error())
+	}
+	// The check runs in its own process group. It is stopped as a group on
+	// timeout, when the call's context ends, or as soon as the run stops
+	// admitting work (cancelled, stopping, or its lease was lost).
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	timedOut, stopped := false, ""
+wait:
+	for {
+		select {
+		case <-proc.Done():
+			break wait
+		case <-timer.C:
+			timedOut = true
+			go proc.Terminate(5 * time.Second)
+		case <-ctx.Done():
+			stopped = "the call ended"
+			go proc.Terminate(5 * time.Second)
+		case <-tick.C:
+			if !ar.admit.Load() && stopped == "" {
+				stopped = "the run stopped"
+				go proc.Terminate(5 * time.Second)
+			}
+		}
+	}
+	runErr := proc.Err()
 	dur := time.Since(start)
 	exit := providers.ExitCode(runErr)
-	if cctx.Err() == context.DeadlineExceeded {
+	if timedOut {
 		exit = 124
-		out.WriteString("\n[yip] check timed out after " + timeout.String() + "\n")
+		out.WriteString("\n[yip] check timed out after " + timeout.String() + "; its process group was stopped\n")
+	} else if stopped != "" {
+		out.WriteString("\n[yip] check stopped because " + stopped + "\n")
 	}
 	name := firstNonEmpty(a.Name, a.Command)
 	logText := Redact(out.String())

@@ -23,6 +23,7 @@ var apiRoots = []any{
 	protocol.Node{}, protocol.Enrollment{}, protocol.CreateEnrollmentRequest{}, protocol.NodeActionRequest{},
 	protocol.Decision{}, protocol.DecisionRequest{}, protocol.DecisionActionRequest{}, protocol.Overview{}, protocol.SearchResult{},
 	protocol.RunActivity{}, protocol.Diagnostics{}, protocol.Event{}, protocol.PreferencesRequest{}, protocol.RevisionRecord{},
+	protocol.ProviderProfile{}, protocol.ProviderProfileRequest{},
 }
 
 // runnerRoots are the runner protocol frames and payloads.
