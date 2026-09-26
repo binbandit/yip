@@ -141,7 +141,7 @@
       <MessageBody {message} />
       <time class="status-time" datetime={message.createdAt} title={fullTime(message.createdAt)}>{clock(message.createdAt)}</time>
       {#if approvalRef}<ApprovalCard approvalId={approvalRef.id} />{/if}
-      <RefChips refs={message.refs} skip={['approval']} hide={seenRefs} />
+      <RefChips refs={message.refs} skip={['approval']} hide={seenRefs} messageId={message.id} />
     </div>
   </article>
 {:else}
@@ -232,7 +232,7 @@
         {#if message.kind === 'result' && jobRef}
           <ResultCard jobId={jobRef.id} />
         {/if}
-        <RefChips refs={message.refs} skip={message.kind === 'result' ? ['job', 'approval'] : ['approval']} hide={seenRefs} />
+        <RefChips refs={message.refs} skip={message.kind === 'result' ? ['job', 'approval'] : ['approval']} hide={seenRefs} messageId={message.id} />
         <Reactions {message} />
 
         {#if !inThread && message.thread && message.thread.replyCount > 0}

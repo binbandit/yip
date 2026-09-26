@@ -87,8 +87,10 @@ window.__journeys = (() => {
       },
     },
     {
-      // Answering a question in the room, as in any group chat: no thread.
-      name: "a plain answer in the room resumes the engineer's work",
+      // A clarification in ordinary conversation reaches open work: Pip's
+      // investigation, waiting on its question, gets the note, and saying
+      // "Not an answer" keeps the question open.
+      name: 'a clarification in the room goes to open work, not the question',
       width: 1440, height: 900,
       run: async (t) => {
         await openRoom(t, 'Reverse engineering');
@@ -96,6 +98,25 @@ window.__journeys = (() => {
         const box = await composer(t);
         await t.type(box, 'where could Beacon write a duplicate when it retries?');
         await t.press('Enter');
+        const chip = await t.waitFor(() => t.byText('.room-composer .scope', "Answering Pip's question"), 'the answering chip', 45000);
+        await t.click(t.byText('button', 'Not an answer', chip));
+        await mention(t, 'pi');
+        await t.type(box, 'also note which queue it publishes to');
+        await t.press('Enter');
+        await t.waitFor(() => t.text().includes("Added to Pip's"), 'the added-to receipt', 30000);
+        // Not an answer: the question is still waiting (the chip returns).
+        await t.goto('/overview');
+        await openRoom(t, 'Reverse engineering');
+        await t.waitFor(() => t.byText('.room-composer .scope', "Answering Pip's question"), 'the question still open', 10000);
+      },
+    },
+    {
+      // Answering a question in the room, as in any group chat: no thread.
+      name: "a plain answer in the room resumes the engineer's work",
+      width: 1440, height: 900,
+      run: async (t) => {
+        await openRoom(t, 'Reverse engineering');
+        const box = await composer(t);
         await t.waitFor(() => t.byText('.room-composer .scope', "Answering Pip's question"), 'the answering chip', 45000);
         await t.type(box, "It's in beacon-retry-worker, which isn't linked; document the gateway side and say what you couldn't verify.");
         await t.press('Enter');

@@ -15,11 +15,23 @@
     skip?: string[];
     /** Specific references (kind:id) already shown nearby. */
     hide?: string[];
+    /** The message these belong to: a message added to work says so. */
+    messageId?: string;
   }
-  let { refs, skip = [], hide = [] }: Props = $props();
+  let { refs, skip = [], hide = [], messageId }: Props = $props();
+  // The input this message became for a piece of work, if any.
+  const inputFor = (jobId: string) => (messageId ? Object.values(app.data.inputs).find((i) => i.messageId === messageId && i.jobId === jobId) : undefined);
+  const deliveryWord = (d: string) => (d === 'immediate' ? 'received' : d === 'queued' ? 'queued for the next step' : 'delivering');
 
+  // A work chip that records this message being added to that work is new
+  // information, so it shows even when the work appeared just above.
   const shown = $derived(
-    refs.filter((r) => !skip.includes(r.kind) && !hide.includes(`${r.kind}:${r.id}`) && ['job', 'review', 'pr', 'decision', 'artifact'].includes(r.kind)),
+    refs.filter(
+      (r) =>
+        !skip.includes(r.kind) &&
+        (!hide.includes(`${r.kind}:${r.id}`) || (r.kind === 'job' && !!inputFor(r.id))) &&
+        ['job', 'review', 'pr', 'decision', 'artifact'].includes(r.kind),
+    ),
   );
 
   $effect(() => {
@@ -40,10 +52,16 @@
       {#if r.kind === 'job'}
         {@const j = app.data.jobs[r.id]}
         {#if j && j.kind !== 'reply'}
+          {@const input = inputFor(r.id)}
           <button class="chip ref" onclick={() => app.openPanel({ kind: 'job', id: r.id })}>
             <StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} size={13} live={j.state === 'running'} />
-            <span class="truncate">{j.title}</span>
-            <span class="meta">· {jobStateLabel(j)}</span>
+            {#if input}
+              <span class="truncate">Added to {app.engineerName(j.ownerId)}'s {j.title}</span>
+              <span class="meta">· {deliveryWord(input.delivery)}</span>
+            {:else}
+              <span class="truncate">{j.title}</span>
+              <span class="meta">· {jobStateLabel(j)}</span>
+            {/if}
           </button>
         {/if}
       {:else if r.kind === 'review'}
