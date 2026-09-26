@@ -221,6 +221,45 @@ export interface Destination {
   messageId?: string;
 }
 
+export interface DiagnosticBundle {
+  generatedAt: string;
+  hubVersion: string;
+  goVersion: string;
+  platform: string;
+  schemaVersion: number;
+  health: HealthCheck[];
+  counts: Record<string, number>;
+  work: Record<string, number>;
+  machines: DiagnosticNode[];
+  recentFailures: DiagnosticFailure[];
+  excluded: string[];
+}
+
+export interface DiagnosticFailure {
+  at: string;
+  provider: string;
+  machine: string;
+  state: string;
+  reason: string;
+}
+
+export interface DiagnosticNode {
+  name: string;
+  status: string;
+  platform: string;
+  runnerVersion: string;
+  lastSeenAt?: string | null;
+  providers: DiagnosticProvider[];
+}
+
+export interface DiagnosticProvider {
+  provider: string;
+  version: string;
+  tested: boolean;
+  authState: string;
+  billing: string;
+}
+
 export interface Diagnostics {
   version: string;
   dataDir: string;
@@ -592,6 +631,7 @@ export interface ProjectPolicy {
   autoPublish: boolean;
   checks: string[];
   executionProfile: string;
+  requires?: string[];
 }
 
 export interface ProviderCapabilities {

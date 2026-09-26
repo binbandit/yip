@@ -71,7 +71,9 @@ func (r *Runner) Probe(ctx context.Context) protocol.RunnerCapabilities {
 			mu.Unlock()
 		}(name)
 	}
-	for tool, args := range map[string][]string{"git": {"--version"}, "go": {"version"}, "node": {"--version"}, "python3": {"--version"}, "docker": {"--version"}} {
+	// Toolchains a project can require (ProjectPolicy.Requires).
+	for tool, args := range map[string][]string{"git": {"--version"}, "go": {"version"}, "node": {"--version"}, "python3": {"--version"},
+		"docker": {"--version"}, "cargo": {"--version"}, "swift": {"--version"}, "xcodebuild": {"-version"}} {
 		wg.Add(1)
 		go func(tool string, args []string) {
 			defer wg.Done()

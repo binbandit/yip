@@ -199,8 +199,13 @@ func (h *Hub) CreateProject(ctx context.Context, userID string, req protocol.Cre
 	if req.Policy.ExecutionProfile == "" {
 		req.Policy.ExecutionProfile = "native"
 	}
+	reqs, err := normalizeRequires(req.Policy.Requires)
+	if err != nil {
+		return protocol.Project{}, err
+	}
+	req.Policy.Requires = reqs
 	var p protocol.Project
-	err := h.do(ctx, func(t *txn) error {
+	err = h.do(ctx, func(t *txn) error {
 		p = protocol.Project{ID: domain.NewID(), OrgID: h.Org().ID, Name: req.Name, Description: strings.TrimSpace(req.Description),
 			Instructions: strings.TrimSpace(req.Instructions), Policy: req.Policy, CreatedAt: h.now()}
 		p.Policy.Checks = nonNil(p.Policy.Checks)
@@ -247,6 +252,11 @@ func (h *Hub) UpdateProject(ctx context.Context, userID, id string, req protocol
 		if req.Policy != nil {
 			cur.Policy = *req.Policy
 			cur.Policy.Checks = nonNil(cur.Policy.Checks)
+			reqs, err := normalizeRequires(cur.Policy.Requires)
+			if err != nil {
+				return err
+			}
+			cur.Policy.Requires = reqs
 		}
 		ok, err := store.UpdateProject(ctx, t.tx, cur, req.Version)
 		if err != nil {
@@ -348,4 +358,24 @@ func (h *Hub) PutGrant(ctx context.Context, userID, projectID, engineerID string
 		return t.emit(ev{Type: "project.updated", Actor: userActor(userID), Payload: p})
 	})
 	return p, err
+}
+
+// normalizeRequires cleans a project's machine requirements: lower-case,
+// de-duplicated tool names or os:<name>.
+func normalizeRequires(in []string) ([]string, error) {
+	var out []string
+	seen := map[string]bool{}
+	for _, r := range in {
+		r = strings.ToLower(strings.TrimSpace(r))
+		if r == "" || seen[r] {
+			continue
+		}
+		name := strings.TrimPrefix(r, "os:")
+		if name == "" || strings.Trim(name, "abcdefghijklmnopqrstuvwxyz0123456789-_.+") != "" {
+			return nil, domain.Invalid("%q isn't a tool name or os:<name> (for example go, node, docker, os:darwin).", r)
+		}
+		seen[r] = true
+		out = append(out, r)
+	}
+	return out, nil
 }

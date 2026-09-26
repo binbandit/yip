@@ -838,3 +838,51 @@ func TestRegressionOverviewStatusCoversAllProjects(t *testing.T) {
 		t.Errorf("a quiet project should be named:\n%s", answer)
 	}
 }
+
+// The diagnostic bundle is useful without carrying personal or secret data.
+func TestRegressionDiagnosticBundle(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	var raw json.RawMessage
+	e.c.must("GET", "/v1/diagnostics/bundle", nil, &raw)
+	var b protocol.DiagnosticBundle
+	if err := json.Unmarshal(raw, &b); err != nil {
+		t.Fatal(err)
+	}
+	if b.SchemaVersion == 0 || b.Counts["engineers"] == 0 || len(b.Machines) == 0 || len(b.Machines[0].Providers) == 0 || len(b.Health) == 0 {
+		t.Fatalf("bundle is missing basics: %s", raw)
+	}
+	for _, leak := range []string{`"account"`, `"hostname"`, `"fingerprint"`, `"body"`} {
+		if strings.Contains(string(raw), leak) {
+			t.Errorf("bundle carries %s: %s", leak, raw)
+		}
+	}
+}
+
+// A23: a project that needs a tool no machine has waits with that reason and
+// never launches elsewhere; bad requirement names are refused.
+func TestRegressionProjectToolchainRequirement(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	p := e.project("Atlas")
+	pol := p.Policy
+	pol.Requires = []string{"rm -rf"}
+	if err := e.c.do("PATCH", "/v1/projects/"+p.ID, protocol.UpdateProjectRequest{Version: p.Version, Policy: &pol}, nil); !isStatus(err, 400) {
+		t.Fatalf("an invalid requirement should be refused: %v", err)
+	}
+	pol.Requires = []string{"COBOL", "cobol"}
+	var updated protocol.Project
+	e.c.must("PATCH", "/v1/projects/"+p.ID, protocol.UpdateProjectRequest{Version: p.Version, Policy: &pol}, &updated)
+	if len(updated.Policy.Requires) != 1 || updated.Policy.Requires[0] != "cobol" {
+		t.Fatalf("requirements should be normalized: %v", updated.Policy.Requires)
+	}
+	e.post("Security", "@Mira can you fix Atlas accepting expired sessions?", []string{"mira"}, nil)
+	var j protocol.Job
+	e.waitFor("the work explains the missing tool", 30*time.Second, func() bool {
+		var ok bool
+		j, ok = e.job("Fix Atlas session expiry")
+		e.hub.Tick(e.ctx)
+		return ok && strings.Contains(j.StateDetail, "needs cobol")
+	})
+	if len(e.jobDetail(j.ID).Runs) != 1 || e.jobDetail(j.ID).Runs[0].NodeID != "" {
+		t.Fatalf("the run should not have been placed on a machine: %+v", e.jobDetail(j.ID).Runs)
+	}
+}

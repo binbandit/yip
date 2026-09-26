@@ -90,6 +90,7 @@ func (s *Server) routes() {
 	a("GET /v1/search", s.search)
 	a("GET /v1/artifacts/{id}", s.getArtifact)
 	a("GET /v1/diagnostics", s.diagnostics)
+	a("GET /v1/diagnostics/bundle", s.diagnosticBundle)
 	a("GET /v1/export", s.export)
 	m.HandleFunc("GET /v1/events", s.authed(s.events))
 	// Forge webhooks authenticate by HMAC signature, not by session.
@@ -623,6 +624,11 @@ func safeName(n string) string {
 		return "artifact"
 	}
 	return n
+}
+
+func (s *Server) diagnosticBundle(w http.ResponseWriter, r *http.Request) {
+	b, err := s.hub.DiagnosticBundle(r.Context())
+	respond(s, w, r, b, err)
 }
 
 func (s *Server) diagnostics(w http.ResponseWriter, r *http.Request) {

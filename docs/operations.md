@@ -55,6 +55,12 @@ Useful flags:
 5. Check it: `yip doctor` shows identity, certificate expiry, journal, git,
    and each provider's version and sign-in state.
 
+A project can say what its work needs on a machine (Project → Policy →
+*What a machine needs*, e.g. `go, docker` or `os:darwin` for Xcode work).
+The runner reports git, go, node, python3, docker, cargo, swift and
+xcodebuild; work only goes to machines that have what the project needs, and
+otherwise waits with the missing piece named.
+
 Revoke a machine from Machines. It can't regain authority by replaying its
 queue; its in-flight runs are marked unknown until reconciled.
 
@@ -156,8 +162,15 @@ yip restore --from /Volumes/Backups/yip-2026-09-25 --data ~/.yip/hub-restored
 - `yip doctor` on any machine.
 - Settings → Diagnostics shows queue depth, active runs, pending outbox
   commands, pending approvals, recent failures, storage, and machine health.
+- **Prepare a diagnostic bundle** (Settings → Diagnostics) shows, in full,
+  a JSON file of counts, health, versions, machines and their providers'
+  sign-in and billing state, and the last 20 failure reasons (redacted). It
+  leaves out messages, prompts, code, account names, hostnames, fingerprints
+  and credentials. It is saved only when you choose to, and never sent
+  anywhere (`GET /v1/diagnostics/bundle`).
 - `YIP_DEBUG=1` enables debug logging. Nothing is sent to third-party
-  telemetry; `GET /v1/export` produces a zip you can inspect before sharing.
+  telemetry. `GET /v1/export` is the full data export (it does include your
+  conversations).
 
 ## Owner recovery
 

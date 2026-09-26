@@ -49,7 +49,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `POST /v1/messages/{id}/reactions` | `ReactRequest` → `Message` |
 | `PATCH/DELETE /v1/messages/{id}` | `{body}` → `Message` / redact own message |
 | `GET/POST /v1/engineers`, `GET/PATCH /v1/engineers/{id}` | `GET {id}` → `{engineer, versions}`. `provider` carries `model`, an optional `profileId` pin (only that account runs this engineer's work) and `allowApiBilling` (off: never run on an API-key-billed install) |
-| `GET/POST /v1/projects`, `GET/PATCH /v1/projects/{id}` | |
+| `GET/POST /v1/projects`, `GET/PATCH /v1/projects/{id}` | `policy.requires` lists what a machine needs for the project's work (a reported tool such as `go`, `node`, `docker`, `cargo`, `swift`, `xcodebuild`, or `os:darwin`/`os:linux`); work waits, naming what's missing, rather than running elsewhere |
 | `PUT /v1/projects/{id}/repos/{repoId\|new}` | `PutRepoRequest` → `Project` |
 | `PUT /v1/projects/{id}/grants/{engineerId}` | `PutGrantRequest` (`access`: read/write/none; `actions`: push, open_pr, publish_review, merge) |
 | `GET /v1/jobs?state=a,b&project=&owner=` | → `Job[]` (work ledger; excludes conversational replies) |
@@ -72,6 +72,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `GET /v1/search?q=&room=&project=` | → `SearchResult[]` (kinds: room, engineer, project, job, message, decision). `project` narrows to rooms linked to it, its work and its decisions, before ranking. A work ID (whole, `#`-prefixed, or six or more characters from either end; the UI shows the last six) finds that work directly |
 | `GET /v1/artifacts/{id}[?download=1]` | artifact bytes; text types render as plain text, never HTML |
 | `GET /v1/diagnostics` | → `Diagnostics` |
+| `GET /v1/diagnostics/bundle` | → `DiagnosticBundle`: the opt-in troubleshooting export (counts, health, versions, redacted recent failures; no messages, prompts, code, account names or credentials) |
 | `GET /v1/export` | zip of rooms, messages, jobs, decisions, artifacts |
 | `GET /v1/events` | SSE (below) |
 
