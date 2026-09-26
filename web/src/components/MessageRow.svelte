@@ -44,6 +44,10 @@
   const jobRef = $derived(message.refs.find((r) => r.kind === 'job'));
   const approvalRef = $derived(message.refs.find((r) => r.kind === 'approval'));
   const questionRef = $derived(message.refs.find((r) => r.kind === 'question'));
+  // The question this message answered (a receipt that stays with it).
+  const answered = $derived(
+    message.kind === 'question' ? undefined : Object.values(app.data.questions).find((q) => q.answerMessageId === message.id),
+  );
   const question = $derived(questionRef ? app.data.questions[questionRef.id] : undefined);
   // A settled question no longer asks anything of you.
   const settled = $derived(message.kind === 'question' && (question?.status === 'answered' || question?.status === 'cancelled'));
@@ -203,6 +207,9 @@
       {:else}
         <MessageBody {message} />
         {#if message.editedAt && continuation}<span class="meta">(edited)</span>{/if}
+        {#if answered}
+          <p class="answered meta"><Icon name="check" size={13} />Answers {app.engineerName(answered.askerId)}'s question — the work waiting on it resumed</p>
+        {/if}
 
         {#if message.kind === 'question'}
           <div class="question">
@@ -276,6 +283,13 @@
 {/if}
 
 <style>
+  .answered {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 2px 0 0;
+    font-size: 12.5px;
+  }
   .msg {
     position: relative;
     display: grid;

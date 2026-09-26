@@ -125,6 +125,7 @@ export interface UnsentMessage {
   mentions: { kind: string; id: string }[];
   projectIds: string[];
   jobId?: string;
+  replyToId?: string;
   createdAt: string;
 }
 

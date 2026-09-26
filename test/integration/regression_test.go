@@ -1441,3 +1441,28 @@ func TestRegressionFinishedWorkIsRemembered(t *testing.T) {
 		t.Fatalf("a corrected note should say what it replaced and who changed it:\n%s", got)
 	}
 }
+
+// An answer sent in the main room, targeted at the question (the composer
+// does this by default when one question is waiting on you), resumes the
+// work; plain chat without that target is never assumed to be an answer.
+func TestRegressionRoomAnswerTargetsQuestion(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	e.post("Reverse engineering", "@Pip can you work out how Beacon retries requests? I want to know where a duplicate write could happen.", []string{"pip"}, nil)
+	e.waitJob("Document Beacon", protocol.JobWaiting)
+	var question protocol.Message
+	for _, m := range e.messages("Reverse engineering") {
+		if m.Kind == protocol.MessageQuestion {
+			question = m
+		}
+	}
+	chat := e.post("Reverse engineering", "Heads up: I'm out tomorrow.", nil, nil)
+	if len(chat.Resolved) != 0 {
+		t.Fatalf("untargeted chat must not be taken as the answer: %+v", chat.Resolved)
+	}
+	resp := e.post("Reverse engineering", "It's in beacon-retry-worker, which isn't linked; document the gateway side and say what you couldn't verify.", nil,
+		func(r *protocol.PostMessageRequest) { r.ReplyToID = question.ID })
+	if len(resp.Resolved) != 1 || len(resp.Dispatched) != 0 {
+		t.Fatalf("a targeted room answer should resolve the question and wake nobody else: %+v", resp)
+	}
+	e.waitJob("Document Beacon", protocol.JobCompleted)
+}

@@ -51,6 +51,8 @@ export interface PendingMessage {
   mentions: Mention[];
   projectIds: string[];
   jobId?: string;
+  /** The message this answers (e.g. an engineer's question in the room). */
+  replyToId?: string;
   createdAt: string;
   status: PendingStatus;
   error?: string;
@@ -220,6 +222,14 @@ function upsertMessage(s: DataState, m: Message): boolean {
   // A thread reply updates its root without bumping `revision`; never let an
   // older snapshot of the same revision shrink the thread summary.
   if (cur && m.revision === cur.revision && cur.thread && olderThread(next.thread, cur.thread)) next.thread = cur.thread;
+  // Refs are append-only (work started from it, the question it answered),
+  // added without a new revision: a same-revision snapshot that arrives
+  // late (e.g. the POST response after the live update) must not drop them.
+  if (cur && m.revision === cur.revision) {
+    for (const r of cur.refs ?? []) {
+      if (!next.refs.some((x) => x.kind === r.kind && x.id === r.id)) next.refs = [...next.refs, r];
+    }
+  }
   s.messages[m.id] = next;
   return true;
 }

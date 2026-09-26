@@ -55,6 +55,27 @@
     }
   });
 
+  // ---- answering a question in the room ----
+  // When exactly one question in this room's main timeline is waiting on
+  // you, a message sent here answers it by default, as in any group chat.
+  // The chip says so before you send, and one click says it isn't.
+  let notAnswer = $state<string | null>(null);
+  const waitingQuestion = $derived.by(() => {
+    if (threadId || scopeJobId) return null;
+    const me = app.me?.id;
+    const open = Object.values(app.data.questions).filter(
+      (q) => q.status === 'open' && q.source.roomId === roomId && !q.source.threadId && q.recipient.kind === 'user' && q.recipient.id === me,
+    );
+    return open.length === 1 ? open[0] : null;
+  });
+  const answering = $derived.by(() => {
+    const q = waitingQuestion;
+    if (!q || notAnswer === q.id) return null;
+    // Mentioning someone other than the asker means you're talking to them.
+    const others = resolveMentions(body, selected).filter((m) => m.kind === 'engineer' && m.id !== q.askerId);
+    return others.length ? null : q;
+  });
+
   // ---- receipts ----
   const receipt = $derived.by(() => {
     const id = app.receipts[rkey];
@@ -285,6 +306,7 @@
     if (!text) return;
     const mentions: Mention[] = resolveMentions(text, selected);
     const jobId = scopeJobId ?? undefined;
+    const replyToId = answering?.messageId || undefined;
     const pids = projectIds.filter((p) => room?.projectIds.includes(p));
     body = '';
     selected = [];
@@ -299,7 +321,7 @@
     await tick();
     autosize();
     textarea?.focus();
-    const resp = await app.send({ roomId, threadId, body: text, mentions, projectIds: pids, jobId });
+    const resp = await app.send({ roomId, threadId, body: text, mentions, projectIds: pids, jobId, replyToId });
     if (resp?.duplicate) app.toast('That message was already sent; showing the original.');
     const answered = (resp?.resolvedQuestionIds ?? []).map((id) => app.data.questions[id]).filter(Boolean);
     if (resp?.resolvedQuestionIds?.length) {
@@ -354,7 +376,14 @@
     </div>
   {/if}
 
-  <div class="box" class:scoped={!!scopeJob}>
+  <div class="box" class:scoped={!!scopeJob || !!answering}>
+    {#if answering}
+      <div class="scope answering" role="status">
+        <Icon name="reply" size={15} />
+        <span class="truncate">Answering {app.engineerName(answering.askerId)}'s question{answering.missingFact ? `: ${answering.missingFact}` : ''}</span>
+        <button class="btn btn-sm btn-quiet" onclick={() => (notAnswer = answering?.id ?? null)}>Not an answer</button>
+      </div>
+    {/if}
     {#if scopeJob}
       <div class="scope" role="status">
         <Icon name="commit" size={15} />

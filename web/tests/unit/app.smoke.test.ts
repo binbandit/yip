@@ -167,6 +167,43 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     await waitFor(() => byText('.strip', 'Tracing the retry worker needs its repository location'), 'strip blocker');
   });
 
+  it('answers the one waiting question from the room by default, unless you say it is not an answer', async () => {
+    const re = roomId('Reverse engineering');
+    const q = fixture<{ id: string; messageId: string }>('question.json');
+    app.go({ name: 'room', roomId: re });
+    await waitFor(() => app.data.questions[q.id], 'question state');
+    hub.override('POST', new RegExp(`^/v1/rooms/${re}/messages$`), (c) => {
+      const b = c.body as { body: string; clientKey: string; replyToId?: string };
+      return {
+        status: 201,
+        body: {
+          message: { id: 'm-' + b.clientKey, orgId: 'o', roomId: re, seq: 900 + hub.calls.length, author: { kind: 'user', id: app.me!.id }, body: b.body, kind: 'text', mentions: [], projectIds: [], refs: [], reactions: [], revision: 1, clientKey: b.clientKey, createdAt: new Date().toISOString() },
+          duplicate: false,
+          dispatched: [],
+          resolvedQuestionIds: b.replyToId ? [q.id] : [],
+        },
+      };
+    });
+    const chip = await waitFor(() => byText('.room-composer .scope', "Answering Pip's question"), 'answering chip');
+    expect(chip.textContent).toContain('Not an answer');
+    // By default the message answers the question.
+    const box = document.querySelector<HTMLTextAreaElement>('.room-composer textarea')!;
+    type(box, 'It lives in beacon-retry-worker.');
+    key(box, 'Enter');
+    await waitFor(() => (hub.last('POST', /messages$/)?.body as { body: string } | undefined)?.body === 'It lives in beacon-retry-worker.', 'answer sent');
+    expect((hub.last('POST', /messages$/)!.body as { replyToId?: string }).replyToId).toBe(q.messageId);
+    await waitFor(() => text().includes("Pip's question is answered"), 'receipt');
+    // Saying it isn't an answer sends plain chat.
+    byText('.room-composer .scope button', 'Not an answer')!.click();
+    await settle();
+    expect(byText('.room-composer .scope', "Answering Pip's question")).toBeFalsy();
+    const ta = document.querySelector<HTMLTextAreaElement>('.room-composer textarea')!;
+    type(ta, 'Heads up: I am out tomorrow.');
+    key(ta, 'Enter');
+    await waitFor(() => (hub.last('POST', /messages$/)?.body as { body: string } | undefined)?.body === 'Heads up: I am out tomorrow.', 'chat sent');
+    expect((hub.last('POST', /messages$/)!.body as { replyToId?: string }).replyToId).toBeUndefined();
+  });
+
   it('marks a room read only while its newest message is on screen', async () => {
     await waitFor(() => hub.calls.some((c) => c.method === 'POST' && c.path === `/v1/rooms/${roomId('Reverse engineering')}/read`), 'read post', 3000);
     const call = hub.last('POST', /\/read$/)!;
@@ -211,7 +248,7 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     const ta = document.querySelector<HTMLTextAreaElement>('.room-composer textarea')!;
     type(ta, 'The retry worker lives in beacon-worker.');
     key(ta, 'Enter');
-    await waitFor(() => hub.last('POST', /\/messages$/), 'post');
+    await waitFor(() => (hub.last('POST', /\/messages$/)?.body as { body: string } | undefined)?.body === 'The retry worker lives in beacon-worker.', 'post');
     const post = hub.last('POST', /\/messages$/)!;
     expect((post.body as { jobId?: string }).jobId).toBe(pipJob.id);
     expect((post.body as { clientKey?: string }).clientKey).toBeTruthy();

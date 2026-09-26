@@ -341,3 +341,19 @@ describe('event reducer', () => {
     expect(roomWorkJobs(s, 'r1', now).map((j) => j.id)).toEqual(['e', 'a']);
   });
 });
+
+describe('message refs', () => {
+  it('keeps refs added by a live update when the send response arrives later at the same revision', () => {
+    const s = emptyState();
+    // The live stream delivers the message, then the hub links the question
+    // it answered (same revision).
+    applyEvent(s, ev('message.created', msg('m1', 5)));
+    applyEvent(s, ev('message.updated', msg('m1', 5, { refs: [{ kind: 'question', id: 'q1' }] })));
+    // Then the POST response, a same-revision snapshot without the ref.
+    confirmSent(s, msg('m1', 5));
+    expect(s.messages['m1'].refs).toEqual([{ kind: 'question', id: 'q1' }]);
+    // A newer revision is authoritative.
+    confirmSent(s, msg('m1', 5, { revision: 2, refs: [] }));
+    expect(s.messages['m1'].refs).toEqual([]);
+  });
+});
