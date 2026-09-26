@@ -246,13 +246,9 @@ func (c *Conn) dispatch(line []byte) {
 func (c *Conn) Call(ctx context.Context, method string, params any, out any) error {
 	id := c.nextID.Add(1)
 	idRaw := json.RawMessage(strconv.FormatInt(id, 10))
-	var p json.RawMessage
-	if params != nil {
-		raw, err := json.Marshal(params)
-		if err != nil {
-			return fmt.Errorf("acp: encode %s params: %w", method, err)
-		}
-		p = raw
+	p, err := encodeParams(method, params)
+	if err != nil {
+		return err
 	}
 	ch := make(chan *Message, 1)
 	key := idKey(idRaw)
@@ -296,15 +292,23 @@ func (c *Conn) Call(ctx context.Context, method string, params any, out any) err
 
 // Notify sends a notification (no response expected).
 func (c *Conn) Notify(method string, params any) error {
-	var p json.RawMessage
-	if params != nil {
-		raw, err := json.Marshal(params)
-		if err != nil {
-			return fmt.Errorf("acp: encode %s params: %w", method, err)
-		}
-		p = raw
+	p, err := encodeParams(method, params)
+	if err != nil {
+		return err
 	}
 	return c.write(&Message{JSONRPC: "2.0", Method: method, Params: p})
+}
+
+// encodeParams marshals request params; nil params are omitted.
+func encodeParams(method string, params any) (json.RawMessage, error) {
+	if params == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("acp: encode %s params: %w", method, err)
+	}
+	return raw, nil
 }
 
 func (c *Conn) write(m *Message) error {
