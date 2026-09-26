@@ -28,7 +28,6 @@ type CA struct {
 	Cert    *x509.Certificate
 	Key     *ecdsa.PrivateKey
 	CertPEM []byte
-	dir     string
 }
 
 // LoadOrCreateCA loads ca.pem/ca.key from dir, creating them on first use.
@@ -43,7 +42,7 @@ func LoadOrCreateCA(dir string) (*CA, error) {
 		if err != nil {
 			return nil, err
 		}
-		cert, err := parseCertPEM(certPEM)
+		cert, err := ParseCertPEM(certPEM)
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +54,7 @@ func LoadOrCreateCA(dir string) (*CA, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &CA{Cert: cert, Key: key, CertPEM: certPEM, dir: dir}, nil
+		return &CA{Cert: cert, Key: key, CertPEM: certPEM}, nil
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -90,7 +89,7 @@ func LoadOrCreateCA(dir string) (*CA, error) {
 		return nil, err
 	}
 	cert, _ := x509.ParseCertificate(der)
-	return &CA{Cert: cert, Key: key, CertPEM: certPEM, dir: dir}, nil
+	return &CA{Cert: cert, Key: key, CertPEM: certPEM}, nil
 }
 
 // Fingerprint is the SHA-256 of the CA certificate, shown to the owner and
@@ -221,16 +220,14 @@ func randomSerial() *big.Int {
 	return n
 }
 
-func parseCertPEM(b []byte) (*x509.Certificate, error) {
+// ParseCertPEM parses a PEM certificate.
+func ParseCertPEM(b []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(b)
 	if block == nil {
 		return nil, errors.New("no PEM certificate")
 	}
 	return x509.ParseCertificate(block.Bytes)
 }
-
-// ParseCertPEM parses a PEM certificate.
-func ParseCertPEM(b []byte) (*x509.Certificate, error) { return parseCertPEM(b) }
 
 // NewNodeKeyAndCSR generates a node key locally and a CSR for pairing.
 func NewNodeKeyAndCSR(name string) (keyPEM, csrPEM []byte, err error) {

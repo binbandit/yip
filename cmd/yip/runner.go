@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -91,7 +92,7 @@ func runRunner(args []string) error {
 	state := fs.String("state", defaultRunnerDir(), "runner state directory")
 	slots := fs.Int("slots", 2, "concurrent runs on this machine")
 	provs := fs.String("providers", "codex,claude,cursor", "providers this runner may use")
-	profile := fs.String("profile", envOr("YIP_EXECUTION_PROFILE", "native"), "execution profile: native or container")
+	profile := fs.String("profile", cmp.Or(os.Getenv("YIP_EXECUTION_PROFILE"), "native"), "execution profile: native or container")
 	serverName := fs.String("server-name", "", "override the TLS name used to verify the hub")
 	_ = fs.Parse(args)
 	ad, err := adapters(*provs)
@@ -109,13 +110,6 @@ func runRunner(args []string) error {
 	return r.Run(ctx)
 }
 
-func envOr(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
-}
-
 func runBridge(args []string) error {
 	fs := flag.NewFlagSet("bridge", flag.ExitOnError)
 	mode := fs.String("mode", "conversation", "run mode (edit, readonly, conversation)")
@@ -130,7 +124,7 @@ func startLocalRunner(ctx context.Context, h *hub.Hub, f hubFlags, log *slog.Log
 	dir := filepath.Join(f.data, "local-runner")
 	if _, err := runner.LoadIdentity(dir); err != nil {
 		host, _ := os.Hostname()
-		name := firstNonEmpty(strings.Split(host, ".")[0], "This machine")
+		name := cmp.Or(strings.Split(host, ".")[0], "This machine")
 		keyPEM, csrPEM, err := auth.NewNodeKeyAndCSR(name)
 		if err != nil {
 			return nil, err
@@ -169,13 +163,4 @@ func startLocalRunner(ctx context.Context, h *hub.Hub, f hubFlags, log *slog.Log
 		case <-time.After(40 * time.Second):
 		}
 	}, nil
-}
-
-func firstNonEmpty(vs ...string) string {
-	for _, v := range vs {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }

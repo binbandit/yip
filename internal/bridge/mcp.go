@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sync"
 )
 
@@ -61,10 +62,8 @@ func ServeMCP(in io.Reader, out io.Writer, client *Client, mode, version string)
 			}
 			_ = json.Unmarshal(msg.Params, &p)
 			v := mcpVersions[0]
-			for _, s := range mcpVersions {
-				if s == p.ProtocolVersion {
-					v = s
-				}
+			if slices.Contains(mcpVersions, p.ProtocolVersion) {
+				v = p.ProtocolVersion
 			}
 			write(rpcMessage{ID: msg.ID, Result: map[string]any{
 				"protocolVersion": v,

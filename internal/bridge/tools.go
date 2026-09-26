@@ -9,6 +9,7 @@ package bridge
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/binbandit/yip/protocol"
 )
@@ -121,14 +122,7 @@ func Lookup(name string) (Tool, bool) {
 }
 
 // Allowed reports whether a mode may call a tool.
-func (t Tool) Allowed(mode string) bool {
-	for _, m := range t.Modes {
-		if m == mode {
-			return true
-		}
-	}
-	return false
-}
+func (t Tool) Allowed(mode string) bool { return slices.Contains(t.Modes, mode) }
 
 // NamesForMode lists tools available to a run mode.
 func NamesForMode(mode string) []string {

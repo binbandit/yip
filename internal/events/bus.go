@@ -29,7 +29,6 @@ type Bus struct {
 	mu      sync.Mutex
 	changed chan struct{}
 	subs    map[*Subscription]struct{}
-	dropped atomic.Int64
 }
 
 func NewBus() *Bus {
@@ -86,7 +85,6 @@ func (b *Bus) Publish(t Transient) {
 		case s.C <- t:
 		default:
 			s.slow.Store(true)
-			b.dropped.Add(1)
 		}
 	}
 }

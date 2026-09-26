@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -114,7 +113,6 @@ func runService(args []string) error {
 	if runtime.GOOS == "darwin" {
 		fmt.Println("Note: a user LaunchAgent starts at login. After a reboot with FileVault, the machine must be unlocked and this user logged in before work resumes.")
 	}
-	_ = exec.Command
 	return nil
 }
 
