@@ -372,7 +372,7 @@ func (h *Hub) visibleDecisions(ctx context.Context, q store.Q, room protocol.Roo
 	}
 	var match map[string]bool
 	if strings.TrimSpace(query) != "" {
-		ids, err := store.SearchDecisions(ctx, q, ftsQuery(query), 50)
+		ids, err := store.SearchDecisions(ctx, q, ftsQuery(query), []string{room.ID}, 50)
 		if err == nil {
 			match = map[string]bool{}
 			for _, id := range ids {

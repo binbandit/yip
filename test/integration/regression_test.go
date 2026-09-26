@@ -700,3 +700,44 @@ func (e *env) jobsWithReplies() []protocol.Job {
 	}
 	return out
 }
+
+// "Since you were here" reports each job's current state: an earlier wait
+// is history once the job is running again.
+func TestRegressionCatchupShowsCurrentState(t *testing.T) {
+	var attempts atomic.Int32
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Engineering", "plan"):
+			return script(toolStep("work_create", map[string]any{"title": "Plan migration", "objective": "plan", "kind": "investigation", "project": "Atlas"}, ""))
+		case m.Job.Title == "Plan migration":
+			if attempts.Add(1) > 1 {
+				return script(toolStep("room_post", map[string]any{"body": "migration resumed"}, ""), fake.Step{Sleep: "4s"},
+					toolStep("work_update", map[string]any{"state": "failed", "summary": "test done"}, ""))
+			}
+			return script(toolStep("human_ask", map[string]any{"question": "Which database first?", "missingFact": "database", "contextChecked": "docs"}, ""),
+				toolStep("work_wait", map[string]any{"reason": "missing_information"}, ""))
+		}
+		return nil
+	}})
+	e.post("Engineering", "@Mira plan the migration", []string{"mira"}, nil)
+	var q protocol.Message
+	e.waitFor("question", 30*time.Second, func() bool {
+		for _, m := range e.messages("Engineering") {
+			if m.Kind == protocol.MessageQuestion {
+				q = m
+				return true
+			}
+		}
+		return false
+	})
+	e.waitJob("Plan migration", protocol.JobWaiting)
+	e.post("Engineering", "Postgres first.", nil, func(r *protocol.PostMessageRequest) { r.ThreadID = q.ID })
+	e.waitMessage("Engineering", "migration resumed")
+	var ov protocol.Overview
+	e.c.must("GET", "/v1/overview", nil, &ov)
+	for _, c := range ov.Catchup {
+		if strings.Contains(c.Title, "Plan migration") && c.Kind == "blocker" {
+			t.Fatalf("a job that is running again was reported as blocked: %+v", c)
+		}
+	}
+}

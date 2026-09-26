@@ -34,6 +34,7 @@ type hubFlags struct {
 	runnerURL      string
 	runnerHosts    string
 	tlsCert        string
+	insecureHTTP   bool
 	tlsKey         string
 	secureCookies  bool
 	allowedOrigins string
@@ -59,6 +60,7 @@ func (f *hubFlags) register(fs *flag.FlagSet, dataDefault string) {
 	fs.StringVar(&f.tlsCert, "tls-cert", "", "TLS certificate for the browser listener (enables HTTPS)")
 	fs.StringVar(&f.tlsKey, "tls-key", "", "TLS key for the browser listener")
 	fs.BoolVar(&f.secureCookies, "secure-cookies", false, "mark session cookies Secure (set when served over HTTPS, e.g. behind Tailscale Serve)")
+	fs.BoolVar(&f.insecureHTTP, "insecure-http", false, "allow plain HTTP on a non-loopback --listen address (a trusted local network only: the password and session cross it unencrypted)")
 	fs.StringVar(&f.allowedOrigins, "allowed-origin", "", "extra comma-separated origins allowed for state-changing requests")
 	fs.BoolVar(&f.localRunner, "local-runner", false, "also run a runner on this machine (paired through the normal enrollment path)")
 	fs.IntVar(&f.localSlots, "local-slots", 2, "concurrent runs for the local runner")
@@ -89,6 +91,14 @@ func githubFactory(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.C
 
 // startHub opens the hub and its listeners. It returns a stop function.
 func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*hub.Hub, func(), error) {
+	// Remote access is HTTPS through an explicit setup step (brief §7); plain
+	// HTTP beyond this machine needs an explicit, loudly logged opt-in.
+	if f.tlsCert == "" && !isLoopbackAddr(f.listen) {
+		if !f.insecureHTTP {
+			return nil, nil, fmt.Errorf("refusing to serve plain HTTP on %s: the password and session cookie would cross the network unencrypted. Use --tls-cert/--tls-key or Tailscale Serve (docs/operations.md), or pass --insecure-http for a trusted local network", f.listen)
+		}
+		log.Warn("serving plain HTTP beyond this machine (--insecure-http): use only on a trusted local network", "listen", f.listen)
+	}
 	_, rport, err := net.SplitHostPort(f.runnerListen)
 	if err != nil {
 		return nil, nil, fmt.Errorf("--runner-listen: %w", err)
@@ -172,6 +182,19 @@ func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*
 		_ = h.Close()
 	}
 	return h, stop, nil
+}
+
+// isLoopbackAddr reports a listen address reachable only from this machine.
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func displayAddr(a string) string {

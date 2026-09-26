@@ -30,7 +30,9 @@ var jobTransitions = map[protocol.JobState][]protocol.JobState{
 		protocol.JobQueued, protocol.JobCancelled,
 	},
 	protocol.JobCompleted: {},
-	protocol.JobCancelled: {},
+	// Stopped work can be resumed, but only by an explicit owner retry
+	// (RetryJob); automatic paths check JobLive and never revive it.
+	protocol.JobCancelled: {protocol.JobQueued},
 }
 
 // CanTransitionJob reports whether a job may move from one state to another.

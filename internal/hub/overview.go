@@ -159,6 +159,9 @@ func (h *Hub) catchup(ctx context.Context, q store.Q, rooms []string, since *tim
 			if json.Unmarshal(e.Payload, &j) != nil || j.Kind == protocol.JobKindReply || j.Kind == protocol.JobKindReview || seen["job:"+j.ID] {
 				continue
 			}
+			// Events arrive newest first: the first one per job is its current
+			// state, and older ones (an earlier wait or failure) are history.
+			seen["job:"+j.ID] = true
 			owner := names["engineer:"+j.OwnerID].name
 			var item *protocol.CatchupItem
 			switch j.State {
@@ -173,22 +176,23 @@ func (h *Hub) catchup(ctx context.Context, q store.Q, rooms []string, since *tim
 				}
 				item = &protocol.CatchupItem{Kind: kind, Title: owner + " is waiting: " + j.Title, Detail: j.StateDetail}
 			default:
-				continue // only the latest state per job matters; newer events come first
+				continue // running, queued or ready: nothing to catch up on
 			}
-			seen["job:"+j.ID] = true
 			item.At, item.ActorID, item.RoomID, item.ThreadID, item.MessageID = e.OccurredAt, j.OwnerID, j.Source.RoomID, j.Source.ThreadID, j.Source.MessageID
 			item.Refs, item.EventSeq = []protocol.Ref{{Kind: "job", ID: j.ID}}, e.Sequence
 			out = append(out, *item)
-			seen["job:"+j.ID] = true
 		case "decision.updated":
 			var d protocol.Decision
-			if json.Unmarshal(e.Payload, &d) != nil || d.Status != "accepted" || seen["decision:"+d.ID] {
+			if json.Unmarshal(e.Payload, &d) != nil || seen["decision:"+d.ID] {
+				continue
+			}
+			seen["decision:"+d.ID] = true // a later supersession or rejection wins
+			if d.Status != "accepted" {
 				continue
 			}
 			if d.VisibleRoomIDs != nil && !anyIn(d.VisibleRoomIDs, rooms) {
 				continue
 			}
-			seen["decision:"+d.ID] = true
 			out = append(out, protocol.CatchupItem{Kind: "decision", Title: "Decision: " + d.Title, Detail: truncate(d.Body, 240), At: e.OccurredAt,
 				RoomID: firstSourceRoom(d), Refs: []protocol.Ref{{Kind: "decision", ID: d.ID}}, EventSeq: e.Sequence})
 		case "question.created":
@@ -203,6 +207,18 @@ func (h *Hub) catchup(ctx context.Context, q store.Q, rooms []string, since *tim
 			out = append(out, protocol.CatchupItem{Kind: "question", Title: names["engineer:"+x.AskerID].name + " asked: " + truncate(x.MissingFact, 120),
 				Detail: "Continuing meanwhile: " + firstNonEmpty(x.ContinuingWith, "independent work"), At: e.OccurredAt, ActorID: x.AskerID,
 				RoomID: x.Source.RoomID, ThreadID: x.Source.ThreadID, MessageID: x.MessageID, Refs: []protocol.Ref{{Kind: "question", ID: x.ID}}, EventSeq: e.Sequence})
+		case "approval.created":
+			var a protocol.Approval
+			if json.Unmarshal(e.Payload, &a) != nil {
+				continue
+			}
+			cur, err := store.GetApproval(ctx, q, a.ID)
+			if err != nil || cur.Status != "pending" || h.now().After(cur.ExpiresAt) {
+				continue
+			}
+			out = append(out, protocol.CatchupItem{Kind: "approval", Title: names["engineer:"+cur.EngineerID].name + " needs your permission: " + truncate(cur.Action.Summary, 120),
+				Detail: cur.Action.Detail, At: e.OccurredAt, ActorID: cur.EngineerID, RoomID: cur.Source.RoomID, ThreadID: cur.Source.ThreadID,
+				MessageID: cur.Source.MessageID, Refs: []protocol.Ref{{Kind: "approval", ID: cur.ID}, {Kind: "job", ID: cur.JobID}}, EventSeq: e.Sequence})
 		}
 	}
 	if out == nil {
@@ -360,7 +376,7 @@ func (h *Hub) Search(ctx context.Context, userID, query, roomScope string) ([]pr
 		out = append(out, msgs...)
 	}
 	if ds, err := h.ListDecisions(ctx, userID, "accepted"); err == nil {
-		ids, _ := store.SearchDecisions(ctx, q, fts, 20)
+		ids, _ := store.SearchDecisions(ctx, q, fts, roomIDs, 20)
 		for _, d := range ds {
 			if !contains(ids, d.ID) {
 				continue
