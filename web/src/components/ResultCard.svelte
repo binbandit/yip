@@ -9,6 +9,7 @@
   import { details } from '../lib/state/details.svelte';
   import { jobShape, jobStateLabel, jobTone, reviewShape, reviewTone, verdictPhrase } from '../lib/util/labels';
   import { shortSha } from '../lib/util/time';
+  import type { Review } from '../lib/api/types.gen';
   import StateIcon from './StateIcon.svelte';
   import Icon from './Icon.svelte';
   import PRFacts from './PRFacts.svelte';
@@ -34,7 +35,7 @@
   const earlierChecks = $derived(d ? d.checks.length - checks.length : 0);
   const docs = $derived(d ? d.artifacts.filter((a) => a.kind === 'document' || a.kind === 'file') : []);
 
-  function roundFor(r: import('../lib/api/types.gen').Review) {
+  function roundFor(r: Review) {
     const rounds = [...r.rounds].sort((a, b) => a.number - b.number);
     return { current: rounds[rounds.length - 1], earlier: rounds.slice(0, -1) };
   }

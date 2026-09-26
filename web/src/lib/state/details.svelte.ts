@@ -5,7 +5,7 @@ import { api } from '../api/endpoints';
 import { ApiError, errorMessage } from '../api/client';
 import type { JobDetail } from '../api/types.gen';
 import { app } from './app.svelte';
-import { mergeRuns } from './data';
+import { mergeRuns, newer } from './data';
 
 export interface Entry<T> {
   data?: T;
@@ -53,17 +53,13 @@ class Details {
       normalizeDetail(d);
       this.jobs[id] = { data: d, loading: false, touch };
       // Keep the shared stores current with what the detail tells us.
-      const cur = app.data.jobs[d.job.id];
-      if (!cur || d.job.version >= cur.version) app.data.jobs[d.job.id] = d.job;
+      if (newer(app.data.jobs[d.job.id], d.job)) app.data.jobs[d.job.id] = d.job;
       mergeRuns(app.data, d.runs);
       for (const r of d.reviews) {
         const c = app.data.reviews[r.id];
         if (!c || r.updatedAt >= c.updatedAt) app.data.reviews[r.id] = r;
       }
-      for (const a of d.approvals) {
-        const c = app.data.approvals[a.id];
-        if (!c || a.version >= c.version) app.data.approvals[a.id] = a;
-      }
+      for (const a of d.approvals) if (newer(app.data.approvals[a.id], a)) app.data.approvals[a.id] = a;
       for (const q of d.questions) app.data.questions[q.id] = q;
       for (const p of d.pullRequests) app.data.prs[p.id] = p;
       for (const i of d.inputs) {

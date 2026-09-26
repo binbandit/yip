@@ -1,14 +1,13 @@
 <script lang="ts">
-  import { billingLabel } from '../lib/util/labels';
   // An engineer's profile: role and instructions (versioned), capabilities,
   // provider preference with readiness, rooms, active work, and decisions.
   import { onMount } from 'svelte';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { ApiError, errorMessage } from '../lib/api/client';
-  import type { Decision, EngineerVersion, Job, UpdateEngineerRequest } from '../lib/api/types.gen';
-  import { isLiveJob } from '../lib/state/data';
-  import { jobShape, jobStateLabel, jobTone } from '../lib/util/labels';
+  import type { Decision, EngineerVersion, Job, ProviderProfile, UpdateEngineerRequest } from '../lib/api/types.gen';
+  import { isLiveJob, newer } from '../lib/state/data';
+  import { billingLabel, jobShape, jobStateLabel, jobTone } from '../lib/util/labels';
   import { atTime, relative } from '../lib/util/time';
   import Avatar from '../components/Avatar.svelte';
   import StateIcon from '../components/StateIcon.svelte';
@@ -40,10 +39,7 @@
       .jobs({ owner: id })
       .then((js) => {
         jobs = js ?? [];
-        for (const j of jobs) {
-          const c = app.data.jobs[j.id];
-          if (!c || j.version >= c.version) app.data.jobs[j.id] = j;
-        }
+        for (const j of jobs) if (newer(app.data.jobs[j.id], j)) app.data.jobs[j.id] = j;
       })
       .catch(() => {});
     api
@@ -56,7 +52,7 @@
   const rooms = $derived((e?.roomIds ?? []).map((r) => app.data.rooms[r]).filter(Boolean));
   // Provider details: the models machines report for this provider, and the
   // signed-in accounts (profiles) it could run on.
-  let profiles = $state<import('../lib/api/types.gen').ProviderProfile[]>([]);
+  let profiles = $state<ProviderProfile[]>([]);
   $effect(() => {
     void api.providerProfiles().then((p) => (profiles = p), () => {});
   });

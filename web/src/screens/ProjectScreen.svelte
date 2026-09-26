@@ -8,7 +8,7 @@
   import { api } from '../lib/api/endpoints';
   import { ApiError, errorMessage } from '../lib/api/client';
   import type { Decision, Job, Project, Repo } from '../lib/api/types.gen';
-  import { isLiveJob } from '../lib/state/data';
+  import { isLiveJob, newer } from '../lib/state/data';
   import { GRANT_ACTIONS, jobShape, jobStateLabel, jobTone } from '../lib/util/labels';
   import Avatar from '../components/Avatar.svelte';
   import StateIcon from '../components/StateIcon.svelte';
@@ -33,10 +33,7 @@
       .jobs({ project: id })
       .then((js) => {
         jobs = js ?? [];
-        for (const j of jobs) {
-          const c = app.data.jobs[j.id];
-          if (!c || j.version >= c.version) app.data.jobs[j.id] = j;
-        }
+        for (const j of jobs) if (newer(app.data.jobs[j.id], j)) app.data.jobs[j.id] = j;
       })
       .catch(() => {});
     api
@@ -47,6 +44,10 @@
 
   function setProject(next: Project) {
     app.data.projects[next.id] = next;
+  }
+
+  function saveError(err: unknown): string {
+    return err instanceof ApiError && err.conflict ? 'This project changed meanwhile; reload and try again.' : errorMessage(err);
   }
 
   const openWork = $derived(
@@ -69,7 +70,7 @@
       setProject(await api.updateProject(id, { version: p.version, name: name.trim(), description: description.trim(), instructions: instructions.trim() }));
       editingAbout = false;
     } catch (err) {
-      aboutError = err instanceof ApiError && err.conflict ? 'This project changed meanwhile; reload and try again.' : errorMessage(err);
+      aboutError = saveError(err);
     }
   }
 
@@ -193,7 +194,7 @@
       policySaved = true;
       setTimeout(() => (policySaved = false), 2500);
     } catch (err) {
-      policyError = err instanceof ApiError && err.conflict ? 'This project changed meanwhile; reload and try again.' : errorMessage(err);
+      policyError = saveError(err);
     }
   }
 </script>
