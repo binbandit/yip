@@ -5,6 +5,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -19,7 +20,6 @@ import (
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/hub"
 	"github.com/binbandit/yip/internal/store"
-	"github.com/binbandit/yip/protocol"
 )
 
 const (
@@ -102,15 +102,17 @@ func requestID(r *http.Request) string {
 	return domain.Short(domain.NewID())
 }
 
-func decodeJSON[T any](w http.ResponseWriter, r *http.Request) (T, error) {
+// decodeJSON reads the request body into a T. On a bad body it writes the
+// error response and reports false.
+func decodeJSON[T any](s *Server, w http.ResponseWriter, r *http.Request) (T, bool) {
 	var v T
-	body := http.MaxBytesReader(w, r.Body, maxJSONBody)
-	dec := json.NewDecoder(body)
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBody))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&v); err != nil && !errors.Is(err, io.EOF) {
-		return v, domain.Invalid("The request body is not valid: %s", err.Error())
+		s.fail(w, r, domain.Invalid("The request body is not valid: %s", err.Error()))
+		return v, false
 	}
-	return v, nil
+	return v, true
 }
 
 func userFrom(r *http.Request) store.UserRow {
@@ -167,7 +169,7 @@ func (s *Server) authed(h http.HandlerFunc) http.HandlerFunc {
 				s.fail(w, r, err)
 				return
 			}
-			if subtleEq(r.Header.Get(csrfHeader), sess.CSRFToken) == false {
+			if !subtleEq(r.Header.Get(csrfHeader), sess.CSRFToken) {
 				s.fail(w, r, domain.Forbidden("Missing or invalid CSRF token. Reload the page."))
 				return
 			}
@@ -178,15 +180,9 @@ func (s *Server) authed(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// subtleEq compares a non-empty token in constant time.
 func subtleEq(a, b string) bool {
-	if len(a) != len(b) || a == "" {
-		return false
-	}
-	var v byte
-	for i := 0; i < len(a); i++ {
-		v |= a[i] ^ b[i]
-	}
-	return v == 0
+	return a != "" && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 func (s *Server) setCookie(w http.ResponseWriter, token string, expires time.Time) {
@@ -223,5 +219,3 @@ func withTimeout(h http.HandlerFunc) http.HandlerFunc {
 		h(w, r.WithContext(ctx))
 	}
 }
-
-var _ = protocol.SchemaVersion
