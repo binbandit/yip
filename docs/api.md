@@ -56,6 +56,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `GET /v1/jobs/{id}` | → `JobDetail` (runs, checks, artifacts, reviews with rounds/findings, questions, approvals, PRs, children, decisions, activity, inputs, `missing` evidence, `revisions` with file/line counts, `followUps`). A job started from a request in the thread of finished work carries `followsId`, the work it follows up |
 | `GET /v1/jobs/{id}/runs/{runId}/activity` | → `RunActivity[]` (tool log) |
 | `POST /v1/jobs/{id}/input` | `JobInputRequest` → `JobInputResponse` (steering; `input.delivery` is `pending` → later `immediate` or `queued`) |
+| `POST /v1/jobs/{id}/restart` | → `Job`. The explicit *interrupt and restart*: stops the running attempt (the work stays open; workspace and revisions kept) and starts the next one at once with the queued input. The composer offers it when an update is only *queued* (Claude Code, Cursor) |
 | `POST /v1/jobs/{id}/cancel` | `CancelJobRequest` → `Job` (stops the whole job tree) |
 | `POST /v1/jobs/{id}/retry` | `RetryJobRequest` → `Job` (explicit new attempt) |
 | `POST /v1/jobs/{id}/accept` | `AcceptJobRequest` (exact `revision` + `version`) — only when human review is required |

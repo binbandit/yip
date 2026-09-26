@@ -108,6 +108,7 @@ export const api = {
   runActivity: (jobId: string, runId: string) => get<RunActivity[]>(`/v1/jobs/${q(jobId)}/runs/${q(runId)}/activity`),
   jobInput: (jobId: string, req: JobInputRequest) => post<JobInputResponse>(`/v1/jobs/${q(jobId)}/input`, req),
   cancelJob: (jobId: string, req: CancelJobRequest) => post<Job>(`/v1/jobs/${q(jobId)}/cancel`, req),
+  restartJob: (jobId: string) => post<Job>(`/v1/jobs/${q(jobId)}/restart`, {}),
   retryJob: (jobId: string, req: RetryJobRequest) => post<Job>(`/v1/jobs/${q(jobId)}/retry`, req),
   acceptJob: (jobId: string, req: AcceptJobRequest) => post<Job>(`/v1/jobs/${q(jobId)}/accept`, req),
   /** Attempts queued or executing in your rooms (for "working" indicators). */

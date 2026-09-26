@@ -10,6 +10,8 @@
   import { deliveryReceipt, jobStateLabel, waitingReasonLabel } from '../lib/util/labels';
   import { isLiveJob, jobRunState, pendingReplies, workingInRoom } from '../lib/state/data';
   import type { Mention } from '../lib/api/types.gen';
+  import { api } from '../lib/api/endpoints';
+  import { errorMessage } from '../lib/api/client';
   import Icon from './Icon.svelte';
   import Avatar from './Avatar.svelte';
   import StateIcon from './StateIcon.svelte';
@@ -60,8 +62,27 @@
     if (!input) return null;
     const job = app.data.jobs[input.jobId];
     const name = job ? app.engineerName(job.ownerId) : 'the engineer';
-    return { text: deliveryReceipt(input.delivery, name), delivery: input.delivery };
+    // A provider that only takes input between steps: offer the explicit
+    // interrupt-and-restart (spec §8D) while the attempt is still running.
+    const canRestart = input.delivery === 'queued' && job?.state === 'running' && !input.deliveredAt;
+    return { text: deliveryReceipt(input.delivery, name), delivery: input.delivery, jobId: input.jobId, name, canRestart };
   });
+  let restarting = $state(false);
+  async function restartNow() {
+    if (!receipt) return;
+    const { jobId, name } = receipt;
+    restarting = true;
+    try {
+      await api.restartJob(jobId);
+      delete app.receipts[rkey];
+      note = `Restarting ${name} with your update.`;
+      app.announce(note);
+    } catch (err) {
+      sendError = errorMessage(err);
+    } finally {
+      restarting = false;
+    }
+  }
 
   // Announce receipt changes once each (pending → immediate/queued).
   let announcedReceipt = '';
@@ -449,6 +470,9 @@
         <StateIcon shape={receipt.delivery === 'immediate' ? 'check-filled' : receipt.delivery === 'queued' ? 'circle' : 'bar'} tone={receipt.delivery === 'immediate' ? 'success' : 'accent'} size={12} live={receipt.delivery === 'pending'} />
         {receipt.text}
       </span>
+      {#if receipt.canRestart}
+        <button class="btn btn-sm btn-quiet restart" disabled={restarting} onclick={restartNow}>Interrupt and restart now</button>
+      {/if}
     {:else if sendError}
       <span class="tone-danger">{sendError}</span>
     {:else if note}
@@ -696,6 +720,10 @@
     padding: 0 6px;
     font-size: 11.5px;
     color: color-mix(in srgb, var(--ink-secondary) 85%, transparent);
+  }
+  .restart {
+    margin-left: 6px;
+    min-height: 26px;
   }
   .receipt {
     display: inline-flex;

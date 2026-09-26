@@ -821,6 +821,52 @@ func (h *Hub) CancelJob(ctx context.Context, userID, jobID string, req protocol.
 	return out, err
 }
 
+// RestartWithInput is the explicit "interrupt and restart" for a provider
+// that can only take steering between steps: it stops the current attempt
+// (the job stays open, its workspace and published revisions are kept) and
+// starts the next attempt at once with the queued input in its context.
+func (h *Hub) RestartWithInput(ctx context.Context, userID, jobID string) (protocol.Job, error) {
+	var out protocol.Job
+	err := h.do(ctx, func(t *txn) error {
+		job, err := store.GetJob(ctx, t.tx, jobID)
+		if err != nil {
+			return domain.NotFound("That work doesn't exist.")
+		}
+		if _, err := h.requireRoom(ctx, t.tx, userID, job.Source.RoomID); err != nil {
+			return err
+		}
+		if !domain.JobLive(job.State) {
+			return domain.Conflict("That work is %s.", job.State)
+		}
+		run, err := store.ActiveRunForJob(ctx, t.tx, jobID)
+		if err != nil || !domain.RunHoldsLease(run.State) || run.State == protocol.RunStopping {
+			return domain.Conflict("Nothing is running on this work right now; your update is used when it next starts.")
+		}
+		const reason = "Interrupted by the owner to restart with their update"
+		if err := store.SetPendingWake(ctx, t.tx, jobID, &store.PendingWake{Purpose: "restart", Cause: "restart:" + run.ID,
+			Note: "The owner interrupted the previous attempt so you act on their latest input now. Your workspace and published revisions are as you left them."}); err != nil {
+			return err
+		}
+		if err := store.SetRunState(ctx, t.tx, run.ID, protocol.RunStopping, reason); err != nil {
+			return err
+		}
+		if err := h.queueCommand(ctx, t, run.NodeID, run.ID, run.LeaseEpoch, protocol.CmdCancelRun, "cancel:"+run.ID,
+			protocol.CancelRun{Reason: reason, GraceMs: 10000}); err != nil {
+			return err
+		}
+		if err := t.audit(userActor(userID), "owner", "job.restart", jobID, "ok", run.ID); err != nil {
+			return err
+		}
+		rr, _ := store.GetRun(ctx, t.tx, run.ID)
+		if err := t.emit(ev{Type: "run.updated", Room: rr.Destination.RoomID, Job: jobID, Run: run.ID, Payload: rr.Run}); err != nil {
+			return err
+		}
+		out = job.Job
+		return nil
+	})
+	return out, err
+}
+
 func (h *Hub) cancelOne(ctx context.Context, t *txn, jobID, reason string, actor protocol.Actor) error {
 	job, err := store.GetJob(ctx, t.tx, jobID)
 	if err != nil {
