@@ -174,7 +174,7 @@ func (s *Server) authed(h http.HandlerFunc) http.HandlerFunc {
 		}
 		ctx := context.WithValue(r.Context(), keyUser, u)
 		ctx = context.WithValue(ctx, keySession, sess)
-		h(w, r.WithContext(ctx))
+		s.idempotent(w, r.WithContext(ctx), u.ID, h)
 	}
 }
 

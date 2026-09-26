@@ -24,6 +24,14 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 - Sends are idempotent: `POST /v1/rooms/{id}/messages` takes `clientKey`
   (or `Idempotency-Key`). A retry returns the original message with
   `duplicate: true` (HTTP 200 instead of 201).
+- Any state-changing JSON request may carry an `Idempotency-Key` (8–128
+  characters; the web client sends one with every change). The first request
+  runs; a repeat of the same request (method, path, and body) within a day
+  replays the first response with `Idempotent-Replayed: true` instead of
+  acting twice. The same key with a different request is refused (400); a
+  repeat while the first is still running gets 409 with `Retry-After: 1`.
+  Server errors (5xx) release the key. Uploads with a raw body aren't
+  covered.
 
 ## Endpoints
 
