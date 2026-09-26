@@ -133,6 +133,21 @@ func (h *Hub) SetDraining(ctx context.Context, userID, nodeID string, draining b
 
 // StopNodeWork cancels every job with an active run on a machine. Distinct
 // from draining.
+// ProbeNode asks a connected machine to re-check its providers now, so a
+// sign-in the owner just completed (codex login, claude auth login) shows up
+// without waiting for the periodic probe. It changes nothing by itself.
+func (h *Hub) ProbeNode(ctx context.Context, userID, nodeID string) error {
+	n, err := store.GetNode(ctx, h.st.R(), nodeID)
+	if err != nil || n.RevokedAt != nil {
+		return domain.NotFound("That machine doesn't exist.")
+	}
+	if !h.Connected(nodeID) {
+		return domain.Unavailable("runner", "%s isn't connected right now; it re-checks its providers when it reconnects.", n.Name)
+	}
+	h.sendDirect(nodeID, protocol.Frame{Type: protocol.CmdProbe, ID: domain.NewID()})
+	return nil
+}
+
 func (h *Hub) StopNodeWork(ctx context.Context, userID, nodeID string) error {
 	runs, err := store.RunsOnNode(ctx, h.st.R(), nodeID)
 	if err != nil {

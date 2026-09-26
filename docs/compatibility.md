@@ -15,6 +15,24 @@ verified*. The smoke tests to fill it in are written and gated (below).
 | Cursor | none (not installed on the build machine) | `agent acp` (ACP v1) with Cursor's `cursor/ask_question` and `cursor/create_plan` extensions | Cursor CLI login on the runner (`agent login`) or `CURSOR_API_KEY`; billing `unknown` | **Not run; no installation available.** Probe reports `Tested=false`. `YIP_REAL_PROVIDER_TESTS=1 go test -v ./internal/providers/cursor/` |
 | Fake (deterministic) | built-in | Scripted MCP client of the real `yip bridge` | none | n/a — used by the demo and the integration suite |
 
+## Sign-in detection on real installations (26 September 2026)
+
+Probed on the build machine through the adapters' own `Probe` (the same call
+the runner makes; no prompt is sent):
+
+| Provider | Installed | Result |
+|---|---|---|
+| Claude Code | `2.1.282` (tested version) | **Ready** — `claude auth status --json` reports a Claude subscription (Max); billed as `subscription`, no API key involved. All required launch flags present in `--help`; model aliases read from the help text. |
+| Codex | `codex-cli 0.147.0` (tested version) | **Needs sign-in** — `account/read` over `codex app-server` returns no account and `requiresOpenaiAuth`, both with yip's allowlisted environment and with the full shell environment, so this machine is simply not signed in to Codex. Model list (5) and config read succeed. |
+
+yip never reads either CLI's credential files or keychain entries: it asks
+the CLI. After signing in on a machine (`codex login`, `claude auth login`),
+**Machines → Check sign-in again** re-probes immediately
+(`POST /v1/nodes/{id}/probe`); otherwise the runner re-checks every five
+minutes. Neither adapter forwards `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
+from the runner's environment, so a subscription sign-in is never silently
+replaced by API billing.
+
 ## Capabilities
 
 | Capability | Codex | Claude Code | Cursor | Fake |

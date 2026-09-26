@@ -5,6 +5,7 @@
   import { onMount } from 'svelte';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
+  import { errorMessage } from '../lib/api/client';
   import type { Node } from '../lib/api/types.gen';
   import { authStateLabel, billingLabel, nodeShape, nodeStatusLabel, nodeTone, providerLabel } from '../lib/util/labels';
   import { atTime, bytes, relative } from '../lib/util/time';
@@ -12,6 +13,22 @@
   import Icon from '../components/Icon.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import AddMachineDialog from '../components/AddMachineDialog.svelte';
+
+  // Each provider signs in with its own tool on the machine; yip only reads
+  // the result. "Check again" asks the machine to re-read it right away.
+  const SIGN_IN: Record<string, string> = { codex: 'codex login', claude: 'claude auth login', cursor: 'agent login' };
+  let checking = $state<Record<string, boolean>>({});
+  async function recheck(n: Node) {
+    checking[n.id] = true;
+    try {
+      await api.probeNode(n.id);
+      app.toast(`Checking the providers on ${n.name}…`);
+    } catch (err) {
+      app.toast(errorMessage(err), 'error');
+    } finally {
+      setTimeout(() => (checking[n.id] = false), 4000);
+    }
+  }
 
   let adding = $state(false);
   let confirm = $state<null | { kind: 'drain' | 'undrain' | 'stop' | 'revoke'; node: Node }>(null);
@@ -133,7 +150,14 @@
             </dl>
 
             <section class="sub">
-              <h3>Providers</h3>
+              <div class="sub-head">
+                <h3>Providers</h3>
+                {#if n.status === 'online'}
+                  <button class="btn btn-sm btn-quiet" disabled={checking[n.id]} onclick={() => recheck(n)}>
+                    <Icon name="refresh" size={14} />{checking[n.id] ? 'Checking…' : 'Check sign-in again'}
+                  </button>
+                {/if}
+              </div>
               {#if n.providers.length === 0}
                 <p class="meta">No providers detected on this machine.</p>
               {:else}
@@ -147,7 +171,11 @@
                         <span class="meta">· {billingLabel(pv.billing)}{pv.account ? ` · ${pv.account}` : ''}</span>
                       </p>
                       {#if pv.authState === 'needs_signin'}
-                        <p class="meta">{providerLabel(pv.provider)} needs sign-in on {n.name}. Sign in there with the provider's own tool; yip never asks for tokens.</p>
+                        <p class="meta">
+                          {providerLabel(pv.provider)} needs sign-in on {n.name}.
+                          {#if SIGN_IN[pv.provider]}Run <code>{SIGN_IN[pv.provider]}</code> there, then choose Check sign-in again.{:else}Sign in there with the provider's own tool.{/if}
+                          yip reuses that sign-in and never asks for tokens.
+                        </p>
                       {/if}
                       <p class="meta">
                         {pv.version ? `Version ${pv.version}` : 'Version unknown'}
@@ -214,6 +242,12 @@
 {/if}
 
 <style>
+  .sub-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
   .nodes {
     list-style: none;
     margin: 0;

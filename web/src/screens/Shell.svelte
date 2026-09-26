@@ -25,6 +25,9 @@
   const panel = $derived(app.loc.panel);
   const mode: PanelMode = $derived(app.narrow ? 'full' : app.viewport >= 1200 ? 'inline' : 'overlay');
   const modal = $derived(!!panel && mode !== 'inline');
+  // A demo can also offer real providers (yip demo --with-providers); the
+  // banner must not claim that no model is called when one can be.
+  const realProviders = $derived(app.data.providers.filter((p) => !p.fake && p.readyNodes.length > 0).map((p) => p.label || p.provider));
   const connectionText = $derived(
     app.connection === 'offline' || !app.online
       ? "Can't reach your workspace"
@@ -107,7 +110,9 @@
         {#if app.data.demo}
           <p class="demo" role="note">
             <span class="marker" aria-hidden="true"></span>
-            {#if app.narrow}Demo workspace · no models are called{:else}Demo workspace — engineers run a deterministic fake provider; no models are called.{/if}
+            {#if realProviders.length}
+              {#if app.narrow}Demo workspace · {realProviders.join(' and ')} use your account{:else}Demo workspace — the demo engineers are scripted; engineers you set to {realProviders.join(' or ')} run on your own account.{/if}
+            {:else if app.narrow}Demo workspace · no models are called{:else}Demo workspace — engineers run a deterministic fake provider; no models are called.{/if}
           </p>
         {/if}
         {#if connectionText}

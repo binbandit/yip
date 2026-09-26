@@ -114,7 +114,11 @@ reach the runner listener (default 7443) on the hub.
 your local network over plain HTTP: the built app on port 7721 and the
 live-reload development client on 5173. Open `http://<this machine's IP>:7721`
 on the phone and sign in with the details in the demo's
-`demo-credentials.txt`. It uses demo data and the fake provider only; for a
+`demo-credentials.txt`. The demo engineers are scripted; set
+`YIP_LAN_PROVIDERS=codex,claude` (or run `yip demo --with-providers codex,claude`)
+to also offer the Codex and Claude Code CLIs already signed in on this
+machine — switch an engineer's provider preference to use them, and those
+runs bill your own account. It is still plain HTTP; for a
 real workspace use one of the options above, which keep the password and
 session cookie off the network in clear text.
 

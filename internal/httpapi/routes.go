@@ -77,6 +77,7 @@ func (s *Server) routes() {
 	a("POST /v1/nodes/enrollments", s.createEnrollment)
 	a("POST /v1/nodes/{id}/drain", s.drainNode)
 	a("POST /v1/nodes/{id}/stop", s.stopNode)
+	a("POST /v1/nodes/{id}/probe", s.probeNode)
 	a("DELETE /v1/nodes/{id}/credential", s.revokeNode)
 
 	a("GET /v1/decisions", s.listDecisions)
@@ -518,6 +519,11 @@ func (s *Server) drainNode(w http.ResponseWriter, r *http.Request) {
 	}
 	n, err := s.hub.SetDraining(r.Context(), userFrom(r).ID, r.PathValue("id"), req.Drain)
 	respond(s, w, r, n, err)
+}
+
+func (s *Server) probeNode(w http.ResponseWriter, r *http.Request) {
+	err := s.hub.ProbeNode(r.Context(), userFrom(r).ID, r.PathValue("id"))
+	respond(s, w, r, map[string]bool{"ok": true}, err)
 }
 
 func (s *Server) stopNode(w http.ResponseWriter, r *http.Request) {
