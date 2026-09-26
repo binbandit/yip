@@ -264,25 +264,34 @@ describe('action flows', () => {
   it('deletes a workspace from Machines only after stating what is lost', async () => {
     const node = Object.values(app.data.nodes)[0];
     const ws = [
-      { name: 'job-aaaaaaaaaaaa', kind: 'job', ref: 'aaaaaaaaaaaa', branch: 'yip/aaaaaaaaaaaa', changes: 2, sizeMb: 40, modifiedAt: new Date().toISOString(), inUse: false, jobId: codeDetail.job.id, jobTitle: 'Old fix', jobState: 'completed', published: false },
-      { name: 'job-bbbbbbbbbbbb', kind: 'job', ref: 'bbbbbbbbbbbb', changes: 0, sizeMb: 12, modifiedAt: new Date().toISOString(), inUse: true, published: false, blocked: 'an attempt is using it right now' },
+      { name: 'job-aaaaaaaaaaaa', kind: 'job', ref: 'aaaaaaaaaaaa', branch: 'yip/aaaaaaaaaaaa', changes: 2, sizeMb: 40, sizeBytes: 40 * 1048576, sizeKnown: true, modifiedAt: new Date().toISOString(), inUse: false, jobId: codeDetail.job.id, jobTitle: 'Old fix', jobState: 'completed', jobKind: 'code', published: false },
+      { name: 'job-bbbbbbbbbbbb', kind: 'job', ref: 'bbbbbbbbbbbb', changes: 0, sizeMb: 12, sizeBytes: 12 * 1048576, sizeKnown: true, modifiedAt: new Date().toISOString(), inUse: true, published: false, blocked: 'an attempt is using it right now' },
     ];
     app.data.nodes[node.id] = { ...node, status: 'online', workspaces: ws };
     hub.override('GET', /^\/v1\/nodes$/, () => ({ body: [app.data.nodes[node.id]] }));
     hub.override('POST', new RegExp(`^/v1/nodes/${node.id}/workspaces/job-aaaaaaaaaaaa/remove$`), () => ({ body: { ...app.data.nodes[node.id], workspaces: [ws[1]] } }));
-    app.go({ name: 'machines' });
+    app.go({ name: 'machines' }, { panel: { kind: 'machine', id: node.id }, tab: 'storage' });
     await waitFor(() => text().includes('Old fix'), 'workspace listed');
     expect(text()).toContain('2 uncommitted changes');
-    expect(text()).toContain('In use — an attempt is using it right now');
+    expect(text()).toContain('In use by a running attempt');
+    const rows = [...document.querySelectorAll<HTMLElement>('.wss > li')];
+    expect(rows[0].querySelector('.ws-title')!.textContent).toBe('Old fix');
+    expect(rows[0].textContent).toContain('Working checkout · 40 MB');
+    expect(rows[1].textContent).toContain('Protected');
     const del = [...document.querySelectorAll<HTMLButtonElement>('.wss button')].filter((b) => b.textContent?.includes('Delete'));
     expect(del.length).toBe(1); // the busy one offers no delete
+    del[0].focus();
     del[0].click();
     const dialog = await waitFor(() => document.querySelector('dialog[open]'), 'confirm');
+    expect(dialog.textContent).toContain('Delete this working checkout?');
     expect(dialog.textContent).toContain('2 uncommitted changes will be lost');
     byText('dialog button', 'Delete, losing that work')!.click();
     await waitFor(() => hub.last('POST', /\/remove$/), 'remove posted');
     expect(hub.last('POST', /\/remove$/)!.body).toEqual({ confirm: 'job-aaaaaaaaaaaa', force: true });
     await waitFor(() => !text().includes('Old fix'), 'removed from the list');
+    // Its row is gone, so focus lands on the list's heading, not the page.
+    await waitFor(() => document.activeElement?.id === 'machine-storage-heading', 'focus on the workspaces heading');
+    app.closePanel();
   });
 
   it('imports a repository from a folder as a git bundle upload', async () => {

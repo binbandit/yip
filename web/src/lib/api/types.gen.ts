@@ -602,11 +602,15 @@ export interface NodeWorkspace {
   head?: string;
   changes: number;
   sizeMb: number;
+  sizeBytes: number;
+  sizeKnown: boolean;
+  sizeApprox?: boolean;
   modifiedAt: string;
   inUse: boolean;
   jobId?: string;
   jobTitle?: string;
   jobState?: string;
+  jobKind?: string;
   published: boolean;
   blocked?: string;
 }
@@ -1087,6 +1091,9 @@ export interface WorkspaceInfo {
   head?: string;
   changes: number;
   sizeMb: number;
+  sizeBytes: number;
+  sizeKnown: boolean;
+  sizeApprox?: boolean;
   modifiedAt: string;
   inUse: boolean;
 }

@@ -8,6 +8,7 @@
   import EngineerDrawer from './panels/EngineerDrawer.svelte';
   import DecisionDrawer from './panels/DecisionDrawer.svelte';
   import RoomSettings from './panels/RoomSettings.svelte';
+  import MachineDrawer from './panels/MachineDrawer.svelte';
 
   interface Props {
     panel: Panel;
@@ -30,4 +31,6 @@
   <DecisionDrawer decisionId={panel.id} {mode} />
 {:else if panel.kind === 'room'}
   <RoomSettings roomId={panel.id} {mode} />
+{:else if panel.kind === 'machine'}
+  <MachineDrawer nodeId={panel.id} {mode} />
 {/if}

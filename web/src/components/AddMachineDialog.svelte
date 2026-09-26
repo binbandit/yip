@@ -7,6 +7,7 @@
   import type { Enrollment } from '../lib/api/types.gen';
   import { atTime, relative } from '../lib/util/time';
   import { authStateLabel, billingLabel, providerLabel } from '../lib/util/labels';
+  import { SIGN_IN_COMMANDS } from '../lib/util/machines';
   import Dialog from './Dialog.svelte';
   import Icon from './Icon.svelte';
   import StateIcon from './StateIcon.svelte';
@@ -27,7 +28,7 @@
     const fresh = Object.values(app.data.nodes).filter((n) => !known.has(n.id));
     return fresh.find((n) => n.name === enrollment!.name) ?? fresh[0];
   });
-  const SIGN_IN: Record<string, string> = { codex: 'codex login', claude: 'claude auth login', cursor: 'agent login' };
+  const SIGN_IN = SIGN_IN_COMMANDS;
   const realProviders = $derived((paired?.providers ?? []).filter((p) => p.provider !== 'fake' && p.authState !== 'not_installed'));
 
   async function create(e: SubmitEvent) {
@@ -89,6 +90,10 @@
         <div><dt>Expires</dt><dd>{relative(enrollment.expiresAt, app.now)} ({atTime(enrollment.expiresAt)})</dd></div>
       </dl>
       <p class="notice attention">Check that the fingerprint the machine prints matches this one before confirming. This command is shown only once; if it expires, add the machine again.</p>
+      <p class="then">
+        Then start it with <code>yip runner</code>. Started from a terminal, it stops when that terminal closes; to keep it running, install it as a
+        background service with <code>yip service install runner</code> and check it comes back after a restart.
+      </p>
       <div class="watch" role="status">
         {#if !paired}
           <StateIcon shape="circle" size={16} />
@@ -139,7 +144,7 @@
     width: 100%;
     margin: 0;
     padding: 12px;
-    border-radius: var(--r-artifact);
+    border-radius: var(--r-control);
     background: var(--surface-subtle);
     border: 1px solid var(--line);
     white-space: pre-wrap;
@@ -174,7 +179,7 @@
     gap: 10px;
     align-items: flex-start;
     padding: 10px 12px;
-    border-radius: var(--r-artifact);
+    border-radius: var(--r-control);
     background: var(--surface-subtle);
   }
   .paired {
@@ -188,6 +193,12 @@
   .fp {
     overflow-wrap: anywhere;
     font-size: 12.5px;
+  }
+  .then {
+    font-size: 14px;
+  }
+  .then code {
+    overflow-wrap: anywhere;
   }
   @media (max-width: 560px) {
     .facts > div {

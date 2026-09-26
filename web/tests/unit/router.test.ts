@@ -37,6 +37,15 @@ describe('router', () => {
     expect(withPanel(loc, null)).toBe('/rooms/r1');
   });
 
+  it('opens machine details as a panel on Machines, with its section in the tab', () => {
+    const url = href({ name: 'machines' }, { panel: { kind: 'machine', id: 'n1' }, tab: 'storage' });
+    expect(url).toBe('/machines?panel=machine%3An1&tab=storage');
+    const loc = parseLocation('/machines', url.split('?')[1]);
+    expect(loc.panel).toEqual({ kind: 'machine', id: 'n1' });
+    expect(loc.tab).toBe('storage');
+    expect(withPanel(loc, null)).toBe('/machines');
+  });
+
   it('rejects unknown panels', () => {
     expect(parseLocation('/rooms/r1', 'panel=evil:1').panel).toBeNull();
     expect(parseLocation('/rooms/r1', 'panel=job:').panel).toBeNull();

@@ -393,10 +393,24 @@ describe('app smoke (jsdom, captured fixtures)', () => {
 
   it('renders machines, engineers, projects and settings screens', async () => {
     app.go({ name: 'machines' });
-    await waitFor(() => text().includes('Execution profiles'), 'machines');
+    // A compact row: connection, work and provider availability; the
+    // adapter documentation is not in the list.
+    const row = await waitFor(() => byText('li.row', 'Studio mini'), 'machines');
+    expect(row.textContent).toContain('Connected');
+    expect(row.textContent).toContain('Idle');
+    expect(row.textContent).toContain('Demo provider (fake)');
+    expect(row.textContent).toContain('Temporary session: stops when its terminal closes');
+    expect(text()).not.toContain('Execution profiles');
+    expect(text()).not.toContain('Follows scripted demo and test workflows only');
+    // Details hold the rest, including diagnostics and the actions.
+    byText('button', 'Details')!.click();
+    await waitFor(() => text().includes('Pause new work'), 'machine details');
+    expect(text()).toContain('Stop current work');
+    expect(text()).toContain('Revoke access');
+    app.setTab('diagnostics');
+    await waitFor(() => text().includes('Execution profiles'), 'diagnostics');
     expect(text()).toContain('Docker is not installed here');
-    expect(text()).toContain('Drain');
-    expect(text()).toContain('Stop its work');
+    app.closePanel();
 
     app.go({ name: 'engineers' });
     await waitFor(() => text().includes('New engineer'), 'engineers');

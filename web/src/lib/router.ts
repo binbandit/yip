@@ -16,7 +16,7 @@ export type Route =
   | { name: 'settings' }
   | { name: 'notfound'; path: string };
 
-const PANEL_KINDS = ['thread', 'job', 'review', 'pr', 'engineer', 'decision', 'room'] as const;
+const PANEL_KINDS = ['thread', 'job', 'review', 'pr', 'engineer', 'decision', 'room', 'machine'] as const;
 
 export type PanelKind = (typeof PANEL_KINDS)[number];
 

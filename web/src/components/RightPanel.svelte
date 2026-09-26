@@ -128,7 +128,7 @@
       <button class="icon-btn" aria-label="Back" onclick={onclose}><Icon name="back" /></button>
     {/if}
     <div class="titles">
-      <h2 id="{id}-title" bind:this={headingEl} tabindex="-1">{title}</h2>
+      <h2 id="{id}-title" bind:this={headingEl} tabindex="-1" {title}>{title}</h2>
       {#if subtitle}<div class="sub">{@render subtitle()}</div>{/if}
     </div>
     {#if actions}{@render actions()}{/if}
