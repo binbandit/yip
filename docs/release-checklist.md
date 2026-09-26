@@ -30,9 +30,14 @@ These must be done before the MVP can be called complete (MVP brief §10):
    verified bundle of its published revision, as an explicit retry. All of
    this ran on a single host; a run across two physical machines has not been
    recorded.
-3. **Browser verification (A26, A27).** No automatable browser is installed on
-   the build machine; keyboard, zoom, and 390/1024/1440 layouts have not been
-   inspected in a real browser. Playwright specs exist in `web/tests/e2e`.
+3. **Browser verification (A26, A27).** Verified in the system WebKit
+   (`make e2e-webkit`, 26 September): 11 journeys pass, including real Tab,
+   Enter, Escape and ⌘K key presses, focus trapping and return, and
+   390/1024/1440 px and 200% zoom sweeps with no sideways scrolling or
+   clipped controls. It found and fixed two defects (Escape didn't close
+   search; a clipped repository header at 390 px). Chromium and Firefox
+   (the Playwright specs in `web/tests/e2e`) still need a browser on the
+   build machine.
 4. **Runner reboot (A30)** under the intended service account has not been
    performed.
 
@@ -82,8 +87,9 @@ now closed (each with a test):
 
 Still open (not blocking the scenario, recorded here so they aren't lost):
 
-- The GitHub contract test needs a real repository and token; browser e2e
-  specs need a browser on the build machine.
+- The GitHub contract test needs a real repository and token. The
+  Playwright specs (Chromium/Firefox) need a browser on the build machine;
+  the WebKit journeys cover the same paths.
 
 ## Matrix
 
@@ -114,8 +120,8 @@ Still open (not blocking the scenario, recorded here so they aren't lost):
 | A23 | Verified | `TestIncompatibleMachineExplains`, `TestRegressionBillingGateAndAccountPin`, `TestRegressionProjectToolchainRequirement` |
 | A24 | Verified | Workspaces are never deleted automatically. Machines lists them with their work and what deleting loses; removal needs explicit selection, a named confirmation, and `force` for uncommitted/unpublished work, and is refused for open or in-use work (`TestRegressionRemoveWorkspaceFromMachines`, Machines unit test). CLI: `yip runner workspaces` / `cleanup`. |
 | A25 | Verified | `yip backup` against a running hub, `yip restore` into a new directory: integrity, 12 artifact hashes, and record counts matched (recorded 25 Sep). Encrypted backups round-trip, carry no readable key material or database, and refuse a wrong passphrase leaving nothing behind (`TestEncryptedBackupRoundTrip`, `internal/backupcrypt` tests for tampering and truncation). |
-| A26 | Incomplete | Keyboard/zoom not verified in a browser. |
-| A27 | Incomplete | Layouts not visually inspected in a browser. |
+| A26 | Verified (WebKit) | Real key presses in the system WebKit: skip link, keyboard mention selection, Enter to send, focus trapped in the overlaid drawer across 25 Tabs and returned on Escape, ⌘K / Escape search; 200% zoom reflows without sideways scroll (`make e2e-webkit`). Chromium/Firefox not run. |
+| A27 | Verified (WebKit) | Overview, rooms, engineers, projects, machines and settings at 390, 1024 and 1440 px: no sideways scroll and no clipped controls; phone rooms sheet, in-bounds composer, 44 px Send (`make e2e-webkit`, screenshots of each final state). Chromium/Firefox not run. |
 | A28 | **Incomplete** | Real providers not exercised (see blocking items). |
 | A29 | Verified (partial) | Agent-authored mentions never wake anyone; tool arguments cannot set identity or scope (bridge binds the run token; hub derives authority from the lease). |
 | A30 | Incomplete | Service install exists; reboot behaviour not yet tested. Restarted runners report interrupted attempts as unknown (ADR 0009). |

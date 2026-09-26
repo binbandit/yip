@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev)
 LDFLAGS := -s -w -X github.com/binbandit/yip/internal/buildinfo.Version=$(VERSION)
 
-.PHONY: all build web web-deps schema test test-web e2e lint demo lan clean release
+.PHONY: all build web web-deps schema test test-web e2e e2e-webkit lint demo lan clean release
 
 all: web build
 
@@ -29,6 +29,10 @@ test-web:
 ## e2e: browser journeys against a demo hub (requires built binary)
 e2e: all
 	cd web && npm run e2e
+
+## e2e-webkit: the same journeys, plus layout and zoom sweeps, in the system WebKit (macOS; downloads nothing)
+e2e-webkit: all
+	scripts/e2e/run-webkit.sh
 
 lint:
 	gofmt -l . | grep -v '^web/' | (! grep .)

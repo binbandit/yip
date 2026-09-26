@@ -124,7 +124,7 @@ Claude Code or Codex sign-in.
 | Deterministic fake provider | Implemented (demo + failure injection) |
 | Codex, Claude Code, Cursor adapters | Implemented against pinned interfaces; sign-in detection checked on real installations (Claude Code ready on a subscription; Codex detected, not signed in). **Runs verified against scripted fakes only — no real-account prompt has been sent** (see [compatibility](docs/compatibility.md)) |
 | GitHub connector | Implemented; tested against an emulated API; real contract test not run |
-| Web client | See [docs/design/README.md](docs/design/README.md) |
+| Web client | See [docs/design/README.md](docs/design/README.md). Browser journeys, layout and zoom sweeps pass in the system WebKit (`make e2e-webkit`); Chromium/Firefox not run |
 | Two physical machines | Protocol is multi-machine; tested with one hub and one runner per test on a single host |
 
 The release gates (A01–A44) and what remains are tracked in
