@@ -334,6 +334,16 @@
             {job.lastActivity || 'Nothing yet'}{#if job.lastActivityAt}{' '}<span class="meta" title={fullTime(job.lastActivityAt)}>· {relative(job.lastActivityAt, app.now)}</span>{/if}
           </dd>
         </div>
+        {#if job.followsId}
+          <div>
+            <dt>Follows up</dt>
+            <dd>
+              <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: job!.followsId! })}
+                >{app.data.jobs[job.followsId]?.title ?? 'the earlier work'}</button
+              >
+            </dd>
+          </div>
+        {/if}
         <div>
           <dt>Work ID</dt>
           <dd><span class="mono" title={job.id}>#{workId(job.id)}</span></dd>
@@ -538,6 +548,19 @@
           </section>
         {/if}
 
+        {#if d.followUps?.length}
+          <section class="block">
+            <h3>Follow-ups</h3>
+            <ul class="plain">
+              {#each d.followUps as f (f.id)}
+                <li>
+                  <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: f.id })}>{f.title}</button>
+                  <span class="meta">· {jobStateLabel(f)} · {app.engineerName(f.ownerId)}</span>
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/if}
         {#if d.children.filter((c) => c.kind !== 'review').length}
           <section class="block">
             <h3>Related work</h3>

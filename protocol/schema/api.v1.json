@@ -1493,6 +1493,9 @@
         "depth": {
           "type": "integer"
         },
+        "followsId": {
+          "type": "string"
+        },
         "id": {
           "type": "string"
         },
@@ -1660,6 +1663,12 @@
           },
           "type": "array"
         },
+        "followUps": {
+          "items": {
+            "$ref": "#/$defs/Job"
+          },
+          "type": "array"
+        },
         "inputs": {
           "items": {
             "$ref": "#/$defs/JobInput"
@@ -1720,7 +1729,8 @@
         "activity",
         "inputs",
         "missing",
-        "revisions"
+        "revisions",
+        "followUps"
       ],
       "type": "object"
     },

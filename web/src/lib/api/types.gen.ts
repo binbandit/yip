@@ -395,6 +395,7 @@ export interface Job {
   ownerId: string;
   contributors: string[];
   parentId?: string;
+  followsId?: string;
   rootRequestId: string;
   source: Destination;
   projectId?: string;
@@ -432,6 +433,7 @@ export interface JobDetail {
   inputs: JobInput[];
   missing: string[];
   revisions: RevisionRecord[];
+  followUps: Job[];
 }
 
 export interface JobInput {

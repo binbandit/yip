@@ -21,7 +21,8 @@ type JobRow struct {
 const jobCols = `id, org_id, kind, title, objective, acceptance, state, waiting_reason, state_detail, owner_id, COALESCE(parent_id, ''),
 	root_request_id, source_room_id, COALESCE(source_thread_id, ''), COALESCE(source_message_id, ''), COALESCE(project_id, ''), COALESCE(repo_id, ''),
 	branch, base_rev, head_rev, COALESCE(diff_artifact_id, ''), requires_peer_review, requires_human_review, completion_requested, summary,
-	depth, priority, COALESCE(current_run_id, ''), retry_at, auto_retries, last_activity, last_activity_at, created_at, updated_at, completed_at, version, help_request`
+	depth, priority, COALESCE(current_run_id, ''), retry_at, auto_retries, last_activity, last_activity_at, created_at, updated_at, completed_at, version, help_request,
+	COALESCE(follows_job_id, '')`
 
 func scanJob(s scanner) (JobRow, error) {
 	var j JobRow
@@ -31,7 +32,8 @@ func scanJob(s scanner) (JobRow, error) {
 	err := s.Scan(&j.ID, &j.OrgID, &j.Kind, &j.Title, &j.Objective, &acceptance, &j.State, &j.WaitingReason, &j.StateDetail,
 		&j.OwnerID, &j.ParentID, &j.RootRequestID, &j.Source.RoomID, &j.Source.ThreadID, &j.Source.MessageID, &j.ProjectID, &j.RepoID,
 		&branch, &base, &head, &j.DiffArtifactID, &peer, &human, &compReq, &j.Summary,
-		&j.Depth, &j.Priority, &j.CurrentRunID, &retryAt, &j.AutoRetries, &j.LastActivity, &lastAt, &created, &updated, &completed, &j.Version, &help)
+		&j.Depth, &j.Priority, &j.CurrentRunID, &retryAt, &j.AutoRetries, &j.LastActivity, &lastAt, &created, &updated, &completed, &j.Version, &help,
+		&j.FollowsID)
 	j.HelpRequest = help == 1
 	unjs(acceptance, &j.Acceptance)
 	j.Acceptance = strs(j.Acceptance)
@@ -52,12 +54,12 @@ func InsertJob(ctx context.Context, q Q, j JobRow) error {
 	}
 	_, err := q.ExecContext(ctx, `INSERT INTO jobs(id, org_id, kind, title, objective, acceptance, state, waiting_reason, state_detail, owner_id,
 		parent_id, root_request_id, source_room_id, source_thread_id, source_message_id, project_id, repo_id, branch, base_rev,
-		requires_peer_review, requires_human_review, depth, priority, last_activity, last_activity_at, created_at, updated_at, version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+		requires_peer_review, requires_human_review, depth, priority, last_activity, last_activity_at, created_at, updated_at, version, follows_job_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
 		j.ID, j.OrgID, j.Kind, j.Title, j.Objective, js(strs(j.Acceptance)), j.State, j.WaitingReason, j.StateDetail, j.OwnerID,
 		nullStr(j.ParentID), j.RootRequestID, j.Source.RoomID, nullStr(j.Source.ThreadID), nullStr(j.Source.MessageID),
 		nullStr(j.ProjectID), nullStr(j.RepoID), branch, base, b2i(j.RequiresPeerReview), b2i(j.RequiresHumanReview),
-		j.Depth, j.Priority, j.LastActivity, tsp(j.LastActivityAt), ts(j.CreatedAt), ts(j.UpdatedAt))
+		j.Depth, j.Priority, j.LastActivity, tsp(j.LastActivityAt), ts(j.CreatedAt), ts(j.UpdatedAt), nullStr(j.FollowsID))
 	if err != nil {
 		return err
 	}
@@ -423,6 +425,11 @@ func FindJobsByID(ctx context.Context, q Q, frag string, roomIDs []string, limit
 	}, `SELECT id, title, objective, source_room_id, updated_at FROM jobs
 		WHERE (id = ? OR id LIKE ? OR id LIKE ?) AND source_room_id IN `+in+`
 		ORDER BY updated_at DESC LIMIT ?`, args...)
+}
+
+// FollowUps lists work started as a follow-up to jobID, oldest first.
+func FollowUps(ctx context.Context, q Q, jobID string) ([]JobRow, error) {
+	return list(ctx, q, scanJob, `SELECT `+jobCols+` FROM jobs WHERE follows_job_id = ? ORDER BY created_at`, jobID)
 }
 
 // PendingWake is a deferred continuation for a job with an active attempt.

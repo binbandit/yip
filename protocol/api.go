@@ -267,18 +267,20 @@ type Revision struct {
 }
 
 type Job struct {
-	ID                  string      `json:"id"`
-	OrgID               string      `json:"orgId"`
-	Kind                string      `json:"kind"`
-	Title               string      `json:"title"`
-	Objective           string      `json:"objective"`
-	Acceptance          []string    `json:"acceptance"`
-	State               JobState    `json:"state"`
-	WaitingReason       string      `json:"waitingReason,omitempty"`
-	StateDetail         string      `json:"stateDetail,omitempty"`
-	OwnerID             string      `json:"ownerId"`
-	Contributors        []string    `json:"contributors"`
-	ParentID            string      `json:"parentId,omitempty"`
+	ID            string   `json:"id"`
+	OrgID         string   `json:"orgId"`
+	Kind          string   `json:"kind"`
+	Title         string   `json:"title"`
+	Objective     string   `json:"objective"`
+	Acceptance    []string `json:"acceptance"`
+	State         JobState `json:"state"`
+	WaitingReason string   `json:"waitingReason,omitempty"`
+	StateDetail   string   `json:"stateDetail,omitempty"`
+	OwnerID       string   `json:"ownerId"`
+	Contributors  []string `json:"contributors"`
+	ParentID      string   `json:"parentId,omitempty"`
+	// FollowsID is the finished work this was started as a follow-up to.
+	FollowsID           string      `json:"followsId,omitempty"`
 	RootRequestID       string      `json:"rootRequestId"`
 	Source              Destination `json:"source"`
 	ProjectID           string      `json:"projectId,omitempty"`
@@ -814,6 +816,8 @@ type JobDetail struct {
 	Missing      []string       `json:"missing"`
 	// Revisions lists every published revision, oldest first.
 	Revisions []RevisionRecord `json:"revisions"`
+	// FollowUps is later work started as a follow-up to this one.
+	FollowUps []Job `json:"followUps"`
 }
 
 type JobInput struct {

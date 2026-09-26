@@ -33,6 +33,7 @@ type jobSpec struct {
 	Depth               int
 	Priority            int
 	Actor               protocol.Actor
+	Follows             string // finished work this follows up
 }
 
 // createJob inserts a job and emits its event. It never starts a run.
@@ -68,6 +69,7 @@ func (h *Hub) createJob(ctx context.Context, t *txn, s jobSpec) (store.JobRow, e
 	if s.Parent != nil {
 		j.ParentID = s.Parent.ID
 	}
+	j.FollowsID = s.Follows
 	if j.Title == "" {
 		j.Title = truncate(firstLine(j.Objective), 90)
 	}
@@ -732,6 +734,12 @@ func (h *Hub) JobDetail(ctx context.Context, userID, jobID string) (protocol.Job
 	if d.Inputs, err = store.ListJobInputs(ctx, q, jobID); err != nil {
 		return d, err
 	}
+	d.FollowUps = []protocol.Job{}
+	if fs, err := store.FollowUps(ctx, q, jobID); err == nil {
+		for _, f := range fs {
+			d.FollowUps = append(d.FollowUps, f.Job)
+		}
+	}
 	d.Decisions, _ = store.ListDecisions(ctx, q, `id IN (SELECT decision_id FROM decision_sources WHERE source_kind = 'job' AND source_id = ?)`, jobID)
 	d.Activity, _ = h.jobActivity(ctx, q, jobID)
 	d.Revisions = []protocol.RevisionRecord{}
@@ -999,3 +1007,39 @@ func (h *Hub) jobActivity(ctx context.Context, q store.Q, jobID string) ([]proto
 
 // retryDelay is yip's own re-check interval when a provider gave no reset time.
 const retryDelay = 10 * time.Minute
+
+// followTarget finds the finished work a new request follows up: the most
+// recent completed, failed, or stopped job referenced by the thread the
+// request was made in, or by the message it replies to.
+func (h *Hub) followTarget(ctx context.Context, q store.Q, reply store.JobRow) string {
+	if reply.Kind != protocol.JobKindReply {
+		return ""
+	}
+	var msgIDs []string
+	if reply.Source.ThreadID != "" {
+		msgIDs = append(msgIDs, reply.Source.ThreadID)
+	}
+	if m, err := store.GetMessage(ctx, q, reply.Source.MessageID); err == nil && m.ReplyToID != "" {
+		msgIDs = append(msgIDs, m.ReplyToID)
+	}
+	best, bestAt := "", time.Time{}
+	for _, id := range msgIDs {
+		m, err := store.GetMessage(ctx, q, id)
+		if err != nil || m.RoomID != reply.Source.RoomID {
+			continue
+		}
+		for _, r := range m.Refs {
+			if r.Kind != "job" {
+				continue
+			}
+			j, err := store.GetJob(ctx, q, r.ID)
+			if err != nil || j.Kind == protocol.JobKindReply || j.Kind == protocol.JobKindReview || domain.JobLive(j.State) {
+				continue
+			}
+			if j.UpdatedAt.After(bestAt) {
+				best, bestAt = j.ID, j.UpdatedAt
+			}
+		}
+	}
+	return best
+}

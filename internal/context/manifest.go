@@ -87,6 +87,14 @@ type Check struct {
 	Revision string `json:"revision"`
 }
 
+type FollowedJob struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	State   string `json:"state"`
+	Summary string `json:"summary,omitempty"`
+	Head    string `json:"head,omitempty"`
+}
+
 type Job struct {
 	ID          string   `json:"id"`
 	Kind        string   `json:"kind"`
@@ -105,6 +113,8 @@ type Job struct {
 	Checks      []Check  `json:"checks,omitempty"`
 	Summary     string   `json:"summary,omitempty"`
 	HelpFrom    string   `json:"helpFrom,omitempty"` // for help requests: who asked
+	// FollowsUp is the finished work this job follows up, with its outcome.
+	FollowsUp *FollowedJob `json:"followsUp,omitempty"`
 }
 
 type Input struct {
@@ -257,6 +267,17 @@ func (m *Manifest) Prompt() string {
 	j := m.Job
 	if j.Kind != "reply" {
 		fmt.Fprintf(&b, "\n## Your job %s — %s\nKind: %s. State: %s.\nObjective: %s\n", j.ID, j.Title, j.Kind, j.State, j.Objective)
+		if f := j.FollowsUp; f != nil {
+			fmt.Fprintf(&b, "This follows up earlier work %s — %s (%s", f.ID, f.Title, f.State)
+			if f.Head != "" {
+				fmt.Fprintf(&b, ", final revision %s", short(f.Head))
+			}
+			b.WriteString(").")
+			if f.Summary != "" {
+				fmt.Fprintf(&b, " Its result: %s", f.Summary)
+			}
+			b.WriteString("\n")
+		}
 		if len(j.Acceptance) > 0 {
 			b.WriteString("Acceptance criteria:\n")
 			for _, a := range j.Acceptance {
