@@ -111,7 +111,9 @@ yip service install runner       # launchd (macOS) or systemd (Linux)
 
 Sign in to each provider **with its own tool on each runner** (`codex login`,
 `claude auth login`, `agent login`). yip never collects, stores, or proxies
-provider credentials. See [docs/operations.md](docs/operations.md).
+provider credentials. See [docs/operations.md](docs/operations.md), and
+[docs/scenario.md](docs/scenario.md) for a first session with your existing
+Claude Code or Codex sign-in.
 
 ## Status
 
@@ -120,7 +122,7 @@ provider credentials. See [docs/operations.md](docs/operations.md).
 | Hub (rooms, routing, jobs, runs, reviews, questions, approvals, decisions, scheduler, SSE, auth) | Implemented; covered by unit and in-process integration tests |
 | Runner (pairing, mTLS, journal, leases, worktrees, snapshots, checks, revisions, bridge) | Implemented; exercised by the integration suite on one machine |
 | Deterministic fake provider | Implemented (demo + failure injection) |
-| Codex, Claude Code, Cursor adapters | Implemented against pinned interfaces; **verified against scripted fakes only — no real-account smoke test has been run** (see [compatibility](docs/compatibility.md)) |
+| Codex, Claude Code, Cursor adapters | Implemented against pinned interfaces; sign-in detection checked on real installations (Claude Code ready on a subscription; Codex detected, not signed in). **Runs verified against scripted fakes only — no real-account prompt has been sent** (see [compatibility](docs/compatibility.md)) |
 | GitHub connector | Implemented; tested against an emulated API; real contract test not run |
 | Web client | See [docs/design/README.md](docs/design/README.md) |
 | Two physical machines | Protocol is multi-machine; tested with one hub and one runner per test on a single host |
