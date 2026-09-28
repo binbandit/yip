@@ -42,6 +42,12 @@ Cross-machine recovery currently uses the last published revision's verified
 bundle. Unpublished edits depend on the retained workspace on the original
 machine; checkpoint records do not provide general cross-machine restoration.
 
+Older hubs may also contain an empty-ID PR record from the now-fixed link
+collision. New PRs are independent, but the legacy record is retained to
+preserve review references. Its browser/context access and any previously
+overwritten remote facts require repair before relying on that historical PR.
+No live hub data was changed during the campaign.
+
 ## Daily-use campaign (28 September)
 
 The owner authorized dedicated private/public GitHub playgrounds, three

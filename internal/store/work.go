@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/protocol"
 )
 
@@ -217,6 +218,10 @@ func UpsertPR(ctx context.Context, q Q, orgID string, p protocol.PullRequest) (s
 		p.ID = existing
 	} else if err != sql.ErrNoRows {
 		return "", err
+	} else if p.ID == "" {
+		// Allocate only for a new remote identity. Existing IDs, including
+		// legacy empty IDs, may already be referenced by immutable reviews.
+		p.ID = domain.NewID()
 	}
 	_, err = q.ExecContext(ctx, `INSERT INTO pull_requests(id, org_id, repo_id, job_id, forge, host, owner, name, number, url, title, state, base_rev,
 		head_rev, remote_author, viewer_actor, checks, merge, remote_reviews, last_synced_at, created_at)

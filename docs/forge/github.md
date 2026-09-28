@@ -86,6 +86,14 @@ The credential determines the remote actor, and `Viewer` returns that actor. The
 
 ## Publishing, idempotency and reconciliation
 
+Linked PRs have a local identity separate from their remote repository and
+number. New links allocate a nonempty ID, and refresh/relink preserve it.
+Older versions could create one empty-ID row and mix facts when another PR
+was linked. That legacy row is retained so saved reviews still resolve; new
+links no longer collide with it. Its empty-ID browser/context access remains
+a migration limitation, and previously overwritten facts require remote
+reconciliation rather than guessing missing history.
+
 `PublishReview(ctx, repo, n, req)` runs these steps in order:
 
 1. Validates the request locally. The marker must match `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}` and must not contain `--`. The event must be `APPROVE`, `REQUEST_CHANGES` or `COMMENT`. The commit must be a hex SHA. Each comment needs a path, a positive line and a body. No API call is made until these pass.
