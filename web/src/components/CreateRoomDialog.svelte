@@ -37,38 +37,36 @@
         error = 'Choose an engineer.';
         return;
       }
-      const existing = app.rooms.find((r) => r.kind === 'dm' && r.members.some((m) => m.kind === 'engineer' && m.id === dmWith));
-      if (existing) {
+      busy = true;
+      try {
+        await app.messageEngineer(dmWith);
         onclose();
-        app.go({ name: 'room', roomId: existing.id });
-        return;
+      } catch (err) {
+        error = errorMessage(err);
+        busy = false;
       }
-    } else {
-      if (!name.trim()) {
-        error = 'Give the room a name.';
-        return;
-      }
-      if (replyMode === 'steward' && !stewardId) {
-        error = 'Choose which engineer answers unaddressed messages, or keep the room quiet.';
-        return;
-      }
+      return;
+    }
+    if (!name.trim()) {
+      error = 'Give the room a name.';
+      return;
+    }
+    if (replyMode === 'steward' && !stewardId) {
+      error = 'Choose which engineer answers unaddressed messages, or keep the room quiet.';
+      return;
     }
     busy = true;
     try {
-      const room = await api.createRoom(
-        kind === 'dm'
-          ? { name: '', purpose: '', kind: 'dm', private: true, replyMode: 'steward', stewardId: dmWith, engineerIds: [dmWith], projectIds: [] }
-          : {
-              name: name.trim(),
-              purpose: purpose.trim(),
-              kind: 'room',
-              private: isPrivate,
-              replyMode,
-              stewardId: replyMode === 'steward' ? stewardId : '',
-              engineerIds,
-              projectIds,
-            },
-      );
+      const room = await api.createRoom({
+        name: name.trim(),
+        purpose: purpose.trim(),
+        kind: 'room',
+        private: isPrivate,
+        replyMode,
+        stewardId: replyMode === 'steward' ? stewardId : '',
+        engineerIds,
+        projectIds,
+      });
       app.data.rooms[room.id] = room;
       onclose();
       app.go({ name: 'room', roomId: room.id });

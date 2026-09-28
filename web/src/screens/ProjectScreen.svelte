@@ -10,6 +10,7 @@
   import type { Decision, Job, Project, Repo } from '../lib/api/types.gen';
   import { isLiveJob, newer } from '../lib/state/data';
   import { GRANT_ACTIONS, jobShape, jobStateLabel, jobTone } from '../lib/util/labels';
+  import { githubRepo } from '../lib/util/repos';
   import Avatar from '../components/Avatar.svelte';
   import StateIcon from '../components/StateIcon.svelte';
   import MessageBody from '../components/MessageBody.svelte';
@@ -83,6 +84,17 @@
     repoForm = r
       ? { id: r.id, name: r.name, remoteUrl: r.remoteUrl, defaultBranch: r.defaultBranch, forge: r.forge || 'none', forgeRepo: r.forgeRepo ?? '' }
       : { id: 'new', name: '', remoteUrl: '', defaultBranch: 'main', forge: 'github', forgeRepo: '' };
+  }
+  // A pasted GitHub URL fills the name and owner/name, unless they were changed by hand.
+  function setRemoteUrl(url: string) {
+    if (!repoForm) return;
+    const before = githubRepo(repoForm.remoteUrl);
+    repoForm.remoteUrl = url;
+    const repo = githubRepo(url);
+    if (!repo) return;
+    if (!repoForm.name || repoForm.name === before?.split('/')[1]) repoForm.name = repo.split('/')[1];
+    if (!repoForm.forgeRepo || repoForm.forgeRepo === before) repoForm.forgeRepo = repo;
+    repoForm.forge = 'github';
   }
   async function saveRepo(e: SubmitEvent) {
     e.preventDefault();
@@ -180,9 +192,17 @@
     policyDraft = { ...p.policy, checks: [...(p.policy.checks ?? [])] };
     requiresText = (p.policy.requires ?? []).join(', ');
   }
+  function addCheck() {
+    if (policyDraft && newCheck.trim()) {
+      policyDraft.checks = [...policyDraft.checks, newCheck.trim()];
+      newCheck = '';
+    }
+  }
   async function savePolicy(e: SubmitEvent) {
     e.preventDefault();
     if (!p || !policyDraft) return;
+    // A check typed but not yet added is still meant to be saved.
+    addCheck();
     policyError = '';
     try {
       const requires = requiresText
@@ -263,6 +283,12 @@
                 {:else}
                   <p class="mono r-url">{r.remoteUrl}</p>
                   <p class="meta">{r.forge === 'github' ? `GitHub${r.forgeRepo ? ` · ${r.forgeRepo}` : ''}` : 'No forge connected'}</p>
+                  {#if r.forge === 'github' && !app.data.githubHosts.includes('github.com')}
+                    <p class="meta">
+                      Pull requests engineers open here aren't tracked in yip yet. On the hub, run
+                      <code class="mono">gh auth token | yip forge github add</code> (or pipe in any token with repo access), then reload.
+                    </p>
+                  {/if}
                 {/if}
               </div>
               {#if r.sourceBundleId && !r.remoteUrl}
@@ -306,15 +332,15 @@
         {/if}
         {#if repoForm}
           <form class="panel-box form" onsubmit={saveRepo}>
+            <label class="field">
+              <span class="label">Remote URL</span>
+              <input class="input mono" value={repoForm.remoteUrl} oninput={(e) => setRemoteUrl(e.currentTarget.value)} placeholder="git@github.com:acme/atlas.git" spellcheck="false" />
+              <span class="hint">Must be reachable from your machines — they clone it themselves.</span>
+            </label>
             <div class="two">
               <label class="field"><span class="label">Name</span><input class="input" bind:value={repoForm.name} placeholder="atlas" /></label>
               <label class="field"><span class="label">Default branch</span><input class="input" bind:value={repoForm.defaultBranch} /></label>
             </div>
-            <label class="field">
-              <span class="label">Remote URL</span>
-              <input class="input mono" bind:value={repoForm.remoteUrl} placeholder="git@github.com:acme/atlas.git" spellcheck="false" />
-              <span class="hint">Must be reachable from your machines — they clone it themselves.</span>
-            </label>
             <div class="two">
               <label class="field">
                 <span class="label">Forge</span>
@@ -388,8 +414,10 @@
       <section class="section" aria-labelledby="p-policy">
         <div class="section-head">
           <h2 class="section-title" id="p-policy">Policy</h2>
-          {#if !policyDraft}<button class="btn btn-sm" onclick={editPolicy}>Edit policy</button>{/if}
-          {#if policySaved}<span class="meta" role="status">Saved.</span>{/if}
+          <div class="row saved-row">
+            {#if policySaved}<span class="meta" role="status">Saved.</span>{/if}
+            {#if !policyDraft}<button class="btn btn-sm" onclick={editPolicy}>Edit policy</button>{/if}
+          </div>
         </div>
         {#if policyDraft}
           <form class="panel-box form" onsubmit={savePolicy}>
@@ -411,18 +439,20 @@
                 </div>
               {/each}
               <div class="check-row">
-                <input class="input mono" bind:value={newCheck} placeholder="e.g. go test ./..." aria-label="New check command" spellcheck="false" />
-                <button
-                  type="button"
-                  class="btn btn-sm"
-                  disabled={!newCheck.trim()}
-                  onclick={() => {
-                    if (policyDraft && newCheck.trim()) {
-                      policyDraft.checks = [...policyDraft.checks, newCheck.trim()];
-                      newCheck = '';
+                <input
+                  class="input mono"
+                  bind:value={newCheck}
+                  placeholder="e.g. go test ./..."
+                  aria-label="New check command"
+                  spellcheck="false"
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter' && !e.isComposing) {
+                      e.preventDefault();
+                      addCheck();
                     }
-                  }}>Add</button
-                >
+                  }}
+                />
+                <button type="button" class="btn btn-sm" disabled={!newCheck.trim()} onclick={addCheck}>Add</button>
               </div>
             </fieldset>
             <fieldset class="fs">
@@ -442,7 +472,7 @@
           <dl class="policy">
             <div><dt>Peer review</dt><dd>{p.policy.requirePeerReview ? 'Required — a colleague approves the final revision' : 'Not required'}</dd></div>
             <div><dt>Your review</dt><dd>{p.policy.requireHumanReview ? 'Required — you accept the exact revision' : 'Not required'}</dd></div>
-            <div><dt>Checks</dt><dd>{#if p.policy.checks?.length}{#each p.policy.checks as c (c)}<code class="mono">{c}</code> {/each}{:else}None{/if}</dd></div>
+            <div><dt>Checks</dt><dd class="checks">{#if p.policy.checks?.length}{#each p.policy.checks as c (c)}<code class="mono">{c}</code>{/each}{:else}None{/if}</dd></div>
             <div><dt>Runs</dt><dd>{p.policy.executionProfile === 'container' ? 'In a container' : 'Directly on the machine'}</dd></div>
             <div><dt>Machine needs</dt><dd>{#if p.policy.requires?.length}{p.policy.requires.map(requiresLabel).join(', ')}{:else}Nothing specific{/if}</dd></div>
             <div><dt>Publishing</dt><dd>{p.policy.autoPublish ? 'Automatic where granted' : 'Only when explicitly asked'}</dd></div>
@@ -492,6 +522,14 @@
 </div>
 
 <style>
+  .checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  .saved-row {
+    align-items: baseline;
+  }
   .cmd {
     margin: 0;
     padding: 10px 12px;

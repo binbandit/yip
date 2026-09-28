@@ -181,6 +181,17 @@
     });
   });
 
+  // The view shrinks when the composer grows (a reply banner, a long draft);
+  // if you were reading the newest message, keep it in view.
+  $effect(() => {
+    if (!scroller || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (atBottom && !isAtBottom()) scrollToBottom();
+    });
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  });
+
   async function initialPosition() {
     await tick();
     if (!scroller) return;

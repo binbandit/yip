@@ -10,6 +10,7 @@
   import { app } from '../../lib/state/app.svelte';
   import { providerProfiles } from '../../lib/state/profiles.svelte';
   import { lastHeard, type FactTab, type ProviderStatus } from '../../lib/util/machines';
+  import { providerLabel } from '../../lib/util/labels';
   import { clock } from '../../lib/util/time';
   import StateIcon from '../StateIcon.svelte';
   import Icon from '../Icon.svelte';
@@ -40,6 +41,16 @@
       app.toast(errorMessage(err), 'error');
     } finally {
       setTimeout(() => (checking = false), 4000);
+    }
+  }
+
+  async function trustRules(provider: string, trust: boolean) {
+    try {
+      app.data.nodes[n.id] = await api.trustNodeRules(n.id, provider, trust);
+      const name = providerLabel(provider);
+      app.toast(trust ? `${name} can review and reply on ${n.name} using its own rules.` : `${name} no longer reviews or replies on ${n.name}.`);
+    } catch (err) {
+      app.toast(errorMessage(err), 'error');
     }
   }
 
@@ -86,6 +97,15 @@
             {#if p.signIn}Run <code>{p.signIn}</code> on this machine{online ? ', then choose Check sign-in again.' : '. It re-checks when it reconnects.'}{:else}Sign in on this machine with the provider’s own tool.{/if}
           </p>
         {/if}
+        {#if p.rules.length && !p.rulesTrusted && i?.authState === 'ready'}
+          <div class="signin rules">
+            <p>
+              {p.name} can change code here, but can't review or reply in conversations: the commands you've always-allowed in {p.name} run
+              outside its read-only sandbox without yip asking you. They're in <code>{p.rules.map((r) => r.split('/').pop()).join(', ')}</code>.
+            </p>
+            <button class="btn btn-sm" onclick={() => trustRules(p.provider, true)}>Allow them for reviews and replies</button>
+          </div>
+        {/if}
         {#if open[p.provider]}
           <dl class="body" id={bodyId}>
             {#if i?.authDetail && i.authState !== 'ready'}<div><dt>Sign-in</dt><dd>{i.authDetail}</dd></div>{/if}
@@ -95,8 +115,17 @@
               <div><dt>Availability</dt><dd>This account’s allowance ran out. Its work waits until {clock(p.pausedUntil)}, then carries on by itself.</dd></div>
             {/if}
             <div>
-              <dt>Reviews</dt>
-              <dd>{p.readOnly ? 'Can run read-only reviews here.' : `Can’t run read-only reviews here${readOnlyReason(p.provider) ? `: ${readOnlyReason(p.provider)}` : '.'}`}</dd>
+              <dt>Reviews and replies</dt>
+              <dd>
+                {#if p.rulesTrusted}
+                  Allowed, with the commands you've always-allowed in {p.name} able to run outside its read-only sandbox.
+                  <button class="link-btn" onclick={() => trustRules(p.provider, false)}>Stop allowing</button>
+                {:else if p.readOnly}
+                  Can review and reply in conversations here, read-only.
+                {:else}
+                  Can’t run read-only here{readOnlyReason(p.provider) ? `: ${readOnlyReason(p.provider)}` : '.'}
+                {/if}
+              </dd>
             </div>
             <div>
               <dt>Compatibility</dt>
@@ -202,6 +231,11 @@
   .signin {
     margin: 0 4px 8px 32px;
     font-size: var(--text-body);
+  }
+  .rules {
+    display: grid;
+    gap: 8px;
+    justify-items: start;
   }
   .signin code {
     padding: 1px 5px;

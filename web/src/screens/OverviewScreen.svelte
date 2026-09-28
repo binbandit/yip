@@ -10,6 +10,7 @@
   import { jobRunState, mergeWorkRows, newer } from '../lib/state/data';
   import { atTime, fullTime, relative } from '../lib/util/time';
   import { conversationHref } from '../lib/util/conversation';
+  import { renderInline } from '../lib/util/markdown';
   import StateIcon from '../components/StateIcon.svelte';
   import WorkRowItem from '../components/WorkRowItem.svelte';
   import MessageList from '../components/MessageList.svelte';
@@ -181,19 +182,20 @@
                   <span class="kind tone-{catchupTone(c.kind)}"><StateIcon shape={catchupShape(c.kind)} tone={catchupTone(c.kind)} />{catchupKindLabel(c.kind)}</span>
                   <div class="c-body">
                     <p class="c-title">{c.title}</p>
-                    {#if c.detail}<p class="c-detail">{c.detail}</p>{/if}
-                    <p class="meta">
+                    <!-- A short, rendered summary; the whole account is one click away. -->
+                    {#if c.detail}<p class="c-detail">{@html renderInline(c.detail)}</p>{/if}
+                    <p class="meta c-links">
                       <time datetime={c.at} title={fullTime(c.at)}>{relative(c.at, app.now)}</time>
-                      {#if h && c.roomId}· <a href={h}>in {app.data.rooms[c.roomId]?.name ?? 'the conversation'}</a>{/if}
+                      {#if h && c.roomId}<a href={h}>in {app.data.rooms[c.roomId]?.name ?? 'the conversation'}</a>{/if}
                       {#each c.refs ?? [] as ref}
                         {#if ref.kind === 'job' || ref.kind === 'review' || ref.kind === 'decision'}
-                          · <button class="link-btn" onclick={() => app.openPanel({ kind: ref.kind as 'job' | 'review' | 'decision', id: ref.id })}>{ref.kind === 'job' ? 'open the work' : `view ${ref.kind}`}</button>
+                          <button class="link-btn" onclick={() => app.openPanel({ kind: ref.kind as 'job' | 'review' | 'decision', id: ref.id })}>{ref.kind === 'job' ? 'open the work' : `view ${ref.kind}`}</button>
                         {:else if ref.kind === 'question' && app.data.questions[ref.id]}
                           {@const question = app.data.questions[ref.id]}
-                          · <a href={conversationHref({ ...question.source, messageId: question.messageId })}>view question</a>
+                          <a href={conversationHref({ ...question.source, messageId: question.messageId })}>view question</a>
                         {:else if ref.kind === 'approval'}
                           {@const work = c.refs?.find((r) => r.kind === 'job')}
-                          {#if work}· <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: work.id })}>view permission request</button>{/if}
+                          {#if work}<button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: work.id })}>view permission request</button>{/if}
                         {/if}
                       {/each}
                     </p>
@@ -331,6 +333,18 @@
   }
   .c-detail {
     font-size: 14px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+  }
+  .c-links > :global(* + *)::before {
+    content: '·';
+    display: inline-block;
+    margin: 0 6px;
+    color: var(--ink-secondary);
+    text-decoration: none;
   }
   .rows {
     border: 1px solid var(--line);

@@ -257,7 +257,7 @@ describe('action flows', () => {
     // The machine connects: the dialog notices and shows its providers.
     const now = new Date().toISOString();
     app.data.nodes['n-build'] = {
-      id: 'n-build', name: 'Build mini', hostname: 'build', os: 'darwin', arch: 'arm64', fingerprint: 'f', status: 'online', draining: false,
+      id: 'n-build', name: 'Build mini', hostname: 'build', os: 'darwin', arch: 'arm64', fingerprint: 'f', status: 'online', draining: false, trustedRules: [],
       capacity: { slots: 2 } as never, profiles: [], toolchains: {}, activeRunIds: [], runnerVersion: 'test', createdAt: now, workspaces: [],
       providers: [{ provider: 'claude', version: '2', path: '/x', authState: 'ready', account: 'me@example.com', billing: 'subscription', profileId: 'claude:me',
         capabilities: {} as never, models: [], tested: true, updatedAt: now }],

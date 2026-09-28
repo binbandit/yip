@@ -449,6 +449,8 @@ kbd {
 .field {
   display: grid;
   gap: 6px;
+  /* Side-by-side fields stretch to the tallest; keep inputs at the top. */
+  align-content: start;
 }
 .field > .label,
 .label {

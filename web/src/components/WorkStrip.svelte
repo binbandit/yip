@@ -47,9 +47,9 @@
         case 'changes_requested': return `${name} requested changes`;
         case 'comments_only': return `${name} commented`;
         case 'unable_to_review': return `${name} couldn't review`;
-        case 'cancelled': return `${name} · review cancelled`;
+        case 'cancelled': return ''; // withdrawn or superseded: not part of the handoff
       }
-    });
+    }).filter(Boolean);
     const verb =
       j.state === 'running' ? (j.kind === 'code' ? 'building' : 'working') : j.state === 'queued' ? 'up next' : j.state === 'waiting' ? 'waiting' : '';
     let s = verb ? `${owner} ${verb}` : owner;

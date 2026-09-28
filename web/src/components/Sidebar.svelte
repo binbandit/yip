@@ -51,7 +51,7 @@
   }
 
   // Engineers mid-run in a room, and how long the oldest run has been going.
-  function working(roomId: string): { names: string[]; elapsed: string } | null {
+  function working(roomId: string): { ids: string[]; label: string } | null {
     const ids = new Set<string>();
     let since = Infinity;
     for (const r of Object.values(app.data.runs)) {
@@ -63,8 +63,9 @@
     }
     if (!ids.size) return null;
     const mins = Number.isFinite(since) ? Math.max(0, Math.floor((app.now - since) / 60000)) : 0;
-    const elapsed = mins < 1 ? 'now' : mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h`;
-    return { names: [...ids].map((id) => app.engineerName(id)), elapsed: ids.size > 1 ? `${elapsed} (${ids.size})` : elapsed };
+    const elapsed = mins < 1 ? 'just started' : mins < 60 ? `for ${mins} min` : `for ${Math.floor(mins / 60)} h`;
+    const names = [...ids].map((id) => app.engineerName(id));
+    return { ids: [...ids], label: `${names.join(' and ')} working, ${elapsed}` };
   }
 
   function go() {
@@ -131,7 +132,10 @@
                   <span class="draft" title="Draft saved"><Icon name="pencil" size={13} /><span class="vh">, draft saved</span></span>
                 {/if}
                 {#if w}
-                  <span class="working" title="{w.names.join(', ')} working">{w.elapsed}<span class="vh">, {w.names.join(' and ')} working</span></span>
+                  <span class="working" title={w.label}>
+                    {#each w.ids.slice(0, 3) as id (id)}<Avatar actor={{ kind: 'engineer', id }} size={16} />{/each}
+                    <span class="vh">, {w.label}</span>
+                  </span>
                 {/if}
                 {#if r.mentionCount > 0 && !isCurrentRoom(r.id)}
                   <span class="count-pill" aria-hidden="true">{r.mentionCount}</span>
@@ -168,7 +172,7 @@
                   <span class="draft" title="Draft saved"><Icon name="pencil" size={13} /><span class="vh">, draft saved</span></span>
                 {/if}
                 {#if w}
-                  <span class="working" title="{w.names.join(', ')} working">{w.elapsed}<span class="vh">, working</span></span>
+                  <span class="working-dm" title={w.label}>working<span class="vh">, {w.label}</span></span>
                 {/if}
                 {#if r.mentionCount > 0 && !isCurrentRoom(r.id)}
                   <span class="count-pill" aria-hidden="true">{r.mentionCount}</span>
@@ -342,14 +346,22 @@
     align-items: center;
     color: color-mix(in srgb, var(--ink) 55%, transparent);
   }
+  /* Who is working in the room, as small overlapping avatars. */
   .working {
-    padding: 1px 6px;
-    border-radius: var(--r-pill);
-    background: color-mix(in srgb, var(--ink) 9%, transparent);
-    color: var(--ink);
+    display: inline-flex;
+    flex: none;
+  }
+  .working > :global(* + *) {
+    margin-left: -4px;
+  }
+  .working > :global(*) {
+    box-shadow: 0 0 0 1.5px var(--navigation);
+    border-radius: 50%;
+  }
+  .working-dm {
+    flex: none;
     font-size: 11px;
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--ink) 72%, transparent);
   }
   .hint {
     padding: 2px 8px;

@@ -38,6 +38,7 @@ function node(n: Partial<Node> = {}): Node {
     fingerprint: 'AB12-CD34',
     status: 'online',
     draining: false,
+    trustedRules: [],
     lastSeenAt: ago(0.2),
     capacity: { slots: 2, used: 0, cpus: 12, memMb: 24576, diskFreeMb: 300_000, diskPressure: false },
     providers: [provider()],
@@ -230,5 +231,21 @@ describe('workspaces', () => {
     expect(storageTotal([ws({ sizeBytes: 10, sizeMb: 0 }), ws({ sizeBytes: 20, sizeMb: 0 })])).toBe('under 1 MB');
     expect(storageTotal([ws({ sizeBytes: 40 * MB }), ws({ sizeKnown: false, sizeMb: 0, sizeBytes: 0 })])).toBe('at least 40 MB');
     expect(storageTotal([ws({ sizeKnown: false, sizeMb: 0, sizeBytes: 0 })])).toBe('size not measured');
+  });
+});
+
+describe('provider rules', () => {
+  const rules = provider({ capabilities: { ...caps(false), execPolicyRules: ['/home/me/.codex/rules/default.rules'] } });
+
+  it("asks for the owner's OK when the provider's own rules are all that stop reviews and replies", () => {
+    const status = providerStatus(rules, undefined, node());
+    expect(status).toMatchObject({ readOnly: false, rulesTrusted: false, rules: ['/home/me/.codex/rules/default.rules'] });
+    expect(status.limits).toContain('Reviews and replies need your OK');
+  });
+
+  it('reviews and replies once the owner allows the rules on that machine', () => {
+    const status = providerStatus(rules, undefined, node({ trustedRules: ['codex'] }));
+    expect(status).toMatchObject({ readOnly: true, rulesTrusted: true });
+    expect(status.limits).not.toContain('Reviews and replies need your OK');
   });
 });

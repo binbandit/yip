@@ -15,7 +15,7 @@ import {
   roomWorkJobs,
   type DataState,
 } from '../../src/lib/state/data';
-import type { Bootstrap, Event, Job, JobInput, Message, Room, Run } from '../../src/lib/api/types.gen';
+import type { Bootstrap, Event, Job, JobInput, Message, Node, ProviderInstallation, Room, Run } from '../../src/lib/api/types.gen';
 
 const ME = 'user-1';
 const MIRA = 'eng-mira';
@@ -118,6 +118,7 @@ function boot(s: DataState, rooms: Room[] = [room('r1')], cursor = 100): void {
     version: 'test',
     demo: true,
     providers: [],
+    githubHosts: [],
   };
   applyBootstrap(s, b);
   s.lastSeq = cursor; // tests start after warm-up unless they opt in
@@ -344,6 +345,18 @@ describe('event reducer', () => {
 });
 
 describe('message refs', () => {
+  it('drops a failure from the strip once its engineer finishes later work in the room', () => {
+    const s = emptyState();
+    boot(s);
+    const now = Date.parse('2026-09-25T12:00:00Z');
+    s.jobs.f = job('f', { state: 'failed', updatedAt: '2026-09-25T10:00:00Z' });
+    s.jobs.o = job('o', { state: 'failed', ownerId: 'eng-oren', updatedAt: '2026-09-25T10:00:00Z' });
+    expect(roomWorkJobs(s, 'r1', now).map((j) => j.id).sort()).toEqual(['f', 'o']);
+    s.jobs.c = job('c', { state: 'completed', completedAt: '2026-09-25T11:00:00Z', updatedAt: '2026-09-25T11:00:00Z' });
+    expect(roomWorkJobs(s, 'r1', now).map((j) => j.id).sort()).toEqual(['c', 'o']);
+    expect(roomWorkJobs(s, 'r1', Date.parse('2026-09-26T11:00:00Z')).map((j) => j.id)).toEqual(['c']);
+  });
+
   it('keeps refs added by a live update when the send response arrives later at the same revision', () => {
     const s = emptyState();
     // The live stream delivers the message, then the hub links the question
@@ -356,5 +369,19 @@ describe('message refs', () => {
     // A newer revision is authoritative.
     confirmSent(s, msg('m1', 5, { revision: 2, refs: [] }));
     expect(s.messages['m1'].refs).toEqual([]);
+  });
+});
+
+describe('provider readiness', () => {
+  it('follows machines that sign in after the bootstrap snapshot', () => {
+    const s = emptyState();
+    boot(s);
+    s.providers = [{ provider: 'claude', label: 'Claude Code', readyNodes: [], billing: 'unknown', fake: false }];
+    const installation = { provider: 'claude', authState: 'ready', billing: 'subscription' } as ProviderInstallation;
+    applyEvent(s, ev('node.updated', { id: 'n1', providers: [installation] } as Node));
+    expect(s.providers[0]).toMatchObject({ readyNodes: ['n1'], billing: 'subscription' });
+
+    applyEvent(s, ev('node.updated', { id: 'n1', providers: [{ ...installation, authState: 'needs_signin' }] } as Node));
+    expect(s.providers[0].readyNodes).toEqual([]);
   });
 });

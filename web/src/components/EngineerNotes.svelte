@@ -8,6 +8,7 @@
   import { ApiError, errorMessage } from '../lib/api/client';
   import type { EngineerNote } from '../lib/api/types.gen';
   import { atTime } from '../lib/util/time';
+  import { renderInline } from '../lib/util/markdown';
 
   interface Props {
     engineerId: string;
@@ -89,6 +90,8 @@
       busy = '';
     }
   }
+  // Work records are long accounts; they open in full on request.
+  let expanded = $state<Record<string, boolean>>({});
 </script>
 
 <section class="section" aria-labelledby="eng-notes">
@@ -132,7 +135,10 @@
         {@const src = sourceHref(n)}
         <li class:due={due(n)}>
           {#if n.kind === 'record'}<p class="tag meta">Work record · written by yip when the work finished</p>{/if}
-          <p class="body">{n.body}</p>
+          <p class="body" class:clamp={n.kind === 'record' && !expanded[n.id]}>{@html renderInline(n.body)}</p>
+          {#if n.kind === 'record'}
+            <button class="link-btn more" onclick={() => (expanded[n.id] = !expanded[n.id])}>{expanded[n.id] ? 'Show less' : 'Show all'}</button>
+          {/if}
           <p class="meta">
             {scopeLabel(n)}{#if src}{' · from '}<a href={src.href}>{src.label}</a>{:else}{' · written by you'}{/if}
             {' · '}{due(n) ? 'due for review — not used until renewed' : `review ${atTime(n.reviewAfter)}`}
@@ -153,7 +159,7 @@
       {#each suggested as n (n.id)}
         {@const src = sourceHref(n)}
         <li>
-          <p class="body">{n.body}</p>
+          <p class="body">{@html renderInline(n.body)}</p>
           <p class="meta">{scopeLabel(n)}{#if src}{' · from '}<a href={src.href}>{src.label}</a>{/if}</p>
           <div class="acts">
             <button class="btn btn-sm" disabled={busy === n.id} onclick={() => act(n, 'accept')}>Keep</button>
@@ -201,6 +207,17 @@
   }
   .body {
     margin: 0;
+  }
+  .clamp {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+  }
+  .more {
+    justify-self: start;
+    font-size: 13px;
   }
   .tag {
     margin: 0;

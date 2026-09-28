@@ -72,6 +72,12 @@ describe('markdown-lite', () => {
     expect(renderMarkdown('`@mira`', { mentions })).toBe('<p><code>@mira</code></p>');
   });
 
+  it('lets emphasis wrap inline code without interpreting inside it', () => {
+    expect(renderMarkdown('layout: **`YYYY-MM-DD`**, not `**raw**`')).toBe(
+      '<p>layout: <strong><code>YYYY-MM-DD</code></strong>, not <code>**raw**</code></p>',
+    );
+  });
+
   it('turns headings into strong lines rather than page headings', () => {
     expect(renderMarkdown('## Result')).toBe('<p><strong>Result</strong></p>');
   });

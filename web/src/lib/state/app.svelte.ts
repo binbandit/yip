@@ -349,6 +349,16 @@ class AppState {
     this.navigate(href(route, extras));
   }
 
+  /** Opens the direct conversation with an engineer, starting it the first time. */
+  async messageEngineer(engineerId: string): Promise<void> {
+    const existing = this.rooms.find((r) => r.kind === 'dm' && r.members.some((m) => m.kind === 'engineer' && m.id === engineerId));
+    const room =
+      existing ??
+      (await api.createRoom({ name: '', purpose: '', kind: 'dm', private: true, replyMode: 'steward', stewardId: engineerId, engineerIds: [engineerId], projectIds: [] }));
+    this.data.rooms[room.id] = room;
+    this.go({ name: 'room', roomId: room.id });
+  }
+
   openPanel(panel: Panel, tab: string | null = null): void {
     this.navigate(withPanel(this.loc, panel, tab));
   }

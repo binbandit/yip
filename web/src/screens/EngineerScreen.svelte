@@ -156,7 +156,12 @@
           <h1 class="screen-title" data-screen-title tabindex="-1">{e.name}</h1>
           <p class="screen-sub">{e.role} · AI engineer · @{e.handle}{#if e.archived}{' · '}archived{/if}</p>
         </div>
-        {#if !editingProfile}<button class="btn" onclick={startProfile}>Edit profile</button>{/if}
+        {#if !editingProfile}
+          <div class="head-actions">
+            <button class="btn" onclick={startProfile}>Edit profile</button>
+            {#if !e.archived}<button class="btn btn-primary" onclick={() => app.messageEngineer(e.id).catch((err) => (error = errorMessage(err)))}>Message</button>{/if}
+          </div>
+        {/if}
       </header>
       {#if error}<p class="form-error" role="alert">{error}</p>{/if}
 
@@ -379,9 +384,12 @@
   .setup-action {
     margin-top: 8px;
   }
+  .head-actions {
+    display: flex;
+    gap: 8px;
+  }
   .prov-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
     gap: 10px;
     margin-top: 10px;
   }

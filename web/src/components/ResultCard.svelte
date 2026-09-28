@@ -51,7 +51,8 @@
   const verdicts = $derived(
     (d?.reviews ?? [])
       .map((r) => ({ r, cur: roundFor(r).current }))
-      .filter((x) => x.cur)
+      // A withdrawn or superseded request is not a verdict.
+      .filter((x) => x.cur && x.cur.state !== 'cancelled')
       .map(({ r, cur }) => {
         const who = app.engineerName(r.reviewerId);
         const id = r.id;

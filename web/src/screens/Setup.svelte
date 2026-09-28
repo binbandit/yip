@@ -3,7 +3,11 @@
   import { errorMessage } from '../lib/api/client';
   import Wordmark from '../components/Wordmark.svelte';
 
-  let code = $state('');
+  // `yip hub` prints a link carrying the code in the fragment; take it and
+  // drop it from the address bar.
+  const linkedCode = new URLSearchParams(location.hash.slice(1)).get('code') ?? '';
+  if (linkedCode) history.replaceState(history.state, '', location.pathname + location.search);
+  let code = $state(linkedCode);
   let orgName = $state('');
   let name = $state('');
   let handle = $state('');

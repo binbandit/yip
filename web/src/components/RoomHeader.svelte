@@ -42,10 +42,12 @@
     {#each projects as p (p.id)}
       <a class="head-btn project" href="/projects/{p.id}"><Icon name="folder" size={14} />{p.name}</a>
     {/each}
-    <span class="head-btn static" title={replyText}>
-      <Icon name={room.replyMode === 'steward' ? 'reply' : 'at'} size={14} /><span aria-hidden="true">{replyShort}</span><span class="vh">{replyText}</span>
-    </span>
-    {#if engineers.length}
+    {#if room.kind !== 'dm'}
+      <span class="head-btn static" title={replyText}>
+        <Icon name={room.replyMode === 'steward' ? 'reply' : 'at'} size={14} /><span aria-hidden="true">{replyShort}</span><span class="vh">{replyText}</span>
+      </span>
+    {/if}
+    {#if engineers.length && room.kind !== 'dm'}
       <button class="head-btn members" onclick={() => app.openPanel({ kind: 'room', id: room.id })} title={membersLabel} aria-label="Members: {membersLabel}. Manage room">
         <span class="faces" aria-hidden="true">
           {#each engineers.slice(0, 3) as e (e.id)}<Avatar actor={{ kind: 'engineer', id: e.id }} size={20} />{/each}

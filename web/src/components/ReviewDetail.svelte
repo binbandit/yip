@@ -3,6 +3,7 @@
   // file:line and evidence, the author's replies, and superseded rounds. An
   // earlier "requested changes" stays visible beside the later approval.
   import { app } from '../lib/state/app.svelte';
+  import { details } from '../lib/state/details.svelte';
   import { artifactUrl } from '../lib/api/endpoints';
   import type { Review } from '../lib/api/types.gen';
   import { findingStatusLabel, reviewShape, reviewStateLabel, reviewTone, severityLabel, verdictPhrase } from '../lib/util/labels';
@@ -23,6 +24,15 @@
   const reviewer = $derived(app.engineerName(review.reviewerId));
   const author = $derived(app.engineerName(review.authorId));
   const latest = $derived(rounds[rounds.length - 1]);
+  // A round no machine can pick up says why, rather than sitting "queued".
+  const pendingJobId = $derived(latest && ['requested', 'queued'].includes(latest.state) ? latest.reviewJobId : undefined);
+  $effect(() => {
+    if (pendingJobId) details.ensureJob(pendingJobId, app.data.touched.jobs[pendingJobId] ?? 0);
+  });
+  const waitingWhy = $derived.by(() => {
+    const j = pendingJobId ? app.data.jobs[pendingJobId] : undefined;
+    return j?.state === 'waiting' ? j.stateDetail : '';
+  });
   const staleApproval = $derived(
     !!latest && latest.state === 'approved' && !!currentHead && !!(latest.target.head || latest.target.hash) && (latest.target.head || latest.target.hash) !== currentHead,
   );
@@ -41,6 +51,7 @@
       </p>
     </div>
   </header>
+  {#if waitingWhy}<p class="notice attention"><span>{reviewer} can't start this review: {waitingWhy} <a href="/machines">See Machines</a></span></p>{/if}
   {#if review.criteria}<p class="criteria"><span class="meta">Asked to check:</span> {review.criteria}</p>{/if}
   {#if staleApproval}
     <p class="notice attention">This approval is for <span class="mono">{shortSha(latest.target.head || latest.target.hash)}</span>. The work has moved to <span class="mono">{shortSha(currentHead)}</span>, so it no longer counts until the new revision is reviewed.</p>

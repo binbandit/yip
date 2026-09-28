@@ -151,7 +151,12 @@ export interface ProviderStatus {
   /** Signed in and usable for at least some work right now. */
   usable: boolean;
   installed: boolean;
+  /** Can run reviews and conversation replies here (read-only runs). */
   readOnly: boolean;
+  /** The provider's own always-allow rules are all that stop read-only runs; the owner may allow them. */
+  rules: string[];
+  /** The owner allowed those rules on this machine. */
+  rulesTrusted: boolean;
   pausedUntil?: string;
   /** The command to run on the machine when it needs sign-in. */
   signIn?: string;
@@ -181,15 +186,22 @@ export function compatText(p: ProviderInstallation): string {
   return `${v} · not tested with yip${p.testedVersion ? ` (tested: ${p.testedVersion})` : ''}`;
 }
 
-export function providerStatus(p: ProviderInstallation, profile: ProviderProfile | undefined, n: Pick<Node, 'profiles'>, now = Date.now()): ProviderStatus {
+export function providerStatus(
+  p: ProviderInstallation,
+  profile: ProviderProfile | undefined,
+  n: Pick<Node, 'profiles' | 'trustedRules'>,
+  now = Date.now(),
+): ProviderStatus {
   const name = providerLabel(p.provider);
   const readonlyProfile = n.profiles.find((x) => x.name === 'readonly');
-  const readOnly = !!p.capabilities?.readOnly && (!readonlyProfile || readonlyProfile.available);
+  const rules = p.capabilities?.execPolicyRules ?? [];
+  const rulesTrusted = rules.length > 0 && (n.trustedRules ?? []).includes(p.provider);
+  const readOnly = (!!p.capabilities?.readOnly || rulesTrusted) && (!readonlyProfile || readonlyProfile.available);
   const paused = isPaused(profile, now);
-  const base = { provider: p.provider, name, billing: billingText(p.billing), compat: compatText(p), readOnly, installed: p.authState !== 'not_installed' };
+  const base = { provider: p.provider, name, billing: billingText(p.billing), compat: compatText(p), readOnly, rules, rulesTrusted, installed: p.authState !== 'not_installed' };
   const limits: string[] = [];
   if (p.authState === 'ready') {
-    if (!readOnly) limits.push('No read-only reviews');
+    if (!readOnly) limits.push(rules.length ? 'Reviews and replies need your OK' : 'No read-only reviews');
     if (!p.tested) limits.push('Untested version');
     // The hub never falls back to paid API usage unless an engineer allows it.
     if (p.billing === 'api') limits.push('API-billed');

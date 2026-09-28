@@ -104,9 +104,17 @@
           {:else if engineersHere.length === 0}
             <p><strong>Bring a couple of engineers into this room, then tell them what you're working on.</strong></p>
             <button class="btn btn-primary btn-sm" onclick={() => app.openPanel({ kind: 'room', id: roomId })}>Add engineers</button>
+          {:else if room.kind === 'dm'}
+            {@const name = app.engineerName(engineersHere[0].id)}
+            <p><strong>This is your direct conversation with {name}.</strong></p>
+            <p class="muted">Everything you write here goes to {name}, who works from the projects they can access.</p>
           {:else}
             <p>
-              <strong>Tell {engineersHere.length > 3 ? 'the team' : engineersHere.map((m) => app.engineerName(m.id)).join(' and ')} what you're working on.</strong>
+              <strong
+                >Tell {engineersHere.length > 3
+                  ? 'the team'
+                  : new Intl.ListFormat(undefined, { type: 'conjunction' }).format(engineersHere.map((m) => app.engineerName(m.id)))} what you're working on.</strong
+              >
             </p>
             <p class="muted">
               Mention someone with @ to ask them directly.

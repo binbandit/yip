@@ -51,11 +51,11 @@
     {#if blockText}<span class="blocker">{blockText}</span>{/if}
     <span class="facts">
       <span class="owner"><Avatar actor={{ kind: 'engineer', id: job.ownerId }} size={18} />{app.engineerName(job.ownerId)}</span>
-      {#if project}<span>· {project.name}</span>{/if}
-      {#if confirmed}<span>· {confirmed}{#if confirmedAt}<span title={fullTime(confirmedAt)}>, {relative(confirmedAt, app.now)}</span>{/if}</span>{/if}
-      {#if completed && confirmedAt}<span>· <time datetime={confirmedAt} title={fullTime(confirmedAt)}>{relative(confirmedAt, app.now)}</time></span>{/if}
-      {#if node}<span>· on {node}</span>{/if}
-      {#if note && !unknownOutcome}<span>· {note}</span>{/if}
+      {#if project}<span>{project.name}</span>{/if}
+      {#if confirmed}<span>{confirmed}{#if confirmedAt}<span title={fullTime(confirmedAt)}>, {relative(confirmedAt, app.now)}</span>{/if}</span>{/if}
+      {#if completed && confirmedAt}<span>finished <time datetime={confirmedAt} title={fullTime(confirmedAt)}>{relative(confirmedAt, app.now)}</time></span>{/if}
+      {#if node}<span>on {node}</span>{/if}
+      {#if note && !unknownOutcome}<span>{note}</span>{/if}
     </span>
   </button>
   {#if room}
@@ -165,6 +165,10 @@
     gap: 2px 6px;
     font-size: 13px;
     color: var(--ink-secondary);
+  }
+  /* Separators end a line rather than start the next one when facts wrap. */
+  .facts > :not(:last-child)::after {
+    content: ' ·';
   }
   .owner {
     display: inline-flex;

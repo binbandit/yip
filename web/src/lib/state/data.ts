@@ -75,6 +75,8 @@ export interface DataState {
   demo: boolean;
   version: string;
   providers: ProviderSummary[];
+  /** GitHub hosts yip holds a credential for: pull requests there are tracked. */
+  githubHosts: string[];
   preferences: Preferences;
   /** Highest committed event sequence applied. */
   lastSeq: number;
@@ -123,6 +125,7 @@ export function emptyState(): DataState {
     demo: false,
     version: '',
     providers: [],
+    githubHosts: [],
     preferences: { ...defaultPreferences },
     lastSeq: 0,
     bootCursor: 0,
@@ -165,6 +168,7 @@ export function applyBootstrap(s: DataState, b: Bootstrap): void {
   s.demo = b.demo;
   s.version = b.version;
   s.providers = b.providers ?? [];
+  s.githubHosts = b.githubHosts ?? [];
   s.preferences = { ...defaultPreferences, ...b.preferences };
   s.rooms = byId(b.rooms);
   s.engineers = byId(b.engineers);
@@ -172,6 +176,18 @@ export function applyBootstrap(s: DataState, b: Bootstrap): void {
   s.nodes = byId(b.nodes);
   s.bootCursor = b.cursor;
   s.lastSeq = Math.max(s.lastSeq, b.cursor);
+}
+
+/**
+ * Recomputes which machines have each provider signed in. The bootstrap list
+ * is a snapshot; a machine that connects or signs in later reports it here.
+ */
+function refreshProviderReadiness(s: DataState): void {
+  const nodes = Object.values(s.nodes).filter((n) => !n.revokedAt);
+  s.providers = s.providers.map((p) => {
+    const ready = nodes.flatMap((n) => (n.providers ?? []).filter((i) => i.provider === p.provider && i.authState === 'ready').map((i) => ({ node: n.id, billing: i.billing })));
+    return { ...p, readyNodes: ready.map((r) => r.node), billing: ready.reduce((b, r) => r.billing || b, 'unknown') };
+  });
 }
 
 export function newer(existing: { version: number } | undefined, incoming: { version: number }): boolean {
@@ -463,6 +479,7 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
     case 'node.updated': {
       const n = asPayload<Node>(ev);
       s.nodes[n.id] = n;
+      refreshProviderReadiness(s);
       break;
     }
     case 'pr.updated': {
@@ -571,18 +588,18 @@ export function isLiveJob(j: Job): boolean {
   return LIVE_JOB_STATES.has(j.state);
 }
 
-/** Work strip rows for a room: the room's own non-reply work that is live, failed,
- * or completed in the last 24 hours (mirrors GET /v1/rooms/{id}/work). */
+/** Work strip rows for a room: the room's own non-reply work that is live, or
+ * that completed or failed in the last 24 hours (mirrors GET /v1/rooms/{id}/work).
+ * A failure leaves the strip once its engineer finishes later work here; it
+ * stays in the conversation and in Overview. */
 export function roomWorkJobs(s: DataState, roomId: string, now = Date.now()): Job[] {
+  const own = Object.values(s.jobs).filter((j) => j.source?.roomId === roomId && j.kind !== 'reply' && j.kind !== 'review' && !j.parentId);
+  const finishedAt = (j: Job) => Date.parse(j.completedAt ?? j.updatedAt);
   const out: Job[] = [];
-  for (const j of Object.values(s.jobs)) {
-    if (j.source?.roomId !== roomId) continue;
-    if (j.kind === 'reply' || j.kind === 'review' || j.parentId) continue;
+  for (const j of own) {
     if (j.state === 'cancelled') continue;
-    if (j.state === 'completed') {
-      const at = j.completedAt ? Date.parse(j.completedAt) : Date.parse(j.updatedAt);
-      if (now - at > 24 * 3600_000) continue;
-    }
+    if ((j.state === 'completed' || j.state === 'failed') && now - finishedAt(j) > 24 * 3600_000) continue;
+    if (j.state === 'failed' && own.some((k) => k.state === 'completed' && k.ownerId === j.ownerId && finishedAt(k) > finishedAt(j))) continue;
     out.push(j);
   }
   const rank = (j: Job) => (j.state === 'waiting' || j.state === 'failed' ? 0 : j.state === 'running' || j.state === 'review_ready' ? 1 : j.state === 'queued' ? 2 : 3);

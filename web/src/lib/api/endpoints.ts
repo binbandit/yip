@@ -139,6 +139,7 @@ export const api = {
   createEnrollment: (req: CreateEnrollmentRequest) => post<Enrollment>('/v1/nodes/enrollments', req),
   drainNode: (id: string, drain: boolean) => post<Node>(`/v1/nodes/${q(id)}/drain`, { drain }),
   probeNode: (id: string) => post<{ ok: boolean }>(`/v1/nodes/${q(id)}/probe`, {}),
+  trustNodeRules: (id: string, provider: string, trust: boolean) => post<Node>(`/v1/nodes/${q(id)}/trust-rules`, { provider, trust }),
   providerProfiles: () => get<ProviderProfile[]>('/v1/provider-profiles'),
   setProviderConcurrency: (id: string, maxConcurrency: number) => put<ProviderProfile>(`/v1/provider-profiles/${q(id)}`, { maxConcurrency }),
   stopNodeWork: (id: string) => post<{ ok: boolean }>(`/v1/nodes/${q(id)}/stop`),

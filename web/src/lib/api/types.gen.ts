@@ -102,6 +102,7 @@ export interface Bootstrap {
   version: string;
   demo: boolean;
   providers: ProviderSummary[];
+  githubHosts: string[];
 }
 
 export interface CancelJobRequest {
@@ -567,6 +568,7 @@ export interface Node {
   fingerprint: string;
   status: string;
   draining: boolean;
+  trustedRules: string[];
   lastSeenAt?: string | null;
   capacity: NodeCapacity;
   providers: ProviderInstallation[];
@@ -706,6 +708,7 @@ export interface ProviderCapabilities {
   modelEnumeration: boolean;
   readOnly: boolean;
   mcpTools: boolean;
+  execPolicyRules?: string[];
 }
 
 export interface ProviderInstallation {

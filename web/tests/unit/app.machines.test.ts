@@ -250,7 +250,7 @@ describe('machine details', () => {
     heads[0].click();
     await waitFor(() => heads[0].getAttribute('aria-expanded') === 'true', 'Claude Code expanded');
     const claude = heads[0].closest('li')!;
-    expect(claude.textContent).toContain('Can’t run read-only reviews here: Read-only runs are unavailable');
+    expect(claude.textContent).toContain('Can’t run read-only here: Read-only runs are unavailable');
     expect(claude.textContent).toContain('not tested with yip (tested: 2.0.14)');
     expect(claude.textContent).toMatch(/allowance ran out\. Its work waits until .+, then carries on by itself/);
     expect(claude.textContent).toContain('Shared by every machine signed in to me@example.com');
