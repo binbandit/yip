@@ -15,9 +15,8 @@ grants before anyone is asked:
     `g''it push`) needs the `push` grant; `gh pr create` needs `open_pr`;
     `gh pr merge` needs `merge`; `gh pr review` is denied (use
     `forge_publish_review`).
-  - Exceptional (`exec`): inline code (`sh -c`, `bash -lc`, `python -c`,
-    `node -e`, `eval`), command or process substitution, heredocs, a program
-    name computed at run time, git configuration that runs commands
+  - Exceptional (`exec`): a program or git/gh action computed at run time,
+    git configuration that runs commands
     (`alias.*`, `core.sshCommand`, `credential.*`, hooks, filters),
     privilege escalation, remote shells, package or image publication,
     infrastructure changes, and writes or deletions outside the workspace.
@@ -25,6 +24,17 @@ grants before anyone is asked:
     similar, `gh api`, adding or changing git remotes.
   - A local `git merge` is routine: it only changes the job's own branch,
     and publishing it still needs a push.
+  - Inline code (`sh -c`, `python -c`, `eval`, a script on stdin) is
+    exceptional in the engineer's own shell, which runs with the owner's
+    credentials. In `work_run_check`, which runs in the isolated check
+    environment (ADR 0005), it is routine: it is no riskier there than the
+    project's own test suite. Its explicit actions are still classified, so
+    `sh -c 'git push'` still needs the push grant.
+  - Command and process substitutions are parsed and their commands
+    classified like any other; their output is an unknown value, like a
+    variable, so it can't pick the program or the git/gh action.
+  - `gh pr create/merge --repo owner/name` is not "another repository" when
+    it names the work's own GitHub repository.
 - The most severe part that the grants don't cover decides; a command is
   allowed only when every part is.
 - Anything unrecognised becomes an exceptional request.
