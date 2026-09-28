@@ -1,0 +1,194 @@
+{
+  "date": "2026-09-28",
+  "sourceCommit": "9e4076cf6fcbeb3909be3549fdc4ad556e434d13",
+  "counting": "Named tests and subtests; parent outcomes are included. Separate live-provider/GitHub runs are not added to these counts.",
+  "normal": {
+    "pass": 342,
+    "skip": 9,
+    "fail": 0
+  },
+  "race": {
+    "pass": 341,
+    "skip": 10,
+    "fail": 0
+  },
+  "sameNamedCoverage": true,
+  "integrationTopLevelTests": 90,
+  "raceIntegrationGroups": [
+    [
+      "TestPrivateCanaryIsolation",
+      "TestCancelJobTree",
+      "TestOutboxRedeliveryExecutesOnce",
+      "TestExactActionApprovals",
+      "TestIncompatibleMachineExplains",
+      "TestSharedAccountSingleSlot",
+      "TestNoPermittedReviewer",
+      "TestSimulationConcurrentRoomBurstsKeepDestinations",
+      "TestSimulationPushGrantStaysInsideAssignedCheckout",
+      "TestSimulationPublicationFailedThenSuccessfulRetryIsDurable",
+      "TestSimulationPublicationConcurrentCallsSendOnce",
+      "TestSimulationPublicationConcurrentReconciliationSurvivesLateError",
+      "TestSharedCredentialCannotFabricateApproval",
+      "TestDoneWithoutEvidence",
+      "TestLiveGitHubReviewThroughHub",
+      "TestMachineWorkspaceKindsAndSizes",
+      "TestDocumentReviewWithoutForge",
+      "TestLargeHistoryReadLatency",
+      "TestSimulationLegacyEmptyPRIdentitySurvivesNewLinks",
+      "TestRegressionReplyFailureDoesNotWedge",
+      "TestRegressionRemovedMemberNotRoutedOrLeaked",
+      "TestRegressionToolCallRetryRunsOnce",
+      "TestRegressionRunnerArtifactAccess",
+      "TestRegressionFailedChildResolvesParent",
+      "TestRegressionRedactionIsComplete",
+      "TestRegressionRunCheckIsPolicedAndIsolated",
+      "TestRegressionSignInIsBounded",
+      "TestRegressionBillingGateAndAccountPin",
+      "TestRegressionSearchByWorkIDAndProject",
+      "TestRegressionOverviewStatusCoversAllProjects",
+      "TestRegressionProjectToolchainRequirement",
+      "TestRegressionInterruptAndRestart",
+      "TestRegressionStaleOutputIsQuarantined",
+      "TestRegressionImportRepoFromBundle",
+      "TestRegressionEngineerNotes",
+      "TestRegressionRoomAnswerTargetsQuestion",
+      "TestRegressionClarificationToWaitingWork",
+      "TestRegressionTeamConversation",
+      "TestRegressionCorrectingApprovedDocumentRequiresNewApproval",
+      "TestQuestionFlowAndLateReplies",
+      "TestSteeringReceipts",
+      "TestEachMessageKeepsItsDestination",
+      "TestSimulationReviewDownloadRechecksRevokedAccess",
+      "TestSimulationCrashAfterPushPermissionNeedsExplicitRetry",
+      "TestSimulationPendingApprovalCannotRestoreRevokedAccess"
+    ],
+    [
+      "TestHumanReviewPolicy",
+      "TestPartitionProducesUnknownThenReconciles",
+      "TestProviderAllowanceWaits",
+      "TestWakeupBudgetAndCycles",
+      "TestReviewDedupeAndRevisionBinding",
+      "TestDecisionCorrection",
+      "TestSimulationConcurrentDuplicateMessagesSurviveRestart",
+      "TestSimulationConcurrentRetryAndCancelKeepSingleAccountSlot",
+      "TestSimulationDailyDriverPersistentWorkspace",
+      "TestSimulationPublicationAmbiguousRetryWaitsForVisibleReview",
+      "TestSimulationPublicationPersistenceFailureDoesNotReportSuccess",
+      "TestSimulationPublicationAdoptsLegacyRetryJournal",
+      "TestAccessRevokedMidJob",
+      "TestWebhookSupersedesReviewOnNewCommits",
+      "TestTwoMachinesAndCheckpointMove",
+      "TestEventReplayAfterDisconnect",
+      "TestScopeIsExplicitInMultiProjectRoom",
+      "TestSimulationMultipleLinkedPRsKeepIndependentIdentity",
+      "TestConversationWaitsForReadOnlyCapability",
+      "TestRegressionWorkRespondCannotSelfComplete",
+      "TestRegressionCancelOfferedRunIsFreed",
+      "TestRegressionTerminalAckIsExplicit",
+      "TestRegressionAnswerBeforeWaitResumes",
+      "TestRegressionCompletionNeedsEveryReviewer",
+      "TestRegressionForgeRefreshOutsideWriter",
+      "TestRegressionHeredocEditNeedsNoApproval",
+      "TestRegressionCheckTimeoutStopsProcess",
+      "TestRegressionCatchupShowsCurrentState",
+      "TestRegressionSoloEngineerOwnerReviews",
+      "TestRegressionDiagnosticBundle",
+      "TestRegressionFollowUpLinksOriginal",
+      "TestRegressionCrashRetriesAutomatically",
+      "TestRegressionRemoveWorkspaceFromMachines",
+      "TestRegressionIdempotencyKeys",
+      "TestRegressionFinishedWorkIsRemembered",
+      "TestRegressionClarificationReachesRunningWork",
+      "TestRegressionDecisionRecallUsesHumanTitles",
+      "TestRegressionDocumentCorrectionAndRereview",
+      "TestAtlasFixReviewLoop",
+      "TestReplyAfterCancelDoesNotRestart",
+      "TestIdempotentSendQuietRoomsAndAgentMentions",
+      "TestSimulationThreadedQuestionsKeepExplicitTargets",
+      "TestSimulationMentionedBundleDoesNotGrantDownload",
+      "TestSimulationRevokedRoomCannotAuthorizePush",
+      "TestSimulationReviewScopeCannotMutateWithProjectGrant"
+    ]
+  ],
+  "execution": {
+    "race-unit": {
+      "exitCode": 0,
+      "elapsedSeconds": 40.1
+    },
+    "normal": {
+      "exitCode": 0,
+      "elapsedSeconds": 268.8
+    },
+    "race-integration-1": {
+      "exitCode": 0,
+      "elapsedSeconds": 493.5
+    },
+    "race-integration-2": {
+      "exitCode": 0,
+      "elapsedSeconds": 506.6
+    }
+  },
+  "normalGatedTests": [
+    {
+      "package": "github.com/binbandit/yip/internal/forge/github",
+      "test": "TestContractGitHub"
+    },
+    {
+      "package": "github.com/binbandit/yip/internal/forge/github",
+      "test": "TestSimulationGitHub"
+    },
+    {
+      "package": "github.com/binbandit/yip/internal/providers/claude",
+      "test": "TestRealHelpHasRequiredFlags"
+    },
+    {
+      "package": "github.com/binbandit/yip/internal/providers/claude",
+      "test": "TestRealClaudeSmoke"
+    },
+    {
+      "package": "github.com/binbandit/yip/internal/providers/cursor",
+      "test": "TestRealConversationReadOnly"
+    },
+    {
+      "package": "github.com/binbandit/yip/internal/providers/cursor",
+      "test": "TestRealEditApprovalDenialAndResume"
+    },
+    {
+      "package": "github.com/binbandit/yip/internal/providers/cursor",
+      "test": "TestRealCancel"
+    },
+    {
+      "package": "github.com/binbandit/yip/internal/providers/codex",
+      "test": "TestRealCodex"
+    },
+    {
+      "package": "github.com/binbandit/yip/test/integration",
+      "test": "TestLiveGitHubReviewThroughHub"
+    }
+  ],
+  "raceOnlySkip": [
+    "TestLargeHistoryReadLatency"
+  ],
+  "otherChecks": {
+    "webTests": {
+      "passed": 137,
+      "failed": 0
+    },
+    "webTypecheck": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "systemWebKitJourneys": {
+      "passed": 53,
+      "failed": 0
+    },
+    "systemChromeJourneys": {
+      "passed": 6,
+      "failed": 0
+    },
+    "build": "passed",
+    "formatAndVet": "passed"
+  },
+  "previousRaceAttempt": "The first unpartitioned run hit the default 10-minute timeout after 290 passing test/subtest outcomes and no race reports. This final run used two nonoverlapping integration groups, a 20-minute timeout and matching complete named coverage.",
+  "browserTiming": "Browser journeys ran after their functional UI fixes, before the final backend fixes and cancel-dialog wording adjustment. Web tests and typecheck ran after that wording adjustment; final Go/build/lint checks use sourceCommit."
+}

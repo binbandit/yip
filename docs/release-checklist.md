@@ -5,9 +5,10 @@ recorded manual check exercised it end to end on this build. **Implemented**
 means the behaviour exists but lacks a dedicated automated check. **Incomplete**
 means it is not done or not verified; it blocks declaring the MVP complete.
 
-Performance (§9 fixture, `TestLargeHistoryReadLatency`: 10,100 messages across
-ten rooms and 100 jobs, this build machine): p95 bootstrap 26.7 ms, room page
-1.15 ms, older page 1.08 ms, search 18.6 ms, jobs 0.49 ms, overview 12.7 ms,
+Performance (28 September, §9 fixture, `TestLargeHistoryReadLatency`: 10,100
+messages across ten rooms and 100 jobs, this build machine): p95 bootstrap
+37.354 ms, room page 1.422 ms, older page 1.339 ms, search 23.545 ms,
+jobs 0.392 ms, overview 17.236 ms,
 within the 200 ms target. Measured, not an advertised capacity.
 
 Automated evidence: `go test ./...` (unit tests; `test/integration` runs the
@@ -68,6 +69,11 @@ results from scripted simulations and links the retained fixtures.
   multi-day unattended reliability claim.
 - All 53 WebKit journeys, six Chrome journeys and 137 web tests passed.
   Type checking reports zero errors and warnings.
+- Final complete Go suite: 342 passed, zero failed, nine external gates
+  skipped. Matching complete race coverage: 341 passed, zero failed, ten
+  skipped (the same gates plus the latency fixture). Counts include named
+  subtests and parent outcomes. All 90 top-level integration tests ran across
+  two nonoverlapping race groups. Build, formatting and Go vet passed.
 
 The daily-use hub and development server were not changed. This provides
 evidence for the tested Claude-intake/review plus Codex-edit configuration;

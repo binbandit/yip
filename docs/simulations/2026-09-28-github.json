@@ -367,5 +367,26 @@
         "expect_merge": "dirty"
       }
     }
-  ]
+  ],
+  "finalHubRerun": {
+    "commit": "9e4076cf6fcbeb3909be3549fdc4ad556e434d13",
+    "scenarios": [
+      {
+        "scenario": "no_grant",
+        "actor": "sage-smudge",
+        "exitCode": 0
+      },
+      {
+        "scenario": "ineligible",
+        "actor": "binbandit",
+        "exitCode": 0
+      },
+      {
+        "scenario": "published",
+        "actor": "sage-smudge",
+        "exitCode": 0
+      }
+    ],
+    "note": "Repeated through hub, paired runner and bridge after publication-journal and PR-identity fixes."
+  }
 }
