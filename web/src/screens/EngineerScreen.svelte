@@ -421,7 +421,6 @@
   .form {
     display: grid;
     gap: 12px;
-    padding: 16px;
     margin-bottom: 12px;
   }
   .two {

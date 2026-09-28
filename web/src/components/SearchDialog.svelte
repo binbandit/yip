@@ -204,7 +204,7 @@
   </div>
   <div class="results" id="search-results" role="listbox" aria-label="Results" aria-busy={loading}>
     {#if error}
-      <p class="state notice danger">{error}</p>
+      <div class="state"><p class="notice danger">{error}</p></div>
     {:else if shown.length === 0}
       <p class="state meta">{loading ? 'Searching…' : q.trim().length >= 2 ? `Nothing matches “${q.trim()}” in the rooms you can see.` : 'Type to search messages, work and decisions.'}</p>
     {/if}

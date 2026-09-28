@@ -407,10 +407,7 @@
 
 <div class="composer" class:compact>
   {#if offline}
-    <div class="notice attention offline" role="status">
-      <Icon name="wifiOff" size={16} />
-      <span>Can't reach your workspace. Your draft is saved on this device.</span>
-    </div>
+    <p class="notice attention offline" role="status">Can't reach your workspace. Your draft is saved on this device.</p>
   {/if}
 
   <div class="box" class:scoped={!!scopeJobId || !!answering}>

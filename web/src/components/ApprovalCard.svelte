@@ -91,7 +91,7 @@
   }
 </script>
 
-<section class="approval panel-box" class:pending={status === 'pending'} aria-label="Permission request">
+<section class="approval panel-box" aria-label="Permission request">
   {#if !a}
     <p class="meta">Loading the request…</p>
   {:else}
@@ -158,9 +158,6 @@
     gap: 4px;
     justify-self: start;
     font-size: 13px;
-  }
-  .approval.pending {
-    box-shadow: inset 3px 0 0 var(--attention-fill);
   }
   .kicker {
     display: flex;

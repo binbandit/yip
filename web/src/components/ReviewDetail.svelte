@@ -10,6 +10,7 @@
   import StateIcon from './StateIcon.svelte';
   import Avatar from './Avatar.svelte';
   import MessageBody from './MessageBody.svelte';
+  import Icon from './Icon.svelte';
 
   interface Props {
     review: Review;
@@ -50,13 +51,15 @@
       <li class="round" class:superseded={!!r.supersededBy}>
         <p class="round-head">
           <StateIcon shape={reviewShape(r.state)} tone={r.supersededBy ? 'neutral' : reviewTone(r.state)} size={13} />
-          <span>
-            <strong>Round {r.number}:</strong> {reviewer} {verdictPhrase(r.state)}
-            {r.number === 1 && rounds.length > 1 ? 'the first revision' : r === latest && rounds.length > 1 ? 'the updated revision' : 'the revision'}
-            {#if r.target.artifactId}<a class="mono" href={artifactUrl(r.target.artifactId)} target="_blank" rel="noreferrer">{shortSha(r.target.hash)} · document</a>{:else if r.target.head}<span class="mono">{shortSha(r.target.head)}</span>{/if}
+          <span class="round-line">
+            <span>
+              <strong>Round {r.number}:</strong> {reviewer} {verdictPhrase(r.state)}
+              {r.number === 1 && rounds.length > 1 ? 'the first revision' : r === latest && rounds.length > 1 ? 'the updated revision' : 'the revision'}
+              {#if r.target.artifactId}<a class="mono" href={artifactUrl(r.target.artifactId)} target="_blank" rel="noreferrer">{shortSha(r.target.hash)} · document</a>{:else if r.target.head}<span class="mono">{shortSha(r.target.head)}</span>{/if}
+            </span>
+            {#if r.decidedAt}<span class="meta">{atTime(r.decidedAt)}</span>{/if}
+            {#if r.supersededBy}<span class="tag">Superseded by a newer revision</span>{/if}
           </span>
-          {#if r.decidedAt}<span class="meta">{atTime(r.decidedAt)}</span>{/if}
-          {#if r.supersededBy}<span class="tag">Superseded by a newer revision</span>{/if}
         </p>
         {#if r.summary}<div class="summary"><MessageBody message={{ body: r.summary, mentions: [] }} /></div>{/if}
         {#if r.findings?.length}
@@ -64,7 +67,7 @@
             {#each r.findings as f (f.id)}
               <li class="finding sev-{f.severity}">
                 <p class="f-head">
-                  <span class="sev">{severityLabel(f.severity)}</span>
+                  <span class="sev">{#if f.severity === 'blocking'}<Icon name="alertCircle" size={14} />{/if}{severityLabel(f.severity)}</span>
                   {#if f.file}<button class="link-btn mono loc" onclick={() => app.showInDiff(review.jobId, f.file!, f.line || undefined, r.target.head)} title="Show in the diff"
                       >{f.file}{f.line ? `:${f.line}` : ''}</button
                     >{/if}
@@ -129,17 +132,25 @@
   }
   .round-head {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
-    flex-wrap: wrap;
     font-size: 14px;
     margin-left: -22px;
   }
-  .round-head :global(svg) {
+  /* The shape sits on the rail, centred on the first line; wrapped text stays right of it. */
+  .round-head > :global(svg) {
+    margin-top: calc((1lh - 15px) / 2);
     background: var(--surface);
     border-radius: 50%;
     padding: 1px;
     box-sizing: content-box;
+  }
+  .round-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 8px;
+    min-width: 0;
   }
   .superseded .summary,
   .superseded .findings {
@@ -170,9 +181,6 @@
     display: grid;
     gap: 4px;
   }
-  .finding.sev-blocking {
-    box-shadow: inset 3px 0 0 var(--danger);
-  }
   .f-head {
     display: flex;
     gap: 8px;
@@ -182,6 +190,11 @@
   }
   .sev {
     font-weight: 700;
+  }
+  .sev :global(.icon) {
+    display: inline-block;
+    margin-right: 4px;
+    vertical-align: -2px;
   }
   .sev-blocking .sev {
     color: var(--danger);
@@ -204,8 +217,8 @@
   }
   .reply {
     margin-top: 4px;
-    padding: 6px 0 0 10px;
-    border-left: 2px solid var(--accent-subtle);
+    padding-top: 8px;
+    border-top: 1px solid var(--line-soft);
   }
   .rep-who {
     color: var(--ink);

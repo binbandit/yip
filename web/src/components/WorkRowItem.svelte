@@ -10,6 +10,7 @@
   import { plainText } from '../lib/util/markdown';
   import StateIcon from './StateIcon.svelte';
   import Avatar from './Avatar.svelte';
+  import Icon from './Icon.svelte';
 
   interface Props {
     job: Job;
@@ -66,7 +67,8 @@
     <div class="questions">
       {#each questions as question (question.id)}
         <a href={conversationHref({ ...question.source, messageId: question.messageId })}>
-          {app.engineerName(question.askerId)} asks: {question.missingFact}<span class="answer">Answer in conversation</span>
+          <Icon name="reply" size={15} />
+          <span>{app.engineerName(question.askerId)} asks: {question.missingFact}<span class="answer">Answer in conversation</span></span>
         </a>
       {/each}
     </div>
@@ -91,10 +93,14 @@
     padding: 0 8px 12px;
   }
   .questions a {
-    padding-left: 8px;
-    border-left: 3px solid var(--attention-fill);
+    display: flex;
+    gap: 8px;
     font-size: 13.5px;
     text-decoration: none;
+  }
+  .questions a :global(.icon) {
+    margin-top: calc((1lh - 15px) / 2);
+    color: var(--attention-ink);
   }
   .answer {
     margin-left: 8px;
@@ -139,8 +145,6 @@
   }
   .blocker {
     grid-area: blocker;
-    padding: 2px 0 2px 8px;
-    border-left: 3px solid var(--attention-fill);
     color: var(--ink);
     font-size: 13.5px;
   }
