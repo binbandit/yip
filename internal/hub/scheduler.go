@@ -244,8 +244,12 @@ func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes [
 			reasons = append(reasons, provider+" on "+n.Name+" is billed to an API key; allow API billing for this engineer to use it.")
 			continue
 		}
-		if r.Mode == protocol.ModeReadOnly && !inst.Capabilities.ReadOnly {
-			reasons = append(reasons, provider+" on "+n.Name+" can't enforce a read-only review.")
+		if (r.Mode == protocol.ModeReadOnly || r.Mode == protocol.ModeConversation) && !inst.Capabilities.ReadOnly {
+			purpose := "review"
+			if r.Mode == protocol.ModeConversation {
+				purpose = "conversation"
+			}
+			reasons = append(reasons, provider+" on "+n.Name+" can't enforce a read-only "+purpose+".")
 			continue
 		}
 		profileOK := slices.ContainsFunc(n.Profiles, func(p protocol.ExecutionProfile) bool {

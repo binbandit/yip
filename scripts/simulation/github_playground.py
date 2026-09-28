@@ -210,12 +210,60 @@ class Playground:
         self.check('fork-maintainer-requests-changes', 'fork-fix', actor=OWNER, event='REQUEST_CHANGES')
         self.check('fork-distinct-peer-approval', 'fork-fix', actor=REVIEWERS[1], event='APPROVE')
 
+    def wait_ci(self, repo, sha):
+        for _ in range(60):
+            _, result = self.api(OWNER, 'GET', f'repos/{repo}/commits/{sha}/check-runs')
+            checks = result['check_runs']
+            if checks and all(c['status'] == 'completed' for c in checks):
+                return
+            time.sleep(3)
+        raise RuntimeError('GitHub Actions did not finish within the bounded wait')
+
+    def lifecycle_campaign(self):
+        pr = self.state['prs']['private-fix']
+        _, merged = self.api(OWNER, 'PUT', f'repos/{PRIVATE}/pulls/{pr["number"]}/merge',
+                             {'sha': pr['head'], 'merge_method': 'merge'})
+        if not merged.get('merged'):
+            raise AssertionError('Expected the disposable private PR to merge')
+        self.check('private-merged-is-terminal', 'private-fix', expect_state='merged', expect_merge='blocked', event='COMMENT', expect_error='stale')
+        self.api(OWNER, 'DELETE', f'repos/{PRIVATE}/git/refs/heads/{pr["branch"]}')
+        self.check('private-deleted-source-still-readable', 'private-fix', expect_state='merged')
+        if 'draft-doc' not in self.state['prs']:
+            self.commit(PRIVATE, 'simulation/draft-doc', {'docs/draft.md': '# Draft\n\nSynthetic draft for lifecycle checks.\n'}, 'docs: prepare a draft simulation')
+            self.pr('draft-doc', PRIVATE, 'simulation/draft-doc', 'Draft and closed lifecycle', draft=True)
+        draft = self.state['prs']['draft-doc']
+        self.check('private-draft-blocks-merge', 'draft-doc', expect_draft=True, expect_merge='blocked')
+        self.check('private-draft-comment', 'draft-doc', actor=REVIEWERS[0], event='COMMENT')
+        self.api(OWNER, 'PATCH', f'repos/{PRIVATE}/pulls/{draft["number"]}', {'state': 'closed'})
+        self.check('private-closed-is-terminal', 'draft-doc', expect_state='closed', expect_merge='blocked', event='COMMENT', expect_error='stale')
+        if 'broken-ci' not in self.state['prs']:
+            self.commit(PRIVATE, 'simulation/broken-ci', {'tests/test_injected_failure.py':
+                'import unittest\n\nclass InjectedFailure(unittest.TestCase):\n    def test_controlled_failure(self):\n        self.assertEqual(1, 2)\n'}, 'test: inject a deliberate CI failure')
+            self.pr('broken-ci', PRIVATE, 'simulation/broken-ci', 'Real CI failure then repair')
+        broken = self.state['prs']['broken-ci']
+        self.wait_ci(PRIVATE, broken['head'])
+        self.check('private-real-ci-failure', 'broken-ci', expect_checks='failure')
+        broken['head'] = self.commit(PRIVATE, broken['branch'], {'tests/test_injected_failure.py':
+            'import unittest\n\nclass RepairedFailure(unittest.TestCase):\n    def test_controlled_failure(self):\n        self.assertEqual(1, 1)\n'}, 'test: repair the intentionally failing fixture', base=broken['branch'])
+        self.save()
+        self.wait_ci(PRIVATE, broken['head'])
+        self.check('private-real-ci-repaired', 'broken-ci', expect_checks='success', expect_head=broken['head'])
+        if 'conflict' not in self.state['prs']:
+            self.commit(PRIVATE, 'simulation/conflict-head', {'session.py': 'def valid(now, expires):\n    return now != expires\n'}, 'test: create conflicting head')
+            self.commit(PRIVATE, 'simulation/conflict-base', {'session.py': 'def valid(now, expires):\n    return expires > now  # competing base edit\n'}, 'test: create competing base edit')
+            self.pr('conflict', PRIVATE, 'simulation/conflict-head', 'Concurrent changes create a merge conflict', base='simulation/conflict-base')
+        self.check('private-conflict-is-dirty', 'conflict', expect_merge='dirty')
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['seed', 'private', 'team', 'fork'])
+    parser.add_argument('command', choices=['seed', 'private', 'team', 'fork', 'lifecycle'])
     parser.add_argument('--directory', required=True)
     args = parser.parse_args()
     playground = Playground(args.directory)
+    previous_checks = len(playground.state.get('checks', []))
     {'seed': playground.seed, 'private': playground.private_campaign,
-     'team': playground.team_campaign, 'fork': playground.fork_campaign}[args.command]()
+     'team': playground.team_campaign, 'fork': playground.fork_campaign,
+     'lifecycle': playground.lifecycle_campaign}[args.command]()
+    if any(not row['passed'] for row in playground.state.get('checks', [])[previous_checks:]):
+        raise SystemExit(1)

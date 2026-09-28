@@ -58,9 +58,14 @@ def configure(hub):
 
 def capture(hub, directory):
     jobs = hub.jobs()
-    details = [hub.req("GET", "/v1/jobs/" + job["id"]) for job in jobs]
+    messages = hub.messages("Security")
+    ids = {job["id"] for job in jobs}
+    ids.update(message["jobId"] for message in messages if message.get("jobId"))
+    for message in messages:
+        ids.update(ref["id"] for ref in message.get("refs") or [] if ref["kind"] == "job")
+    details = [hub.req("GET", "/v1/jobs/" + job_id) for job_id in sorted(ids)]
     save(directory / "jobs.json", details)
-    save(directory / "messages.json", hub.messages("Security"))
+    save(directory / "messages.json", messages)
     save(directory / "nodes.json", hub.nodes())
     activity = {}
     for detail in details:
@@ -72,6 +77,7 @@ def capture(hub, directory):
 
 
 def completed_evidence(details):
+    runs = {run["id"]: run for detail in details for run in detail.get("runs") or []}
     for detail in details:
         job = detail["job"]
         if job["kind"] != "code" or job["state"] != "completed":
@@ -81,8 +87,11 @@ def completed_evidence(details):
                       for c in detail.get("checks") or [])
         reviewed = any(r["reviewerId"] != job["ownerId"] and any(
             rd["state"] == "approved" and rd["target"].get("head") == head
+            and runs.get(rd.get("reviewerRunId"), {}).get("provider") == "claude"
             for rd in r.get("rounds") or []) for r in detail.get("reviews") or [])
-        if head and checked and reviewed:
+        authored = any(run["provider"] == "codex" and run["mode"] == "edit"
+                       for run in detail.get("runs") or [])
+        if head and checked and reviewed and authored:
             return {"jobId": job["id"], "head": head, "summary": job.get("summary", "")}
     return None
 
@@ -95,6 +104,7 @@ def run(args):
         raise SystemExit("Refusing to reuse existing campaign data; choose a new directory")
     for port in (7961, 7984):
         with socket.socket() as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(("127.0.0.1", port))
     directory.mkdir(parents=True)
     data = directory / "demo"
@@ -113,20 +123,26 @@ def run(args):
                      (data / "demo-credentials.txt").read_text().splitlines() if ": " in line)
         hub = Hub("http://127.0.0.1:7961", creds["handle"], creds["password"])
         configure(hub)
-        ready = {p["provider"] for p in hub.boot["providers"] if p.get("readyNodes")}
-        if not {"codex", "claude"}.issubset(ready):
-            raise RuntimeError("Required providers are not ready: " + str(sorted(ready)))
+        def providers_ready():
+            hub.boot = hub.req("GET", "/v1/bootstrap")
+            ready = {p["provider"] for p in hub.boot["providers"] if p.get("readyNodes")}
+            return {"codex", "claude"}.issubset(ready)
+        wait("the Codex and Claude readiness reports", providers_ready, timeout=60)
         save(directory / "configuration.json", {
             "engineers": [e for e in hub.boot["engineers"] if e["name"] in ("Mira", "Oren")],
             "projects": hub.boot["projects"], "providers": hub.boot["providers"],
         })
-        hub.post("Security", "@Mira please fix the expiry-boundary bug in Session service's "
+        recipient = "Oren" if args.delegate_through_reviewer else "Mira"
+        request = ("@Oren please delegate this coding assignment to Mira, who will own the "
+                   "implementation, and independently review her resulting revision when asked. "
+                   if args.delegate_through_reviewer else "@Mira please ")
+        hub.post("Security", request + "fix the expiry-boundary bug in Session service's "
             "session-service repository. A session must be rejected when now equals expires; "
             "before expiry it remains valid, and after expiry it is invalid. Add a regression "
             "test for the exact boundary, preserve the existing cases, and finish the work with "
             "recorded passing checks and independent peer review. The intended behavior is "
             "fully specified here; no release decision is needed. Keep the work local to yip "
-            "and do not push, open a PR, publish externally, merge, or deploy.", ["Mira"])
+            "and do not push, open a PR, publish externally, merge, or deploy.", [recipient])
         previous = None
         while time.monotonic() - start < args.seconds:
             details = capture(hub, directory)
@@ -175,6 +191,8 @@ if __name__ == "__main__":
     parser.add_argument("--run-real-providers", action="store_true")
     parser.add_argument("--dir", default="/private/tmp/yip-real-team-20260928")
     parser.add_argument("--seconds", type=int, default=600)
+    parser.add_argument("--delegate-through-reviewer", action="store_true",
+                        help="Claude receives the request and delegates implementation to Codex")
     args = parser.parse_args()
     if not args.run_real_providers:
         parser.error("real model use must be explicitly enabled with --run-real-providers")

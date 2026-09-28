@@ -45,16 +45,25 @@ func (h *Hub) evaluatePolicy(ctx context.Context, q store.Q, run store.RunRow, j
 		}
 		return policyAllow, "editing the job's own worktree is within the write grant", ""
 	case "push":
+		if readOnly {
+			return policyDeny, "this run is read-only; it cannot push changes", ""
+		}
 		if has("push") {
 			return policyAllow, "the project grant allows pushing", ""
 		}
 		return policyAsk, "", "push"
 	case "merge":
+		if readOnly {
+			return policyDeny, "this run is read-only; it cannot merge changes", ""
+		}
 		if has("merge") {
 			return policyAllow, "the project grant allows merging", ""
 		}
 		return policyAsk, "", "merge"
 	case "publish":
+		if readOnly {
+			return policyDeny, "this run is read-only; publish a recorded review through yip's authorized review tool", ""
+		}
 		if has("publish_review") || has("open_pr") {
 			return policyAllow, "the project grant allows publication", ""
 		}
@@ -62,8 +71,16 @@ func (h *Hub) evaluatePolicy(ctx context.Context, q store.Q, run store.RunRow, j
 	case "exec":
 		// Every part of the command line must be authorized; the most
 		// severe unauthorized part decides.
+		classes := classifyCommand(a.Command)
+		if readOnly {
+			for _, c := range classes {
+				if c.Class == classMerge || c.Class == classPush || c.Class == classOpenPR {
+					return policyDeny, "this run is read-only; it cannot push, merge, or publish changes", ""
+				}
+			}
+		}
 		var granted []string
-		for _, c := range classifyCommand(a.Command) {
+		for _, c := range classes {
 			switch c.Class {
 			case classReview:
 				return policyDeny, c.Why, ""
@@ -104,7 +121,8 @@ func (h *Hub) onApprovalRequest(ctx context.Context, nodeID, runID string, epoch
 		if err != nil {
 			return err
 		}
-		if existing, err := store.GetApprovalByRequest(ctx, t.tx, run.ID, req.RequestID); err == nil {
+		accessErr := h.checkRunAccess(ctx, t.tx, run)
+		if existing, err := store.GetApprovalByRequest(ctx, t.tx, run.ID, req.RequestID); err == nil && accessErr == nil {
 			// Replayed request: re-send the decision if one exists.
 			if existing.Status == "approved" || existing.Status == "rejected" || existing.Status == "expired" || existing.Status == "consumed" {
 				d := "deny"
@@ -120,7 +138,12 @@ func (h *Hub) onApprovalRequest(ctx context.Context, nodeID, runID string, epoch
 		if err != nil {
 			return err
 		}
-		decision, why, class := h.evaluatePolicy(ctx, t.tx, run, job, req.Action)
+		decision, why, class := policyDeny, "", ""
+		if accessErr != nil {
+			why = accessErr.Error()
+		} else {
+			decision, why, class = h.evaluatePolicy(ctx, t.tx, run, job, req.Action)
+		}
 		actor := protocol.Actor{Kind: protocol.ActorEngineer, ID: run.EngineerID}
 		switch decision {
 		case policyAllow, policyDeny:
@@ -217,7 +240,21 @@ func (h *Hub) DecideApproval(ctx context.Context, userID, approvalID string, req
 			return domain.Conflict("This request expired. If the action is still needed, a new exact request will appear.")
 		}
 		status := "rejected"
+		run, err := store.GetRun(ctx, t.tx, ap.RunID)
+		if err != nil {
+			return err
+		}
 		if req.Decision == "approve" {
+			if err := h.checkRunAccess(ctx, t.tx, run); err != nil {
+				return err
+			}
+			job, err := store.GetJob(ctx, t.tx, run.JobID)
+			if err != nil {
+				return err
+			}
+			if decision, why, _ := h.evaluatePolicy(ctx, t.tx, run, job, ap.Action); decision == policyDeny {
+				return domain.Forbidden("This action is no longer permitted: %s.", why)
+			}
 			status = "approved"
 		} else if req.Decision != "reject" {
 			return domain.Invalid("Decide approve or reject.")
@@ -228,10 +265,6 @@ func (h *Hub) DecideApproval(ctx context.Context, userID, approvalID string, req
 		}
 		if !ok {
 			return domain.Conflict("This request changed or expired. Review the current request.")
-		}
-		run, err := store.GetRun(ctx, t.tx, ap.RunID)
-		if err != nil {
-			return err
 		}
 		if err := t.audit(userActor(userID), "owner", "approval."+status, ap.ID, "ok", ap.Action.Summary+" digest "+ap.ArgsDigest[:12]); err != nil {
 			return err
