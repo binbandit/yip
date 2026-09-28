@@ -28,7 +28,9 @@
   onMount(() => {
     api
       .project(id)
-      .then((proj) => (app.data.projects[id] = proj))
+      .then((proj) => {
+        app.data.projects[id] = proj;
+      })
       .catch((e) => (loadError = errorMessage(e)));
     api
       .jobs({ project: id })
