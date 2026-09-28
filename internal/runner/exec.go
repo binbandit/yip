@@ -45,7 +45,8 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 		if err := r.journal.SetTerminal(m.RunID, t); err != nil {
 			r.log.Error("journal terminal failed", "run", m.RunID, "err", err)
 		}
-		_ = r.sendTyped(protocol.EvRunTerminal, m.RunID, ar.epoch, t)
+		// Clean up and free the slot before reporting: the hub offers the
+		// next run as soon as it hears, and a busy machine would decline it.
 		r.ws.Release(context.Background(), ar.ws)
 		_ = os.RemoveAll(r.scratchDir(m.RunID))
 		r.mu.Lock()
@@ -54,6 +55,7 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 			delete(r.tokens, ar.token)
 		}
 		r.mu.Unlock()
+		_ = r.sendTyped(protocol.EvRunTerminal, m.RunID, ar.epoch, t)
 		r.log.Info("run finished", "run", m.RunID, "outcome", t.Outcome)
 	}
 
@@ -79,6 +81,7 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	spec := providers.StartSpec{
 		RunID: m.RunID, Workdir: ws.Dir, Mode: m.Mode, Model: m.Model, Instructions: m.Instructions, Prompt: m.Prompt,
 		ResumeSessionID: m.ResumeSessionID, PermissionTool: bridge.PermissionPrompt, FakeScript: m.FakeScript,
+		TrustProviderRules: m.TrustProviderRules,
 		MCP: providers.MCPServer{Name: "yip", Command: r.opts.BridgeExe, Args: []string{"bridge", "--mode", m.Mode},
 			Env: map[string]string{bridge.EnvSocket: r.paths.socketPath(), bridge.EnvToken: token}},
 		// Left empty so each adapter builds its own allowlisted environment,

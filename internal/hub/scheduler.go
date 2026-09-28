@@ -31,6 +31,23 @@ func (h *Hub) loop(ctx context.Context) {
 	}
 }
 
+// awake reports whether the hub has been running long enough since its last
+// pause to judge leases. A hub that was itself asleep (a laptop's lid closed)
+// saw no heartbeats through no fault of its machines, and a runner on the same
+// computer slept with it; measured in real time between one-second passes,
+// each machine gets a full lease to report in before its runs count as lost.
+func (h *Hub) awake() bool {
+	h.pauseMu.Lock()
+	defer h.pauseMu.Unlock()
+	wall := time.Now().Round(0)
+	if gap := wall.Sub(h.lastTick); !h.lastTick.IsZero() && gap > max(3*h.lim.HeartbeatInterval, 20*time.Second) {
+		h.resumedAt = wall
+		h.log.Info("hub resumed after a pause; waiting a lease period before expiring runs", "paused", gap.Round(time.Second))
+	}
+	h.lastTick = wall
+	return wall.Sub(h.resumedAt) >= h.lim.LeaseDuration
+}
+
 // Tick runs one scheduler pass (exported for tests).
 func (h *Hub) Tick(ctx context.Context) { h.tick(ctx) }
 
@@ -38,7 +55,9 @@ func (h *Hub) tick(ctx context.Context) {
 	if h.Org().ID == "" {
 		return
 	}
-	h.expireLeases(ctx)
+	if h.awake() {
+		h.expireLeases(ctx)
+	}
 	h.expireApprovals(ctx)
 	h.retryDue(ctx)
 	h.nodeHealth(ctx)
@@ -73,9 +92,13 @@ func (h *Hub) counts(ctx context.Context) (schedCounts, error) {
 	}
 	for _, r := range runs {
 		c.engineer[r.EngineerID]++
-		c.profile[r.ProfileID]++
 		c.node[r.NodeID]++
 		c.org++
+		// A run waiting on the owner's decision uses none of its account's
+		// allowance, so it doesn't hold the account's place for colleagues.
+		if r.State != protocol.RunAwaitingInput {
+			c.profile[r.ProfileID]++
+		}
 	}
 	return c, nil
 }
@@ -173,6 +196,28 @@ func (h *Hub) schedule(ctx context.Context) {
 	}
 }
 
+// cannotRun explains why no paired machine could ever run this engineer in
+// mode for the project (a missing provider, sign-in or capability), or is
+// empty when one could, perhaps once it is idle or reconnects.
+func (h *Hub) cannotRun(ctx context.Context, q store.Q, eng protocol.Engineer, mode, projectID string) string {
+	nodes, err := store.ListNodes(ctx, q)
+	if err != nil {
+		return ""
+	}
+	r := store.RunRow{Run: protocol.Run{EngineerID: eng.ID, Provider: eng.Provider.Provider, ProfileID: eng.Provider.ProfileID, Mode: mode}, ExecutionProfile: "native"}
+	if p, err := store.GetProject(ctx, q, projectID); err == nil && p.Policy.ExecutionProfile != "" {
+		r.ExecutionProfile = p.Policy.ExecutionProfile
+	}
+	if mode == protocol.ModeReadOnly && r.ExecutionProfile == "native" {
+		r.ExecutionProfile = "readonly"
+	}
+	idle := schedCounts{engineer: map[string]int{}, profile: map[string]int{}, node: map[string]int{}}
+	if p, why, impossible := h.place(ctx, r, store.JobRow{Job: protocol.Job{ProjectID: projectID}}, nodes, idle); p == nil && impossible {
+		return why
+	}
+	return ""
+}
+
 // place selects a node for a run, or explains why none can take it.
 // impossible is true when no machine could run it even if idle (missing
 // provider, sign-in, capability), as opposed to temporarily busy.
@@ -244,12 +289,16 @@ func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes [
 			reasons = append(reasons, provider+" on "+n.Name+" is billed to an API key; allow API billing for this engineer to use it.")
 			continue
 		}
-		if (r.Mode == protocol.ModeReadOnly || r.Mode == protocol.ModeConversation) && !inst.Capabilities.ReadOnly {
+		if (r.Mode == protocol.ModeReadOnly || r.Mode == protocol.ModeConversation) && !trustsReadOnly(n.Node, *inst) {
 			purpose := "review"
 			if r.Mode == protocol.ModeConversation {
 				purpose = "conversation"
 			}
-			reasons = append(reasons, provider+" on "+n.Name+" can't enforce a read-only "+purpose+".")
+			why := provider + " on " + n.Name + " can't keep a " + purpose + " read-only."
+			if len(inst.Capabilities.ExecPolicyRules) > 0 {
+				why = provider + " on " + n.Name + " can't keep a " + purpose + " read-only: its own always-allow rules can run commands outside the sandbox. You can allow them in Machines."
+			}
+			reasons = append(reasons, why)
 			continue
 		}
 		profileOK := slices.ContainsFunc(n.Profiles, func(p protocol.ExecutionProfile) bool {
@@ -319,6 +368,16 @@ func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes [
 		why = dedupeJoin(reasons)
 	}
 	return nil, why, !anyPossible
+}
+
+// trustsReadOnly reports whether a provider can run read-only work on a
+// machine: by itself, or because the owner accepted the provider's own
+// always-allow rules there, which are the only thing stopping it.
+func trustsReadOnly(n protocol.Node, inst protocol.ProviderInstallation) bool {
+	if inst.Capabilities.ReadOnly {
+		return true
+	}
+	return len(inst.Capabilities.ExecPolicyRules) > 0 && slices.Contains(n.TrustedRules, inst.Provider)
 }
 
 // missingRequirements names what a machine lacks from a project's needs:

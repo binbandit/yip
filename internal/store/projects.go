@@ -111,6 +111,11 @@ func GetGrant(ctx context.Context, q Q, projectID, engineerID string) (protocol.
 	return g, notFound(err)
 }
 
+// EngineerProjectIDs lists the projects an engineer has any access to.
+func EngineerProjectIDs(ctx context.Context, q Q, engineerID string) ([]string, error) {
+	return stringsCol(ctx, q, `SELECT project_id FROM project_grants WHERE engineer_id = ? AND access <> 'none' ORDER BY project_id`, engineerID)
+}
+
 // GrantsDigest summarises an engineer's grants for scope fingerprints.
 func GrantsDigest(ctx context.Context, q Q, engineerID string) (string, error) {
 	gs, err := list(ctx, q, scanGrant, `SELECT `+grantCols+` FROM project_grants WHERE engineer_id = ? ORDER BY project_id`, engineerID)

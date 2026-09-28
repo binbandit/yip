@@ -229,9 +229,17 @@ func runHub(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("\nNo owner exists yet. Finish setup in your browser:\n\n  http://%s/setup\n\nOne-time setup code (expires %s): %s\n\n", displayAddr(f.listen), exp.Local().Format("15:04"), secret)
+		// The code rides in the fragment, which browsers never send to a server.
+		scheme := "http"
+		if f.tlsCert != "" {
+			scheme = "https"
+		}
+		fmt.Printf("\nNo owner exists yet. Finish setup in your browser:\n\n  %s://%s/setup#code=%s\n\nOne-time setup code (expires %s): %s\n\n", scheme, displayAddr(f.listen), secret, exp.Local().Format("15:04"), secret)
+		if f.localRunner {
+			fmt.Println("This machine will pair as a runner once setup is finished.")
+		}
 	}
-	if f.localRunner {
+	if f.localRunner && waitForOwner(ctx, h) {
 		stopRunner, err := startLocalRunner(ctx, h, f, log)
 		if err != nil {
 			return err
@@ -241,6 +249,24 @@ func runHub(args []string) error {
 	<-ctx.Done()
 	log.Info("shutting down")
 	return nil
+}
+
+// waitForOwner blocks until browser setup has created the workspace, which
+// the local runner's enrollment belongs to. It reports false if the hub is
+// shutting down first.
+func waitForOwner(ctx context.Context, h *hub.Hub) bool {
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if need, err := h.NeedsSetup(ctx); err == nil && !need {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-tick.C:
+		}
+	}
 }
 
 func runSetupCode(args []string) error {

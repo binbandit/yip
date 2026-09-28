@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/binbandit/yip/internal/bridge"
@@ -146,8 +147,11 @@ func (h *Hub) answerQuestion(ctx context.Context, t *txn, questionID string, msg
 		}
 		return true, t.emit(ev{Type: "input.updated", Room: job.Source.RoomID, Job: job.ID, Payload: in})
 	}
-	if job.State == protocol.JobWaiting && job.WaitingReason == protocol.WaitMissingInfo {
-		if n, _ := h.openQuestionsFor(ctx, t.tx, job.ID); n == 0 {
+	// Once nothing else they asked is open, the answer resumes the asker,
+	// whatever the work moved on to wait for meanwhile (a review, a check).
+	// An attempt that is already queued reads the answer when it starts.
+	if n, _ := h.openQuestionsFor(ctx, t.tx, job.ID); n == 0 {
+		if _, err := store.ActiveRunForJob(ctx, t.tx, job.ID); errors.Is(err, store.ErrNotFound) {
 			if _, err := h.enqueueRun(ctx, t, job, runReason{Purpose: "answer", Cause: msg.ID}); err != nil {
 				return true, err
 			}

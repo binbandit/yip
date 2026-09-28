@@ -379,7 +379,7 @@ func TestSessionStreamsEvents(t *testing.T) {
 	}
 	started := r.kinds(providers.EventToolStarted)
 	if len(started) != 2 || started[0].Tool != "Read" || started[0].Text != "Reading refresh.go" ||
-		started[1].Text != "Using yip room post" {
+		started[1].Text != "Writing a message" {
 		t.Errorf("tool started %+v", started)
 	}
 	finished := r.kinds(providers.EventToolFinished)
@@ -832,7 +832,7 @@ func TestToolSummary(t *testing.T) {
 		"Run the tests":                       {"Bash", `{"command":"go test","description":"Run the tests"}`},
 		"Searching for TODO":                  {"Grep", `{"pattern":"TODO"}`},
 		"Fetching example.com":                {"WebFetch", `{"url":"https://example.com/x"}`},
-		"Using yip work create":               {"mcp__yip__work_create", `{}`},
+		"Starting the work":                   {"mcp__yip__work_create", `{}`},
 		"Using Frobnicate":                    {"Frobnicate", `{}`},
 		"Finding files matching **/*_test.go": {"Glob", `{"pattern":"**/*_test.go"}`},
 	}

@@ -288,6 +288,19 @@ func runFake(scenario string, args []string) int {
 		f.completeTurn("completed", nil)
 		f.drain()
 
+	case "rules-readonly":
+		f.handshake()
+		f.configRead()
+		f.account(chatgptAccount, true)
+		f.hooksList(nil)
+		m := f.expect("thread/start")
+		f.thread = "thr_1"
+		f.threadResponse(m.ID, "readOnly")
+		f.startTurn()
+		f.agentMessage("msg_1", "reviewed")
+		f.completeTurn("completed", nil)
+		f.drain()
+
 	case "basic":
 		f.setup("workspaceWrite")
 		f.startTurn()

@@ -12,6 +12,7 @@ import (
 const (
 	classReview   = "review"  // publishing a review outside yip: always refused
 	classExec     = "exec"    // dangerous or uninspectable: exceptional approval
+	classInline   = "inline"  // code given on the command line: exceptional, except in an isolated check
 	classNetwork  = "network" // arbitrary network access: exceptional approval
 	classMerge    = "merge"
 	classPush     = "push"
@@ -19,7 +20,7 @@ const (
 	classLocation = "location" // intermediate: a directory change that cannot inherit repository grants
 )
 
-var classOrder = []string{classReview, classExec, classNetwork, classMerge, classPush, classOpenPR}
+var classOrder = []string{classReview, classExec, classInline, classNetwork, classMerge, classPush, classOpenPR}
 
 // cmdClass is one reason a command needs more than routine permission.
 type cmdClass struct {
@@ -47,7 +48,12 @@ var (
 // no credentials. Its job is to make explicit actions, however they are
 // spelled (`git -C . push`, `/usr/bin/git push`, `sh -c "…"`, `$(…)`),
 // reach the same decision.
-func classifyCommand(line string) []cmdClass {
+func classifyCommand(line string) []cmdClass { return classifyCommandFor(line, "") }
+
+// classifyCommandFor classifies a command run for work whose GitHub
+// repository is repo ("owner/name", or empty): naming that repository
+// explicitly is not selecting another one.
+func classifyCommandFor(line, repo string) []cmdClass {
 	var out []cmdClass
 	add := func(class, why string) {
 		for _, c := range out {
@@ -71,7 +77,7 @@ func classifyCommand(line string) []cmdClass {
 				add(classExec, "it writes outside the workspace ("+r+")")
 			}
 		}
-		classifyArgv(sc.argv, add)
+		classifyArgv(sc.argv, repo, add)
 	}
 	privileged, changedDirectory := false, false
 	for _, c := range out {
@@ -108,7 +114,7 @@ func sortClasses(cs []cmdClass) {
 	}
 }
 
-func classifyArgv(argv []string, add func(class, why string)) {
+func classifyArgv(argv []string, repo string, add func(class, why string)) {
 	// Leading assignments (FOO=1 cmd) and wrappers run the real program.
 	for len(argv) > 0 {
 		a := argv[0]
@@ -169,8 +175,8 @@ func classifyArgv(argv []string, add func(class, why string)) {
 					}
 				}
 				if flag == "-S" || flag == "--split-string" {
-					add(classExec, "env interprets a command string")
-					for _, c := range classifyCommand(value) {
+					add(classInline, "env interprets a command string")
+					for _, c := range classifyCommandFor(value, repo) {
 						add(c.Class, c.Why)
 					}
 				}
@@ -180,13 +186,13 @@ func classifyArgv(argv []string, add func(class, why string)) {
 				}
 			}
 		}
-		classifyArgv(args, add)
+		classifyArgv(args, repo, add)
 	case "command", "builtin", "nohup", "time", "exec", "caffeinate", "stdbuf", "ionice":
-		classifyArgv(skipFlags(args), add)
+		classifyArgv(skipFlags(args), repo, add)
 	case "export", "readonly", "declare", "typeset", "local":
 		for _, assignment := range args {
 			if reAssignment.MatchString(assignment) {
-				classifyArgv([]string{assignment}, add)
+				classifyArgv([]string{assignment}, repo, add)
 			}
 		}
 	case "cd", "pushd":
@@ -207,13 +213,13 @@ func classifyArgv(argv []string, add func(class, why string)) {
 		if len(args) >= 2 && args[0] == "-n" {
 			args = args[2:]
 		}
-		classifyArgv(skipFlags(args), add)
+		classifyArgv(skipFlags(args), repo, add)
 	case "timeout", "gtimeout":
 		rest := skipFlags(args)
 		if len(rest) > 0 {
 			rest = rest[1:] // the duration
 		}
-		classifyArgv(rest, add)
+		classifyArgv(rest, repo, add)
 	case "xargs":
 		i := 0
 		for i < len(args) && strings.HasPrefix(args[i], "-") {
@@ -224,7 +230,7 @@ func classifyArgv(argv []string, add func(class, why string)) {
 			i++
 		}
 		if i < len(args) {
-			classifyArgv(args[i:], add)
+			classifyArgv(args[i:], repo, add)
 		}
 	case "find":
 		for i, a := range args {
@@ -239,7 +245,7 @@ func classifyArgv(argv []string, add func(class, why string)) {
 					}
 					sub = append(sub, b)
 				}
-				classifyArgv(sub, add)
+				classifyArgv(sub, repo, add)
 			}
 			if a == "-delete" {
 				for _, p := range args {
@@ -253,15 +259,15 @@ func classifyArgv(argv []string, add func(class, why string)) {
 		add(classExec, "it runs "+base)
 	case "eval", "source", ".":
 		if base == "eval" {
-			add(classExec, "it evaluates generated shell code")
+			add(classInline, "it evaluates generated shell code")
 		}
 	case "sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh", "pwsh", "powershell":
 		if inlineCode(args, "c", "command") || len(operands(args)) == 0 {
-			add(classExec, "it runs inline shell code")
+			add(classInline, "it runs inline shell code")
 			// Classify the inline script too, so its own actions (a push, a
 			// merge) are named in the request.
 			if code := operands(args); len(code) > 0 {
-				for _, c := range classifyCommand(code[0]) {
+				for _, c := range classifyCommandFor(code[0], repo) {
 					add(c.Class, c.Why)
 				}
 			}
@@ -270,7 +276,7 @@ func classifyArgv(argv []string, add func(class, why string)) {
 		interp := strings.TrimRight(base, "0123456789")
 		if inlineCode(args, inlineFlags[interp]...) || (len(args) > 0 && args[0] == "-") ||
 			(interp != "deno" && interp != "bun" && len(args) == 0) {
-			add(classExec, "it runs inline "+base+" code")
+			add(classInline, "it runs inline "+base+" code")
 		}
 	case "curl", "wget", "nc", "ncat", "netcat", "socat", "telnet", "ftp", "tftp", "aria2c", "httpie", "http", "https", "xh":
 		add(classNetwork, "it uses "+base)
@@ -302,7 +308,7 @@ func classifyArgv(argv []string, add func(class, why string)) {
 	case "git":
 		classifyGit(args, add)
 	case "gh":
-		classifyGH(args, add)
+		classifyGH(args, repo, add)
 	case "hub":
 		if w := words(args, nil); len(w) > 0 && (w[0] == "push" || w[0] == "pull-request" || w[0] == "merge" || w[0] == "api") {
 			add(classExec, "it uses the hub CLI to change the remote")
@@ -360,6 +366,10 @@ func classifyGit(args []string, add func(class, why string)) {
 	return
 sub:
 	sub, rest := args[i], args[i+1:]
+	if strings.ContainsAny(sub, "$`") {
+		add(classExec, "the git subcommand is computed at run time")
+		return
+	}
 	switch sub {
 	case "push", "send-pack", "send-email", "request-pull":
 		add(classPush, "it pushes to a remote")
@@ -454,7 +464,7 @@ func dangerousGitConfig(kv string) bool {
 
 // classifyGH maps GitHub CLI subcommands onto grants. Reads are routine;
 // anything that changes the remote needs the matching grant or approval.
-func classifyGH(args []string, add func(class, why string)) {
+func classifyGH(args []string, repo string, add func(class, why string)) {
 	w := words(args, map[string]bool{"-R": true, "--repo": true, "--hostname": true})
 	if len(w) == 0 {
 		return
@@ -463,9 +473,27 @@ func classifyGH(args []string, add func(class, why string)) {
 	if len(w) > 1 {
 		verb = w[1]
 	}
+	if strings.ContainsAny(area+verb, "$`") {
+		add(classExec, "the gh command is computed at run time")
+		return
+	}
 	if area == "pr" && (verb == "create" || verb == "merge") {
-		for _, arg := range args {
-			if arg == "--repo" || strings.HasPrefix(arg, "--repo=") || strings.HasPrefix(arg, "-R") || arg == "--hostname" || strings.HasPrefix(arg, "--hostname=") {
+		for i, arg := range args {
+			selected, named := "", true
+			switch {
+			case arg == "--repo" || arg == "-R":
+				if i+1 < len(args) {
+					selected = args[i+1]
+				}
+			case strings.HasPrefix(arg, "--repo="):
+				selected = strings.TrimPrefix(arg, "--repo=")
+			case strings.HasPrefix(arg, "-R"):
+				selected = strings.TrimPrefix(arg, "-R")
+			case arg == "--hostname" || strings.HasPrefix(arg, "--hostname="):
+			default:
+				named = false
+			}
+			if named && (repo == "" || !strings.EqualFold(strings.TrimSuffix(selected, ".git"), repo)) {
 				add(classExec, "it selects a GitHub repository outside the assigned checkout")
 			}
 		}
@@ -580,9 +608,12 @@ type simpleCmd struct {
 }
 
 // splitShell tokenizes a POSIX-style command line into simple commands.
-// dynamic names the first construct whose effect depends on run-time
-// expansion (command substitution or process substitution). Heredoc data
-// is consumed separately, so writing shell examples is not executing them.
+// The commands inside a command or process substitution are returned
+// alongside the rest, and the substitution's output stands in the word as
+// an unknown value, like a variable. dynamic names the first construct whose
+// effect yip still can't inspect (a here-string, a substitution inside heredoc
+// data or arithmetic). Heredoc data is consumed separately, so writing shell
+// examples is not executing them.
 func splitShell(s string) (cmds []simpleCmd, dynamic string, ok bool) {
 	var cur simpleCmd
 	type heredoc struct {
@@ -618,6 +649,32 @@ func splitShell(s string) (cmds []simpleCmd, dynamic string, ok bool) {
 			dynamic = what
 		}
 	}
+	// expand replaces the substitution starting at s[i] with an unknown
+	// value, classifying the commands it runs. It returns where to continue.
+	expand := func(i int) (int, bool) {
+		next, body, arithmetic, ok := substitution(s, i)
+		if !ok {
+			return 0, false
+		}
+		if arithmetic {
+			// Arithmetic runs no command unless it nests a substitution.
+			if strings.Contains(body, "$(") || strings.Contains(body, "`") {
+				mark("a command substitution inside arithmetic")
+			}
+		} else {
+			inner, innerDynamic, innerOK := splitShell(body)
+			if !innerOK {
+				return 0, false
+			}
+			cmds = append(cmds, inner...)
+			if innerDynamic != "" {
+				mark(innerDynamic)
+			}
+		}
+		tok.WriteString("$(…)")
+		inTok = true
+		return next, true
+	}
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
@@ -644,12 +701,12 @@ func splitShell(s string) (cmds []simpleCmd, dynamic string, ok bool) {
 				case s[i] == '\\' && i+1 < len(s):
 					i++
 					tok.WriteByte(s[i])
-				case s[i] == '`':
-					mark("command substitution")
-					tok.WriteByte(s[i])
-				case s[i] == '$' && i+1 < len(s) && s[i+1] == '(':
-					mark("command substitution")
-					tok.WriteByte(s[i])
+				case s[i] == '`' || s[i] == '$' && i+1 < len(s) && s[i+1] == '(':
+					next, ok := expand(i)
+					if !ok {
+						return nil, "", false
+					}
+					i = next - 1
 				default:
 					tok.WriteByte(s[i])
 				}
@@ -658,18 +715,12 @@ func splitShell(s string) (cmds []simpleCmd, dynamic string, ok bool) {
 				return nil, "", false
 			}
 			inTok = true
-		case c == '`':
-			mark("command substitution")
-			tok.WriteByte(c)
-			inTok = true
-		case c == '$' && i+1 < len(s) && s[i+1] == '(':
-			mark("command substitution")
-			tok.WriteByte(c)
-			inTok = true
-		case (c == '<' || c == '>') && i+1 < len(s) && s[i+1] == '(':
-			mark("process substitution")
-			tok.WriteByte(c)
-			inTok = true
+		case c == '`' || (c == '$' || c == '<' || c == '>') && i+1 < len(s) && s[i+1] == '(':
+			next, ok := expand(i)
+			if !ok {
+				return nil, "", false
+			}
+			i = next - 1
 		case c == ' ' || c == '\t':
 			flushTok()
 		case c == '#' && !inTok:
@@ -815,6 +866,55 @@ func splitShell(s string) (cmds []simpleCmd, dynamic string, ok bool) {
 		return nil, "", false
 	}
 	return cmds, dynamic, true
+}
+
+// substitution reads the command substitution (`…`, $(…)), process
+// substitution (<(…), >(…)) or arithmetic ($((…))) starting at s[i]. It
+// returns the index just past its closing delimiter and the text inside,
+// honouring nested parentheses, quotes and escapes.
+func substitution(s string, i int) (next int, body string, arithmetic, ok bool) {
+	if s[i] == '`' {
+		for j := i + 1; j < len(s); j++ {
+			switch s[j] {
+			case '\\':
+				j++
+			case '`':
+				return j + 1, strings.ReplaceAll(s[i+1:j], "\\`", "`"), false, true
+			}
+		}
+		return 0, "", false, false
+	}
+	start := i + 2
+	arithmetic = s[i] == '$' && start < len(s) && s[start] == '('
+	depth := 1
+	for j := start; j < len(s); j++ {
+		switch s[j] {
+		case '\\':
+			j++
+		case '\'':
+			k := strings.IndexByte(s[j+1:], '\'')
+			if k < 0 {
+				return 0, "", false, false
+			}
+			j += k + 1
+		case '"':
+			for j++; j < len(s) && s[j] != '"'; j++ {
+				if s[j] == '\\' {
+					j++
+				}
+			}
+			if j >= len(s) {
+				return 0, "", false, false
+			}
+		case '(':
+			depth++
+		case ')':
+			if depth--; depth == 0 {
+				return j + 1, s[start:j], arithmetic, true
+			}
+		}
+	}
+	return 0, "", false, false
 }
 
 func isDigits(s string) bool {

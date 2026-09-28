@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/binbandit/yip/protocol"
@@ -118,6 +119,9 @@ type StartSpec struct {
 	Timeout    time.Duration
 	// FakeScript is only read by the fake provider.
 	FakeScript json.RawMessage
+	// TrustProviderRules is the owner's permission for the provider's own
+	// always-allow rules to apply when the run is read-only.
+	TrustProviderRules bool
 }
 
 // Result is the terminal outcome of a session.
@@ -159,4 +163,18 @@ type Adapter interface {
 	// reading credential files), capabilities, and models.
 	Probe(ctx context.Context) protocol.ProviderInstallation
 	Start(ctx context.Context, spec StartSpec) (Session, error)
+}
+
+// RunSummary describes a command for an approval request in one line: its
+// first line (a heredoc's body stays in the full command), shortened.
+func RunSummary(cmd string) string {
+	line, rest, _ := strings.Cut(strings.TrimSpace(cmd), "\n")
+	more := strings.TrimSpace(rest) != ""
+	if r := []rune(line); len(r) > 160 {
+		line, more = string(r[:160]), true
+	}
+	if more {
+		line += " …"
+	}
+	return "Run `" + line + "`"
 }

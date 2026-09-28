@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -57,8 +58,14 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 		Mode: run.Mode, Now: h.now(),
 	}
 
-	// Projects linked to the destination room, plus the job's own project.
-	projectIDs := append([]string{}, room.ProjectIDs...)
+	// Projects linked to the destination room, plus the job's own project. A
+	// direct conversation spans the projects this engineer works on, as it
+	// would with a colleague.
+	roomProjects := room.ProjectIDs
+	if room.Kind == protocol.RoomKindDM {
+		roomProjects, _ = store.EngineerProjectIDs(ctx, q, eng.ID)
+	}
+	projectIDs := append([]string{}, roomProjects...)
 	if job.ProjectID != "" && !contains(projectIDs, job.ProjectID) {
 		projectIDs = append(projectIDs, job.ProjectID)
 	}
@@ -140,8 +147,17 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 	if job.RepoID != "" {
 		if r, err := store.GetRepo(ctx, q, job.RepoID); err == nil {
 			repo = &r
-			jf.Repo = r.Name
-			jf.NoRemote = r.RemoteURL == ""
+		}
+	} else if job.Kind == protocol.JobKindReply {
+		// A question about the code is answered from the code, like a
+		// colleague would, without opening work just to read it.
+		repo = h.conversationRepo(ctx, q, roomProjects, eng.ID)
+	}
+	if repo != nil {
+		jf.Repo = repo.Name
+		jf.NoRemote = repo.RemoteURL == ""
+		if jf.Project == "" {
+			jf.Project = projectNames[repo.ProjectID]
 		}
 	}
 	if job.Revision != nil {
@@ -280,6 +296,7 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 				c.Access = "none"
 			}
 		}
+		c.CannotReview = h.cannotRun(ctx, q, e, protocol.ModeReadOnly, job.ProjectID)
 		if n, _ := store.CountActiveRuns(ctx, q, e.ID, "", "", true); n > 0 {
 			c.Busy = "busy right now"
 		} else if len(e.ActiveJobIDs) > 0 {
@@ -300,6 +317,9 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 		RunID: run.ID, JobID: job.ID, Attempt: run.Attempt, EngineerID: eng.ID, EngineerName: ver.Name, EngineerVersionID: ver.ID,
 		Provider: run.Provider, Model: firstNonEmpty(run.Model, ver.Provider.Model), Mode: run.Mode, ExecutionProfile: run.ExecutionProfile,
 		ScopeFingerprint: m.ScopeFingerprint, Tools: bridge.NamesForMode(run.Mode), TimeoutMs: h.lim.RunTimeout.Milliseconds(),
+	}
+	if node, err := store.GetNode(ctx, q, nodeID); err == nil {
+		x.TrustProviderRules = slices.Contains(node.TrustedRules, run.Provider)
 	}
 	if snapshot != nil && snapshot.ArtifactID != "" {
 		a, err := store.GetArtifact(ctx, q, snapshot.ArtifactID)
@@ -423,6 +443,24 @@ func (h *Hub) bundleFor(ctx context.Context, q store.Q, head string) *protocol.A
 // project-scoped decisions for projects linked to the room whose visibility
 // is unrestricted or includes this room, room-scoped decisions of this room,
 // and organisation-wide decisions. A query narrows by full-text search.
+// conversationRepo is the repository a reply can read: the only one in the
+// conversation's projects that this engineer has access to, or nil.
+func (h *Hub) conversationRepo(ctx context.Context, q store.Q, projectIDs []string, engineerID string) *protocol.Repo {
+	var found []protocol.Repo
+	for _, pid := range projectIDs {
+		if g, err := store.GetGrant(ctx, q, pid, engineerID); err != nil || g.Access == "none" {
+			continue
+		}
+		if p, err := store.GetProject(ctx, q, pid); err == nil {
+			found = append(found, p.Repos...)
+		}
+	}
+	if len(found) != 1 {
+		return nil
+	}
+	return &found[0]
+}
+
 func (h *Hub) visibleDecisions(ctx context.Context, q store.Q, room protocol.Room, query string) ([]protocol.Decision, error) {
 	all, err := store.ListDecisions(ctx, q, `status = 'accepted'`)
 	if err != nil {

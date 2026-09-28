@@ -78,6 +78,7 @@ func (s *Server) routes() {
 	a("GET /v1/nodes", s.listNodes)
 	a("POST /v1/nodes/enrollments", s.createEnrollment)
 	a("POST /v1/nodes/{id}/drain", s.drainNode)
+	a("POST /v1/nodes/{id}/trust-rules", s.trustNodeRules)
 	a("POST /v1/nodes/{id}/stop", s.stopNode)
 	a("POST /v1/nodes/{id}/probe", s.probeNode)
 	a("POST /v1/nodes/{id}/workspaces/{name}/remove", s.removeWorkspace)
@@ -548,6 +549,15 @@ func (s *Server) drainNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, err := s.hub.SetDraining(r.Context(), userFrom(r).ID, r.PathValue("id"), req.Drain)
+	respond(s, w, r, n, err)
+}
+
+func (s *Server) trustNodeRules(w http.ResponseWriter, r *http.Request) {
+	req, ok := decodeJSON[protocol.TrustRulesRequest](s, w, r)
+	if !ok {
+		return
+	}
+	n, err := s.hub.SetTrustedRules(r.Context(), userFrom(r).ID, r.PathValue("id"), req.Provider, req.Trust)
 	respond(s, w, r, n, err)
 }
 

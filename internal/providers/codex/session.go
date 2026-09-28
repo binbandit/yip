@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/binbandit/yip/internal/bridge"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -408,27 +410,21 @@ func sandboxMode(mode string) string {
 	return sandboxReadOnly
 }
 
-// approvalPolicy never combines "never ask" with full access.
+// approvalPolicy never combines "never ask" with anything but read-only.
 //
 //   - edit: "on-request". Commands run inside Codex's workspace-write
 //     sandbox; anything that must leave it (escalation, network, writes
 //     outside the workdir) becomes an approval request answered by yip.
-//   - readonly / conversation: granular policy that forbids sandbox
-//     escalation, exec-policy prompts, permission grants and skill
-//     approvals outright (Codex reports them to the model as forbidden), so
-//     nothing can leave the read-only sandbox even if someone would approve
-//     it. MCP elicitations stay enabled so MCP prompts still reach yip.
+//   - readonly / conversation: "never", with the read-only sandbox. Nothing
+//     can ask to leave the sandbox, so nothing leaves it even if someone
+//     would approve it; Codex tells the model the action was refused. yip's
+//     own MCP tools are pre-approved in the thread config. (The granular
+//     form needs Codex's experimental API, which yip doesn't opt into.)
 func approvalPolicy(mode string) any {
 	if mode == protocol.ModeEdit {
 		return approvalOnRequest
 	}
-	return map[string]any{"granular": map[string]any{
-		"sandbox_approval":    false,
-		"rules":               false,
-		"request_permissions": false,
-		"skill_approval":      false,
-		"mcp_elicitations":    true,
-	}}
+	return approvalNever
 }
 
 // threadConfig is the per-thread config override map (applied by Codex as
@@ -580,7 +576,7 @@ func (s *session) inspectStartup(ctx context.Context) ([]string, error) {
 	// what is needed (names) and drop the rest.
 	s.cfg = configReadResponse{}
 	if len(s.rules) > 0 {
-		// Only reachable in edit mode (Start refuses read-only modes).
+		// Edit mode, or a read-only mode the owner allowed them in.
 		s.warn("Codex exec-policy rules apply to this run: commands they allow run outside the sandbox without asking yip (" + strings.Join(s.rules, ", ") + ")")
 	}
 	names := map[string]bool{}
@@ -1213,6 +1209,18 @@ func (s *session) paths(changes []fileUpdateChange) string {
 	return strings.Join(ps, ", ")
 }
 
+// reShellWrapper matches the login shell Codex wraps commands in.
+var reShellWrapper = regexp.MustCompile(`^(?:/bin/|/usr/bin/)?(?:zsh|bash|sh) -l?c (?:'([^']*)'|"((?:[^"\\]|\\.)*)")$`)
+
+// shownCommand is the command as the engineer wrote it, without the shell
+// wrapper, for activity lines.
+func shownCommand(cmd string) string {
+	if m := reShellWrapper.FindStringSubmatch(strings.TrimSpace(cmd)); m != nil {
+		return m[1] + m[2]
+	}
+	return cmd
+}
+
 func toolName(it threadItem) string {
 	switch it.Type {
 	case "commandExecution":
@@ -1236,11 +1244,15 @@ func (s *session) itemStarted(it threadItem) {
 	data := rawJSON(map[string]any{"itemId": it.ID, "type": it.Type})
 	switch it.Type {
 	case "commandExecution":
-		s.emit(providers.Event{Kind: providers.EventToolStarted, Tool: "shell", Text: "Running `" + truncate(it.Command, 160) + "`", Data: data})
+		s.emit(providers.Event{Kind: providers.EventToolStarted, Tool: "shell", Text: "Running `" + truncate(shownCommand(it.Command), 160) + "`", Data: data})
 	case "fileChange":
 		s.emit(providers.Event{Kind: providers.EventToolStarted, Tool: "edit", Text: "Editing " + s.paths(it.Changes), Data: data})
 	case "mcpToolCall", "dynamicToolCall":
-		s.emit(providers.Event{Kind: providers.EventToolStarted, Tool: toolName(it), Text: "Calling " + toolName(it), Data: data})
+		text := "Calling " + toolName(it)
+		if doing := bridge.Activity(it.Tool); it.Server == mcpName(s.spec) && doing != "" {
+			text = doing
+		}
+		s.emit(providers.Event{Kind: providers.EventToolStarted, Tool: toolName(it), Text: text, Data: data})
 	case "webSearch":
 		s.emit(providers.Event{Kind: providers.EventToolStarted, Tool: "web_search", Text: "Searching the web", Data: data})
 	}
@@ -1407,7 +1419,7 @@ func (s *session) handleRequest(msg rpcMessage) {
 		var p legacyExecApprovalParams
 		_ = json.Unmarshal(msg.Params, &p)
 		cmd := strings.Join(p.Command, " ")
-		action := protocol.ApprovalAction{Kind: "exec", Command: cmd, Target: p.Cwd, Summary: "Run `" + truncate(cmd, 160) + "`"}
+		action := protocol.ApprovalAction{Kind: "exec", Command: cmd, Target: p.Cwd, Summary: providers.RunSummary(cmd)}
 		if p.Reason != nil {
 			action.Detail = *p.Reason
 		}
@@ -1474,7 +1486,7 @@ func (s *session) commandAction(p commandApprovalParams) protocol.ApprovalAction
 	} else {
 		a.Target = s.spec.Workdir
 	}
-	a.Summary = "Run `" + truncate(a.Command, 160) + "`"
+	a.Summary = providers.RunSummary(a.Command)
 	if a.Target != "" && !samePath(a.Target, s.spec.Workdir) {
 		a.Summary += " in " + a.Target
 	}

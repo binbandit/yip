@@ -95,7 +95,7 @@ func TestTwoMachinesAndCheckpointMove(t *testing.T) {
 func TestMachineWorkspaceKindsAndSizes(t *testing.T) {
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
-		case replyTo(m, "Reverse engineering", "map the gateway"):
+		case replyTo(m, "Engineering", "map the gateway"):
 			return script(toolStep("work_create", map[string]any{"title": "Map the gateway", "objective": "Map it", "kind": "investigation", "project": "Beacon", "repo": "beacon-gateway"}, ""))
 		case m.Job.Title == "Map the gateway":
 			return script(fake.Step{Write: &fake.WriteFile{Path: "notes.txt", Content: "draft notes"}},
@@ -103,7 +103,10 @@ func TestMachineWorkspaceKindsAndSizes(t *testing.T) {
 		}
 		return nil
 	}})
-	e.post("Reverse engineering", "@Pip can you map the gateway?", []string{"pip"}, nil)
+	// Pip can read both of Engineering's projects, so a reply there works in
+	// a scratch space rather than reading one repository.
+	e.c.must("PUT", "/v1/projects/"+e.project("Atlas").ID+"/grants/"+e.engineerID("pip"), protocol.PutGrantRequest{Access: "read"}, nil)
+	e.post("Engineering", "@Pip can you map the gateway?", []string{"pip"}, nil)
 	done := e.waitJob("Map the gateway", protocol.JobCompleted)
 	node := e.nodeByName("Test mini")
 	var scratch, checkout protocol.NodeWorkspace

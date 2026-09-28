@@ -311,6 +311,12 @@
           },
           "type": "array"
         },
+        "githubHosts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "nodes": {
           "items": {
             "$ref": "#/$defs/Node"
@@ -365,7 +371,8 @@
         "serverTime",
         "version",
         "demo",
-        "providers"
+        "providers",
+        "githubHosts"
       ],
       "type": "object"
     },
@@ -2315,6 +2322,12 @@
           },
           "type": "object"
         },
+        "trustedRules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "workspaces": {
           "items": {
             "$ref": "#/$defs/NodeWorkspace"
@@ -2331,6 +2344,7 @@
         "fingerprint",
         "status",
         "draining",
+        "trustedRules",
         "capacity",
         "providers",
         "profiles",
@@ -2795,6 +2809,12 @@
       "properties": {
         "activeSteering": {
           "type": "boolean"
+        },
+        "execPolicyRules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "mcpTools": {
           "type": "boolean"

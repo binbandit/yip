@@ -400,13 +400,10 @@ func TestReadOnlyModeEnforcedByPolicyAndAdapter(t *testing.T) {
 	}
 	type readOnlySent struct {
 		Sandbox        string `json:"sandbox"`
-		ApprovalPolicy struct {
-			Granular map[string]bool `json:"granular"`
-		} `json:"approvalPolicy"`
+		ApprovalPolicy string `json:"approvalPolicy"`
 	}
 	ts := decode[readOnlySent](t, h.sent("thread/start")[0])
-	g := ts.ApprovalPolicy.Granular
-	if ts.Sandbox != "read-only" || g == nil || g["sandbox_approval"] || g["rules"] || g["request_permissions"] || !g["mcp_elicitations"] {
+	if ts.Sandbox != "read-only" || ts.ApprovalPolicy != "never" {
 		t.Errorf("read-only thread params %+v", ts)
 	}
 	if !hasText(evs, providers.EventWarning, "read-only") {
@@ -819,9 +816,33 @@ func TestExecPolicyRulesRefuseReadOnlyAndWarnInEdit(t *testing.T) {
 		t.Fatalf("expected a rules warning: %+v", evs)
 	}
 
-	// Probe reports read-only as unavailable.
+	// Read-only the owner allowed the rules in: runs, and still warns.
+	h = newHarness(t, "rules-readonly", "YIP_CODEX_FAKE_HOME="+home)
+	spec = h.spec()
+	spec.Mode, spec.TrustProviderRules = protocol.ModeReadOnly, true
+	s = h.start(spec)
+	evs = collect(t, s, nil)
+	if res := waitResult(t, s); res.Outcome != protocol.OutcomeSucceeded || !hasText(evs, providers.EventWarning, rule) {
+		t.Fatalf("trusted read-only with rules: %+v %+v", res, evs)
+	}
+
+	// Probe reports read-only as unavailable and names the rule files.
 	h = newHarness(t, "probe-rules", "YIP_CODEX_FAKE_HOME="+home)
-	if inst := h.adapter.Probe(context.Background()); inst.Capabilities.ReadOnly || !strings.Contains(strings.Join(inst.Limitations, " "), "default.rules") {
+	if inst := h.adapter.Probe(context.Background()); inst.Capabilities.ReadOnly || !strings.Contains(strings.Join(inst.Limitations, " "), "default.rules") ||
+		len(inst.Capabilities.ExecPolicyRules) != 1 || inst.Capabilities.ExecPolicyRules[0] != rule {
 		t.Fatalf("probe with rules: %+v", inst)
+	}
+}
+
+func TestShownCommandDropsTheShellWrapper(t *testing.T) {
+	for in, want := range map[string]string{
+		`/bin/zsh -lc "go test ./..."`: "go test ./...",
+		`bash -c 'git status --short'`: "git status --short",
+		`go vet ./...`:                 "go vet ./...",
+		`/bin/zsh -lc "a" && echo "b"`: `/bin/zsh -lc "a" && echo "b"`,
+	} {
+		if got := shownCommand(in); got != want {
+			t.Errorf("shownCommand(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

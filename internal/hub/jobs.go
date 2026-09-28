@@ -536,7 +536,12 @@ func (h *Hub) peerApproved(ctx context.Context, q store.Q, job store.JobRow, key
 			}
 			pending = append(pending, name+"'s review is of an older "+noun+"; request another round on "+shortRev(key))
 		case domain.ReviewOpen(cur.State):
-			pending = append(pending, name+"'s review of "+shortRev(key)+" (in progress)")
+			if rj, err := store.GetJob(ctx, q, cur.ReviewJobID); err == nil && rj.State == protocol.JobWaiting && (rj.WaitingReason == protocol.WaitMachine || rj.WaitingReason == protocol.WaitProviderSignIn) {
+				pending = append(pending, name+"'s review of "+shortRev(key)+", which can't start: "+rj.StateDetail+
+					" Withdraw it with work_withdraw_review if another colleague reviews instead")
+			} else {
+				pending = append(pending, name+"'s review of "+shortRev(key)+" (in progress)")
+			}
 		case len(open) > 0:
 			pending = append(pending, fmt.Sprintf("%d unresolved blocking finding(s) from %s", len(open), name))
 		case cur.State == protocol.ReviewChangesRequested:
@@ -549,6 +554,14 @@ func (h *Hub) peerApproved(ctx context.Context, q store.Q, job store.JobRow, key
 		return false, strings.Join(pending, "; "), nil
 	}
 	if approvals == 0 {
+		// An approval is bound to its exact revision, not to the work it was
+		// given in: re-publishing an approved commit (to open its pull
+		// request, say) needs no second review of the same code.
+		if job.Kind == protocol.JobKindCode && job.RepoID != "" {
+			if _, _, err := store.RevisionApprover(ctx, q, job.RepoID, key, job.OwnerID); err == nil {
+				return true, "", nil
+			}
+		}
 		return false, "a peer approval of " + shortRev(key) + " (choose a suitable colleague with work_request_review)", nil
 	}
 	return true, "", nil

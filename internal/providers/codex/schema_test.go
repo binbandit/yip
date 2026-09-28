@@ -316,7 +316,6 @@ func TestSchemaEnums(t *testing.T) {
 		t.Fatalf("SandboxMode enum index looks wrong: %v", got)
 	}
 	check("SandboxMode", sandboxReadOnly, sandboxWorkspaceWrite)
-	check("AskForApproval", approvalOnRequest)
 	check("ApprovalsReviewer", approvalsReviewerUser)
 	check("TurnStatus", turnCompleted, turnInterrupted, turnFailed, turnInProgress)
 	check("CommandExecutionApprovalDecision", decisionAccept, decisionDecline)
@@ -330,15 +329,8 @@ func TestSchemaEnums(t *testing.T) {
 	check("PatchApplyStatus", "completed", "failed", "declined")
 	check("McpServerStartupState", "failed", "starting", "ready")
 
-	// Granular approval keys used for read-only runs.
-	gran := x.props(x.defs["AskForApproval"], 0)["granular"]
-	gp := x.props(gran, 0)
-	pol := approvalPolicy("readonly").(map[string]any)["granular"].(map[string]any)
-	for k := range pol {
-		if _, ok := gp[k]; !ok {
-			t.Errorf("granular approval key %q not in schema", k)
-		}
-	}
+	// Approval policies used for edit and read-only runs.
+	check("AskForApproval", approvalPolicy("edit").(string), approvalPolicy("readonly").(string))
 	// Account variants used by billing classification.
 	acct := map[string]bool{}
 	for _, v := range x.defs["Account"]["oneOf"].([]any) {

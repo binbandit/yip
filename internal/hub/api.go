@@ -37,6 +37,10 @@ func (h *Hub) Bootstrap(ctx context.Context, u store.UserRow, s store.Session) (
 		return b, err
 	}
 	b.Providers = h.providerSummary(b.Nodes)
+	if b.GitHubHosts, err = store.CredentialHosts(ctx, q, "github"); err != nil {
+		return b, err
+	}
+	b.GitHubHosts = nonNil(b.GitHubHosts)
 	if b.Preferences.Theme == "" {
 		b.Preferences.Theme = "system"
 	}
@@ -105,6 +109,9 @@ func (h *Hub) RoomWork(ctx context.Context, userID, roomID string, includeReplie
 			continue
 		}
 		if r.Job.State == protocol.JobCompleted && r.Job.CompletedAt != nil && h.now().Sub(*r.Job.CompletedAt) > 24*time.Hour {
+			continue
+		}
+		if r.Job.State == protocol.JobFailed && h.now().Sub(r.Job.UpdatedAt) > 24*time.Hour {
 			continue
 		}
 		out = append(out, r)

@@ -170,27 +170,30 @@ type RepoSpec struct {
 
 // ExecutionManifest is the pinned, immutable description of one run attempt.
 type ExecutionManifest struct {
-	RunID             string          `json:"runId"`
-	JobID             string          `json:"jobId"`
-	Attempt           int             `json:"attempt"`
-	EngineerID        string          `json:"engineerId"`
-	EngineerName      string          `json:"engineerName"`
-	EngineerVersionID string          `json:"engineerVersionId"`
-	Provider          string          `json:"provider"`
-	Model             string          `json:"model,omitempty"`
-	ProfileID         string          `json:"profileId,omitempty"`
-	Mode              string          `json:"mode"`
-	ExecutionProfile  string          `json:"executionProfile"`
-	Repo              *RepoSpec       `json:"repo,omitempty"`
-	ReviewArtifact    *Artifact       `json:"reviewArtifact,omitempty"`
-	Instructions      string          `json:"instructions"`
-	Prompt            string          `json:"prompt"`
-	ResumeSessionID   string          `json:"resumeSessionId,omitempty"`
-	ScopeFingerprint  string          `json:"scopeFingerprint"`
-	Tools             []string        `json:"tools"`
-	Checks            []string        `json:"checks"`
-	Context           json.RawMessage `json:"context,omitempty"`
-	TimeoutMs         int64           `json:"timeoutMs"`
+	RunID             string    `json:"runId"`
+	JobID             string    `json:"jobId"`
+	Attempt           int       `json:"attempt"`
+	EngineerID        string    `json:"engineerId"`
+	EngineerName      string    `json:"engineerName"`
+	EngineerVersionID string    `json:"engineerVersionId"`
+	Provider          string    `json:"provider"`
+	Model             string    `json:"model,omitempty"`
+	ProfileID         string    `json:"profileId,omitempty"`
+	Mode              string    `json:"mode"`
+	ExecutionProfile  string    `json:"executionProfile"`
+	Repo              *RepoSpec `json:"repo,omitempty"`
+	ReviewArtifact    *Artifact `json:"reviewArtifact,omitempty"`
+	Instructions      string    `json:"instructions"`
+	Prompt            string    `json:"prompt"`
+	ResumeSessionID   string    `json:"resumeSessionId,omitempty"`
+	ScopeFingerprint  string    `json:"scopeFingerprint"`
+	Tools             []string  `json:"tools"`
+	Checks            []string  `json:"checks"`
+	// TrustProviderRules is the owner's permission for the provider's own
+	// always-allow rules to apply to a read-only run on this machine.
+	TrustProviderRules bool            `json:"trustProviderRules,omitempty"`
+	Context            json.RawMessage `json:"context,omitempty"`
+	TimeoutMs          int64           `json:"timeoutMs"`
 	// FakeScript configures the deterministic fake provider.
 	FakeScript json.RawMessage `json:"fakeScript,omitempty"`
 }

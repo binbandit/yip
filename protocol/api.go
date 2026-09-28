@@ -534,7 +534,7 @@ type PullRequest struct {
 }
 
 type ApprovalAction struct {
-	Kind    string `json:"kind"` // exec | edit | network | push | publish | merge | mcp | other
+	Kind    string `json:"kind"` // exec | check | edit | network | push | publish | merge | mcp | other
 	Summary string `json:"summary"`
 	Command string `json:"command,omitempty"`
 	Target  string `json:"target,omitempty"`
@@ -587,6 +587,10 @@ type ProviderCapabilities struct {
 	ModelEnumeration bool `json:"modelEnumeration"`
 	ReadOnly         bool `json:"readOnly"`
 	MCPTools         bool `json:"mcpTools"`
+	// ExecPolicyRules are the provider's own always-allow rule files on this
+	// machine. They can run matching commands outside the sandbox without
+	// asking yip, so read-only runs need the owner's say-so (Node.TrustedRules).
+	ExecPolicyRules []string `json:"execPolicyRules,omitempty"`
 }
 
 type Model struct {
@@ -642,14 +646,17 @@ type NodeCapacity struct {
 }
 
 type Node struct {
-	ID            string                 `json:"id"`
-	Name          string                 `json:"name"`
-	Hostname      string                 `json:"hostname"`
-	OS            string                 `json:"os"`
-	Arch          string                 `json:"arch"`
-	Fingerprint   string                 `json:"fingerprint"`
-	Status        string                 `json:"status"` // online | suspect | offline | revoked
-	Draining      bool                   `json:"draining"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Hostname    string `json:"hostname"`
+	OS          string `json:"os"`
+	Arch        string `json:"arch"`
+	Fingerprint string `json:"fingerprint"`
+	Status      string `json:"status"` // online | suspect | offline | revoked
+	Draining    bool   `json:"draining"`
+	// TrustedRules lists providers whose own always-allow rules the owner
+	// lets apply to reviews and conversations on this machine.
+	TrustedRules  []string               `json:"trustedRules"`
 	LastSeenAt    *time.Time             `json:"lastSeenAt,omitempty"`
 	Capacity      NodeCapacity           `json:"capacity"`
 	Providers     []ProviderInstallation `json:"providers"`
@@ -809,6 +816,8 @@ type Bootstrap struct {
 	Version     string            `json:"version"`
 	Demo        bool              `json:"demo"`
 	Providers   []ProviderSummary `json:"providers"`
+	// GitHubHosts have a stored credential, so pull requests there are tracked.
+	GitHubHosts []string `json:"githubHosts"`
 }
 
 // ProviderSummary aggregates provider readiness across machines.

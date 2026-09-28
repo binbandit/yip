@@ -68,10 +68,16 @@ func (h *Hub) evaluatePolicy(ctx context.Context, q store.Q, run store.RunRow, j
 			return policyAllow, "the project grant allows publication", ""
 		}
 		return policyAsk, "", "publish"
-	case "exec":
+	case "exec", "check":
 		// Every part of the command line must be authorized; the most
-		// severe unauthorized part decides.
-		classes := classifyCommand(a.Command)
+		// severe unauthorized part decides. A check runs in yip's isolated
+		// check environment (no credentials, SSH agent or git helpers), where
+		// inline code is no riskier than the project's own test suite.
+		var forgeRepo string
+		if r, err := store.GetRepo(ctx, q, job.RepoID); err == nil && r.Forge == "github" {
+			forgeRepo = r.ForgeRepo
+		}
+		classes := classifyCommandFor(a.Command, forgeRepo)
 		if readOnly {
 			for _, c := range classes {
 				if c.Class == classMerge || c.Class == classPush || c.Class == classOpenPR {
@@ -84,6 +90,10 @@ func (h *Hub) evaluatePolicy(ctx context.Context, q store.Q, run store.RunRow, j
 			switch c.Class {
 			case classReview:
 				return policyDeny, c.Why, ""
+			case classInline:
+				if a.Kind != "check" {
+					return policyAsk, c.Why, classExec
+				}
 			case classExec, classNetwork:
 				return policyAsk, c.Why, c.Class
 			case classMerge, classPush, classOpenPR:
@@ -188,7 +198,7 @@ func (h *Hub) onApprovalRequest(ctx context.Context, nodeID, runID string, epoch
 		eng, _ := store.GetEngineer(ctx, t.tx, run.EngineerID)
 		ownerID, _ := h.ownerID(ctx, t.tx)
 		owner, _ := store.GetUser(ctx, t.tx, ownerID)
-		body := "@" + owner.Handle + " " + eng.Name + " needs permission for something outside the current grants: " + req.Action.Summary
+		body := "@" + owner.Handle + " " + eng.Name + " needs permission for something outside the current grants: " + oneLineText(req.Action.Summary)
 		msg, err := t.postMessage(newMessage{Room: job.Source.RoomID, Thread: job.Source.ThreadID, Author: systemActor, Kind: protocol.MessageApproval,
 			Body: body, Mentions: []protocol.Mention{{Kind: protocol.ActorUser, ID: ownerID}},
 			Refs: []protocol.Ref{{Kind: "approval", ID: ap.ID}, {Kind: "job", ID: job.ID}}, JobID: job.ID, RunID: run.ID})

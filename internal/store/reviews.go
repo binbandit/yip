@@ -160,6 +160,17 @@ func listFindings(ctx context.Context, q Q, where string, args ...any) ([]protoc
 }
 
 // OpenBlockingFindings lists unresolved blocking findings across all rounds.
+// RevisionApprover finds a colleague other than author who approved exactly
+// this revision of a repository in any work, with no blocking finding left
+// open in that review. It returns the reviewer and the work reviewed.
+func RevisionApprover(ctx context.Context, q Q, repoID, head, author string) (reviewerID, jobID string, err error) {
+	err = q.QueryRowContext(ctx, `SELECT v.reviewer_id, v.job_id FROM review_rounds r JOIN reviews v ON v.id = r.review_id
+		WHERE r.state = 'approved' AND r.repo_id = ? AND r.head_rev = ? AND v.reviewer_id <> ? AND COALESCE(r.superseded_by, '') = ''
+		AND NOT EXISTS (SELECT 1 FROM review_findings f WHERE f.review_id = v.id AND f.severity = 'blocking' AND f.status IN ('open','addressed','disputed'))
+		ORDER BY r.decided_at DESC LIMIT 1`, repoID, head, author).Scan(&reviewerID, &jobID)
+	return reviewerID, jobID, notFound(err)
+}
+
 func OpenBlockingFindings(ctx context.Context, q Q, reviewID string) ([]protocol.Finding, error) {
 	return listFindings(ctx, q, `review_id = ? AND severity = 'blocking' AND status IN ('open','addressed','disputed')`, reviewID)
 }

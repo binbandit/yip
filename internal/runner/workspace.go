@@ -190,7 +190,14 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		}
 		defer os.Remove(source)
 		dir := filepath.Join(w.paths.work(), "review-"+domain.Short(m.RunID))
-		if err := os.MkdirAll(dir, 0o700); err != nil {
+		ws := &Workspace{Dir: dir, ReadOnly: true, Scratch: true}
+		if m.Repo != nil {
+			// A document about a repository is checked against it: a
+			// read-only checkout, with the document beside the code.
+			if ws, err = w.readOnlyCheckout(ctx, *m.Repo, dir, fetch); err != nil {
+				return nil, err
+			}
+		} else if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, err
 		}
 		in, err := os.Open(source)
@@ -213,9 +220,18 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		if err := makeReadOnly(dir); err != nil {
 			return nil, err
 		}
-		return &Workspace{Dir: dir, ReadOnly: true, Scratch: true}, nil
+		return ws, nil
 	}
 
+	if m.Repo != nil && m.Mode != protocol.ModeEdit && m.Repo.SnapshotRev == "" {
+		// A conversation reads the repository: a read-only checkout of the
+		// default branch, removed when the run ends.
+		ws, err := w.readOnlyCheckout(ctx, *m.Repo, filepath.Join(w.paths.work(), "read-"+domain.Short(m.RunID)), fetch)
+		if err != nil {
+			return nil, err
+		}
+		return ws, makeReadOnly(ws.Dir)
+	}
 	if m.Repo == nil {
 		dir := filepath.Join(w.paths.work(), "scratch-"+domain.Short(m.RunID))
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -298,6 +314,28 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		return nil, err
 	}
 	return &Workspace{Dir: dir, Replica: rep, Branch: branch, Base: base}, nil
+}
+
+// readOnlyCheckout checks out a repository for reading (a document review,
+// a conversation): the recorded base when this machine has it, otherwise the
+// default branch. The caller makes it read-only.
+func (w *Workspaces) readOnlyCheckout(ctx context.Context, repo protocol.RepoSpec, dir string, fetch bundleFetcher) (*Workspace, error) {
+	rep, err := w.replica(ctx, repo, fetch)
+	if err != nil {
+		return nil, err
+	}
+	rev := repo.BaseRev
+	if rev == "" || !hasCommit(ctx, rep, rev) {
+		if rev, err = defaultHead(ctx, rep, repo.DefaultBranch); err != nil {
+			return nil, err
+		}
+	}
+	_ = makeWritable(dir)
+	_ = os.RemoveAll(dir)
+	if _, err := git(ctx, rep, "worktree", "add", "--quiet", "--detach", dir, rev); err != nil {
+		return nil, err
+	}
+	return &Workspace{Dir: dir, Replica: rep, Base: rev, ReadOnly: true}, nil
 }
 
 // Release cleans up a read-only snapshot. Editing worktrees are kept: dirty

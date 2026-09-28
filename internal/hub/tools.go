@@ -276,6 +276,13 @@ func (h *Hub) dispatchTool(ctx context.Context, run store.RunRow, call protocol.
 			}
 			out, err = h.toolRequestReview(ctx, t, env, a)
 			return err
+		case bridge.WorkWithdrawReview:
+			a, err := decode[bridge.WorkWithdrawReviewArgs](call.Args)
+			if err != nil {
+				return err
+			}
+			out, err = h.toolWithdrawReview(ctx, t, env, a)
+			return err
 		case bridge.WorkReview:
 			a, err := decode[bridge.WorkReviewArgs](call.Args)
 			if err != nil {
@@ -1034,6 +1041,11 @@ func (h *Hub) toolWorkAddInput(ctx context.Context, t *txn, env toolEnv, a bridg
 	}
 	in, err := h.addJobInput(ctx, t, msg.Author.ID, target.ID, msg, "")
 	if err != nil {
+		return nil, err
+	}
+	// The receipt is the acknowledgment; the work itself replies when it
+	// acts, so this run's closing text is not posted as a second message.
+	if err := store.SetRunPostedReply(ctx, t.tx, env.run.ID); err != nil {
 		return nil, err
 	}
 	return map[string]any{"added": target.Title, "delivery": in.Delivery,

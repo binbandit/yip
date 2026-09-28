@@ -1,8 +1,10 @@
 package hub
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/binbandit/yip/internal/bridge"
@@ -85,6 +87,27 @@ func (h *Hub) requireReviewerAccess(ctx context.Context, q store.Q, job store.Jo
 	return nil
 }
 
+// availableReviewers names the colleagues who could take this review now.
+func (h *Hub) availableReviewers(ctx context.Context, q store.Q, job store.JobRow, except ...string) string {
+	engineers, err := store.ListEngineers(ctx, q)
+	if err != nil {
+		return ""
+	}
+	var names []string
+	for _, e := range engineers {
+		if e.Archived || slices.Contains(except, e.ID) || h.requireReviewerAccess(ctx, q, job, e) != nil {
+			continue
+		}
+		if h.cannotRun(ctx, q, e, protocol.ModeReadOnly, job.ProjectID) == "" {
+			names = append(names, "@"+e.Handle)
+		}
+	}
+	if len(names) == 0 {
+		return "No colleague in this room can review it yet; say so in the room so the owner can add one."
+	}
+	return "Choose another reviewer: " + strings.Join(names, ", ") + "."
+}
+
 func targetKey(t protocol.ReviewTarget) string {
 	if t.Head != "" {
 		return t.Head
@@ -106,6 +129,11 @@ func (h *Hub) toolRequestReview(ctx context.Context, t *txn, env toolEnv, a brid
 	}
 	if err := h.requireReviewerAccess(ctx, t.tx, job, reviewer); err != nil {
 		return nil, err
+	}
+	// A request the reviewer can never pick up would leave the work waiting
+	// silently; the author chooses someone who can review instead.
+	if why := h.cannotRun(ctx, t.tx, reviewer, protocol.ModeReadOnly, job.ProjectID); why != "" {
+		return nil, domain.Conflict("%s can't review right now: %s %s", reviewer.Name, why, h.availableReviewers(ctx, t.tx, job, env.eng.ID, reviewer.ID))
 	}
 	target, err := h.reviewTarget(ctx, t.tx, job, a.PullRequest)
 	if err != nil {
@@ -163,6 +191,54 @@ func (h *Hub) toolRequestReview(ctx context.Context, t *txn, env toolEnv, a brid
 		"note": "Review requested. If you have nothing else useful to do, call work_update {state:'completed'} (it completes once approved) or work_wait {reason:'review'}, then end your turn."}, nil
 }
 
+// toolWithdrawReview ends the author's open request to one reviewer. Its
+// round is cancelled with the reviewer's job, so it neither approves nor
+// blocks completion.
+func (h *Hub) toolWithdrawReview(ctx context.Context, t *txn, env toolEnv, a bridge.WorkWithdrawReviewArgs) (any, error) {
+	job := env.job
+	if job.OwnerID != env.eng.ID {
+		return nil, domain.Forbidden("Only the owner of a piece of work can withdraw its review requests.")
+	}
+	reviewer, err := h.resolveEngineer(ctx, t.tx, a.Reviewer)
+	if err != nil {
+		return nil, err
+	}
+	reason := strings.TrimSpace(a.Reason)
+	if reason == "" {
+		return nil, domain.Invalid("Say why the review is withdrawn.")
+	}
+	review, err := store.GetReviewForJob(ctx, t.tx, job.ID, reviewer.ID)
+	if err != nil || len(review.Rounds) == 0 {
+		return nil, domain.NotFound("You haven't asked %s to review this work.", reviewer.Name)
+	}
+	last := review.Rounds[len(review.Rounds)-1]
+	if !domain.ReviewOpen(last.State) {
+		return nil, domain.Conflict("%s's review isn't open (%s); there is nothing to withdraw.", reviewer.Name, last.State)
+	}
+	reason = "withdrawn by " + env.eng.Name + ": " + reason
+	if last.ReviewJobID != "" {
+		if err := h.cancelOne(ctx, t, last.ReviewJobID, reason, env.me); err != nil {
+			return nil, err
+		}
+	}
+	// cancelOne closes the round with the reviewer's job; a round without
+	// one is closed here.
+	if r, _ := store.GetReview(ctx, t.tx, review.ID); len(r.Rounds) > 0 && domain.ReviewOpen(r.Rounds[len(r.Rounds)-1].State) {
+		if err := store.SetRoundState(ctx, t.tx, last.ID, protocol.ReviewCancelled, reason, true); err != nil {
+			return nil, err
+		}
+		if err := store.SetReviewState(ctx, t.tx, review.ID, protocol.ReviewCancelled, last.Number); err != nil {
+			return nil, err
+		}
+		r2, _ := store.GetReview(ctx, t.tx, review.ID)
+		if err := t.emit(ev{Type: "review.updated", Actor: env.me, Room: review.Source.RoomID, Job: review.JobID, Payload: r2}); err != nil {
+			return nil, err
+		}
+	}
+	return map[string]any{"reviewId": review.ID, "state": protocol.ReviewCancelled,
+		"note": "Withdrawn. It no longer counts toward completion. If you haven't already, say so briefly in the conversation."}, nil
+}
+
 // openRound creates a review round, its reviewer job, and the reviewer's run.
 func (h *Hub) openRound(ctx context.Context, t *txn, env toolEnv, review protocol.Review, reviewer protocol.Engineer, number int,
 	target protocol.ReviewTarget, causeKey, criteria string) (protocol.ReviewRound, store.JobRow, error) {
@@ -182,8 +258,10 @@ func (h *Hub) openRoundFor(ctx context.Context, t *txn, author store.JobRow, aut
 	if strings.TrimSpace(criteria) != "" {
 		objective += "\nFocus: " + criteria
 	}
+	// A document about a repository is checked against that repository, so
+	// its reviewer gets a read-only checkout too.
 	rj, err := h.createJob(ctx, t, jobSpec{Kind: protocol.JobKindReview, Title: truncate(title, 110), Objective: objective, Owner: reviewer.ID,
-		Parent: &author, Source: author.Source, ProjectID: author.ProjectID, RepoID: target.RepoID, Depth: author.Depth, Actor: actor})
+		Parent: &author, Source: author.Source, ProjectID: author.ProjectID, RepoID: cmp.Or(target.RepoID, author.RepoID), Depth: author.Depth, Actor: actor})
 	if err != nil {
 		return round, rj, err
 	}

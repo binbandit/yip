@@ -383,17 +383,22 @@ func (r *Runner) sendTyped(typ, runID string, epoch int64, payload any) error {
 }
 
 func (r *Runner) heartbeats(ctx context.Context, c *websocket.Conn) {
-	t := time.NewTicker(time.Duration(r.heartbeat.Load()))
-	defer t.Stop()
-	for n := 1; ; n++ {
-		r.sendHeartbeat(c)
+	var last time.Time
+	for n := 0; ; {
+		// The hub's welcome, which sets the interval, can arrive after the
+		// first beat, so the interval is re-read at least every second.
+		every := time.Duration(r.heartbeat.Load())
+		if time.Since(last) >= every {
+			r.sendHeartbeat(c)
+			last = time.Now()
+			if n++; n%3 == 0 {
+				r.resendUnacked(c)
+			}
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
-		}
-		if n%3 == 0 {
-			r.resendUnacked(c)
+		case <-time.After(min(every, time.Second)):
 		}
 	}
 }

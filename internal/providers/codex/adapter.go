@@ -208,7 +208,8 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 		inst.Limitations = append(inst.Limitations, "config/read failed: "+srv.describe(err))
 	} else if rules := ruleFiles(cfg.Layers); len(rules) > 0 {
 		inst.Capabilities.ReadOnly = false
-		inst.Limitations = append(inst.Limitations, "Read-only runs are unavailable: Codex exec-policy rules ("+strings.Join(rules, ", ")+") can run matching commands outside the sandbox without approval. Edit runs still use them.")
+		inst.Capabilities.ExecPolicyRules = rules
+		inst.Limitations = append(inst.Limitations, "Reviews and conversations need your permission: Codex exec-policy rules ("+strings.Join(rules, ", ")+") can run matching commands outside the sandbox without approval. Edit runs always use them.")
 	}
 
 	models, err := listModels(ctx, srv.c)
@@ -452,7 +453,9 @@ func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (provider
 		return nil, fmt.Errorf("codex: config/read: %s", desc)
 	}
 	rules := ruleFiles(cfg.Layers)
-	if spec.Mode != protocol.ModeEdit && len(rules) > 0 {
+	// Read-only runs go ahead with rules only when the owner allowed them on
+	// this machine; app-server has no switch to ignore them.
+	if spec.Mode != protocol.ModeEdit && len(rules) > 0 && !spec.TrustProviderRules {
 		srv.shutdown(a.timeouts.Grace)
 		return nil, fmt.Errorf("codex: cannot enforce %s mode: Codex exec-policy rules (%s) can run matching commands outside the sandbox without approval, and app-server has no switch to ignore them: %w",
 			spec.Mode, strings.Join(rules, ", "), providers.ErrUnsupported)

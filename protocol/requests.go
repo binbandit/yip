@@ -258,6 +258,13 @@ type NodeActionRequest struct {
 	Drain bool `json:"drain"`
 }
 
+// TrustRulesRequest lets (or stops) a provider's own always-allow rules on
+// one machine apply to reviews and conversations.
+type TrustRulesRequest struct {
+	Provider string `json:"provider"`
+	Trust    bool   `json:"trust"`
+}
+
 // CleanupWorkspaceRequest deletes one workspace on a machine. Confirm must
 // repeat the workspace name; Force is required when unpublished or
 // uncommitted work would be lost.

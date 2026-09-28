@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -129,6 +130,38 @@ func (h *Hub) SetDraining(ctx context.Context, userID, nodeID string, draining b
 			return err
 		}
 		n, _ := store.GetNode(ctx, t.tx, nodeID)
+		out = n.Node
+		t.kickAfter()
+		return h.emitNode(ctx, t, nodeID)
+	})
+	return out, err
+}
+
+// SetTrustedRules records whether a provider's own always-allow rules may
+// apply to reviews and conversations on a machine. They can run matching
+// commands outside the read-only sandbox without asking yip, so this is the
+// owner's explicit choice; edit runs use them either way.
+func (h *Hub) SetTrustedRules(ctx context.Context, userID, nodeID, provider string, trust bool) (protocol.Node, error) {
+	var out protocol.Node
+	err := h.do(ctx, func(t *txn) error {
+		n, err := store.GetNode(ctx, t.tx, nodeID)
+		if err != nil {
+			return domain.NotFound("That machine doesn't exist.")
+		}
+		if !slices.ContainsFunc(n.Providers, func(p protocol.ProviderInstallation) bool { return p.Provider == provider }) {
+			return domain.Invalid("%s isn't installed on %s.", ProviderLabel(provider), n.Name)
+		}
+		trusted := slices.DeleteFunc(slices.Clone(n.TrustedRules), func(p string) bool { return p == provider })
+		if trust {
+			trusted = append(trusted, provider)
+		}
+		if err := store.SetNodeTrustedRules(ctx, t.tx, nodeID, trusted); err != nil {
+			return err
+		}
+		if err := t.audit(userActor(userID), "owner", "node.trust_rules", nodeID, "ok", provider+"="+boolStr(trust)); err != nil {
+			return err
+		}
+		n, _ = store.GetNode(ctx, t.tx, nodeID)
 		out = n.Node
 		t.kickAfter()
 		return h.emitNode(ctx, t, nodeID)

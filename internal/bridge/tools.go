@@ -44,6 +44,7 @@ const (
 	WorkRequestHelp    = "work_request_help"
 	WorkRespond        = "work_respond"
 	WorkRequestReview  = "work_request_review"
+	WorkWithdrawReview = "work_withdraw_review"
 	WorkReview         = "work_review"
 	WorkRespondReview  = "work_respond_to_review"
 	WorkWait           = "work_wait"
@@ -80,6 +81,8 @@ var Tools = []Tool{
 		InputSchema: schema(`{"type":"object","required":["requestId","body"],"properties":{"requestId":{"type":"string"},"body":{"type":"string"},"artifactIds":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}`)},
 	{Name: WorkRequestReview, Modes: editOnly, Description: "Ask a distinct, suitable colleague to review your current work. Code reviews bind to the latest published Git revision (work_publish_revision) or a pull request; document reviews bind to the latest published document hash (artifact_publish). Choose the reviewer yourself by expertise and availability; the human does not assign reviewers.",
 		InputSchema: schema(`{"type":"object","required":["reviewer","message"],"properties":{"reviewer":{"type":"string","description":"colleague handle"},"criteria":{"type":"string","description":"what the reviewer should focus on"},"message":{"type":"string","description":"the request as posted in the conversation"},"pullRequest":{"type":"integer","description":"review a linked PR instead of the published revision"}},"additionalProperties":false}`)},
+	{Name: WorkWithdrawReview, Modes: editOnly, Description: "Withdraw a review you requested that no longer applies, for example because that colleague can't review right now and someone else is reviewing instead. A withdrawn review neither approves nor blocks your work.",
+		InputSchema: schema(`{"type":"object","required":["reviewer","reason"],"properties":{"reviewer":{"type":"string","description":"colleague handle"},"reason":{"type":"string","description":"why, as shown on the review"}},"additionalProperties":false}`)},
 	{Name: WorkReview, Modes: roOnly, Description: "Record your review verdict for the exact revision you inspected. Blocking findings must cite file/line or test evidence. Use approved only when you verified the change; comments_only does not satisfy a required approval; unable_to_review when access or checks were missing (never approve what you could not check).",
 		InputSchema: schema(`{"type":"object","required":["verdict","summary"],"properties":{"verdict":{"type":"string","enum":["approved","changes_requested","comments_only","unable_to_review"]},"summary":{"type":"string"},"expectedHead":{"type":"string","description":"the exact Git revision you reviewed (code)"},"expectedHash":{"type":"string","description":"the exact SHA-256 of the supplied review-artifact (documents)"},"findings":{"type":"array","items":{"type":"object","required":["severity","body"],"properties":{"severity":{"type":"string","enum":["blocking","suggestion","note"]},"body":{"type":"string"},"file":{"type":"string"},"line":{"type":"integer"},"evidence":{"type":"string"}}}},"resolve":{"type":"array","items":{"type":"string"},"description":"IDs of earlier findings you verified as resolved"},"message":{"type":"string","description":"what to say in the conversation"}},"additionalProperties":false}`)},
 	{Name: WorkRespondReview, Modes: editOnly, Description: "Respond to review findings on your work: reply to each finding with evidence (or dispute it), and request another round on your newly published Git revision or document artifact. You cannot dismiss a reviewer's blocking finding; only the reviewer resolves it.",
@@ -113,6 +116,38 @@ var Tools = []Tool{
 	{Name: PermissionPrompt, Modes: all, Local: true, Description: "Permission prompt handler used by the provider CLI. Do not call directly.",
 		InputSchema: schema(`{"type":"object","properties":{"tool_name":{"type":"string"},"input":{"type":"object"},"tool_use_id":{"type":"string"}},"additionalProperties":true}`)},
 }
+
+// activities says what an engineer is doing while a tool runs, in the words
+// the room shows ("Asking for a review", not the tool's name).
+var activities = map[string]string{
+	RoomRead:           "Reading the conversation",
+	RoomPost:           "Writing a message",
+	WorkCreate:         "Starting the work",
+	WorkUpdate:         "Updating progress",
+	WorkRequestHelp:    "Asking a colleague",
+	WorkRespond:        "Answering a colleague",
+	WorkRequestReview:  "Asking for a review",
+	WorkWithdrawReview: "Withdrawing a review request",
+	WorkReview:         "Recording a review",
+	WorkRespondReview:  "Responding to review feedback",
+	WorkWait:           "Waiting on the next step",
+	WorkStatus:         "Checking where work stands",
+	HumanAsk:           "Asking a question",
+	DecisionPropose:    "Recording a decision",
+	KnowledgeSearch:    "Searching past decisions",
+	NoteRecord:         "Keeping a note",
+	WorkAddInput:       "Adding your message to the work",
+	ForgeReadPR:        "Reading the pull request",
+	ForgeLinkPR:        "Linking the pull request",
+	ForgePublishReview: "Publishing the review",
+	WorkRunCheck:       "Running a check",
+	WorkPublishRev:     "Publishing a revision",
+	ArtifactPublish:    "Publishing a document",
+	PermissionPrompt:   "Asking for permission",
+}
+
+// Activity describes a yip tool in progress, or is empty for unknown names.
+func Activity(name string) string { return activities[name] }
 
 // Lookup returns a tool by name.
 func Lookup(name string) (Tool, bool) {
@@ -185,6 +220,11 @@ type WorkRequestReviewArgs struct {
 	Criteria    string `json:"criteria"`
 	Message     string `json:"message"`
 	PullRequest int    `json:"pullRequest"`
+}
+
+type WorkWithdrawReviewArgs struct {
+	Reviewer string `json:"reviewer"`
+	Reason   string `json:"reason"`
 }
 
 type ReviewFindingArg struct {

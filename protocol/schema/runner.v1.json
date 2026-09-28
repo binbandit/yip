@@ -364,6 +364,9 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "trustProviderRules": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -720,6 +723,12 @@
       "properties": {
         "activeSteering": {
           "type": "boolean"
+        },
+        "execPolicyRules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "mcpTools": {
           "type": "boolean"

@@ -967,11 +967,11 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		return nil
 	}
 	// Before parking, re-check: an answer or a dependency may have arrived
-	// while this attempt was still finishing.
+	// while this attempt was running, or after its context was built but
+	// before it started. An attempt that parks for missing information with
+	// nothing left open never saw the answer, so counting from its creation
+	// can't hand it the same answer twice.
 	since := run.CreatedAt
-	if run.StartedAt != nil {
-		since = *run.StartedAt
-	}
 	answeredDuring := h.answeredSince(ctx, t.tx, job.ID, since)
 	resolvedDuring := h.resolvedSince(ctx, t.tx, job.ID, since)
 	openQuestions, _ := h.openQuestionsFor(ctx, t.tx, job.ID)

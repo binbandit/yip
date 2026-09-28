@@ -18,16 +18,18 @@ type NodeRow struct {
 }
 
 const nodeCols = `id, name, hostname, os, arch, fingerprint, cert_serial, status, draining, revoked_at, last_seen_at, capacity, profiles,
-	toolchains, runner_version, service_state, last_activity, created_at, workspaces`
+	toolchains, runner_version, service_state, last_activity, created_at, workspaces, trusted_rules`
 
 func scanNode(s scanner) (NodeRow, error) {
 	var n NodeRow
 	var draining int
 	var revoked, seen sql.NullString
-	var capacity, profiles, toolchains, created, workspaces string
+	var capacity, profiles, toolchains, created, workspaces, trusted string
 	err := s.Scan(&n.ID, &n.Name, &n.Hostname, &n.OS, &n.Arch, &n.Fingerprint, &n.CertSerial, &n.Status, &draining, &revoked, &seen,
-		&capacity, &profiles, &toolchains, &n.RunnerVersion, &n.ServiceState, &n.LastActivity, &created, &workspaces)
+		&capacity, &profiles, &toolchains, &n.RunnerVersion, &n.ServiceState, &n.LastActivity, &created, &workspaces, &trusted)
 	unjs(workspaces, &n.RawWorkspaces)
+	unjs(trusted, &n.TrustedRules)
+	n.TrustedRules = strs(n.TrustedRules)
 	n.Draining = draining == 1
 	n.RevokedAt, n.LastSeenAt = parseTSP(revoked), parseTSP(seen)
 	unjs(capacity, &n.Capacity)
@@ -177,6 +179,11 @@ func SetNodeDiskFree(ctx context.Context, q Q, id string, freeMB int64) error {
 
 func SetNodeActivity(ctx context.Context, q Q, id, text string) error {
 	_, err := q.ExecContext(ctx, `UPDATE nodes SET last_activity = ? WHERE id = ?`, text, id)
+	return err
+}
+
+func SetNodeTrustedRules(ctx context.Context, q Q, id string, providers []string) error {
+	_, err := q.ExecContext(ctx, `UPDATE nodes SET trusted_rules = ? WHERE id = ?`, js(strs(providers)), id)
 	return err
 }
 

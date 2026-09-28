@@ -212,7 +212,7 @@ func (r *Runner) toolRunCheck(ctx context.Context, ar *activeRun, raw json.RawMe
 	// own shell: routine checks are allowed by the run's grants; a push,
 	// publication, network access, or anything yip can't inspect needs the
 	// owner's exact-action approval.
-	d := r.requestApproval(ar, "check:"+domain.NewID(), protocol.ApprovalAction{Kind: "exec", Command: a.Command,
+	d := r.requestApproval(ar, "check:"+domain.NewID(), protocol.ApprovalAction{Kind: "check", Command: a.Command,
 		Summary: "Run check: " + truncate(a.Command, 200), Target: revision}, raw)
 	if d.Decision != "allow" {
 		return nil, apiErr("forbidden", "Not permitted to run this check: %s", firstNonEmpty(d.Reason, "the request was declined"))
@@ -457,7 +457,7 @@ func classifyClaudeTool(tool string, input json.RawMessage, workdir string) prot
 		return protocol.ApprovalAction{Kind: "mcp", Summary: "yip tool " + strings.TrimPrefix(tool, "mcp__yip__")}
 	case tool == "Bash":
 		cmd := str("command")
-		return protocol.ApprovalAction{Kind: "exec", Command: cmd, Target: workdir, Summary: "Run `" + truncate(cmd, 160) + "`"}
+		return protocol.ApprovalAction{Kind: "exec", Command: cmd, Target: workdir, Summary: providers.RunSummary(cmd)}
 	case tool == "Edit" || tool == "Write" || tool == "MultiEdit" || tool == "NotebookEdit":
 		p := firstNonEmpty(str("file_path"), str("notebook_path"))
 		kind := "edit"

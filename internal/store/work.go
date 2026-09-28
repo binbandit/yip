@@ -395,6 +395,11 @@ func PutCredential(ctx context.Context, q Q, id, orgID, kind, label, host string
 	return err
 }
 
+// CredentialHosts lists the hosts with a stored credential of a kind.
+func CredentialHosts(ctx context.Context, q Q, kind string) ([]string, error) {
+	return stringsCol(ctx, q, `SELECT DISTINCT host FROM credentials WHERE kind = ? ORDER BY host`, kind)
+}
+
 func GetCredential(ctx context.Context, q Q, kind, host string) (id string, secret []byte, err error) {
 	err = q.QueryRowContext(ctx, `SELECT id, secret FROM credentials WHERE kind = ? AND host = ? ORDER BY created_at DESC LIMIT 1`, kind, host).Scan(&id, &secret)
 	return id, secret, notFound(err)

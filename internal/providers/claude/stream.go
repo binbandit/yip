@@ -3,6 +3,7 @@ package claude
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/binbandit/yip/internal/bridge"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -745,6 +746,9 @@ func toolSummary(name string, input json.RawMessage) string {
 		server, tool, ok := strings.Cut(rest, "__")
 		if ok {
 			if server == "yip" {
+				if doing := bridge.Activity(tool); doing != "" {
+					return doing
+				}
 				return "Using yip " + strings.ReplaceAll(tool, "_", " ")
 			}
 			return "Using " + tool + " (" + server + ")"

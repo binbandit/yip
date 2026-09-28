@@ -81,7 +81,8 @@ const (
 	sandboxWorkspaceWrite = "workspace-write" // SandboxMode
 
 	approvalOnRequest     = "on-request" // AskForApproval
-	approvalsReviewerUser = "user"       // ApprovalsReviewer: approvals go to the client, not an AI reviewer
+	approvalNever         = "never"
+	approvalsReviewerUser = "user" // ApprovalsReviewer: approvals go to the client, not an AI reviewer
 
 	turnCompleted   = "completed"
 	turnInterrupted = "interrupted"

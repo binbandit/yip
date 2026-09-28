@@ -514,7 +514,11 @@ func TestRegressionRunCheckIsPolicedAndIsolated(t *testing.T) {
 			return script(toolStep("work_create", map[string]any{"title": "Isolation", "objective": "x", "kind": "code", "project": "Atlas", "repo": "atlas"}, ""))
 		case m.Job.Title == "Isolation":
 			return script(toolStep("work_run_check", map[string]any{"command": "echo \"HOME=$HOME SOCK=$SSH_AUTH_SOCK\" > " + marker}, ""),
-				toolStep("work_run_check", map[string]any{"command": "git -C . push origin HEAD"}, "p"),
+				// Inline code is routine in the isolated check environment...
+				toolStep("work_run_check", map[string]any{"command": "python3 -c 'print(40 + 2)'"}, "i"),
+				toolStep("room_post", map[string]any{"body": "inline check: {{i.outputTail}}"}, ""),
+				// ...but the explicit actions inside it are still policed.
+				toolStep("work_run_check", map[string]any{"command": "sh -c 'git -C . push origin HEAD'"}, "p"),
 				toolStep("room_post", map[string]any{"body": "push check: {{p.error.message}}"}, ""),
 				toolStep("work_update", map[string]any{"state": "failed", "summary": "test done"}, ""))
 		}
@@ -525,6 +529,9 @@ func TestRegressionRunCheckIsPolicedAndIsolated(t *testing.T) {
 		t.Fatalf("a conversation reply ran a check: %q", msg.Body)
 	}
 	e.post("Security", "@Mira isolate", []string{"mira"}, nil)
+	if msg := e.waitMessage("Security", "inline check:"); !strings.Contains(msg.Body, "42") {
+		t.Fatalf("inline code in a check should run without an owner prompt: %q", msg.Body)
+	}
 	var ap protocol.Approval
 	e.waitFor("an approval request for the push", 60*time.Second, func() bool {
 		j, ok := e.job("Isolation")
@@ -1846,4 +1853,306 @@ func TestRegressionCorrectingApprovedDocumentRequiresNewApproval(t *testing.T) {
 		f.Close()
 		t.Fatal("unassigned machine read the report")
 	}
+}
+
+// An engineer who asks and then moves on to wait for something else (here a
+// review that hasn't started) is still resumed by the answer, as the room
+// says it is.
+func TestRegressionAnswerResumesWorkWaitingOnSomethingElse(t *testing.T) {
+	e := newEnv(t, envOptions{limits: func(l *domain.Limits) { l.ActiveRunsPerEngineer = 1 }, director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Security", "hold"):
+			// Pip stays busy, so the review Mira asks for doesn't start.
+			return script(fake.Step{Sleep: "30s"})
+		case replyTo(m, "Security", "tidy"):
+			return script(toolStep("work_create", map[string]any{"title": "Tidy", "objective": "x", "kind": "code", "project": "Atlas", "repo": "atlas"}, ""))
+		case m.Job.Title == "Tidy" && m.Job.Head != "":
+			return script(toolStep("room_post", map[string]any{"body": "tidy resumed"}, ""),
+				toolStep("work_update", map[string]any{"state": "failed", "summary": "test done"}, ""))
+		case m.Job.Title == "Tidy":
+			return script(fake.Step{Replace: &fake.ReplaceText{Path: "session/validate.go",
+				Old: "\treturn nil\n}", New: "\tif !now.Before(t.ExpiresAt) {\n\t\treturn ErrExpired\n\t}\n\treturn nil\n}"}},
+				toolStep("work_publish_revision", map[string]any{"summary": "Reject expired sessions"}, ""),
+				toolStep("work_run_check", map[string]any{"command": "go test ./..."}, ""),
+				toolStep("work_request_review", map[string]any{"reviewer": "pip", "message": "@pip please review"}, ""),
+				toolStep("human_ask", map[string]any{"question": "Can I drop Pip's review?", "missingFact": "permission", "contextChecked": "the review"}, ""),
+				toolStep("work_update", map[string]any{"state": "completed", "summary": "done"}, ""))
+		}
+		return nil
+	}})
+	pip := e.engineerID("pip")
+	e.c.must("PUT", "/v1/rooms/"+e.roomID("Security")+"/members/"+pip, nil, nil)
+	e.c.must("PUT", "/v1/projects/"+e.project("Atlas").ID+"/grants/"+pip, protocol.PutGrantRequest{Access: "read"}, nil)
+	e.post("Security", "@Pip hold on", []string{"pip"}, nil)
+	e.waitFor("Pip to be busy", 30*time.Second, func() bool {
+		var runs []protocol.Run
+		e.c.must("GET", "/v1/runs", nil, &runs)
+		for _, r := range runs {
+			if r.EngineerID == pip && r.State == protocol.RunRunning {
+				return true
+			}
+		}
+		return false
+	})
+	e.post("Security", "@Mira tidy up", []string{"mira"}, nil)
+	q := e.waitMessage("Security", "@brayden Can I drop Pip's review")
+	j := e.waitJob("Tidy", protocol.JobReviewReady)
+	e.waitFor("Mira's run to end", 30*time.Second, func() bool {
+		for _, r := range e.jobDetail(j.ID).Runs {
+			if !domain.RunTerminal(r.State) {
+				return false
+			}
+		}
+		return true
+	})
+	// Answered the way the composer does: a reply to the question in the room.
+	e.post("Security", "yes, go ahead", nil, func(r *protocol.PostMessageRequest) { r.ReplyToID = q.ID })
+	e.waitFor("Mira to resume while Pip's review is still queued", 20*time.Second, func() bool {
+		_, ok := e.roomMessage("Security", "tidy resumed")
+		return ok
+	})
+}
+
+// A reply that hands the owner's message to existing work ends quietly: the
+// receipt acknowledges it and the work speaks when it acts, so one message
+// never produces two.
+func TestRegressionAddInputPostsNoSecondReply(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Security", "start the audit"):
+			return script(toolStep("work_create", map[string]any{"title": "Audit", "objective": "x", "kind": "investigation", "project": "Atlas"}, ""))
+		case replyTo(m, "Security", "also check refresh") && len(m.OpenWork) > 0:
+			return script(toolStep("work_add_input", map[string]any{"job": m.OpenWork[0].ID}, ""),
+				fake.Step{Final: "I've added this to the audit; it will be picked up when that work next runs."})
+		case m.Job.Title == "Audit":
+			return script(toolStep("human_ask", map[string]any{"question": "Which environment?", "missingFact": "environment", "contextChecked": "docs"}, ""),
+				toolStep("work_wait", map[string]any{"reason": "missing_information"}, ""))
+		}
+		return nil
+	}})
+	e.post("Security", "@Mira start the audit", []string{"mira"}, nil)
+	e.waitMessage("Security", "@brayden Which environment?")
+	e.waitJob("Audit", protocol.JobWaiting)
+	resp := e.post("Security", "@Mira also check refresh", []string{"mira"}, nil)
+	e.waitFor("the message to be added to the audit", 30*time.Second, func() bool {
+		for _, j := range e.jobsWithReplies() {
+			if j.Kind == protocol.JobKindReply && j.Source.MessageID == resp.Message.ID {
+				return j.State == protocol.JobCompleted
+			}
+		}
+		return false
+	})
+	if m, ok := e.roomMessage("Security", "I've added this"); ok {
+		t.Fatalf("the reply narrated the handoff as a second message: %s", m.Body)
+	}
+}
+
+// A document about a repository is reviewed against that repository: the
+// reviewer's read-only workspace has the code, not just the document.
+func TestRegressionDocumentReviewHasTheRepository(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Security", "survey"):
+			return script(toolStep("work_create", map[string]any{"title": "Survey", "objective": "x", "kind": "investigation", "project": "Atlas", "repo": "atlas"}, ""))
+		case m.Review != nil:
+			return script(fake.Step{Shell: "test -f session/validate.go && echo present || echo missing", Save: "code"},
+				toolStep("room_post", map[string]any{"body": "reviewer code: {{code.out}}"}, ""),
+				toolStep("work_review", map[string]any{"verdict": "approved", "expectedHash": m.Review.Hash, "summary": "Checked.", "message": "Approved."}, ""))
+		case m.Job.Title == "Survey":
+			return script(fake.Step{Write: &fake.WriteFile{Path: "docs/survey.md", Content: "# Survey\n\nValidate lives in session/validate.go.\n"}},
+				toolStep("artifact_publish", map[string]any{"path": "docs/survey.md", "name": "Survey", "kind": "document"}, ""),
+				toolStep("work_request_review", map[string]any{"reviewer": "oren", "message": "@oren please check the survey"}, ""),
+				toolStep("work_wait", map[string]any{"reason": "review"}, ""))
+		}
+		return nil
+	}})
+	e.post("Security", "@Mira survey the code", []string{"mira"}, nil)
+	if m := e.waitMessage("Security", "reviewer code:"); m.Body != "reviewer code: present" {
+		t.Fatalf("the reviewer couldn't see the repository the document describes: %s", m.Body)
+	}
+}
+
+// A question about the code is answered from the code: a reply in a room
+// with one readable repository gets a read-only checkout of it. With more
+// than one candidate it stays in a scratch directory rather than guess.
+func TestRegressionConversationReadsTheRoomRepository(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		if m.Job.Kind == "reply" && m.Request != nil && strings.Contains(m.Request.Body, "where is validation") {
+			return script(fake.Step{Shell: "test -f session/validate.go && echo present || echo missing", Save: "code"},
+				fake.Step{Shell: "touch scribble 2>/dev/null && echo writable || echo read-only", Save: "write"},
+				toolStep("room_post", map[string]any{"body": "code {{code.out}} {{write.out}}"}, ""))
+		}
+		return nil
+	}})
+	e.post("Security", "@Mira where is validation?", []string{"mira"}, nil)
+	if m := e.waitMessage("Security", "code "); m.Body != "code present read-only" {
+		t.Fatalf("a reply in a one-repository room should read a read-only checkout: %s", m.Body)
+	}
+	e.post("Engineering", "@Mira where is validation?", []string{"mira"}, nil)
+	if m := e.waitMessage("Engineering", "code "); !strings.HasPrefix(m.Body, "code missing") {
+		t.Fatalf("with several repositories the reply shouldn't pick one: %s", m.Body)
+	}
+}
+
+// An engineer waiting on the owner's decision keeps its lease: the machine
+// keeps reporting, and the run is still there when the owner answers.
+func TestRegressionPendingApprovalKeepsTheLease(t *testing.T) {
+	e := newEnv(t, envOptions{
+		limits: func(l *domain.Limits) { l.LeaseDuration, l.StopMargin = 3*time.Second, time.Second },
+		director: func(m *manifest.Manifest) json.RawMessage {
+			switch {
+			case replyTo(m, "Security", "push"):
+				return script(toolStep("work_create", map[string]any{"title": "Push later", "objective": "push", "kind": "code", "project": "Atlas", "repo": "atlas"}, ""))
+			case m.Job.Title == "Push later":
+				return script(
+					fake.Step{Approval: &protocol.ApprovalAction{Kind: "exec", Command: "git push origin HEAD", Summary: "Push the branch to origin"}, Save: "a"},
+					toolStep("room_post", map[string]any{"body": "decided: {{a.allowed}}"}, ""),
+					toolStep("work_update", map[string]any{"state": "failed", "summary": "test complete"}, ""))
+			}
+			return nil
+		}})
+	e.post("Security", "@Mira push it when I say", []string{"mira"}, nil)
+	var ap protocol.Approval
+	e.waitFor("pending approval", 30*time.Second, func() bool {
+		j, ok := e.job("Push later")
+		if !ok {
+			return false
+		}
+		for _, a := range e.jobDetail(j.ID).Approvals {
+			if a.Status == "pending" {
+				ap = a
+				return true
+			}
+		}
+		return false
+	})
+	time.Sleep(4 * 3 * time.Second) // several leases pass while the owner thinks
+	j, _ := e.job("Push later")
+	for _, r := range e.jobDetail(j.ID).Runs {
+		if r.State == protocol.RunUnknown || r.State == protocol.RunFailed {
+			t.Fatalf("the waiting run was lost: %s", r.State)
+		}
+	}
+	e.c.must("POST", "/v1/approvals/"+ap.ID+"/decision", protocol.ApprovalDecisionRequest{Decision: "approve", Version: ap.Version}, nil)
+	if m := e.waitMessage("Security", "decided:"); m.Body != "decided: true" {
+		t.Fatalf("decision after a long wait: %s", m.Body)
+	}
+}
+
+// An approval belongs to its exact revision, not to the work it was given
+// in: follow-up work that publishes the same approved commit (to open its
+// pull request, say) completes without a second review of the same code.
+func TestRegressionApprovedRevisionCountsInFollowUpWork(t *testing.T) {
+	fix := fake.Step{Replace: &fake.ReplaceText{Path: "session/validate.go",
+		Old: "\treturn nil\n}", New: "\tif !now.Before(t.ExpiresAt) {\n\t\treturn ErrExpired\n\t}\n\treturn nil\n}"}}
+	var approved atomic.Value
+	approved.Store("")
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Security", "fix it"):
+			return script(toolStep("work_create", map[string]any{"title": "Fix", "objective": "x", "kind": "code", "project": "Atlas", "repo": "atlas"}, ""))
+		case replyTo(m, "Security", "publish it again"):
+			return script(toolStep("work_create", map[string]any{"title": "Republish", "objective": "x", "kind": "code", "project": "Atlas", "repo": "atlas"}, ""))
+		case m.Review != nil:
+			return script(toolStep("work_review", map[string]any{"verdict": "approved", "expectedHead": m.Review.Head, "summary": "Fine.", "message": "Approved."}, ""))
+		case m.Job.Title == "Fix" && m.Job.Head == "":
+			return script(fix,
+				toolStep("work_publish_revision", map[string]any{"summary": "Reject expired sessions"}, ""),
+				toolStep("work_run_check", map[string]any{"command": "go test ./..."}, ""),
+				toolStep("work_request_review", map[string]any{"reviewer": "oren", "message": "@oren please review"}, ""),
+				toolStep("work_wait", map[string]any{"reason": "review"}, ""))
+		case m.Job.Title == "Fix":
+			return script(toolStep("work_update", map[string]any{"state": "completed", "summary": "done"}, ""))
+		case m.Job.Title == "Republish":
+			// Publish the approved commit itself, as when opening its PR.
+			return script(fake.Step{Shell: "git reset -q --hard " + approved.Load().(string)},
+				toolStep("work_publish_revision", map[string]any{"summary": "Reject expired sessions"}, ""),
+				toolStep("work_run_check", map[string]any{"command": "go test ./..."}, ""),
+				toolStep("work_update", map[string]any{"state": "completed", "summary": "done"}, "u"),
+				toolStep("room_post", map[string]any{"body": "republish: {{u.error.message}}"}, ""))
+		}
+		return nil
+	}})
+	e.post("Security", "@Mira fix it", []string{"mira"}, nil)
+	first := e.waitJob("Fix", protocol.JobCompleted)
+	approved.Store(first.Revision.Head)
+	e.post("Security", "@Mira publish it again", []string{"mira"}, nil)
+	again := e.waitJob("Republish", protocol.JobCompleted, protocol.JobFailed, protocol.JobReviewReady)
+	if again.State != protocol.JobCompleted || again.Revision == nil || again.Revision.Head != first.Revision.Head {
+		t.Fatalf("the approved revision should complete follow-up work: %s %+v vs %s", again.State, again.Revision, first.Revision.Head)
+	}
+	if len(e.jobDetail(again.ID).Reviews) != 0 {
+		t.Fatal("no second review was needed")
+	}
+}
+
+// A direct conversation spans the projects that engineer works on: a
+// question to Oren in a DM is answered from Atlas, his one project.
+func TestRegressionDirectMessageKnowsTheEngineersProjects(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		if m.Job.Kind == "reply" && m.Request != nil && strings.Contains(m.Request.Body, "where is validation") {
+			return script(fake.Step{Shell: "test -f session/validate.go && echo present || echo missing", Save: "code"},
+				toolStep("room_post", map[string]any{"body": "dm code {{code.out}} in " + strings.Join(m.Projects, "; ")}, ""))
+		}
+		return nil
+	}})
+	oren := e.engineerID("oren")
+	var dm protocol.Room
+	e.c.must("POST", "/v1/rooms", protocol.CreateRoomRequest{Kind: protocol.RoomKindDM, Private: true, ReplyMode: protocol.ReplyModeSteward,
+		StewardID: oren, EngineerIDs: []string{oren}}, &dm)
+	e.c.must("POST", "/v1/rooms/"+dm.ID+"/messages", protocol.PostMessageRequest{Body: "where is validation?", ClientKey: domain.NewID(), Mentions: []protocol.Mention{}}, nil)
+	var got protocol.Message
+	e.waitFor("Oren's reply", 30*time.Second, func() bool {
+		var page protocol.MessagePage
+		e.c.must("GET", "/v1/rooms/"+dm.ID+"/messages?limit=50", nil, &page)
+		for _, m := range page.Messages {
+			if strings.HasPrefix(m.Body, "dm code") {
+				got = m
+				return true
+			}
+		}
+		return false
+	})
+	if !strings.HasPrefix(got.Body, "dm code present in Atlas") {
+		t.Fatalf("a DM should work from the engineer's own project: %s", got.Body)
+	}
+}
+
+// An engineer waiting on the owner's decision doesn't hold its account's
+// only run slot: a colleague on the same account keeps working.
+func TestRegressionPendingApprovalFreesTheAccountSlot(t *testing.T) {
+	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
+		switch {
+		case replyTo(m, "Security", "push later"):
+			return script(toolStep("work_create", map[string]any{"title": "Push later", "objective": "push", "kind": "code", "project": "Atlas", "repo": "atlas"}, ""))
+		case m.Job.Title == "Push later":
+			return script(fake.Step{Approval: &protocol.ApprovalAction{Kind: "exec", Command: "git push origin HEAD", Summary: "Push the branch"}, Save: "a"},
+				toolStep("work_update", map[string]any{"state": "failed", "summary": "test complete"}, ""))
+		case replyTo(m, "Security", "still there"):
+			return script(toolStep("room_post", map[string]any{"body": "oren here"}, ""))
+		}
+		return nil
+	}})
+	var profiles []protocol.ProviderProfile
+	e.c.must("GET", "/v1/provider-profiles", nil, &profiles)
+	for _, p := range profiles {
+		if p.Provider == "fake" {
+			e.c.must("PUT", "/v1/provider-profiles/"+p.ID, protocol.ProviderProfileRequest{MaxConcurrency: 1}, nil)
+		}
+	}
+	e.post("Security", "@Mira push later", []string{"mira"}, nil)
+	e.waitFor("Mira waiting on the owner", 30*time.Second, func() bool {
+		j, ok := e.job("Push later")
+		if !ok {
+			return false
+		}
+		for _, a := range e.jobDetail(j.ID).Approvals {
+			if a.Status == "pending" {
+				return true
+			}
+		}
+		return false
+	})
+	e.post("Security", "@Oren still there?", []string{"oren"}, nil)
+	e.waitMessage("Security", "oren here")
 }

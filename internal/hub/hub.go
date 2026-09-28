@@ -80,6 +80,10 @@ type Hub struct {
 	closed     chan struct{}
 	wg         sync.WaitGroup
 	lastPRPoll time.Time
+	// Real wall-clock time of the last scheduler pass, and when the hub last
+	// resumed from being paused (a laptop's lid closed): see awake.
+	pauseMu             sync.Mutex
+	lastTick, resumedAt time.Time
 }
 
 // Open opens the hub's data directory: database, CA, hub key, artifacts.
