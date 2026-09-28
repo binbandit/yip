@@ -152,7 +152,7 @@ export const api = {
   createNote: (engineerId: string, req: NoteRequest) => post<EngineerNote>(`/v1/engineers/${q(engineerId)}/notes`, req),
   decideNote: (id: string, req: NoteActionRequest) => post<EngineerNote>(`/v1/notes/${q(id)}`, req),
   createDecision: (req: DecisionRequest) => post<Decision>('/v1/decisions', req),
-  overview: () => get<Overview>('/v1/overview'),
+  overview: (since?: string) => get<Overview>(`/v1/overview${since ? `?since=${q(since)}` : ''}`),
   /** Records the visit that "Since you were here" is measured from. */
   overviewSeen: () => post<{ ok: boolean }>('/v1/overview/seen'),
   search: (query: string, scope: { room?: string; project?: string } = {}, signal?: AbortSignal) =>

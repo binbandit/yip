@@ -943,6 +943,8 @@ type WorkRow struct {
 	LastConfirmed   string     `json:"lastConfirmed"`
 	LastConfirmedAt *time.Time `json:"lastConfirmedAt,omitempty"`
 	Blocker         string     `json:"blocker,omitempty"`
+	// Questions needing this owner's answer, including questions from reviewers.
+	Questions []Question `json:"questions,omitempty"`
 	// RunState is the state of the latest attempt ("unknown" means its
 	// outcome is not confirmed).
 	RunState RunState `json:"runState,omitempty"`

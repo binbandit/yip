@@ -713,6 +713,7 @@ button.chip {
 
 .tabs {
   display: flex;
+  flex: none;
   gap: 4px;
   border-bottom: 1px solid var(--line);
   overflow-x: auto;

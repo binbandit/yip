@@ -220,8 +220,8 @@
             {:else}
               <span class="q-state">{asksMe ? `${app.actorName(author)} asked you` : 'Question'}</span>
             {/if}
-            {#if !inThread && !settled && !(message.thread && message.thread.replyCount > 0)}
-              <button class="btn btn-sm" onclick={() => onreply?.()}><Icon name="reply" size={15} />Reply in thread</button>
+            {#if onreply && !inThread && !settled && !(message.thread && message.thread.replyCount > 0)}
+              <button class="btn btn-sm" onclick={onreply}><Icon name="reply" size={15} />Reply in thread</button>
             {/if}
           </div>
         {/if}
@@ -235,8 +235,8 @@
         <RefChips refs={message.refs} skip={message.kind === 'result' ? ['job', 'approval'] : ['approval']} hide={seenRefs} messageId={message.id} />
         <Reactions {message} />
 
-        {#if !inThread && message.thread && message.thread.replyCount > 0}
-          <button class="thread-summary" onclick={() => onreply?.()}>
+        {#if onreply && !inThread && message.thread && message.thread.replyCount > 0}
+          <button class="thread-summary" onclick={onreply}>
             <span class="faces" aria-hidden="true">
               {#each threadParticipants as p (p.kind + p.id)}<Avatar actor={p} size={20} />{/each}
             </span>
@@ -261,8 +261,8 @@
             </div>
           {/if}
         </div>
-        {#if !inThread && !message.threadId}
-          <button class="icon-btn act" aria-label="Reply in thread" onclick={() => onreply?.()}><Icon name="reply" size={17} /></button>
+        {#if onreply && !inThread && !message.threadId}
+          <button class="icon-btn act" aria-label="Reply in thread" onclick={onreply}><Icon name="reply" size={17} /></button>
         {/if}
         <button class="icon-btn act" aria-label="Copy link to message" onclick={copyLink}><Icon name="link" size={17} /></button>
         {#if mine}

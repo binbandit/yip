@@ -1080,6 +1080,7 @@ export interface WorkRow {
   lastConfirmed: string;
   lastConfirmedAt?: string | null;
   blocker?: string;
+  questions?: Question[];
   runState?: RunState;
 }
 

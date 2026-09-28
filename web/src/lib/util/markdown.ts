@@ -115,16 +115,7 @@ export function parseBlocks(src: string): Block[] {
 
 /** Renders inline markdown in already-unescaped text; returns safe HTML. */
 export function renderInline(text: string, opts: RenderOptions = {}): string {
-  // Split out code spans first so nothing inside them is interpreted.
-  const parts = text.split(/(`[^`\n]+`)/g);
-  return parts
-    .map((part) => {
-      if (part.length > 2 && part.startsWith('`') && part.endsWith('`')) {
-        return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
-      }
-      return renderText(part, opts);
-    })
-    .join('');
+  return renderText(text, opts);
 }
 
 function renderText(raw: string, opts: RenderOptions): string {
@@ -134,14 +125,17 @@ function renderText(raw: string, opts: RenderOptions): string {
     return `\u0000${slots.length - 1}\u0000`;
   };
   let s = raw.replace(/\u0000/g, '');
+  // Protect code without splitting its surrounding emphasis or link label.
+  s = s.replace(/`([^`\n]+)`/g, (_, code: string) => hold(`<code>${escapeHtml(code)}</code>`));
   // [label](url)
   s = s.replace(/\[([^\]\n]{1,300})\]\(([^()\s]{1,2000})\)/g, (all, label: string, url: string) => {
+    if (url.includes('\u0000')) return all;
     const href = safeHref(url);
     if (!href) return all;
     return hold(`<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
   });
   // bare links
-  s = s.replace(/\bhttps?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]]/g, (url) =>
+  s = s.replace(/\bhttps?:\/\/[^\s<>"'`\u0000]+[^\s<>"'`\u0000.,;:!?)\]]/g, (url) =>
     hold(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`),
   );
   // Full commit hashes read as their short form; the whole hash is on hover.
@@ -163,7 +157,8 @@ function renderText(raw: string, opts: RenderOptions): string {
   s = s.replace(/\*\*(?=\S)([^*]+?)(?<=\S)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/__(?=\S)([^_]+?)(?<=\S)__/g, '<strong>$1</strong>');
   s = s.replace(/(^|[^*\w])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![*\w])/g, '$1<em>$2</em>');
-  s = s.replace(/\u0000(\d+)\u0000/g, (_, n: string) => slots[Number(n)] ?? '');
+  // Later slots can contain earlier ones, such as code in a link label.
+  for (let i = slots.length - 1; i >= 0; i--) s = s.replaceAll(`\u0000${i}\u0000`, slots[i]);
   return s;
 }
 

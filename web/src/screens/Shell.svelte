@@ -25,9 +25,6 @@
   const panel = $derived(app.loc.panel);
   const mode: PanelMode = $derived(app.narrow ? 'full' : app.viewport >= 1200 ? 'inline' : 'overlay');
   const modal = $derived(!!panel && mode !== 'inline');
-  // A demo can also offer real providers (yip demo --with-providers); the
-  // banner must not claim that no model is called when one can be.
-  const realProviders = $derived(app.data.providers.filter((p) => !p.fake && p.readyNodes.length > 0).map((p) => p.label || p.provider));
   const connectionText = $derived(
     app.connection === 'offline' || !app.online
       ? "Can't reach your workspace"
@@ -105,24 +102,12 @@
   {/if}
 
   <div class="frame">
-    {#if app.data.demo || connectionText}
-      <div class="notices" inert={modal}>
-        {#if app.data.demo}
-          <p class="demo" role="note">
-            <span class="marker" aria-hidden="true"></span>
-            {#if realProviders.length}
-              {#if app.narrow}Demo workspace · {realProviders.join(' and ')} use your account{:else}Demo workspace — the demo engineers are scripted; engineers you set to {realProviders.join(' or ')} run on your own account.{/if}
-            {:else if app.narrow}Demo workspace · no models are called{:else}Demo workspace — engineers run a deterministic fake provider; no models are called.{/if}
-          </p>
-        {/if}
-        {#if connectionText}
-          <p class="conn" role="status">
-            <Icon name={app.connection === 'offline' || !app.online ? 'wifiOff' : 'refresh'} size={14} />
-            {connectionText}
-            {#if app.connection !== 'connecting'}<button class="btn btn-sm btn-quiet" onclick={() => app.retryConnection()}>Try now</button>{/if}
-          </p>
-        {/if}
-      </div>
+    {#if connectionText}
+      <p class="conn" role="status" inert={modal}>
+        <Icon name={app.connection === 'offline' || !app.online ? 'wifiOff' : 'refresh'} size={14} />
+        {connectionText}
+        {#if app.connection !== 'connecting'}<button class="btn btn-sm btn-quiet" onclick={() => app.retryConnection()}>Try now</button>{/if}
+      </p>
     {/if}
     <main id="main" class="card" bind:this={mainEl} tabindex="-1">
       <div class="content" inert={modal}>
@@ -200,22 +185,14 @@
     min-height: 0;
     padding: 8px 8px 8px 0;
   }
-  .notices {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    min-height: 26px;
-    padding: 0 8px 6px 6px;
-  }
-  .demo,
   .conn {
     display: flex;
+    flex: none;
     align-items: center;
     gap: 8px;
+    min-height: 26px;
+    padding: 0 8px 6px 6px;
     font-size: 12px;
-    color: color-mix(in srgb, var(--ink) 72%, transparent);
-  }
-  .conn {
     margin-left: auto;
     font-weight: 500;
     color: var(--ink);
@@ -253,10 +230,7 @@
   .narrow .card {
     border-radius: var(--r-surface) var(--r-surface) 0 0;
   }
-  .narrow .notices {
+  .narrow .conn {
     padding: 0 12px 6px;
-  }
-  .narrow .demo {
-    font-size: 12px;
   }
 </style>

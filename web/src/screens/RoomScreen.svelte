@@ -7,6 +7,7 @@
   import WorkStrip from '../components/WorkStrip.svelte';
   import MessageList from '../components/MessageList.svelte';
   import Composer from '../components/Composer.svelte';
+  import OverviewSummary from '../components/OverviewSummary.svelte';
 
   interface Props {
     roomId: string;
@@ -91,16 +92,15 @@
       onloadolder={() => app.loadOlder(roomId)}
       {newAfterSeq}
       highlightId={app.loc.panel?.kind === 'thread' ? null : app.loc.msg}
-      onreply={(m) => app.openPanel({ kind: 'thread', id: m.id })}
+      onreply={room.kind === 'overview' ? undefined : (m) => app.openPanel({ kind: 'thread', id: m.id })}
       onbottomchange={onBottom}
-      oneditpending={editPending}
+      oneditpending={room.kind === 'overview' ? undefined : editPending}
     >
       {#snippet empty()}
         <div class="empty-room">
           {#if room.kind === 'overview'}
-            <p><strong>Ask “Where are we with everything?”</strong></p>
-            <p class="muted">The hub answers from the work ledger and its confirmed timestamps — nobody is woken up to report status.</p>
-            <button class="btn btn-sm" onclick={() => composer?.fill('Where are we with everything?')}>Use this question</button>
+            <p><strong>Your workspace at a glance.</strong></p>
+            <p class="muted">Get a fresh summary to see what is moving, what finished and where a question is still open.</p>
           {:else if engineersHere.length === 0}
             <p><strong>Bring a couple of engineers into this room, then tell them what you're working on.</strong></p>
             <button class="btn btn-primary btn-sm" onclick={() => app.openPanel({ kind: 'room', id: roomId })}>Add engineers</button>
@@ -125,7 +125,11 @@
       {/snippet}
     </MessageList>
     <div class="room-composer">
-      <Composer bind:this={composer} {roomId} {placeholder} />
+      {#if room.kind === 'overview'}
+        <OverviewSummary {roomId} />
+      {:else}
+        <Composer bind:this={composer} {roomId} {placeholder} />
+      {/if}
     </div>
   </section>
 {/if}

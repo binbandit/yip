@@ -9,6 +9,7 @@
   import { isLiveJob, newer } from '../lib/state/data';
   import { billingLabel, jobShape, jobStateLabel, jobTone } from '../lib/util/labels';
   import { atTime, relative } from '../lib/util/time';
+  import { roomSettings } from '../lib/util/setup';
   import Avatar from '../components/Avatar.svelte';
   import StateIcon from '../components/StateIcon.svelte';
   import MessageBody from '../components/MessageBody.svelte';
@@ -50,6 +51,8 @@
   onMount(() => void load());
 
   const rooms = $derived((e?.roomIds ?? []).map((r) => app.data.rooms[r]).filter(Boolean));
+  const availableRooms = $derived(Object.values(app.data.rooms).filter((r) => r.kind === 'room' && !r.archived));
+  const availableProjects = $derived(Object.values(app.data.projects));
   // Provider details: the models machines report for this provider, and the
   // signed-in accounts (profiles) it could run on.
   let profiles = $state<ProviderProfile[]>([]);
@@ -278,12 +281,29 @@
         <div class="col side">
           <section class="section" aria-labelledby="eng-rooms">
             <h2 class="section-title" id="eng-rooms">Rooms</h2>
-            {#if rooms.length === 0}<p class="meta">Not in any room yet. Add them from a room's settings.</p>{/if}
+            {#if rooms.length === 0}
+              <p class="meta">Invite {e.name} into a conversation. Choose them in the room's settings.</p>
+              {#if availableRooms.length === 1}
+                <a href={roomSettings(availableRooms[0])}>Set up {availableRooms[0].name}</a>
+              {:else if availableRooms.length > 1}
+                <details><summary>Choose a room</summary><ul class="list">{#each availableRooms as r (r.id)}<li><a href={roomSettings(r)}>{r.name}</a></li>{/each}</ul></details>
+              {/if}
+              <div class="setup-action"><button class="btn btn-sm" onclick={() => (app.createRoom = { kind: 'room' })}>Create a room</button></div>
+            {/if}
             <ul class="list">{#each rooms as r (r.id)}<li><a href="/rooms/{r.id}">{r.kind === 'dm' ? 'Direct messages' : r.name}</a>{#if r.private}{' '}<span class="meta">· private</span>{/if}</li>{/each}</ul>
           </section>
           <section class="section" aria-labelledby="eng-proj">
             <h2 class="section-title" id="eng-proj">Projects they can work on</h2>
-            {#if permitted.length === 0}<p class="meta">No project access yet. Grant it from a project's page.</p>{/if}
+            {#if permitted.length === 0}
+              <p class="meta">You can talk now. For repository work, choose what {e.name} can access.</p>
+              {#if availableProjects.length === 1}
+                <a href="/projects/{availableProjects[0].id}#p-access">Choose access to {availableProjects[0].name}</a>
+              {:else if availableProjects.length > 1}
+                <details><summary>Choose a project</summary><ul class="list">{#each availableProjects as p (p.id)}<li><a href="/projects/{p.id}#p-access">Choose access to {p.name}</a></li>{/each}</ul></details>
+              {:else}
+                <a class="btn btn-sm" href="/projects">Connect a project</a>
+              {/if}
+            {/if}
             <ul class="list">
               {#each permitted as x (x.project.id)}
                 <li>
@@ -302,6 +322,8 @@
             <ProviderSelect
               id="eng-provider"
               value={e.provider.provider}
+              profileId={e.provider.profileId}
+              allowApiBilling={e.provider.allowApiBilling}
               onchange={(v) => patch({ provider: { ...e.provider, provider: v, model: '', profileId: '' } }, () => {})}
             />
             {#if e.provider.provider !== 'fake'}
@@ -354,6 +376,9 @@
 {/if}
 
 <style>
+  .setup-action {
+    margin-top: 8px;
+  }
   .prov-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

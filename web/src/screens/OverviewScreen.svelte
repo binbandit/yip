@@ -5,59 +5,112 @@
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
-  import type { Job, Overview } from '../lib/api/types.gen';
+  import type { Job, Overview, Question } from '../lib/api/types.gen';
   import { catchupKindLabel, catchupShape, catchupTone } from '../lib/util/labels';
-  import { jobRunState, mergeWorkRows } from '../lib/state/data';
+  import { jobRunState, mergeWorkRows, newer } from '../lib/state/data';
   import { atTime, fullTime, relative } from '../lib/util/time';
+  import { conversationHref } from '../lib/util/conversation';
   import StateIcon from '../components/StateIcon.svelte';
   import WorkRowItem from '../components/WorkRowItem.svelte';
   import MessageList from '../components/MessageList.svelte';
-  import Composer from '../components/Composer.svelte';
+  import OverviewSummary from '../components/OverviewSummary.svelte';
   import Icon from '../components/Icon.svelte';
   import GettingStarted from '../components/GettingStarted.svelte';
 
   let ov = $state<Overview | null>(null);
   let error = $state('');
   let loading = $state(true);
-  let composer: Composer | undefined = $state();
+  let visitSince: string | undefined;
+  let mounted = false;
+  let fetching = false;
+  let refreshAgain = false;
+  let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  let observedKey: string | undefined;
+  // Detail counters change for durable work events, never streamed token text.
+  const refreshKey = $derived(JSON.stringify([
+    app.resetEpoch,
+    app.data.touched.jobs,
+    Object.values(app.data.decisions).map((d) => [d.id, d.version]),
+  ]));
+
+  function refreshSoon() {
+    if (refreshTimer) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = undefined;
+      void load(false);
+    }, 150);
+  }
 
   async function load(markSeen: boolean) {
+    if (!mounted) return;
+    if (fetching) {
+      refreshAgain = true;
+      return;
+    }
+    fetching = true;
     error = '';
     try {
-      const o = await api.overview();
+      const o = await api.overview(visitSince);
+      if (!mounted) return;
+      // Marking the visit must not shorten this page's catch-up on refresh.
+      visitSince ??= o.since ?? new Date(Date.now() - 24 * 3600_000).toISOString();
+      o.since = visitSince;
       o.catchup = o.catchup ?? [];
       o.work = o.work ?? [];
       o.decisions = o.decisions ?? [];
       o.questions = o.questions ?? [];
       ov = o;
       mergeWorkRows(app.data, o.work);
-      for (const d of o.decisions) app.data.decisions[d.id] = d;
-      for (const q of o.questions) app.data.questions[q.id] = q;
+      for (const d of o.decisions) if (newer(app.data.decisions[d.id], d)) app.data.decisions[d.id] = d;
+      for (const q of o.questions) {
+        if (!app.data.questions[q.id] || app.data.questions[q.id].status === 'open') app.data.questions[q.id] = q;
+      }
       loading = false;
       if (markSeen) {
         await tick();
         requestAnimationFrame(() => {
+          if (!mounted) return;
           api.overviewSeen().catch(() => {
             /* the next visit will record it */
           });
         });
       }
     } catch (err) {
-      error = errorMessage(err);
-      loading = false;
+      if (mounted) {
+        error = errorMessage(err);
+        loading = false;
+      }
+    } finally {
+      fetching = false;
+      if (mounted && refreshAgain) {
+        refreshAgain = false;
+        refreshSoon();
+      }
     }
   }
 
-  onMount(() => void load(true));
+  onMount(() => {
+    mounted = true;
+    void load(true);
+    return () => {
+      mounted = false;
+      clearTimeout(refreshTimer);
+    };
+  });
   $effect(() => {
-    if (app.resetEpoch > 0) untrack(() => void load(false));
+    const key = refreshKey;
+    if (observedKey !== undefined && observedKey !== key) untrack(refreshSoon);
+    observedKey = key;
   });
 
   const myRooms = $derived(new Set(app.rooms.map((r) => r.id)));
   // Live ledger: API rows plus work that started since, always at the newest version.
   const ledger = $derived.by(() => {
-    const rows = new Map<string, { job: Job; lastConfirmed?: string; lastConfirmedAt?: string | null; blocker?: string }>();
-    for (const w of ov?.work ?? []) rows.set(w.job.id, { job: app.data.jobs[w.job.id] ?? w.job, lastConfirmed: w.lastConfirmed, lastConfirmedAt: w.lastConfirmedAt, blocker: w.blocker });
+    const rows = new Map<string, { job: Job; lastConfirmed?: string; lastConfirmedAt?: string | null; blocker?: string; questions?: Question[] }>();
+    for (const w of ov?.work ?? []) rows.set(w.job.id, {
+      job: app.data.jobs[w.job.id] ?? w.job, lastConfirmed: w.lastConfirmed, lastConfirmedAt: w.lastConfirmedAt, blocker: w.blocker,
+      questions: (w.questions ?? []).map((q) => app.data.questions[q.id] ?? q).filter((q) => q.status === 'open' && myRooms.has(q.source.roomId)),
+    });
     for (const j of Object.values(app.data.jobs)) {
       if (rows.has(j.id) || j.kind === 'reply' || j.kind === 'review' || j.parentId || j.state === 'cancelled' || !myRooms.has(j.source.roomId)) continue;
       if (j.state === 'completed' && app.now - Date.parse(j.completedAt ?? j.updatedAt) > 7 * 86400_000) continue;
@@ -67,10 +120,10 @@
   });
   // runState "unknown": the latest attempt's outcome is not confirmed.
   const unknownJobs = $derived(new Set(ledger.filter((r) => jobRunState(app.data, r.job) === 'unknown').map((r) => r.job.id)));
-  const needs = $derived(ledger.filter((r) => r.job.state === 'waiting' || r.job.state === 'failed' || unknownJobs.has(r.job.id)));
-  const active = $derived(ledger.filter((r) => !needs.includes(r) && (r.job.state === 'running' || r.job.state === 'queued' || r.job.state === 'review_ready')));
+  const needs = $derived(ledger.filter((r) => r.questions?.length || (r.job.state === 'waiting' && r.job.waitingReason !== 'review') || r.job.state === 'failed' || unknownJobs.has(r.job.id)));
+  const active = $derived(ledger.filter((r) => !needs.includes(r) && (r.job.state === 'running' || r.job.state === 'queued' || r.job.state === 'review_ready' || r.job.state === 'waiting')));
   const done = $derived(
-    ledger.filter((r) => r.job.state === 'completed').sort((a, b) => (b.job.completedAt ?? '').localeCompare(a.job.completedAt ?? '')),
+    ledger.filter((r) => r.job.state === 'completed' && !needs.includes(r)).sort((a, b) => (b.job.completedAt ?? '').localeCompare(a.job.completedAt ?? '')),
   );
 
   const overviewRoom = $derived(app.overviewRoom);
@@ -86,11 +139,7 @@
 
   function catchupHref(c: Overview['catchup'][number]): string | null {
     if (!c.roomId) return null;
-    const q = new URLSearchParams();
-    if (c.messageId) q.set('msg', c.messageId);
-    if (c.threadId) q.set('panel', `thread:${c.threadId}`);
-    const s = q.toString();
-    return `/rooms/${c.roomId}${s ? `?${s}` : ''}`;
+    return conversationHref({ roomId: c.roomId, messageId: c.messageId, threadId: c.threadId });
   }
 </script>
 
@@ -105,7 +154,7 @@
           </p>
         </div>
         {#if overviewRoom && !wide}
-          <a class="btn" href="/rooms/{overviewRoom.id}"><Icon name="reply" size={16} />Ask where things stand</a>
+          <a class="btn" href="/rooms/{overviewRoom.id}"><Icon name="reply" size={16} />Open workspace summary</a>
         {/if}
       </header>
 
@@ -116,7 +165,8 @@
           <span>{error}</span>
           <button class="btn btn-sm" onclick={() => load(false)}>Retry</button>
         </div>
-      {:else if loading}
+      {/if}
+      {#if loading}
         <p class="meta" aria-busy="true">Gathering what changed…</p>
       {:else if ov}
         <section class="section first" aria-labelledby="ov-catchup">
@@ -143,7 +193,7 @@
                           · <button class="link-btn" onclick={() => app.openPanel({ kind: ref.kind as 'job' | 'review' | 'decision', id: ref.id })}>{ref.kind === 'job' ? 'open the work' : `view ${ref.kind}`}</button>
                         {:else if ref.kind === 'question' && app.data.questions[ref.id]}
                           {@const question = app.data.questions[ref.id]}
-                          · <a href="/rooms/{question.source.roomId}?msg={question.messageId}">view question</a>
+                          · <a href={conversationHref({ ...question.source, messageId: question.messageId })}>view question</a>
                         {:else if ref.kind === 'approval'}
                           {@const work = c.refs?.find((r) => r.kind === 'job')}
                           {#if work}· <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: work.id })}>view permission request</button>{/if}
@@ -216,8 +266,7 @@
   {#if wide && overviewRoom}
     <aside class="convo" aria-labelledby="ov-convo">
       <header class="convo-head">
-        <h2 id="ov-convo">Ask about everything</h2>
-        <p class="meta">Ask about recorded work, decisions and what remains open.</p>
+        <h2 id="ov-convo">Workspace summary</h2>
       </header>
       <MessageList
         label="Overview conversation"
@@ -226,15 +275,9 @@
         loaded={!!tl?.loaded}
         hasMore={!!tl?.hasMore}
         onloadolder={() => app.loadOlder(overviewRoom.id)}
-        onreply={(m) => app.go({ name: 'room', roomId: overviewRoom.id }, { panel: { kind: 'thread', id: m.id } })}
       >
-        {#snippet empty()}
-          <div class="convo-empty">
-            <button class="btn btn-sm" onclick={() => composer?.fill('Where are we with everything?')}>“Where are we with everything?”</button>
-          </div>
-        {/snippet}
       </MessageList>
-      <Composer bind:this={composer} roomId={overviewRoom.id} placeholder="Ask where things stand…" compact />
+      <OverviewSummary roomId={overviewRoom.id} />
     </aside>
   {/if}
 </div>
@@ -342,9 +385,6 @@
   }
   .convo-head h2 {
     font-size: 16px;
-  }
-  .convo-empty {
-    padding: 20px;
   }
   @container overview-main (max-width: 560px) {
     .catchup li {

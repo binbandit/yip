@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { plainText, renderMarkdown } from '../../src/lib/util/markdown';
 
 describe('markdown-lite', () => {
+  it('keeps inline code inside emphasis and link labels without exposing markup', () => {
+    const html = renderMarkdown('**`remaining_seconds(now, expires)` helper:** and *`count` is exact*. [Use `count`](https://example.com).');
+    expect(html).toContain('<strong><code>remaining_seconds(now, expires)</code> helper:</strong>');
+    expect(html).toContain('<em><code>count</code> is exact</em>');
+    expect(html).toContain('>Use <code>count</code></a>');
+    expect(html).not.toContain('\u0000');
+    const hostile = renderMarkdown('**`<img src=x onerror=alert(1)>`** [`<script>x</script>`](https://example.com)');
+    expect(hostile).not.toContain('<img');
+    expect(hostile).not.toContain('<script');
+    expect(hostile).toContain('&lt;img');
+    expect(renderMarkdown('`**literal** @Mira https://example.com`')).toBe('<p><code>**literal** @Mira https://example.com</code></p>');
+  });
   it('escapes raw HTML everywhere', () => {
     const html = renderMarkdown('<img src=x onerror=alert(1)> **<b>x</b>** `<script>`');
     expect(html).not.toContain('<img');

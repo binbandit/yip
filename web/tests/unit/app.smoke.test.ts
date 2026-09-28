@@ -72,7 +72,7 @@ describe('app smoke (jsdom, captured fixtures)', () => {
   it('boots into the Overview with catch-up and the factual ledger', async () => {
     await waitFor(() => text().includes('Since you were here'), 'overview');
     expect(location.pathname).toBe('/overview');
-    expect(text()).toContain('Demo workspace — engineers run a deterministic fake provider; no models are called.');
+    expect(document.querySelector('.notices')).toBeNull();
     await waitFor(() => text().includes('Needs a look') && text().includes("Document Beacon's request flow"), 'ledger');
     expect(text()).toContain('Tracing the retry worker needs its repository location');
     expect(text()).toContain('Recently completed');
@@ -105,7 +105,7 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     byText('.catchup button', 'view decision')!.click();
     await waitFor(() => document.querySelector('.panel'), 'decision evidence');
     expect(document.querySelector('.overview .convo')).toBeNull();
-    expect(text()).toContain('Ask where things stand');
+    expect(text()).toContain('Open workspace summary');
     key(document.activeElement ?? document.body, 'Escape');
     await waitFor(() => !document.querySelector('.panel'), 'evidence closes');
     expect(document.querySelector('.overview .convo')).toBeTruthy();

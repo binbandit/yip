@@ -1,0 +1,12 @@
+{
+  "provider": "claude",
+  "mode": "conversation",
+  "state": "completed",
+  "request": "@oren quick catch-up: did we finish the batch-session helper as well as the expiry fix? Give me the latest reviewed revision and what is still unpublished, in under 120 words. Use our saved work records; this is a read-only question, no new work.",
+  "answer": "I can't find a batch-session helper in our saved work records. Only two Session service items were finished, both on 28 Sep, and I reviewed and approved both:\n\n- **Expiry boundary fix:** revision `d098f10e`. A session is now valid only while `now < expires`.\n- **`remaining_seconds(now, expires)` helper:** revision `46cd64c6`. It was built separately from the default branch and leaves `session.py` untouched. This may be the helper you meant.\n\nThe record doesn't show which of the two was reviewed last, so I can't name a single latest revision.\n\n**Still unpublished:** both revisions. They're local to yip and haven't been pushed, merged or deployed. My optional review suggestion on the helper is still open: add an after-expiry test with a fraction, for example `remaining_seconds(10.5, 10.0) == 0`.",
+  "sourceRoom": "01a0e6c9-ce9b-72ca-883b-f08bd26c859e",
+  "runId": "01a0e70a-b4a6-7e40-a23f-cb249978fd26",
+  "knownRevision": "46cd64c657b875ff8014c14ec369b5e04549ea49",
+  "earlierRevision": "d098f10e59cef06d0503b3423a53f76c4422647c",
+  "activeRuns": 0
+}

@@ -153,14 +153,23 @@ func (s *Server) checkOrigin(r *http.Request) error {
 // authed wraps a handler with session authentication, CSRF, and Origin checks.
 func (s *Server) authed(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(cookieName)
+		c, err := r.Cookie(s.sessionCookieName())
+		legacy := false
+		if errors.Is(err, http.ErrNoCookie) {
+			c, err = r.Cookie(cookieName)
+			legacy = err == nil
+		}
 		if err != nil {
 			s.fail(w, r, domain.Unauthorized("Sign in to continue."))
 			return
 		}
 		u, sess, err := s.hub.Authenticate(r.Context(), c.Value)
 		if err != nil {
-			s.clearCookie(w)
+			// An old shared cookie may belong to a different workspace on
+			// this hostname. Do not sign that workspace out on a failed probe.
+			if !legacy {
+				s.clearCookie(w)
+			}
 			s.fail(w, r, err)
 			return
 		}
@@ -174,6 +183,11 @@ func (s *Server) authed(h http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
+		if legacy {
+			s.setCookie(w, c.Value, sess.ExpiresAt)
+			http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1, HttpOnly: true,
+				Secure: s.opts.SecureCookies, SameSite: http.SameSiteStrictMode})
+		}
 		ctx := context.WithValue(r.Context(), keyUser, u)
 		ctx = context.WithValue(ctx, keySession, sess)
 		s.idempotent(w, r.WithContext(ctx), u.ID, h)
@@ -185,13 +199,18 @@ func subtleEq(a, b string) bool {
 	return a != "" && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
+// Cookies ignore ports, so each workspace needs a stable, distinct name.
+func (s *Server) sessionCookieName() string {
+	return cookieName + "_" + s.hub.Org().ID
+}
+
 func (s *Server) setCookie(w http.ResponseWriter, token string, expires time.Time) {
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", Expires: expires, HttpOnly: true,
+	http.SetCookie(w, &http.Cookie{Name: s.sessionCookieName(), Value: token, Path: "/", Expires: expires, HttpOnly: true,
 		Secure: s.opts.SecureCookies, SameSite: http.SameSiteStrictMode})
 }
 
 func (s *Server) clearCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
+	http.SetCookie(w, &http.Cookie{Name: s.sessionCookieName(), Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
 		Secure: s.opts.SecureCookies, SameSite: http.SameSiteStrictMode})
 }
 

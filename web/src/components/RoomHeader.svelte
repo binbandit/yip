@@ -15,16 +15,16 @@
   const projects = $derived(room.projectIds.map((id) => app.data.projects[id]).filter(Boolean));
   const replyText = $derived(
     room.kind === 'overview'
-      ? 'Answers come from the work ledger'
+      ? 'Summaries use recorded work and confirmed outcomes'
       : room.replyMode === 'steward' && room.stewardId
         ? `${app.engineerName(room.stewardId)} answers unaddressed messages`
         : 'Quiet — only mentioned engineers reply',
   );
   const replyShort = $derived(
-    room.kind === 'overview' ? 'Ledger answers' : room.replyMode === 'steward' && room.stewardId ? `${app.engineerName(room.stewardId)} answers` : 'Mentions only',
+    room.kind === 'overview' ? 'Recorded updates' : room.replyMode === 'steward' && room.stewardId ? `${app.engineerName(room.stewardId)} answers` : 'Mentions only',
   );
   const membersLabel = $derived(engineers.map((e) => `${e.name}, ${e.role}`).join('; '));
-  const title = $derived(room.kind === 'dm' && engineers[0] ? engineers[0].name : room.kind === 'overview' ? 'Overview conversation' : room.name);
+  const title = $derived(room.kind === 'dm' && engineers[0] ? engineers[0].name : room.kind === 'overview' ? 'Workspace summary' : room.name);
 </script>
 
 <header class="room-head">
@@ -34,7 +34,7 @@
     </h1>
     {#if room.private && room.kind !== 'overview'}<span class="vh">, private</span>{/if}
     <p class="purpose truncate">
-      {#if room.kind === 'dm' && engineers[0]}{engineers[0].role}{:else}{room.purpose}{/if}
+      {#if room.kind === 'dm' && engineers[0]}{engineers[0].role}{:else if room.kind === 'overview'}Across your rooms and projects{:else}{room.purpose}{/if}
     </p>
   </div>
 

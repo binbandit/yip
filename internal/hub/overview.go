@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/store"
 	"github.com/binbandit/yip/protocol"
 )
@@ -74,7 +75,7 @@ func (h *Hub) workRow(ctx context.Context, q store.Q, j store.JobRow) protocol.W
 
 // Overview returns the owner's cross-project view: catch-up since the last
 // visit, the factual work ledger, and useful decisions.
-func (h *Hub) Overview(ctx context.Context, userID string, markSeen bool) (protocol.Overview, error) {
+func (h *Hub) Overview(ctx context.Context, userID string, markSeen bool, baseline ...time.Time) (protocol.Overview, error) {
 	q := h.st.R()
 	u, err := store.GetUser(ctx, q, userID)
 	if err != nil {
@@ -85,6 +86,18 @@ func (h *Hub) Overview(ctx context.Context, userID string, markSeen bool) (proto
 		if t, err := time.Parse(time.RFC3339, u.Preferences.LastSeenAt); err == nil {
 			since = &t
 		}
+	}
+	// Keep this visit's window stable when the client refreshes live changes.
+	// Marking the visit seen must not erase the catch-up already on screen.
+	if len(baseline) > 0 {
+		if baseline[0].After(h.now()) {
+			return protocol.Overview{}, domain.Invalid("The catch-up start must not be in the future.")
+		}
+		since = &baseline[0]
+	}
+	if since == nil {
+		from := h.now().Add(-24 * time.Hour)
+		since = &from
 	}
 	ov := protocol.Overview{Since: since, Catchup: []protocol.CatchupItem{}, Work: []protocol.WorkRow{}, Decisions: []protocol.Decision{}, Questions: []protocol.Question{}}
 	ov.RoomID, _ = store.OverviewRoomID(ctx, q, userID)
@@ -105,7 +118,6 @@ func (h *Hub) Overview(ctx context.Context, userID string, markSeen bool) (proto
 		}
 		ov.Work = append(ov.Work, h.workRow(ctx, q, j))
 	}
-	sort.SliceStable(ov.Work, func(a, b int) bool { return workRank(ov.Work[a].Job) < workRank(ov.Work[b].Job) })
 	ov.Catchup = h.catchup(ctx, q, rooms, since)
 	if ds, err := h.ListDecisions(ctx, userID, "accepted"); err == nil {
 		if len(ds) > 6 {
@@ -113,9 +125,47 @@ func (h *Hub) Overview(ctx context.Context, userID string, markSeen bool) (proto
 		}
 		ov.Decisions = ds
 	}
-	if qs, err := store.ListQuestions(ctx, q, "status = 'open' AND recipient_id = ?", userID); err == nil {
-		ov.Questions = qs
+	questions, err := store.ListQuestions(ctx, q, "status = 'open' AND recipient_kind = ? AND recipient_id = ?", protocol.ActorUser, userID)
+	if err != nil {
+		return ov, err
 	}
+	workIndex := map[string]int{}
+	for i, row := range ov.Work {
+		workIndex[row.Job.ID] = i
+	}
+	for _, question := range questions {
+		if !contains(rooms, question.Source.RoomID) {
+			continue
+		}
+		ov.Questions = append(ov.Questions, question)
+		// Reviewer and colleague questions belong to the original assignment.
+		// Keep the question's own source so the answer reaches its actual asker.
+		seen := map[string]bool{}
+		id := question.JobID
+		for depth := 0; id != "" && depth < 32 && !seen[id]; depth++ {
+			seen[id] = true
+			job, err := store.GetJob(ctx, q, id)
+			if err != nil || !contains(rooms, job.Source.RoomID) {
+				break
+			}
+			if job.ParentID != "" {
+				id = job.ParentID
+				continue
+			}
+			if job.Kind == protocol.JobKindReply || job.Kind == protocol.JobKindReview {
+				break
+			}
+			i, found := workIndex[id]
+			if !found {
+				i = len(ov.Work)
+				workIndex[id] = i
+				ov.Work = append(ov.Work, h.workRow(ctx, q, job))
+			}
+			ov.Work[i].Questions = append(ov.Work[i].Questions, question)
+			break
+		}
+	}
+	sort.SliceStable(ov.Work, func(a, b int) bool { return workRank(ov.Work[a].Job) < workRank(ov.Work[b].Job) })
 	if markSeen {
 		u.Preferences.LastSeenAt = h.now().Format(time.RFC3339)
 		_ = h.SetPreferences(ctx, userID, u.Preferences)
@@ -217,6 +267,9 @@ func (h *Hub) catchupWork(ctx context.Context, q store.Q, j store.JobRow, owner 
 		item.Kind, item.Title, item.Detail = "review", j.Title+" is in review", j.StateDetail
 	case protocol.JobWaiting:
 		item.Kind, item.Title, item.Detail = "blocker", owner+" is waiting: "+j.Title, j.StateDetail
+		if j.WaitingReason == "review" {
+			item.Kind, item.Title = "review", j.Title+" is in review"
+		}
 	}
 	if j.WaitingReason == protocol.WaitRecovery || h.workRow(ctx, q, j).RunState == protocol.RunUnknown {
 		item.Kind, item.Title = "unknown", "Outcome not confirmed: "+j.Title
@@ -277,6 +330,9 @@ func (h *Hub) catchupWork(ctx context.Context, q store.Q, j store.JobRow, owner 
 // every project the user's rooms reach, saying so when one is quiet, and
 // lists what is waiting on the user (questions and permissions).
 func (h *Hub) answerStatus(ctx context.Context, t *txn, userID string, room protocol.Room, msg protocol.Message) error {
+	if strings.TrimSpace(msg.Body) != "Where are we with everything?" {
+		return domain.Invalid("Overview provides a workspace summary. Open a room or message an engineer to ask a question.")
+	}
 	rooms, err := store.RoomIDsForMember(ctx, t.tx, protocol.ActorUser, userID)
 	if err != nil {
 		return err

@@ -51,11 +51,12 @@ depend on the answer. Replying in the thread resumed the investigation.
 
 ### Catch up without waking anyone
 
-The Overview summarises what happened since you were last here and answers
-status questions from the work ledger, with confirmed times. Asking where
-things stand never starts an engineer's run.
+The Overview summarises what happened since you were last here and stays
+current while work moves through review and completion. Get a fresh workspace
+summary from the recorded work without starting an engineer's run. Ask an
+engineer in a conversation for an open-ended answer.
 
-![Overview listing a new decision and two completed jobs, with the ledger-backed answer to "What got done today, and is anything waiting on me?"](docs/screenshots/overview.png)
+![Overview showing two reviewed local results, an explicit workspace summary action, and the specific provider limitation affecting conversation readiness](docs/screenshots/ux-2026-09-28/overview-after.png)
 
 ### Engineers persist across rooms
 
@@ -122,9 +123,9 @@ Claude Code or Codex sign-in.
 | Hub (rooms, routing, jobs, runs, reviews, questions, approvals, decisions, scheduler, SSE, auth) | Implemented; covered by unit and in-process integration tests |
 | Runner (pairing, mTLS, journal, leases, worktrees, snapshots, checks, revisions, bridge) | Implemented; exercised by the integration suite on one machine |
 | Deterministic fake provider | Implemented (demo + failure injection) |
-| Codex, Claude Code, Cursor adapters | Implemented against pinned interfaces; sign-in detection checked on real installations (Claude Code ready on a subscription; Codex detected, not signed in). **Runs verified against scripted fakes only — no real-account prompt has been sent** (see [compatibility](docs/compatibility.md)) |
-| GitHub connector | Implemented; tested against an emulated API; real contract test not run |
-| Web client | See [docs/design/README.md](docs/design/README.md). Browser journeys, layout and zoom sweeps pass in the system WebKit (`make e2e-webkit`); Chromium/Firefox not run |
+| Codex, Claude Code, Cursor adapters | Real Codex edits and Claude conversation/review, cross-room recall, cancellation/retry and restart tested on 28 September. This machine's Codex rules prevent conversation/review mode; Cursor remains untested. See [compatibility](docs/compatibility.md). |
+| GitHub connector | Emulated tests plus 32 real scenarios in dedicated private/public playgrounds, including three-account collaboration and protected branches. See the [campaign](docs/simulations/2026-09-28.md). |
+| Web client | System WebKit and installed Chrome journeys passed. The [UX campaign](docs/simulations/2026-09-28-ux.md) covers onboarding, catch-up, interruptions, evidence and responsive navigation. Firefox remains untested. |
 | Two physical machines | Protocol is multi-machine; tested with one hub and one runner per test on a single host |
 
 The release gates (A01–A44) and what remains are tracked in

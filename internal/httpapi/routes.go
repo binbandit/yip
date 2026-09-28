@@ -606,7 +606,16 @@ func (s *Server) decideDecision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getOverview(w http.ResponseWriter, r *http.Request) {
-	ov, err := s.hub.Overview(r.Context(), userFrom(r).ID, r.URL.Query().Get("seen") == "1")
+	var baseline []time.Time
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		at, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			s.fail(w, r, domain.Invalid("The catch-up start must be a valid timestamp."))
+			return
+		}
+		baseline = append(baseline, at)
+	}
+	ov, err := s.hub.Overview(r.Context(), userFrom(r).ID, r.URL.Query().Get("seen") == "1", baseline...)
 	respond(s, w, r, ov, err)
 }
 

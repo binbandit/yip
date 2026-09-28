@@ -3,6 +3,7 @@
   import { app } from '../../lib/state/app.svelte';
   import { details } from '../../lib/state/details.svelte';
   import { workResultKey } from '../../lib/util/reviews';
+  import { conversationHref } from '../../lib/util/conversation';
   import { errorMessage } from '../../lib/api/client';
   import RightPanel, { type PanelMode } from '../RightPanel.svelte';
   import ReviewDetail from '../ReviewDetail.svelte';
@@ -45,7 +46,7 @@
     {:else}
       <div class="links">
         <button class="btn btn-sm" onclick={() => app.openPanel({ kind: 'job', id: review.jobId }, 'evidence')}><Icon name="file" size={15} />View evidence</button>
-        <a class="btn btn-sm btn-quiet" href="/rooms/{review.source.roomId}{review.source.messageId ? `?msg=${review.source.messageId}` : ''}">
+        <a class="btn btn-sm btn-quiet" href={conversationHref(review.source)}>
           Source conversation
         </a>
       </div>

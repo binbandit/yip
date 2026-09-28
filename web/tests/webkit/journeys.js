@@ -50,10 +50,10 @@ window.__journeys = (() => {
 
   return [
     {
-      name: 'sign in lands on the Overview with the demo label',
+      name: 'sign in lands on the Overview',
       width: 1440, height: 900,
       run: async (t) => {
-        await t.waitFor(() => t.q('[role=note]')?.textContent.includes('Demo workspace'), 'the demo label');
+        await t.waitFor(() => t.byText('h1', 'Overview'), 'Overview');
         await t.waitFor(() => t.byText('h2', 'Since you were here'), 'Since you were here');
       },
     },

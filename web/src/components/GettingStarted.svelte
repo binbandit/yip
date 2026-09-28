@@ -1,11 +1,7 @@
 <script lang="ts">
-  // The first-run journey (spec §7A) as a short checklist on the Overview,
-  // derived from live state: a paired machine, a provider signed in there
-  // with its own tool, an engineer using it, a room, a project, and a first
-  // real piece of work with its result. It never declares setup successful
-  // from a connection dot alone; the last step is finished work.
   import { app } from '../lib/state/app.svelte';
   import { providerLabel } from '../lib/util/labels';
+  import { roomSettings, setupReadiness } from '../lib/util/setup';
   import StateIcon from './StateIcon.svelte';
 
   const KEY = 'yip.gettingStarted.dismissed';
@@ -15,107 +11,111 @@
   const showSteps = $derived(expanded || !hasRecordedWork);
   try {
     dismissed = localStorage.getItem(KEY) === '1';
-  } catch {
-    /* storage unavailable: show it */
-  }
-  function dismiss() {
-    dismissed = true;
+  } catch { /* storage unavailable: show it */ }
+  function setDismissed(value: boolean) {
+    dismissed = value;
+    if (!value) expanded = true;
     try {
-      localStorage.setItem(KEY, '1');
-    } catch {
-      /* ignore */
-    }
+      if (value) localStorage.setItem(KEY, '1');
+      else localStorage.removeItem(KEY);
+    } catch { /* ignore */ }
   }
 
+  const setup = $derived(setupReadiness(app.data));
+  const engineer = $derived(setup.engineer);
+  const room = $derived(setup.room);
+  const project = $derived(setup.project);
+  const reviewCandidate = $derived(setup.reviewerCandidate);
+  const reviewerInRoom = $derived(!!room && !!reviewCandidate && room.members.some((m) => m.kind === 'engineer' && m.id === reviewCandidate.id));
+  const projectHref = $derived(project ? `/projects/${project.id}` : '/projects');
   const SIGN_IN: Record<string, string> = { codex: 'codex login', claude: 'claude auth login', cursor: 'agent login' };
-
-  const nodes = $derived(Object.values(app.data.nodes).filter((n) => !n.revokedAt && n.status !== 'revoked'));
-  // Real providers signed in on a connected machine (the fake one doesn't count).
-  const ready = $derived.by(() => {
-    const s = new Set<string>();
-    for (const n of nodes) {
-      if (n.status !== 'online') continue;
-      for (const p of n.providers ?? []) if (p.provider !== 'fake' && p.authState === 'ready') s.add(p.provider);
-    }
-    return [...s];
-  });
-  const needsSignIn = $derived.by(() => {
-    const s = new Set<string>();
-    for (const n of nodes) for (const p of n.providers ?? []) if (p.authState === 'needs_signin' && !ready.includes(p.provider)) s.add(p.provider);
-    return [...s];
-  });
-  const realEngineers = $derived(Object.values(app.data.engineers).filter((e) => !e.archived && ready.includes(e.provider.provider)));
-  const rooms = $derived(
-    Object.values(app.data.rooms).filter((r) => r.kind === 'room' && r.members.some((m) => m.kind === 'engineer' && realEngineers.some((e) => e.id === m.id))),
-  );
-  const anyRoom = $derived(Object.values(app.data.rooms).find((r) => r.kind === 'room'));
-  const projects = $derived(Object.values(app.data.projects).filter((p) => (p.repos ?? []).length > 0));
-  const firstWork = $derived(
-    Object.values(app.data.jobs).some((j) => j.state === 'completed' && j.kind !== 'reply' && j.kind !== 'review' && realEngineers.some((e) => e.id === j.ownerId)),
-  );
-
+  const signInProvider = $derived(engineer?.provider.provider ?? setup.providerInstalled.find((p) => p.authState === 'ready')?.provider ?? setup.providerInstalled[0]?.provider);
   const steps = $derived([
     {
-      done: nodes.length > 0,
+      done: setup.nodes.length > 0,
       title: 'Pair a machine',
-      detail: nodes.length ? `${nodes.map((n) => n.name).join(', ')} paired.` : 'Work runs on machines you choose, not in this window.',
-      href: '/machines',
-      action: 'Add machine',
+      detail: setup.nodes.length ? `${setup.nodes.map((n) => n.name).join(', ')} paired.` : 'Your engineers work on machines you choose.',
+      href: '/machines', action: 'Add machine',
     },
     {
-      done: ready.length > 0,
+      done: setup.providerSignedIn,
       title: 'Sign in a provider on it',
-      detail: ready.length
-        ? `${ready.map(providerLabel).join(' and ')} ready, using the sign-in already on the machine.`
-        : needsSignIn.length
-          ? `Run ${needsSignIn.map((p) => SIGN_IN[p] ?? p).join(' or ')} on the machine; yip reuses that sign-in and never asks for tokens.`
-          : 'Sign in to Codex, Claude Code or Cursor on the machine with its own tool.',
-      href: '/machines',
-      action: 'Check machines',
+      detail: setup.providerSignedIn
+        ? `${providerLabel(signInProvider ?? '')} sign-in is connected${app.data.demo && signInProvider === 'fake' ? ' for the scripted demo' : ''}.`
+        : signInProvider && SIGN_IN[signInProvider]
+          ? `Run ${SIGN_IN[signInProvider]} on your machine; yip uses that sign-in.`
+          : 'Sign in to Codex, Claude Code or Cursor on your machine with its own tool.',
+      href: '/machines', action: 'Check machines',
     },
     {
-      done: realEngineers.length > 0,
-      title: 'Give an engineer that provider',
-      detail: realEngineers.length ? `${realEngineers.map((e) => e.name).join(', ')} can run on it.` : 'Create an engineer, or set an existing one’s provider on their profile.',
-      href: '/engineers',
-      action: 'Engineers',
+      done: !!engineer,
+      title: 'Choose your first engineer',
+      detail: engineer ? `${engineer.name} uses ${providerLabel(engineer.provider.provider)}.` : 'Give them a name, a role and a provider. You can change these later.',
+      href: '/engineers', action: 'Engineers',
     },
     {
-      done: rooms.length > 0,
+      done: setup.inRoom,
       title: 'Bring them into a room',
-      detail: rooms.length ? `In ${rooms.map((r) => r.name).join(', ')}.` : 'A room is a group with a purpose; it can range across projects.',
-      // With rooms already here, add the engineer to one rather than start another.
-      href: anyRoom ? `/rooms/${anyRoom.id}?panel=room%3A${anyRoom.id}` : '',
-      action: anyRoom ? `Add to ${anyRoom.name}` : 'Create a room',
+      detail: setup.inRoom ? `${engineer?.name} is in ${room?.name}. You can talk there now.` : 'A room is a conversation with your team. Projects can come later.',
+      href: room ? roomSettings(room) : '', action: room ? `Set up ${room.name}` : 'Create a room',
     },
     {
-      done: projects.length > 0,
-      title: 'Link a project',
-      detail: projects.length ? `${projects.map((p) => p.name).join(', ')}.` : 'Connect a repository when you want the team to inspect or change code.',
-      href: '/projects',
-      action: 'Projects',
+      done: setup.projectReady,
+      title: 'Connect a project when you need code',
+      detail: setup.projectReady
+        ? `${engineer?.name} can inspect ${project?.name} from ${room?.name}.`
+        : !project ? 'A project connects a repository and sets what your engineers can do.'
+          : !project.repos.length ? `Add a repository to ${project.name}.`
+          : !setup.projectLinked ? `Link ${project.name} to ${room?.name ?? 'your room'} in room settings.`
+          : !setup.inRoom ? `Add ${engineer?.name ?? 'an engineer'} to ${room?.name} first.`
+          : `Choose ${engineer?.name}'s access to ${project.name}. Read access is enough for an investigation.`,
+      href: project?.repos.length && !setup.projectLinked && room ? roomSettings(room) : `${projectHref}${project ? project.repos.length ? '#p-access' : '#p-repos' : ''}`,
+      action: !project ? 'Projects' : !project.repos.length ? 'Add repository' : !setup.projectLinked && room ? 'Link to room' : 'Choose access',
     },
     {
-      done: firstWork,
+      done: setup.reviewReady,
+      title: 'Give the work a second pair of eyes',
+      detail: !setup.needsReviewer ? 'An investigation can finish without peer review in this project. Code changes still need a colleague.'
+        : setup.reviewer ? `${setup.reviewer.name} can review ${project?.name} in ${room?.name}. Your engineers arrange the review.`
+          : !reviewCandidate ? 'Projects require peer review by default. Add a second engineer; they can share the same provider and machine.'
+          : !reviewerInRoom ? `Invite ${reviewCandidate.name} to ${room?.name ?? 'your room'} so the team can coordinate reviews.`
+          : `Give ${reviewCandidate.name} read access to ${project?.name ?? 'the project'} so they can review the work.`,
+      href: !reviewCandidate ? '/engineers' : !reviewerInRoom ? room ? roomSettings(room) : '' : `${projectHref}${project ? '#p-access' : ''}`,
+      action: !reviewCandidate ? 'Add a colleague' : !reviewerInRoom ? room ? 'Invite to room' : 'Create a room' : 'Choose review access',
+    },
+    {
+      done: setup.completed,
       title: 'Ask for a small, real piece of work',
-      detail: firstWork ? 'Finished, with its evidence.' : 'Mention an engineer with a small investigation; its result shows what changed, the checks and where it ran.',
-      href: rooms[0] ? `/rooms/${rooms[0].id}` : '',
-      action: rooms[0] ? `Open ${rooms[0].name}` : '',
+      detail: setup.completed ? 'Your team has finished its first piece of work.'
+        : setup.projectReady && setup.reviewReady ? `Ask @${engineer?.handle} to investigate one small thing in ${project?.name}. The team handles the work and review in the conversation.`
+          : 'Start a conversation now. For repository work, finish the project and review choices above.',
+      href: setup.inRoom && room ? `/rooms/${room.id}` : '',
+      action: setup.inRoom && room ? `Open ${room.name}` : '',
     },
   ]);
   const remaining = $derived(steps.filter((s) => !s.done).length);
 </script>
 
-{#if !dismissed && remaining > 0}
+{#if dismissed}
+  <button class="btn btn-sm btn-quiet restore" onclick={() => setDismissed(false)}>Show getting started</button>
+{:else}
   <section class="start" aria-labelledby="gs-title">
     <header>
       <h2 id="gs-title" class="section-title">Getting started</h2>
       <span class="meta">{steps.length - remaining} of {steps.length} done</span>
       <div class="actions">
         {#if hasRecordedWork}<button class="btn btn-sm btn-quiet" aria-expanded={showSteps} aria-controls="gs-steps" onclick={() => (expanded = !expanded)}>{showSteps ? 'Show less' : 'Show steps'}</button>{/if}
-        <button class="btn btn-sm btn-quiet" onclick={dismiss}>Hide</button>
+        <button class="btn btn-sm btn-quiet" onclick={() => setDismissed(true)}>Hide</button>
       </div>
     </header>
+    {#if setup.unavailable.length > 0}
+      <div class="availability meta">
+        {#each setup.unavailable as issue (issue.engineer.id)}
+          <p><strong>{issue.engineer.name}:</strong> {issue.reason} <a href={issue.href}>{issue.action}</a></p>
+        {/each}
+        <p>Your completed setup stays in place.</p>
+      </div>
+    {/if}
     <ol id="gs-steps" hidden={!showSteps}>
       {#each steps as s, i (s.title)}
         {@const next = !s.done && steps.slice(0, i).every((x) => x.done)}
@@ -136,6 +136,15 @@
 {/if}
 
 <style>
+  .restore {
+    margin-bottom: 20px;
+  }
+  .availability {
+    margin: 8px 0 12px;
+  }
+  .availability p {
+    margin: 4px 0;
+  }
   .start {
     container-type: inline-size;
     margin-bottom: 28px;

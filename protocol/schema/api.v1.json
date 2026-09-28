@@ -4429,6 +4429,12 @@
         "projectName": {
           "type": "string"
         },
+        "questions": {
+          "items": {
+            "$ref": "#/$defs/Question"
+          },
+          "type": "array"
+        },
         "roomName": {
           "type": "string"
         },

@@ -79,6 +79,16 @@ The daily-use hub and development server were not changed. This provides
 evidence for the tested Claude-intake/review plus Codex-edit configuration;
 it does not certify the outstanding deployment and provider combinations.
 
+## UX campaign (28 September)
+
+The [UX report](simulations/2026-09-28-ux.md) compares the working product with
+the owner's original discussion, read in their signed-in browser. It records
+new first-use, multi-project, interrupted-message, approval-race, live
+catch-up, and responsive checks separately from the earlier reliability
+campaign above. A new bounded Claude conversation recalled both saved real
+results and their publication state; its chronological and brevity limits
+are recorded rather than treated as a complete memory guarantee.
+
 ## Backend review (25 September)
 
 An adversarial review of the hub and runner found 14 defects (six high, eight

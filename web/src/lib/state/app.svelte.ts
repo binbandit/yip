@@ -54,7 +54,7 @@ class AppState {
   resetEpoch = $state(0);
   toasts = $state<Toast[]>([]);
   announcement = $state('');
-  /** Steering scope per room/thread key: the live job new messages are added to. */
+  /** Selected work per room/thread: live input or a follow-up when it ends. */
   steer = $state<Record<string, string | null>>({});
   /** Latest delivery receipt per composer key (input id). */
   receipts = $state<Record<string, string>>({});

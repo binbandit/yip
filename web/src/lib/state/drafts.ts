@@ -9,7 +9,7 @@ export interface Draft {
   body: string;
   mentions: SelectedMention[];
   projectIds: string[];
-  /** A live job the draft is scoped to (steering). */
+  /** Selected work: live input or a follow-up after the work ends. */
   jobId?: string;
   savedAt: string;
 }

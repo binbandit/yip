@@ -1,11 +1,12 @@
 <script lang="ts">
   // An exceptional permission request, inline where it was raised: the exact
-  // action, target, scope and expiry. Allow/Reject send the exact version; a
-  // changed or expired request cannot run, and the card says so.
+  // action, target, scope and expiry. A stale decision reloads the recorded
+  // permission; another tab may already have allowed the action.
   import { untrack } from 'svelte';
   import { app } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
   import { api } from '../lib/api/endpoints';
+  import { newer } from '../lib/state/data';
   import { ApiError, errorMessage } from '../lib/api/client';
   import { approvalStatusLabel, approvalVerb } from '../lib/util/labels';
   import { atTime, relative, shortSha } from '../lib/util/time';
@@ -27,25 +28,60 @@
   const status = $derived(a ? (expired ? 'expired' : a.status) : 'loading');
   let busy = $state<'approve' | 'reject' | null>(null);
   let error = $state('');
+  let conflict = $state(false);
+  let conflictedVersion = $state(0);
+  let refreshFailed = $state(false);
+  let refreshing = $state(false);
   let expanded = $state(false);
   const showDetail = $derived(status === 'pending' || expanded);
+  const unconfirmed = $derived(refreshFailed && (!a || a.version <= conflictedVersion));
+  const feedback = $derived.by(() => {
+    if (!conflict) return error;
+    if (unconfirmed) return 'Your decision was not applied. The current outcome could not be confirmed. Check the current request before deciding again.';
+    switch (status) {
+      case 'approved':
+        return "This request was already allowed. Check the work for the action's outcome.";
+      case 'consumed':
+        return "This permission was already delivered to the machine. Check the work for the action's outcome.";
+      case 'rejected':
+        return 'This request was already rejected.';
+      case 'expired':
+        return 'This request expired. If the action is still needed, a new request will appear.';
+      case 'cancelled':
+        return 'This request was withdrawn.';
+      default:
+        return 'This request changed since it was shown. Review the current action before deciding.';
+    }
+  });
+
+  async function reloadApproval() {
+    refreshing = true;
+    try {
+      const next = await api.approval(approvalId);
+      if (newer(app.data.approvals[next.id], next)) app.data.approvals[next.id] = next;
+      refreshFailed = false;
+    } catch {
+      refreshFailed = true;
+    } finally {
+      conflict = true;
+      refreshing = false;
+    }
+  }
 
   async function decide(decision: 'approve' | 'reject') {
-    if (!a) return;
+    if (!a || busy || refreshing || unconfirmed) return;
+    const request = a;
     busy = decision;
     error = '';
+    conflict = false;
     try {
-      const next = await api.decideApproval(a.id, { decision, version: a.version, note: '' });
-      app.data.approvals[next.id] = next;
+      const next = await api.decideApproval(request.id, { decision, version: request.version, note: '' });
+      if (newer(app.data.approvals[next.id], next)) app.data.approvals[next.id] = next;
       app.announce(decision === 'approve' ? 'Allowed.' : 'Rejected.');
     } catch (err) {
       if (err instanceof ApiError && err.conflict) {
-        error = 'This request changed or expired since it was shown. Nothing ran. Review the latest version below.';
-        try {
-          app.data.approvals[a.id] = await api.approval(a.id);
-        } catch {
-          /* keep what we have */
-        }
+        conflictedVersion = request.version;
+        await reloadApproval();
       } else {
         error = errorMessage(err);
       }
@@ -61,10 +97,10 @@
   {:else}
     <p class="kicker">
       <StateIcon
-        shape={status === 'pending' ? 'pause' : status === 'approved' || status === 'consumed' ? 'check-filled' : status === 'rejected' ? 'slash' : 'circle'}
-        tone={status === 'pending' ? 'attention' : status === 'approved' || status === 'consumed' ? 'success' : 'neutral'}
+        shape={unconfirmed ? 'question' : status === 'pending' ? 'pause' : status === 'approved' || status === 'consumed' ? 'check-filled' : status === 'rejected' ? 'slash' : 'circle'}
+        tone={unconfirmed || status === 'pending' ? 'attention' : status === 'approved' || status === 'consumed' ? 'success' : 'neutral'}
       />
-      <span>{approvalStatusLabel(status)}</span>
+      <span>{unconfirmed ? 'Current status not confirmed' : approvalStatusLabel(status)}</span>
       {#if a.decidedAt && status !== 'pending'}<span class="meta">· {app.actorName(a.decidedBy)} {atTime(a.decidedAt)}</span>{/if}
     </p>
     <p class="summary">{a.action.summary}</p>
@@ -90,17 +126,18 @@
     </dl>
     <div class="actions">
       {#if status === 'pending'}
-        <button class="btn btn-primary btn-sm" disabled={!!busy} onclick={() => decide('approve')}>
+        <button class="btn btn-primary btn-sm" disabled={!!busy || refreshing || unconfirmed} onclick={() => decide('approve')}>
           {busy === 'approve' ? 'Allowing…' : approvalVerb(a.action.kind)}
         </button>
-        <button class="btn btn-sm" disabled={!!busy} onclick={() => decide('reject')}>{busy === 'reject' ? 'Rejecting…' : 'Reject'}</button>
+        <button class="btn btn-sm" disabled={!!busy || refreshing || unconfirmed} onclick={() => decide('reject')}>{busy === 'reject' ? 'Rejecting…' : 'Reject'}</button>
       {/if}
       <button class="btn btn-sm btn-quiet" onclick={() => app.openPanel({ kind: 'job', id: a.jobId }, 'evidence')}>
         <Icon name="file" size={15} />View diff
       </button>
     </div>
     {/if}
-    {#if error}<p class="form-error" role="alert">{error}</p>{/if}
+    {#if feedback}<p class="form-error" role="alert">{feedback}</p>{/if}
+    {#if unconfirmed}<button class="btn btn-sm" disabled={refreshing} onclick={reloadApproval}>{refreshing ? 'Checking…' : 'Check current request'}</button>{/if}
     {#if status === 'pending'}
       <p class="meta">This allows only the action shown, on the revision shown. A reply in chat does not grant it.</p>
     {/if}

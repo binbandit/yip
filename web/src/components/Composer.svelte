@@ -1,10 +1,11 @@
 <script lang="ts">
-  // The composer. Mentions come only from the list (never from typed or pasted
-  // text) and are sent as structured {kind, id}. Drafts are kept per room and
-  // thread on this device. When a live job is selected, messages are added to
-  // that job and the delivery receipt says exactly what happened.
+  // The composer. Recipients come from the mention list or selected work,
+  // never from typed or pasted names. Drafts are kept per room and
+  // thread on this device. A selected job keeps its context when it finishes:
+  // further messages follow up with its engineer in the original thread.
   import { onMount, tick, untrack } from 'svelte';
   import { app, receiptKey } from '../lib/state/app.svelte';
+  import { details } from '../lib/state/details.svelte';
   import { draftKey, loadDraft, saveDraft, clearDraft } from '../lib/state/drafts';
   import { filterCandidates, findMentionQuery, insertMention, projectsNamedIn, pruneSelected, resolveMentions, type MentionCandidate, type SelectedMention } from '../lib/util/mentions';
   import { deliveryReceipt, jobStateLabel, waitingReasonLabel } from '../lib/util/labels';
@@ -45,13 +46,13 @@
   // ---- steering scope ----
   const scopeJobId = $derived(app.steer[rkey] ?? null);
   const scopeJob = $derived(scopeJobId ? app.data.jobs[scopeJobId] : undefined);
+  const followUp = $derived(scopeJob && !isLiveJob(scopeJob) ? scopeJob : null);
+  const scopeMissing = $derived(scopeJobId && !scopeJob ? details.jobs[scopeJobId]?.error : undefined);
   $effect(() => {
-    // A job that finished can't take more input: drop the scope and say so.
-    if (scopeJob && !isLiveJob(scopeJob)) {
-      untrack(() => {
-        app.steer[rkey] = null;
-        app.toast(`${scopeJob.title} is ${jobStateLabel(scopeJob).toLowerCase()}; new messages go to the room.`);
-      });
+    if (scopeJobId && !scopeJob) {
+      const id = scopeJobId;
+      const touch = app.data.touched.jobs[id] ?? 0;
+      untrack(() => details.ensureJob(id, touch));
     }
   });
 
@@ -192,7 +193,7 @@
       body = d.body;
       selected = d.mentions;
       projectIds = d.projectIds.filter((p) => room?.projectIds.includes(p));
-      if (d.jobId && app.data.jobs[d.jobId] && isLiveJob(app.data.jobs[d.jobId]) && app.steer[rkey] === undefined) app.steer[rkey] = d.jobId;
+      if (d.jobId && app.steer[rkey] === undefined) app.steer[rkey] = d.jobId;
     }
     void tick().then(autosize);
     return () => flushDraft();
@@ -310,10 +311,19 @@
 
   async function send() {
     const text = body.trim();
-    if (!text) return;
-    const mentions: Mention[] = resolveMentions(text, selected);
-    const jobId = scopeJobId ?? undefined;
-    const replyToId = answering?.messageId || undefined;
+    if (!text || (scopeJobId && !scopeJob)) return;
+    const target = followUp;
+    if (scopeJob && (scopeJob.source.roomId !== roomId || (target && !target.source.messageId))) {
+      sendError = 'This work has no conversation here. Clear the selected work to send a room message.';
+      return;
+    }
+    const chosenMentions = resolveMentions(text, selected);
+    const mentions: Mention[] = target
+      ? [{ kind: 'engineer', id: target.ownerId }, ...chosenMentions.filter((m) => m.kind !== 'engineer' || m.id !== target.ownerId)]
+      : chosenMentions;
+    const jobId = target ? undefined : scopeJobId ?? undefined;
+    const destinationThread = target ? target.source.threadId || target.source.messageId : threadId;
+    const replyToId = target ? target.source.messageId : answering?.messageId || (threadId ? restoredReplyTo || undefined : undefined);
     const pids = projectIds.filter((p) => room?.projectIds.includes(p));
     body = '';
     notAnswer = null;
@@ -326,11 +336,16 @@
     dismissedProjects = new Set();
     clearDraft(key);
     if (jobId) saveDraft(key, { body: '', mentions: [], projectIds: pids, jobId });
+    if (target) app.steer[rkey] = null;
     if (!jobId) delete app.receipts[rkey];
     await tick();
     autosize();
     textarea?.focus();
-    const resp = await app.send({ roomId, threadId, body: text, mentions, projectIds: pids, jobId, replyToId });
+    // A thread plus an explicit recipient keeps a follow-up separate from
+    // unrelated live work that the same engineer may now own in this room.
+    const sending = app.send({ roomId, threadId: destinationThread, body: text, mentions, projectIds: pids, jobId, replyToId });
+    if (target && destinationThread) app.go({ name: 'room', roomId }, { panel: { kind: 'thread', id: destinationThread } });
+    const resp = await sending;
     if (resp?.duplicate) app.toast('That message was already sent; showing the original.');
     const answered = (resp?.resolvedQuestionIds ?? []).map((id) => app.data.questions[id]).filter(Boolean);
     if (resp?.resolvedQuestionIds?.length) {
@@ -398,7 +413,7 @@
     </div>
   {/if}
 
-  <div class="box" class:scoped={!!scopeJob || !!answering}>
+  <div class="box" class:scoped={!!scopeJobId || !!answering}>
     {#if answering}
       <div class="scope answering" role="status">
         <Icon name="reply" size={15} />
@@ -408,9 +423,21 @@
     {/if}
     {#if scopeJob}
       <div class="scope" role="status">
+        <Icon name={followUp ? 'reply' : 'commit'} size={15} />
+        <span class:truncate={!followUp}>
+          {#if followUp}
+            <strong>{scopeJob.title}</strong> is {jobStateLabel(scopeJob).toLowerCase()}. Follow up with {app.engineerName(scopeJob.ownerId)} in its thread.
+          {:else}
+            Adding to: <strong>{scopeJob.title}</strong> · {app.engineerName(scopeJob.ownerId)}
+          {/if}
+        </span>
+        <button class="icon-btn clear" aria-label="Clear selected work: {scopeJob.title}" onclick={clearScope}><Icon name="x" size={15} /></button>
+      </div>
+    {:else if scopeJobId}
+      <div class="scope" role="status">
         <Icon name="commit" size={15} />
-        <span class="truncate">Adding to: <strong>{scopeJob.title}</strong> · {app.engineerName(scopeJob.ownerId)}</span>
-        <button class="icon-btn clear" aria-label="Stop adding to {scopeJob.title}" onclick={clearScope}><Icon name="x" size={15} /></button>
+        <span>{scopeMissing ? 'Selected work is unavailable. Clear it to send a room message.' : 'Loading selected work. Your draft is saved.'}</span>
+        <button class="icon-btn clear" aria-label="Clear selected work" onclick={clearScope}><Icon name="x" size={15} /></button>
       </div>
     {/if}
 
@@ -509,7 +536,7 @@
         <span class="mentioning meta truncate">Asking {mentioned.map((m) => app.engineerName(m.id)).join(', ')}</span>
       {/if}
       <span class="spacer"></span>
-      <button class="send" aria-label={sendLabel} title={sendLabel} disabled={!body.trim()} onclick={send}>
+      <button class="send" aria-label={sendLabel} title={sendLabel} disabled={!body.trim() || (!!scopeJobId && !scopeJob)} onclick={send}>
         <Icon name="send" size={18} />
       </button>
     </div>

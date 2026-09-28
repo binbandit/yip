@@ -2,10 +2,12 @@
   // One factual ledger row: state, objective, owner, project, last confirmed
   // update with its time, machine, blocker text, and the origin conversation.
   import { app } from '../lib/state/app.svelte';
-  import type { Job } from '../lib/api/types.gen';
+  import type { Job, Question } from '../lib/api/types.gen';
   import { jobShape, jobStateLabel, jobTone, runStateNote, waitingReasonLabel } from '../lib/util/labels';
   import { isLiveJob, jobRunState } from '../lib/state/data';
   import { fullTime, relative } from '../lib/util/time';
+  import { conversationHref } from '../lib/util/conversation';
+  import { plainText } from '../lib/util/markdown';
   import StateIcon from './StateIcon.svelte';
   import Avatar from './Avatar.svelte';
 
@@ -14,18 +16,20 @@
     lastConfirmed?: string;
     lastConfirmedAt?: string | null;
     blocker?: string;
+    questions?: Question[];
     /** Overrides the latest attempt's state from the store. */
     unknownOutcome?: boolean;
   }
-  let { job, lastConfirmed, lastConfirmedAt, blocker, unknownOutcome: forced = false }: Props = $props();
+  let { job, lastConfirmed, lastConfirmedAt, blocker, questions = [], unknownOutcome: forced = false }: Props = $props();
   const runState = $derived(jobRunState(app.data, job));
   const unknownOutcome = $derived(forced || runState === 'unknown');
   const note = $derived(isLiveJob(job) ? runStateNote(runState) : undefined);
   const project = $derived(job.projectId ? app.data.projects[job.projectId] : undefined);
   const room = $derived(app.data.rooms[job.source.roomId]);
   const node = $derived(app.nodeName(job.nodeId));
-  const confirmed = $derived(job.lastActivity || lastConfirmed || '');
-  const confirmedAt = $derived(job.lastActivityAt ?? lastConfirmedAt ?? null);
+  const completed = $derived(job.state === 'completed');
+  const confirmed = $derived(completed ? '' : job.lastActivity || lastConfirmed || '');
+  const confirmedAt = $derived(completed ? job.completedAt : job.lastActivityAt ?? lastConfirmedAt ?? null);
   const blockText = $derived(
     unknownOutcome
       ? `${node || 'The machine'} stopped reporting. The outcome is not yet confirmed.`
@@ -42,31 +46,61 @@
       <span>{unknownOutcome ? 'Not confirmed' : job.state === 'waiting' ? waitingReasonLabel(job.waitingReason) : jobStateLabel(job)}</span>
     </span>
     <span class="title">{job.title}</span>
+    {#if completed && job.summary}<span class="result">{plainText(job.summary)}</span>{/if}
     {#if blockText}<span class="blocker">{blockText}</span>{/if}
     <span class="facts">
       <span class="owner"><Avatar actor={{ kind: 'engineer', id: job.ownerId }} size={18} />{app.engineerName(job.ownerId)}</span>
       {#if project}<span>· {project.name}</span>{/if}
       {#if confirmed}<span>· {confirmed}{#if confirmedAt}<span title={fullTime(confirmedAt)}>, {relative(confirmedAt, app.now)}</span>{/if}</span>{/if}
+      {#if completed && confirmedAt}<span>· <time datetime={confirmedAt} title={fullTime(confirmedAt)}>{relative(confirmedAt, app.now)}</time></span>{/if}
       {#if node}<span>· on {node}</span>{/if}
       {#if note && !unknownOutcome}<span>· {note}</span>{/if}
     </span>
   </button>
   {#if room}
-    <a class="origin" href="/rooms/{room.id}{job.source.messageId ? `?msg=${job.source.messageId}` : ''}" aria-label="Open the conversation in {room.name}">
+    <a class="origin" href={conversationHref(job.source)} aria-label="Open the conversation in {room.name}">
       {room.kind === 'dm' ? 'Direct' : room.name}
     </a>
+  {/if}
+  {#if questions.length}
+    <div class="questions">
+      {#each questions as question (question.id)}
+        <a href={conversationHref({ ...question.source, messageId: question.messageId })}>
+          {app.engineerName(question.askerId)} asks: {question.missingFact}<span class="answer">Answer in conversation</span>
+        </a>
+      {/each}
+    </div>
   {/if}
 </li>
 
 <style>
   .row {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     gap: 8px;
     border-top: 1px solid var(--line-soft);
   }
   .row:first-child {
     border-top: 0;
+  }
+  .questions {
+    flex-basis: 100%;
+    display: grid;
+    gap: 6px;
+    padding: 0 8px 12px;
+  }
+  .questions a {
+    padding-left: 8px;
+    border-left: 3px solid var(--attention-fill);
+    font-size: 13.5px;
+    text-decoration: none;
+  }
+  .answer {
+    margin-left: 8px;
+    color: var(--ink-secondary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
   .main {
     flex: 1;
@@ -75,6 +109,7 @@
     grid-template-columns: 170px minmax(0, 1fr);
     grid-template-areas:
       'state title'
+      '. result'
       '. blocker'
       '. facts';
     gap: 2px 12px;
@@ -109,6 +144,16 @@
     color: var(--ink);
     font-size: 13.5px;
   }
+  .result {
+    grid-area: result;
+    color: var(--ink-secondary);
+    font-size: 13.5px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+  }
   .facts {
     grid-area: facts;
     display: flex;
@@ -141,7 +186,7 @@
   @media (max-width: 760px) {
     .main {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-areas: 'state' 'title' 'blocker' 'facts';
+      grid-template-areas: 'state' 'title' 'result' 'blocker' 'facts';
     }
   }
 </style>

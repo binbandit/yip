@@ -4,9 +4,9 @@ import { mention, openRoom, signIn } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
-test('sign in lands on the Overview and shows the demo label', async ({ page }) => {
+test('sign in lands on the Overview', async ({ page }) => {
   await signIn(page);
-  await expect(page.getByRole('note')).toContainText('Demo workspace');
+  await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Since you were here' })).toBeVisible();
 });
 

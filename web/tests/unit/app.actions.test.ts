@@ -146,7 +146,7 @@ describe('action flows', () => {
     expect(text()).toContain('git push origin yip/mira/expiry');
     expect(text()).toContain('This push only');
     allow.click();
-    await waitFor(() => text().includes('This request changed or expired since it was shown. Nothing ran.'), 'stale explanation');
+    await waitFor(() => text().includes('This request changed since it was shown. Review the current action before deciding.'), 'stale explanation');
     expect((hub.last('POST', /decision$/)!.body as { version: number; decision: string }).version).toBe(3);
     byText('.approval button', 'Allow this push')!.click();
     await waitFor(() => byText('.approval .kicker', 'Allowed'), 'allowed');
@@ -439,10 +439,17 @@ describe('action flows', () => {
     }));
     await app.send({ roomId: room, body, mentions: [], projectIds: [], jobId, clientKey });
     expect(app.data.jobs[jobId]).toBeUndefined();
+    hub.override('GET', new RegExp(`^/v1/jobs/${jobId}$`), () => ({ body: {
+      job: { ...codeDetail.job, id: jobId, state: 'running', source: { roomId: room, messageId: 'original-assignment' } },
+      runs: [], checks: [], artifacts: [], reviews: [], questions: [], approvals: [], pullRequests: [], children: [],
+      decisions: [], activity: [], inputs: [], missing: [], revisions: [], followUps: [], quarantined: [],
+    } }));
     const failed = await waitFor(() => byText('.pending.failed', body), 'restored unsent assignment input');
     [...failed.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Edit')!.click();
     const composer = await waitFor(() => document.querySelector<HTMLTextAreaElement>('.room-composer textarea'), 'composer');
     await waitFor(() => composer.value === body, 'restored text');
+    await waitFor(() => app.data.jobs[jobId]?.state === 'running', 'selected work loaded');
+    expect(hub.last('GET', new RegExp(`^/v1/jobs/${jobId}$`))).toBeDefined();
     hub.override('POST', new RegExp(`^/v1/rooms/${room}/messages$`), (c) => {
       const sent = c.body as { body: string; clientKey: string };
       return { status: 201, body: {

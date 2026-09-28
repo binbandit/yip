@@ -93,11 +93,40 @@ reported as current; the live ledger below also includes unchanged open
 work. There is no new persisted status stream, and opening Overview does
 not mark rooms read.
 
+While Overview stays open, durable work and decision events trigger a
+coalesced refresh. The client pins the first response's `since` timestamp
+for that visit, independently of recording the visit as seen, so an update
+cannot erase earlier catch-up. Source links retain their thread and message.
+The optional summary is an explicit snapshot action; it does not claim to
+answer arbitrary questions or wake an engineer. Completed ledger rows show
+their result summary and completion time instead of the final tool activity.
+
+Open questions addressed to the owner are attached to the root assignment,
+including questions raised by its reviewer or another child assignment.
+The work row links to the actual asker's conversation. Answering removes that
+question from Needs a look; ordinary peer review continues under Active.
+Room access is checked along the parent chain before exposing its work.
+
+A draft addressed to selected work retains that destination after completion.
+Sending it follows up with the author in the original thread; it cannot
+silently become an unaddressed room message or enter a different assignment.
+If the selected work cannot be loaded, the draft remains available and the
+owner can explicitly clear its selection.
+
+Browser session cookies have a stable workspace-specific name because cookies
+are shared across ports on one hostname. A valid legacy cookie migrates on
+its next authenticated request; an invalid legacy cookie is left untouched
+because it may belong to another workspace. Sign-out clears only this
+workspace's cookie. Origin and CSRF checks remain unchanged.
+
 Routine shell edits and checks in the assigned checkout can use heredocs.
 The policy parser separates a literal body from executable shell syntax,
 checks trailing commands and retains approval for substitutions and
 consequential actions. A decided approval folds into a short outcome with
 a disclosure of its exact request; pending requests keep their full detail.
+Conflicting decisions reload the recorded request outcome. If that reload
+fails, stale decision buttons remain disabled until the owner retries the
+read. An already-used permission never implies that its action did not run.
 
 Permission requests and later owner decisions recheck the run's current room
 and project access. A read-only attempt cannot push, merge or publish through

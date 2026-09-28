@@ -283,11 +283,11 @@
           {inThread}
           tabindex={row.m.id === rovingId ? 0 : -1}
           seenRefs={row.seenRefs}
-          onreply={() => onreply?.(row.m)}
+          onreply={onreply ? () => onreply(row.m) : undefined}
         />
       {/each}
       {#each pending as p (p.clientKey)}
-        <PendingRow {p} onedit={() => oneditpending?.(p)} />
+        <PendingRow {p} onedit={oneditpending ? () => oneditpending(p) : undefined} />
       {/each}
     </div>
     <div class="end" aria-hidden="true"></div>
