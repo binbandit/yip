@@ -1,0 +1,83 @@
+{
+  "date": "2026-09-28",
+  "fixture": "Preserved isolated real-team workspace; existing subscription sign-ins",
+  "providers": {
+    "intakeAndReview": "Claude Code 2.1.283",
+    "implementation": "Codex 0.157.1"
+  },
+  "scope": "Bounded second feature with real file-edit cancellation, explicit retry, independent review and two hub/runner restarts",
+  "remoteWrites": false,
+  "baselineSemantics": "New independent assignment starts from default branch; followsId retains lineage, not an unpublished patch",
+  "result": {
+    "passed": true,
+    "priorJobId": "01a0e6c9-f3be-7816-8ad5-469a7bad6e2b",
+    "priorHead": "d098f10e59cef06d0503b3423a53f76c4422647c",
+    "firstRestartPassed": true,
+    "jobId": "01a0e6d0-23e9-7893-82bd-42bdb510ceb0",
+    "followsId": "01a0e6c9-f3be-7816-8ad5-469a7bad6e2b",
+    "cancelledRunId": "01a0e6d0-23ea-7753-97d6-25e8617b6ee1",
+    "cancelledInputRejected": true,
+    "clarificationInputId": "01a0e6d0-ccad-7382-952e-6604a8c54afd",
+    "feature": {
+      "behaviorCasesPassed": 4,
+      "originalFilesUnchanged": true,
+      "base": "a448cb7eecd556f16f234348014bf49b8872b003",
+      "head": "46cd64c657b875ff8014c14ec369b5e04549ea49"
+    },
+    "head": "46cd64c657b875ff8014c14ec369b5e04549ea49",
+    "recoveryPassed": true,
+    "finalRestartPassed": true,
+    "elapsedSeconds": 144.3
+  },
+  "operationalBackupRestore": {
+    "passed": true,
+    "runnerStarted": false,
+    "providerPrompts": 0,
+    "artifactsVerified": 11,
+    "tableCounts": {
+      "artifacts": 13,
+      "decisions": 0,
+      "engineers": 3,
+      "jobs": 7,
+      "messages": 17,
+      "projects": 2,
+      "reviews": 2,
+      "rooms": 4,
+      "runs": 10
+    },
+    "reviewedResultsPreserved": [
+      {
+        "jobId": "01a0e6c9-f3be-7816-8ad5-469a7bad6e2b",
+        "head": "d098f10e59cef06d0503b3423a53f76c4422647c"
+      },
+      {
+        "jobId": "01a0e6d0-23e9-7893-82bd-42bdb510ceb0",
+        "head": "46cd64c657b875ff8014c14ec369b5e04549ea49"
+      }
+    ],
+    "reviewerRecordsPreserved": 2,
+    "activeRuns": 0,
+    "ownerLoginPassed": true
+  },
+  "independentEvidenceAudit": {
+    "passed": true,
+    "retainedWork": {
+      "successfulEditSeq": 20,
+      "resumedRunId": "01a0e6d0-ccaa-7de2-b90a-b030e3aff2ca",
+      "sameWorkspace": true,
+      "sameVendorSession": true,
+      "localCheckpoint": "f90085d59d6eec5c340d0ec5be6034924a4c910c",
+      "helperRetainedAtApprovedHead": true
+    },
+    "feature": {
+      "behaviorCasesPassed": 4,
+      "originalFilesUnchanged": true,
+      "reviewedHeadChecked": true,
+      "workspaceClean": true,
+      "base": "a448cb7eecd556f16f234348014bf49b8872b003",
+      "head": "46cd64c657b875ff8014c14ec369b5e04549ea49"
+    },
+    "reviewerRecordsPersisted": 2,
+    "providersStarted": false
+  }
+}

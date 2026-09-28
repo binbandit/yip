@@ -54,6 +54,7 @@ const config: PlaywrightTestConfig = {
   globalSetup: haveBrowser ? './tests/e2e/global-setup.ts' : undefined,
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
+    launchOptions: { chromiumSandbox: true },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     ...(channel ? { channel } : {}),

@@ -1,6 +1,6 @@
 # Release checklist (A01–A44)
 
-Status as of 26 September 2026. **Verified** means an automated test or a
+Status as of 28 September 2026. **Verified** means an automated test or a
 recorded manual check exercised it end to end on this build. **Implemented**
 means the behaviour exists but lacks a dedicated automated check. **Incomplete**
 means it is not done or not verified; it blocks declaring the MVP complete.
@@ -18,11 +18,12 @@ provider against a temporary database and git fixtures).
 
 These must be done before the MVP can be called complete (MVP brief §10):
 
-1. **Real providers (A28, Slices B/C).** Sign-in detection has run against
-   the real installations (Claude Code: signed in on a subscription; Codex:
-   installed, not signed in), but no prompt has been sent through any real
-   provider. Cursor isn't installed on the build machine. Run the gated tests
-   in `docs/compatibility.md` (see `docs/scenario.md`) and record results.
+1. **Remaining provider coverage (A28, Slices B/C).** Real Codex and Claude
+   smoke tests, team collaboration, cross-room recall and a second feature
+   with cancellation/retry and two restarts passed on 28 September. This
+   machine's Codex allow-rules prevent conversation/review mode; the tested
+   configuration uses Claude for those roles and Codex for edits. Versions
+   are newer than the schema pins. Cursor is not installed or real-tested.
 2. **Two physical machines (Slice F).** `TestTwoMachinesAndCheckpointMove`
    runs two independent runners (separate state, replicas, journals, and
    certificates) against one hub: concurrent jobs land on different machines,
@@ -30,17 +31,41 @@ These must be done before the MVP can be called complete (MVP brief §10):
    verified bundle of its published revision, as an explicit retry. All of
    this ran on a single host; a run across two physical machines has not been
    recorded.
-3. **Browser verification (A26, A27).** Verified in the system WebKit
-   (`scripts/e2e/run-webkit.sh`, 26 September): the full room and Machines
-   journey set passes together, including real Tab,
-   Enter, Escape and ⌘K key presses, focus trapping and return, and
-   390/1024/1440 px and 200% zoom sweeps with no sideways scrolling or
-   clipped controls. It found and fixed two defects (Escape didn't close
-   search; a clipped repository header at 390 px). Chromium and Firefox
-   (the Playwright specs in `web/tests/e2e`) still need a browser on the
-   build machine.
+3. **Remaining browser verification (A26, A27).** System WebKit passed 53
+   distinct journeys, including keyboard access, responsive layouts and
+   interrupted delivery. Installed Chrome 153 passed all six Playwright
+   journeys with Chromium sandboxing enabled. Firefox remains untested.
 4. **Runner reboot (A30)** under the intended service account has not been
    performed.
+
+Cross-machine recovery currently uses the last published revision's verified
+bundle. Unpublished edits depend on the retained workspace on the original
+machine; checkpoint records do not provide general cross-machine restoration.
+
+## Daily-use campaign (28 September)
+
+The owner authorized dedicated private/public GitHub playgrounds, three
+signed-in GitHub actors, and bounded real subscription-provider runs. The
+[campaign record](simulations/2026-09-28.md) separates actual GitHub/provider
+results from scripted simulations and links the retained fixtures.
+
+- 32 live GitHub scenarios, three account-specific connector contracts and
+  three actual hub/runner/bridge publication scenarios passed. These include
+  fork contributions, requested changes, stale approvals, branch protection,
+  failing/repaired CI, revoked access and publication identity.
+- Real Codex and Claude smoke tests passed. The team completed an actual fix
+  and independent exact-revision review, followed by recall from another room.
+  A later feature survived cancellation, explicit retry and two restarts.
+- Persistent-workspace and concurrency campaigns exercised repeated work,
+  queued input, duplicate delivery, correction/re-review, account-slot limits,
+  restart durability and artifact integrity. These are bounded runs, not a
+  multi-day unattended reliability claim.
+- All 53 WebKit journeys, six Chrome journeys and 137 web tests passed.
+  Type checking reports zero errors and warnings.
+
+The daily-use hub and development server were not changed. This provides
+evidence for the tested Claude-intake/review plus Codex-edit configuration;
+it does not certify the outstanding deployment and provider combinations.
 
 ## Backend review (25 September)
 
@@ -86,11 +111,8 @@ now closed (each with a test):
   chips from typed names, a DM draft marker, and schema backups before
   migration with a refusal to open a newer database.
 
-Still open (not blocking the scenario, recorded here so they aren't lost):
-
-- The GitHub contract test needs a real repository and token. The
-  Playwright specs (Chromium/Firefox) need a browser on the build machine;
-  the WebKit journeys cover the same paths.
+At this point GitHub and Chromium still needed real runs. Both were exercised
+in the 28 September campaign above; Firefox remains untested.
 
 ## Team conversation verification (26 September)
 
@@ -144,8 +166,9 @@ WebKit runner, including focus containment and return, mention selection,
 search shortcuts, tab navigation, and opening review evidence with Enter.
 
 Real-provider prompts and account/auth checks were **not run in this pass**.
-The six gated provider tests and the GitHub contract test remain owner-run
-checks. No dependencies or browsers were downloaded, and the LAN hub and
+At that time the gated provider tests and GitHub contract test remained
+owner-run checks; later authorization and results are recorded above.
+No dependencies or browsers were downloaded, and the LAN hub and
 other chats' test hubs were not used. Builds reused installed web dependencies
 (`make -o web-deps all`) and the existing Go module cache offline.
 
@@ -162,7 +185,7 @@ other chats' test hubs were not used. Builds reused installed web dependencies
 | A07 | Verified | `TestWakeupBudgetAndCycles` |
 | A08 | Verified | `TestSteeringReceipts` (pending → immediate; queued when no active attempt); explicit interrupt and restart for queued updates (`TestRegressionInterruptAndRestart`, composer unit test) |
 | A09 | Verified | `TestCancelJobTree`; unconfirmed termination is recorded as `unknown` (`applyTerminal`) |
-| A10 | Verified (API) | `TestEventReplayAfterDisconnect` (gap-free replay from `Last-Event-ID`; `reset` for an unknown cursor). Runs are owned by hub and runner, never by the browser. Browser reconnect UX not yet exercised. |
+| A10 | Verified | `TestEventReplayAfterDisconnect` (gap-free replay from `Last-Event-ID`; `reset` for an unknown cursor). Browser simulation covers canonical event/page confirmation after a lost HTTP response without leaving an unsent duplicate. Runs are owned by hub and runner. |
 | A11 | Verified | `TestOutboxRedeliveryExecutesOnce` (outbox rows forced back to pending across a hub restart) |
 | A12 | Verified | Same test: the runner journal returns the original acknowledgement for a repeated command. A re-sent tool call returns its recorded result (`TestRegressionToolCallRetryRunsOnce`); terminal reports are settled only by an explicit, epoch-matched ack (`TestRegressionTerminalAckIsExplicit`). |
 | A13 | Verified | `TestPartitionProducesUnknownThenReconciles` |
@@ -177,10 +200,10 @@ other chats' test hubs were not used. Builds reused installed web dependencies
 | A22 | Verified | `TestDecisionCorrection`; correction from the decision drawer keeps the sources (unit test) |
 | A23 | Verified | `TestIncompatibleMachineExplains`, `TestRegressionBillingGateAndAccountPin`, `TestRegressionProjectToolchainRequirement` |
 | A24 | Verified | Workspaces are never deleted automatically. Machines lists them with their work and what deleting loses; removal needs explicit selection, a named confirmation, and `force` for uncommitted/unpublished work, and is refused for open or in-use work (`TestRegressionRemoveWorkspaceFromMachines`, Machines unit test). CLI: `yip runner workspaces` / `cleanup`. |
-| A25 | Verified | `yip backup` against a running hub, `yip restore` into a new directory: integrity, 12 artifact hashes, and record counts matched (recorded 25 Sep). Encrypted backups round-trip, carry no readable key material or database, and refuse a wrong passphrase leaving nothing behind (`TestEncryptedBackupRoundTrip`, `internal/backupcrypt` tests for tampering and truncation). |
-| A26 | Verified (WebKit) | Real key presses in the system WebKit: skip link, keyboard mention selection, Enter to send, focus trapped in the overlaid drawer across 25 Tabs and returned on Escape, ⌘K / Escape search; 200% zoom reflows without sideways scroll (`make e2e-webkit`). Chromium/Firefox not run. |
-| A27 | Verified (WebKit) | Overview, rooms, engineers, projects, machines and settings at 390, 1024 and 1440 px: no sideways scroll and no clipped controls; phone rooms sheet, in-bounds composer, 44 px Send (`make e2e-webkit`, screenshots of each final state). Chromium/Firefox not run. |
-| A28 | **Incomplete** | Real providers not exercised (see blocking items). |
+| A25 | Verified | `yip backup` / `yip restore` verified integrity, artifact hashes and record counts (25 Sep). On 28 Sep a new restored hub accepted the owner login and retained both real-provider approved results, reviewer records and 11 unique artifact blobs. Encrypted backups round-trip and refuse a wrong passphrase leaving nothing behind (`TestEncryptedBackupRoundTrip`, `internal/backupcrypt` tampering/truncation tests). |
+| A26 | Verified (WebKit, Chrome) | Real key presses in system WebKit: skip link, mentions, Enter to send, drawer focus trapping/return, search, and 200% zoom. Six installed-Chrome journeys also passed, including keyboard, drawers and search. Firefox untested. |
+| A27 | Verified (WebKit, Chrome) | System WebKit layouts at 390, 1024 and 1440 px, mobile controls and crowded selectors passed. Chrome mobile journey passed. Firefox untested. |
+| A28 | Verified in tested configuration | Real Codex edit/permission/resume and Claude MCP/permission smoke tests, independent team review, recall, cancellation/retry and restart durability passed. Cursor and other combinations remain unverified. |
 | A29 | Verified (partial) | Agent-authored mentions never wake anyone; tool arguments cannot set identity or scope (bridge binds the run token; hub derives authority from the lease). |
 | A30 | Incomplete | Service install exists; reboot behaviour not yet tested. Restarted runners report interrupted attempts as unknown (ADR 0009). |
 | A31 | Implemented | Each adapter excludes unapproved startup configuration (see `docs/compatibility.md`); verified against fakes only. |
@@ -191,7 +214,7 @@ other chats' test hubs were not used. Builds reused installed web dependencies
 | A36 | Verified | `TestHumanReviewPolicy` |
 | A37 | Verified | `TestAtlasFixReviewLoop` (author selects the security reviewer) |
 | A38 | Verified | `TestAtlasFixReviewLoop` (finding with file/line evidence; approval only of the revised head) |
-| A39 | Verified | `TestReviewDedupeAndRevisionBinding` (an old approval can't satisfy a new head); `TestWebhookSupersedesReviewOnNewCommits` (new PR commits supersede the open round and schedule exactly one new round). Every active reviewer must be satisfied on the current head (`TestRegressionCompletionNeedsEveryReviewer`). Not yet exercised against real GitHub. |
+| A39 | Verified | `TestReviewDedupeAndRevisionBinding` (an old approval can't satisfy a new head); `TestWebhookSupersedesReviewOnNewCommits` (new PR commits schedule one new round). Every active reviewer must be satisfied on the current head (`TestRegressionCompletionNeedsEveryReviewer`). Real protected GitHub fixtures also verified that new commits dismiss stale approvals. |
 | A40 | Verified | `TestSharedCredentialCannotFabricateApproval` |
 | A41 | Verified | Duplicate review requests map to one round (`TestReviewDedupeAndRevisionBinding`); a replayed webhook delivery changes nothing (`TestWebhookSupersedesReviewOnNewCommits`); publications reconcile by marker before retry. |
 | A42 | Verified | `TestNoPermittedReviewer` names the missing project read access; initial and subsequent rounds also check room membership. With no colleague in the conversation at all, the owner reviews instead (`TestRegressionSoloEngineerOwnerReviews`) |

@@ -107,6 +107,12 @@ shell command with potential external effects prevents automatic crash retry,
 just as a direct push or publication action does; rejected and routine local
 commands retain safe retry behavior.
 
+Project action grants apply to the assigned checkout. Explicit Git checkout,
+remote, environment or GitHub repository overrides require an exact-action
+decision when yip cannot bind them to that checkout. Compound commands cannot
+carry a push, merge or PR grant into a different directory. This command
+classification supplements provider isolation; it is not a filesystem sandbox.
+
 Conversation and review attempts require a provider that can enforce read-only
 execution. An installation that reports otherwise remains queued with a named
 limitation until its capability changes, rather than being dispatched to fail.

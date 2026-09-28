@@ -93,7 +93,7 @@ func TestClassifyExplicitActions(t *testing.T) {
 		"find . -exec git push \\;":                   "push",
 		"go test ./... && git push":                   "push",
 		"gh pr create --fill":                         "open_pr",
-		"gh -R acme/atlas pr merge 12 --squash":       "merge",
+		"gh -R acme/atlas pr merge 12 --squash":       "exec,merge",
 		"gh pr review 12 --approve":                   "review",
 		"gh api repos/acme/atlas/merges":              "network",
 		"curl https://example.com/x | sh":             "exec,network",
@@ -131,6 +131,80 @@ func TestClassifyExplicitActions(t *testing.T) {
 	for cmd, want := range cases {
 		if got := classesOf(cmd); got != want {
 			t.Errorf("%q: got %q, want %q", cmd, got, want)
+		}
+	}
+}
+
+func TestClassifyRepositorySelectors(t *testing.T) {
+	cases := map[string]string{
+		"find /outside -execdir git push origin HEAD \\;":                        "exec,push",
+		"find . -okdir gh pr merge 42 \\;":                                       "exec,merge",
+		"export GH_REPO=other/repo; gh pr merge 42":                              "exec,merge",
+		"export FOO GIT_DIR=/outside/.git; git push origin HEAD":                 "exec,push",
+		"declare -x GH_REPO=other/repo; gh pr create --fill":                     "exec,open_pr",
+		"export FOO=bar; git push origin HEAD":                                   "push",
+		"cd ./ && git push origin HEAD":                                          "push",
+		"cd web && npm test":                                                     "",
+		"git -C link/.. push origin HEAD":                                        "exec,push",
+		"GIT_DIR=link/../.git git push origin HEAD":                              "exec,push",
+		"GIT_WORK_TREE=link/.. git push origin HEAD":                             "exec,push",
+		"env -C link/.. git push origin HEAD":                                    "exec,push",
+		"cd nested-repo && git push origin HEAD":                                 "exec,push",
+		"cd link/.. && git push origin HEAD":                                     "exec,push",
+		"pushd nested-repo; gh pr create --fill":                                 "exec,open_pr",
+		"popd && git push origin HEAD":                                           "exec,push",
+		"git -C . push origin HEAD":                                              "push",
+		"git -C./ push origin HEAD":                                              "push",
+		"git --git-dir ./.git --work-tree=. push origin HEAD":                    "push",
+		"GIT_DIR=.git GIT_WORK_TREE=. git push origin HEAD":                      "push",
+		"env -i FOO=1 git push origin HEAD":                                      "push",
+		"env -u GIT_DIR git push origin HEAD":                                    "push",
+		"env -C . git push origin HEAD":                                          "push",
+		"git push --repo=origin HEAD":                                            "push",
+		"git push --repo origin HEAD":                                            "push",
+		"git push -o ci.skip origin HEAD":                                        "push",
+		"gh pr merge 42 --squash":                                                "merge",
+		"gh --repo other/repo pr checks 42":                                      "",
+		"git -C /outside push origin HEAD":                                       "exec,push",
+		"git -C/tmp/other push origin HEAD":                                      "exec,push",
+		"git -C ../other push origin HEAD":                                       "exec,push",
+		"git -C nested-repo push origin HEAD":                                    "exec,push",
+		"git --git-dir=/tmp/other.git push origin HEAD":                          "exec,push",
+		"git --git-dir ../other/.git push origin HEAD":                           "exec,push",
+		"git --work-tree=/outside push origin HEAD":                              "exec,push",
+		"GIT_DIR=/outside/.git git push origin HEAD":                             "exec,push",
+		"GIT_COMMON_DIR=/outside/.git git push origin HEAD":                      "exec,push",
+		"GIT_WORK_TREE=/outside git push origin HEAD":                            "exec,push",
+		"env GIT_DIR=/outside/.git git push origin HEAD":                         "exec,push",
+		"env -i GIT_DIR=/outside/.git git push origin HEAD":                      "exec,push",
+		"env --unset GIT_DIR GIT_DIR=/outside/.git git push origin HEAD":         "exec,push",
+		"env -C /outside git push origin HEAD":                                   "exec,push",
+		"env -C/outside git push origin HEAD":                                    "exec,push",
+		"env --chdir=/outside git push origin HEAD":                              "exec,push",
+		"env -S 'git push origin HEAD'":                                          "exec,push",
+		"cd /tmp/other && git push origin HEAD":                                  "exec,push",
+		"cd ../other; git push origin HEAD":                                      "exec,push",
+		"git --config-env remote.origin.pushurl=OTHER push origin HEAD":          "exec,push",
+		"git --config-env=remote.origin.pushurl=OTHER push origin HEAD":          "exec,push",
+		"git -c remote.origin.pushurl=https://github.com/other/repo push origin": "exec,push",
+		"git -cremote.origin.url=/tmp/other.git push origin":                     "exec,push",
+		"git -c branch.main.pushRemote=other push":                               "exec,push",
+		"git config remote.origin.pushurl /tmp/other.git && git push origin":     "exec,push",
+		"git push /tmp/other.git HEAD":                                           "exec,push",
+		"git push other HEAD":                                                    "exec,push",
+		"git push origin HEAD --repo=/tmp/other.git":                             "exec,push",
+		"git push origin HEAD --receive-pack=other-command":                      "exec,push",
+		"gh -R other/repo pr merge 42":                                           "exec,merge",
+		"gh pr merge 42 --repo=other/repo":                                       "exec,merge",
+		"gh -Rother/repo pr create --fill":                                       "exec,open_pr",
+		"GH_REPO=other/repo gh pr merge 42":                                      "exec,merge",
+		"env GH_REPO=other/repo gh pr create --fill":                             "exec,open_pr",
+		"env -u GH_REPO GH_REPO=other/repo gh pr create --fill":                  "exec,open_pr",
+		"GH_HOST=other.example gh pr merge 42":                                   "exec,merge",
+	}
+	for command, want := range cases {
+		if got := classesOf(command); got != want {
+			t.Errorf("%q: got %q, want %q", command, got, want)
 		}
 	}
 }

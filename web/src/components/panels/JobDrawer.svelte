@@ -682,7 +682,7 @@
 {#if confirmStop && job}
   <ConfirmDialog
     title="Stop this work?"
-    body="Stopping ends {job.title} and any work it started. Changes already made stay where they are; nothing is deleted. You can resume it later from its last checkpoint."
+    body="Stopping ends {job.title} and any work it started. Changes already made stay on the machine; nothing is deleted. You can retry the work later."
     confirmLabel="Stop the work"
     danger
     onconfirm={stop}

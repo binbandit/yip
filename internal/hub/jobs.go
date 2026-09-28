@@ -975,7 +975,7 @@ func (h *Hub) RetryJob(ctx context.Context, userID, jobID string, req protocol.R
 				return err
 			}
 		}
-		// Failed or stopped work resumes (from its checkpoint when asked).
+		// Failed or stopped work retries with its retained workspace when available.
 		if job.State == protocol.JobFailed || job.State == protocol.JobCancelled {
 			if _, err := h.setJobState(ctx, t, jobID, protocol.JobQueued, "", ""); err != nil {
 				return err

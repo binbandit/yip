@@ -10,12 +10,13 @@ import (
 // (for example `git push && curl …`); evaluatePolicy checks each against the
 // run's grants.
 const (
-	classReview  = "review"  // publishing a review outside yip: always refused
-	classExec    = "exec"    // dangerous or uninspectable: exceptional approval
-	classNetwork = "network" // arbitrary network access: exceptional approval
-	classMerge   = "merge"
-	classPush    = "push"
-	classOpenPR  = "open_pr"
+	classReview   = "review"  // publishing a review outside yip: always refused
+	classExec     = "exec"    // dangerous or uninspectable: exceptional approval
+	classNetwork  = "network" // arbitrary network access: exceptional approval
+	classMerge    = "merge"
+	classPush     = "push"
+	classOpenPR   = "open_pr"
+	classLocation = "location" // intermediate: a directory change that cannot inherit repository grants
 )
 
 var classOrder = []string{classReview, classExec, classNetwork, classMerge, classPush, classOpenPR}
@@ -72,6 +73,21 @@ func classifyCommand(line string) []cmdClass {
 		}
 		classifyArgv(sc.argv, add)
 	}
+	privileged, changedDirectory := false, false
+	for _, c := range out {
+		privileged = privileged || c.Class == classPush || c.Class == classMerge || c.Class == classOpenPR
+		changedDirectory = changedDirectory || c.Class == classLocation
+	}
+	if privileged && changedDirectory {
+		add(classExec, "it changes directories before using a repository grant")
+	}
+	filtered := out[:0]
+	for _, c := range out {
+		if c.Class != classLocation {
+			filtered = append(filtered, c)
+		}
+	}
+	out = filtered
 	sortClasses(out)
 	return out
 }
@@ -97,11 +113,21 @@ func classifyArgv(argv []string, add func(class, why string)) {
 	for len(argv) > 0 {
 		a := argv[0]
 		if reAssignment.MatchString(a) {
-			name, _, _ := strings.Cut(a, "=")
+			name, value, _ := strings.Cut(a, "=")
 			switch {
 			case name == "PATH" || name == "LD_PRELOAD" || strings.HasPrefix(name, "DYLD_") ||
 				strings.HasPrefix(name, "GIT_SSH") || strings.HasPrefix(name, "GIT_CONFIG") || name == "GIT_EXEC_PATH":
 				add(classExec, "it overrides "+name)
+			case name == "GIT_DIR" || name == "GIT_COMMON_DIR":
+				if !currentGitLocation("--git-dir", value) {
+					add(classExec, "it selects another git directory through "+name)
+				}
+			case name == "GIT_WORK_TREE":
+				if !currentGitLocation("--work-tree", value) {
+					add(classExec, "it selects another working tree through "+name)
+				}
+			case name == "GH_REPO" || name == "GH_HOST" || name == "GIT_CEILING_DIRECTORIES" || name == "GIT_DISCOVERY_ACROSS_FILESYSTEM":
+				add(classExec, "it overrides the repository through "+name)
 			}
 			argv = argv[1:]
 			continue
@@ -125,8 +151,58 @@ func classifyArgv(argv []string, add func(class, why string)) {
 		}
 	}
 	switch base {
-	case "env", "command", "builtin", "nohup", "time", "exec", "caffeinate", "stdbuf", "ionice":
+	case "env":
+		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+			flag, value, joined := strings.Cut(args[0], "=")
+			args = args[1:]
+			if flag == "--" {
+				break
+			}
+			switch flag {
+			case "-u", "--unset", "-C", "--chdir", "-S", "--split-string":
+				if !joined && len(args) > 0 {
+					value, args = args[0], args[1:]
+				}
+				if flag == "-C" || flag == "--chdir" {
+					if !currentGitLocation("-C", value) {
+						add(classExec, "env selects another working directory")
+					}
+				}
+				if flag == "-S" || flag == "--split-string" {
+					add(classExec, "env interprets a command string")
+					for _, c := range classifyCommand(value) {
+						add(c.Class, c.Why)
+					}
+				}
+			default:
+				if flag != "-i" && flag != "--ignore-environment" && flag != "-0" && flag != "--null" && flag != "-v" && flag != "--debug" {
+					add(classExec, "env uses an option whose command or directory yip cannot bind")
+				}
+			}
+		}
+		classifyArgv(args, add)
+	case "command", "builtin", "nohup", "time", "exec", "caffeinate", "stdbuf", "ionice":
 		classifyArgv(skipFlags(args), add)
+	case "export", "readonly", "declare", "typeset", "local":
+		for _, assignment := range args {
+			if reAssignment.MatchString(assignment) {
+				classifyArgv([]string{assignment}, add)
+			}
+		}
+	case "cd", "pushd":
+		for _, directory := range operands(args) {
+			if !currentGitLocation("-C", directory) {
+				add(classLocation, "it changes the working directory")
+			}
+			if path.IsAbs(directory) || outsideWorkspace(directory) || strings.ContainsAny(directory, "$`") {
+				add(classExec, "it changes to a directory outside the workspace")
+			}
+		}
+		if len(operands(args)) == 0 {
+			add(classExec, "it changes to an unspecified working directory")
+		}
+	case "popd":
+		add(classLocation, "it restores an unspecified working directory")
 	case "nice":
 		if len(args) >= 2 && args[0] == "-n" {
 			args = args[2:]
@@ -153,6 +229,9 @@ func classifyArgv(argv []string, add func(class, why string)) {
 	case "find":
 		for i, a := range args {
 			if a == "-exec" || a == "-execdir" || a == "-ok" || a == "-okdir" {
+				if a == "-execdir" || a == "-okdir" {
+					add(classLocation, "find changes the working directory")
+				}
 				var sub []string
 				for _, b := range args[i+1:] {
 					if b == ";" || b == `\;` || b == "+" {
@@ -237,7 +316,24 @@ func classifyGit(args []string, add func(class, why string)) {
 	for i < len(args) {
 		a := args[i]
 		switch {
-		case a == "-C" || a == "--git-dir" || a == "--work-tree" || a == "--namespace" || a == "--super-prefix" || a == "--config-env":
+		case a == "-C" || a == "--git-dir" || a == "--work-tree":
+			value := ""
+			if i+1 < len(args) {
+				value = args[i+1]
+			}
+			classifyGitLocation(a, value, add)
+			i += 2
+			continue
+		case strings.HasPrefix(a, "-C") && len(a) > 2:
+			classifyGitLocation("-C", a[2:], add)
+		case strings.HasPrefix(a, "--git-dir=") || strings.HasPrefix(a, "--work-tree="):
+			flag, value, _ := strings.Cut(a, "=")
+			classifyGitLocation(flag, value, add)
+		case a == "--namespace" || a == "--super-prefix":
+			i += 2
+			continue
+		case a == "--config-env":
+			add(classExec, "it overrides git configuration from the environment")
 			i += 2
 			continue
 		case a == "-c":
@@ -267,6 +363,7 @@ sub:
 	switch sub {
 	case "push", "send-pack", "send-email", "request-pull":
 		add(classPush, "it pushes to a remote")
+		classifyGitPushTarget(rest, add)
 	case "config":
 		for _, a := range rest {
 			if dangerousGitConfig(strings.ToLower(a)) {
@@ -287,13 +384,72 @@ sub:
 	}
 }
 
+// The hub cannot resolve a runner's filesystem. Only explicit spellings of
+// the current checkout can inherit its project grant; other selectors need
+// an exact-action decision, even when their paths are under a temp directory.
+func classifyGitLocation(flag, value string, add func(class, why string)) {
+	if !currentGitLocation(flag, value) {
+		add(classExec, "it selects another git checkout with "+flag)
+	}
+}
+
+func currentGitLocation(flag, value string) bool {
+	// Do not normalize paths: link/.. can leave the checkout via a symlink.
+	if flag == "--git-dir" {
+		return value == ".git" || value == "./.git"
+	}
+	return value == "." || value == "./"
+}
+
+func classifyGitPushTarget(args []string, add func(class, why string)) {
+	firstOperand, explicitRepo := "", false
+	flags := true
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !flags {
+			if firstOperand == "" {
+				firstOperand = arg
+			}
+			continue
+		}
+		switch {
+		case arg == "--":
+			flags = false
+		case arg == "--repo":
+			explicitRepo = true
+			if i+1 >= len(args) || args[i+1] != "origin" {
+				add(classExec, "it selects a push destination outside the assigned origin")
+			}
+			i++
+		case strings.HasPrefix(arg, "--repo="):
+			explicitRepo = true
+			if strings.TrimPrefix(arg, "--repo=") != "origin" {
+				add(classExec, "it selects a push destination outside the assigned origin")
+			}
+		case arg == "--receive-pack" || arg == "--exec" || strings.HasPrefix(arg, "--receive-pack=") || strings.HasPrefix(arg, "--exec="):
+			add(classExec, "it overrides the remote push command")
+		case arg == "-o" || arg == "--push-option":
+			i++
+		case strings.HasPrefix(arg, "-"):
+		default:
+			if firstOperand == "" {
+				firstOperand = arg
+			}
+		}
+	}
+	if !explicitRepo && firstOperand != "" && firstOperand != "origin" {
+		add(classExec, "it selects a push destination outside the assigned origin")
+	}
+}
+
 func dangerousGitConfig(kv string) bool {
 	key := strings.SplitN(kv, "=", 2)[0]
 	return strings.HasPrefix(key, "alias.") || strings.HasPrefix(key, "credential") || key == "core.hookspath" ||
 		key == "core.sshcommand" || key == "core.fsmonitor" || key == "core.pager" || key == "core.editor" ||
-		key == "sequence.editor" || strings.HasPrefix(key, "url.") || strings.HasSuffix(key, ".insteadof") ||
+		key == "sequence.editor" || key == "core.worktree" || strings.HasPrefix(key, "url.") || strings.HasSuffix(key, ".insteadof") ||
 		strings.HasPrefix(key, "filter.") || strings.HasPrefix(key, "diff.") && strings.HasSuffix(key, ".textconv") ||
-		strings.HasSuffix(key, ".command") || strings.HasPrefix(key, "protocol.") || strings.HasPrefix(key, "include")
+		strings.HasSuffix(key, ".command") || strings.HasPrefix(key, "protocol.") || strings.HasPrefix(key, "include") ||
+		strings.HasPrefix(key, "remote.") || strings.HasPrefix(key, "branch.") && (strings.HasSuffix(key, ".remote") || strings.HasSuffix(key, ".pushremote"))
 }
 
 // classifyGH maps GitHub CLI subcommands onto grants. Reads are routine;
@@ -306,6 +462,13 @@ func classifyGH(args []string, add func(class, why string)) {
 	area, verb := w[0], ""
 	if len(w) > 1 {
 		verb = w[1]
+	}
+	if area == "pr" && (verb == "create" || verb == "merge") {
+		for _, arg := range args {
+			if arg == "--repo" || strings.HasPrefix(arg, "--repo=") || strings.HasPrefix(arg, "-R") || arg == "--hostname" || strings.HasPrefix(arg, "--hostname=") {
+				add(classExec, "it selects a GitHub repository outside the assigned checkout")
+			}
+		}
 	}
 	switch area {
 	case "pr":
@@ -352,9 +515,9 @@ func words(args []string, valued map[string]bool) []string {
 // operands returns arguments that aren't flags.
 func operands(args []string) []string { return words(args, nil) }
 
-// skipFlags drops leading flags (and assignments for env).
+// skipFlags drops leading flags. Keep assignments for classifyArgv to inspect.
 func skipFlags(args []string) []string {
-	for len(args) > 0 && (strings.HasPrefix(args[0], "-") || reAssignment.MatchString(args[0])) {
+	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
 		if args[0] == "--" {
 			return args[1:]
 		}

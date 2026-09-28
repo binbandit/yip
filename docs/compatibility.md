@@ -27,6 +27,13 @@ adapter correctly reports that limit and refuses the mode. The campaign found
 that the scheduler nevertheless dispatched conversations; it now respects
 the capability and names the limitation. The rules were not changed.
 
+The [28 September campaign](simulations/2026-09-28.md) also completed real
+Claude intake, Codex implementation, independent Claude review and cross-room
+recall. Continuing the same workspace exercised a second assignment, actual
+Codex cancellation, explicit retry with clarification and two hub/runner
+restarts. The approved results and conversation records survived. This is
+evidence for this role configuration, not every provider feature or version.
+
 ## Sign-in detection on real installations (26 September 2026, historical)
 
 Probed on the build machine through the adapters' own `Probe` (the same call
@@ -55,7 +62,7 @@ replaced by API billing.
 | User questions | `requestUserInput` → declined, redirected to `human_ask` | disabled (questions go through room tools) | `cursor/ask_question` → declined, redirected; plans never self-approved | n/a |
 | Steering | `turn/steer` → **immediate**; falls back to queued | **queued** (delivery into the active turn not promised) | **queued** during a turn | immediate |
 | Session resume | `thread/resume` (**machine-local**: resumes only on the machine that created the thread) | `--resume <id>` | `session/resume` or `session/load` when advertised | no |
-| Cancel | `turn/interrupt` + process-group kill; fake-verified incl. SIGKILL escalation | stdin interrupt + process-group kill | `session/cancel` + process-group kill | yes |
+| Cancel | `turn/interrupt` + process-group kill; real cancellation/retry passed; SIGKILL escalation fake-verified | stdin interrupt + process-group kill | `session/cancel` + process-group kill | yes |
 | Usage telemetry | vendor token usage (cumulative per attempt) | vendor tokens; cost omitted for resumed sessions | only if reported | unknown |
 | Rate limit → wait | vendor reset time when provided; never invented | `resetsAt` only | heuristic text match (real texts unknown) | scripted |
 | Auth expiry → wait for sign-in | fake-verified | fake-verified | fake-verified | scripted |
@@ -70,8 +77,8 @@ replaced by API billing.
 - Codex: per-thread config overrides (trust entries, required MCP, tool
   auto-approval) and the read-only approval policy must be confirmed on the
   real binary.
-- Claude Code: the permission round trip and what `--restricted` excludes
-  must be confirmed on the real binary.
+- Claude Code: the permission round trip passed against the real binary;
+  comprehensive verification of what `--restricted` excludes remains open.
 - Cursor: whether `agent acp` loads MCP servers passed in `session/new`,
   whether `ask` mode removes write tools, and its real error texts are
   unknown.

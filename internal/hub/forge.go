@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -247,9 +248,9 @@ func (h *Hub) toolForgeLinkPR(ctx context.Context, env toolEnv, a bridge.ForgeRe
 // toolForgePublishReview publishes a recorded internal verdict to the linked
 // PR through the project's authorized credential. It is refused unless the
 // reviewer holds the publish_review grant; the forge connector re-verifies
-// the head revision and the remote actor's eligibility. Engineer attribution
-// and the remote actor are both recorded; several engineers sharing one
-// credential remain one remote actor.
+// the head revision and the remote actor's eligibility. The body records the
+// engineer's attribution; several engineers sharing one credential remain
+// one remote actor.
 func (h *Hub) toolForgePublishReview(ctx context.Context, env toolEnv, a bridge.ForgePublishReviewArgs) (any, error) {
 	q := h.st.R()
 	review, round, err := store.ReviewByReviewJob(ctx, q, env.job.ID)
@@ -280,7 +281,14 @@ func (h *Hub) toolForgePublishReview(ctx context.Context, env toolEnv, a bridge.
 		return nil, err
 	}
 	marker, dedupe := round.ID, "publish:"+round.ID
-	if d, err := store.GetForgeDelivery(ctx, q, dedupe); err == nil {
+	d, err := store.GetForgeDelivery(ctx, q, dedupe)
+	if err == nil && d.Status == "failed" {
+		if err := h.adoptLegacyPublication(ctx, dedupe, round.ID); err != nil {
+			return nil, err
+		}
+		d, err = store.GetForgeDelivery(ctx, q, dedupe)
+	}
+	if err == nil {
 		switch d.Status {
 		case "published":
 			return map[string]any{"externalId": d.ExternalID, "duplicate": true}, nil
@@ -291,14 +299,16 @@ func (h *Hub) toolForgePublishReview(ctx context.Context, env toolEnv, a bridge.
 				return nil, domain.Unavailable("forge", "The earlier publication's outcome is still unknown; not retrying until it can be reconciled.")
 			}
 			if found {
-				_ = h.do(ctx, func(t *txn) error { return store.SetForgeDelivery(ctx, t.tx, d.ID, "published", id, "") })
+				if err := h.do(ctx, func(t *txn) error { return store.SetForgeDelivery(ctx, t.tx, d.ID, "published", id, "") }); err != nil {
+					return nil, domain.Unavailable("forge", "The earlier review was found, but its confirmation could not be saved. Reconcile it again before retrying.")
+				}
 				return map[string]any{"externalId": id, "reconciled": true}, nil
 			}
-			_ = h.do(ctx, func(t *txn) error {
-				return store.SetForgeDelivery(ctx, t.tx, d.ID, "failed", "", "reconciled: not published")
-			})
+			return nil, domain.Unavailable("forge", "The earlier publication is still unresolved. The forge may not show a newly published review yet. Verify it on the forge and reconcile again later; no new review was sent.")
 		case "failed":
 		}
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return nil, err
 	}
 	event := forge.EventComment
 	switch round.State {
@@ -311,7 +321,7 @@ func (h *Hub) toolForgePublishReview(ctx context.Context, env toolEnv, a bridge.
 	if body == "" {
 		body = round.Summary
 	}
-	body += fmt.Sprintf("\n\n— %s (yip engineer), reviewing %s", env.eng.Name, shortRev(round.Target.Head))
+	body += fmt.Sprintf("\n\n- %s (yip engineer), reviewing %s", env.eng.Name, shortRev(round.Target.Head))
 	var comments []forge.ReviewComment
 	for _, f := range round.Findings {
 		if f.File != "" && f.Line > 0 {
@@ -321,17 +331,37 @@ func (h *Hub) toolForgePublishReview(ctx context.Context, env toolEnv, a bridge.
 	// Record the attempt durably before the network call, so a crash leaves
 	// an ambiguous delivery to reconcile rather than a silent retry.
 	deliveryID := domain.NewID()
+	var publishedID string
 	if err := h.do(ctx, func(t *txn) error {
-		_, err := store.InsertForgeDelivery(ctx, t.tx, store.ForgeDelivery{ID: deliveryID, PRID: pr.ID, Kind: "publish_review",
-			DedupeKey: dedupe + ":" + deliveryID, Status: "pending", EngineerID: env.eng.ID, ReviewRoundID: round.ID})
-		if err != nil {
+		// Claim the canonical key under the writer transaction. Another tool
+		// call may have started or finished publishing since the read above.
+		d, err := store.GetForgeDelivery(ctx, t.tx, dedupe)
+		switch {
+		case err == nil && d.Status == "published":
+			publishedID = d.ExternalID
+			return nil
+		case err == nil && d.Status == "failed":
+			// Retain failed attempts for the audit, but let the newest attempt
+			// own the key that future calls reconcile.
+			if _, err := t.tx.ExecContext(ctx, `UPDATE forge_deliveries SET dedupe_key = ? WHERE id = ?`, dedupe+":"+d.ID, d.ID); err != nil {
+				return err
+			}
+		case err == nil:
+			return domain.Unavailable("forge", "Another publication is pending or unresolved. Reconcile it before retrying; no new review was sent.")
+		case !errors.Is(err, store.ErrNotFound):
 			return err
 		}
-		_, err = t.tx.ExecContext(ctx, `UPDATE forge_deliveries SET dedupe_key = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM forge_deliveries WHERE dedupe_key = ?)`,
-			dedupe, deliveryID, dedupe)
+		inserted, err := store.InsertForgeDelivery(ctx, t.tx, store.ForgeDelivery{ID: deliveryID, PRID: pr.ID, Kind: "publish_review",
+			DedupeKey: dedupe, Status: "pending", EngineerID: env.eng.ID, ReviewRoundID: round.ID})
+		if err == nil && !inserted {
+			return domain.Conflict("Another publication already claimed this review.")
+		}
 		return err
 	}); err != nil {
 		return nil, err
+	}
+	if publishedID != "" {
+		return map[string]any{"externalId": publishedID, "duplicate": true}, nil
 	}
 	id, perr := c.PublishReview(ctx, ref, pr.Number, forge.PublishReview{CommitID: round.Target.Head, Event: event, Body: body, Comments: comments, Marker: marker})
 	status, errText := "published", ""
@@ -342,21 +372,62 @@ func (h *Hub) toolForgePublishReview(ctx context.Context, env toolEnv, a bridge.
 	default:
 		status, errText = "failed", perr.Error()
 	}
-	_ = h.do(ctx, func(t *txn) error {
-		if err := store.SetForgeDelivery(ctx, t.tx, deliveryID, status, id, errText); err != nil {
+	// The provider may have stopped while the forge was responding. Saving
+	// the outcome must outlive that request, within a bounded deadline.
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := h.do(saveCtx, func(t *txn) error {
+		d, err := store.GetForgeDelivery(saveCtx, t.tx, dedupe)
+		if err != nil {
 			return err
+		}
+		// A concurrent reconciliation may already have confirmed this write.
+		if d.Status != "published" {
+			if err := store.SetForgeDelivery(saveCtx, t.tx, deliveryID, status, id, errText); err != nil {
+				return err
+			}
 		}
 		result := "ok"
 		if perr != nil {
 			result = status
 		}
 		return t.audit(env.me, "grant:publish_review", "forge.publish_review", pr.URL, result, errText)
-	})
+	}); err != nil {
+		return nil, domain.Unavailable("forge", "The forge responded, but the publication outcome could not be saved. Verify it on the forge and reconcile before retrying; its outcome remains unresolved here.")
+	}
 	if perr != nil {
 		return nil, forgeErr(perr)
 	}
-	return map[string]any{"externalId": id, "remoteActor": pr.ViewerActor, "event": event,
+	return map[string]any{"externalId": id, "event": event,
 		"note": "Published as the forge credential's account; the forge decides whether it counts toward merge requirements."}, nil
+}
+
+// Older retries left the first failed attempt at the canonical key and put
+// their outcomes at suffixed keys. Adopt those known outcomes before another
+// attempt, including when the credential can no longer see the original actor.
+func (h *Hub) adoptLegacyPublication(ctx context.Context, dedupe, roundID string) error {
+	return h.do(ctx, func(t *txn) error {
+		current, err := store.GetForgeDelivery(ctx, t.tx, dedupe)
+		if err != nil || current.Status != "failed" {
+			return err
+		}
+		var id string
+		err = t.tx.QueryRowContext(ctx, `SELECT id FROM forge_deliveries
+			WHERE kind = 'publish_review' AND review_round_id = ? AND dedupe_key = ? || ':' || id
+			AND status IN ('published', 'unknown', 'pending')
+			ORDER BY CASE status WHEN 'published' THEN 0 ELSE 1 END, attempted_at DESC, rowid DESC LIMIT 1`, roundID, dedupe).Scan(&id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := t.tx.ExecContext(ctx, `UPDATE forge_deliveries SET dedupe_key = ? WHERE id = ?`, dedupe+":"+current.ID, current.ID); err != nil {
+			return err
+		}
+		_, err = t.tx.ExecContext(ctx, `UPDATE forge_deliveries SET dedupe_key = ? WHERE id = ?`, dedupe, id)
+		return err
+	})
 }
 
 // ---- forge events ----

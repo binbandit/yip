@@ -41,15 +41,17 @@ test('steering open work shows the actual delivery receipt', async ({ page }) =>
   await box.fill('Keep the existing API response shape.');
   await box.press('Enter');
   // Never claims immediate delivery unless the hub confirmed it.
-  await expect(page.getByText(/Delivering to Pip…|Pip received your update|Queued for Pip's next step/)).toBeVisible();
-  await expect(page.getByText(/Pip received your update|Queued for Pip's next step/)).toBeVisible({ timeout: 30_000 });
+  const receipt = page.locator('.room-composer .receipt[role="status"]');
+  await expect(receipt).toBeVisible();
+  await expect(receipt).toHaveText(/Delivering to Pip…|Pip received your update|Queued for Pip's next step/);
+  await expect(receipt).toHaveText(/Pip received your update|Queued for Pip's next step/, { timeout: 30_000 });
 });
 
 test('job drawer traps focus when overlaid and Escape returns focus', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await signIn(page);
   await openRoom(page, 'Security');
-  const row = page.locator('.strip button.open').first();
+  const row = page.locator('.strip button.open, .result button.claim').first();
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.focus();
   await row.press('Enter');
@@ -79,7 +81,7 @@ test('search opens the actual source', async ({ page }) => {
   await expect(page.getByRole('tab', { name: /Evidence/ })).toBeVisible();
 });
 
-test('390px layout: no horizontal scroll, rooms sheet, full-screen thread', async ({ page }) => {
+test('390px layout: no horizontal scroll, rooms sheet and touch-sized send', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

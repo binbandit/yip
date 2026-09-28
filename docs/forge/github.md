@@ -120,6 +120,25 @@ After `ErrAmbiguous`, the caller must call `FindReviewByMarker` before retrying.
 
 The connector does not claim exactly-once delivery. GitHub's review listing can briefly lag a successful create, so a reconciliation that runs immediately after a timeout may miss the review. Wait before reconciling, or reconcile again later. Callers should journal the marker before the publish attempt.
 
+The hub claims one canonical delivery record per review round before sending.
+A retry after a definite failure retains the failed attempt for audit and
+takes over that canonical key atomically. Confirmed success returns the saved
+external ID without consulting a possibly lagging listing. Concurrent calls
+cannot both claim the round. Pending or unknown outcomes remain unresolved
+when the marker is absent; the tool explains that remote verification and
+later reconciliation are needed and sends no replacement review. There is
+currently no automatic reset of an unresolved publication.
+
+For an existing journal written by older versions, the hub recognizes retry
+rows under suffixed keys and atomically adopts a confirmed or unresolved
+attempt before considering another send. This also prevents duplicate
+publication after upgrading and rotating the credential.
+
+The hub saves the response under a bounded context that survives cancellation
+of the provider request. If that save fails, the tool reports an unresolved
+outcome, not confirmed success. It does not report a cached PR viewer as the
+identity of a new publication; those credentials may have changed.
+
 ## Checks
 
 `Checks(repo, sha)` combines the latest check runs (`filter=latest`) with the individual commit statuses. It counts the statuses one by one because GitHub reports the combined `state` as `pending` when a commit has no statuses at all.
