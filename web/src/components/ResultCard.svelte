@@ -112,12 +112,7 @@
     {/if}
 
     {#if d?.missing.length}
-      <div class="notice attention">
-        <Icon name="alert" size={16} />
-        <div>
-          {#each d.missing as m (m)}<p>{m}</p>{/each}
-        </div>
-      </div>
+      <p class="notice attention">Still needs {d.missing.join('; ')}.</p>
     {/if}
     {#if job.requiresHumanReview && job.state === 'review_ready'}
       <p class="needs">Your review is required before this completes.</p>

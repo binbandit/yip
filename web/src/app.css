@@ -516,17 +516,6 @@ kbd {
   }
 }
 
-.form-error {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  padding: 10px 12px;
-  border-radius: var(--r-control);
-  background: var(--danger-subtle);
-  color: var(--danger);
-  font-size: 14px;
-}
-
 /* ---- chips, pills, badges ---- */
 
 .chip {
@@ -616,29 +605,46 @@ button.chip {
   background: var(--surface);
 }
 
-.notice {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 10px 12px;
-  border-radius: var(--r-control);
-  background: var(--surface-subtle);
+/*
+ * A notice (or a form error) is a sentence led by a status shape, never a
+ * tinted box: hue lives in the shape, and in danger text, so it reads as state
+ * rather than decoration. The shape is a mask so it takes the tone's colour;
+ * its paths match Icon's info, alert and alertCircle.
+ */
+.notice,
+.form-error {
+  --notice-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8.5'/%3E%3Cpath d='M12 11v5.5M12 7.5h.01'/%3E%3C/svg%3E");
+  position: relative;
+  padding-left: 24px;
+  color: var(--ink);
   font-size: 14px;
   line-height: 1.5;
 }
+.notice::before,
+.form-error::before {
+  content: '';
+  position: absolute;
+  top: calc((1lh - 16px) / 2);
+  left: 0;
+  width: 16px;
+  height: 16px;
+  background: var(--ink-secondary);
+  mask: var(--notice-shape) center / 16px no-repeat;
+}
 .notice.attention {
-  background: var(--attention-subtle);
-  color: var(--ink);
-  box-shadow: inset 3px 0 0 var(--attention-fill);
+  --notice-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4 21 19.5H3Z'/%3E%3Cpath d='M12 10v4.5M12 17h.01'/%3E%3C/svg%3E");
 }
-.notice.danger {
-  background: var(--danger-subtle);
-  color: var(--ink);
-  box-shadow: inset 3px 0 0 var(--danger);
+.notice.attention::before {
+  background: var(--attention-ink);
 }
-.notice.success {
-  background: var(--success-subtle);
-  box-shadow: inset 3px 0 0 var(--success);
+.notice.danger,
+.form-error {
+  --notice-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8.5'/%3E%3Cpath d='M12 7.5V13M12 16.5h.01'/%3E%3C/svg%3E");
+  color: var(--danger);
+}
+.notice.danger::before,
+.form-error::before {
+  background: currentColor;
 }
 
 .empty {

@@ -1,11 +1,22 @@
 <script lang="ts">
-  import { app } from '../lib/state/app.svelte';
+  import { app, type Toast } from '../lib/state/app.svelte';
+  import type { Tone } from '../lib/util/labels';
   import Icon from './Icon.svelte';
+
+  // Errors and confirmations lead with their tone's shape; info is plain text.
+  const LEAD: Record<Exclude<Toast['tone'], 'info'>, { icon: string; tone: Tone }> = {
+    error: { icon: 'alertCircle', tone: 'danger' },
+    success: { icon: 'check', tone: 'success' },
+  };
 </script>
 
 <div class="toasts" aria-live="polite" aria-relevant="additions">
   {#each app.toasts as t (t.id)}
-    <div class="toast t-{t.tone}">
+    <div class="toast">
+      {#if t.tone !== 'info'}
+        {@const lead = LEAD[t.tone]}
+        <Icon name={lead.icon} size={16} class="tone-{lead.tone}" />
+      {/if}
       <span class="text">{t.text}</span>
       {#if t.action}
         <button
@@ -45,16 +56,6 @@
     border: 1px solid var(--line);
     font-size: 14px;
     animation: rise var(--t-slow) var(--ease);
-  }
-  .toast.t-error {
-    box-shadow:
-      inset 3px 0 0 var(--danger),
-      var(--shadow-pop);
-  }
-  .toast.t-success {
-    box-shadow:
-      inset 3px 0 0 var(--success),
-      var(--shadow-pop);
   }
   .text {
     flex: 1;

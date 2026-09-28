@@ -104,8 +104,6 @@
   }
   .blocker {
     grid-area: blocker;
-    padding: 2px 0 2px 8px;
-    border-left: 3px solid var(--attention-fill);
     color: var(--ink);
     font-size: 13.5px;
   }

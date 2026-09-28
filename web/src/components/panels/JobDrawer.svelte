@@ -53,6 +53,9 @@
   const unknownRun = $derived(runs.find((r) => r.state === 'unknown'));
   // A stop is only confirmed once the machine reports the attempt ended.
   const stoppingRun = $derived(runs.find((r) => r.state === 'stopping'));
+  const stateDetail = $derived(job && (job.state === 'waiting' || job.state === 'failed' || job.state === 'review_ready') ? (job.stateDetail ?? '') : '');
+  // The hub often phrases the state as "Waiting on <missing evidence>"; list only what that line doesn't already say.
+  const missing = $derived((d?.missing ?? []).filter((m) => !stateDetail.includes(m)));
   const project = $derived(job?.projectId ? app.data.projects[job.projectId] : undefined);
   const repo = $derived(project?.repos.find((r) => r.id === job?.repoId));
   // Waits a person fixes outside the work itself get a link to where to fix them.
@@ -262,22 +265,21 @@
     </div>
   {:else}
     <div class="pad head">
-      <p class="state tone-{jobTone(job.state)}">
-        <StateIcon shape={jobShape(job.state)} tone={jobTone(job.state)} size={16} live={job.state === 'running'} />
-        <strong>{job.state === 'cancelled' && stoppingRun ? 'Stopping' : jobStateLabel(job)}</strong>
-        {#if job.state === 'waiting'}<span class="muted">· {waitingReasonLabel(job.waitingReason)}</span>{/if}
-      </p>
-      {#if stoppingRun}
-        <p class="notice attention">Waiting for {app.nodeName(stoppingRun.nodeId) || 'its machine'} to confirm the attempt has stopped.</p>
-      {/if}
-
-      {#if (job.state === 'waiting' || job.state === 'failed' || job.state === 'review_ready') && job.stateDetail}
-        <p class="notice {job.state === 'failed' ? 'danger' : 'attention'}">
-          {job.stateDetail}{#if setupLink}{' '}<a href={setupLink.href}>{setupLink.label}</a>{/if}
+      <div class="status">
+        <p class="state tone-{jobTone(job.state)}">
+          <StateIcon shape={jobShape(job.state)} tone={jobTone(job.state)} size={16} live={job.state === 'running'} />
+          <strong>{job.state === 'cancelled' && stoppingRun ? 'Stopping' : jobStateLabel(job)}</strong>
+          {#if job.state === 'waiting'}<span class="muted">· {waitingReasonLabel(job.waitingReason)}</span>{/if}
         </p>
-      {:else if setupLink}
-        <p class="notice attention">{waitingReasonLabel(job.waitingReason)}. <a href={setupLink.href}>{setupLink.label}</a></p>
-      {/if}
+        {#if stoppingRun}
+          <p class="why">Waiting for {app.nodeName(stoppingRun.nodeId) || 'its machine'} to confirm the attempt has stopped.</p>
+        {/if}
+        {#if stateDetail}
+          <p class="why">{stateDetail}{#if setupLink}{' '}<a href={setupLink.href}>{setupLink.label}</a>{/if}</p>
+        {:else if setupLink}
+          <p class="why"><a href={setupLink.href}>{setupLink.label}</a></p>
+        {/if}
+      </div>
       {#if unknownRun}
         <p class="notice attention">
           Last heard from {app.nodeName(unknownRun.nodeId) || 'its machine'}
@@ -286,11 +288,8 @@
             : ''}. Check before retrying anything that pushes or publishes.
         </p>
       {/if}
-      {#if d?.missing.length}
-        <div class="notice attention">
-          <Icon name="alert" size={16} />
-          <div>{#each d.missing as m (m)}<p>{m}</p>{/each}</div>
-        </div>
+      {#if missing.length}
+        <p class="notice attention">Still needs {missing.join('; ')}.</p>
       {/if}
 
       <dl class="props">
@@ -710,11 +709,19 @@
     gap: 10px;
     border-bottom: 0;
   }
+  .status {
+    display: grid;
+    gap: 2px;
+  }
   .state {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 15px;
+  }
+  .why {
+    padding-left: 24px;
+    font-size: 14px;
   }
   .props {
     margin: 0;

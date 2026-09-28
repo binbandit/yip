@@ -112,10 +112,7 @@
       <GettingStarted />
 
       {#if error}
-        <div class="notice danger" role="alert">
-          <span>{error}</span>
-          <button class="btn btn-sm" onclick={() => load(false)}>Retry</button>
-        </div>
+        <p class="notice danger" role="alert">{error} <button class="link-btn" onclick={() => load(false)}>Retry</button></p>
       {:else if loading}
         <p class="meta" aria-busy="true">Gathering what changed…</p>
       {:else if ov}
