@@ -44,8 +44,11 @@ the code that enforces them and the tests that prove it.
    investigation rounds bind to the latest published document's content hash,
    even when the author also publishes a Git revision. The reviewer gets a
    read-only snapshot: code from the verified bundle, or the exact stored
-   document as `review-artifact`. Only the leased reviewer can download that
-   document through the runner endpoint. Verdicts must echo the full
+   document as `review-artifact`. Only the leased reviewer with current room
+   and project access can download that document through the runner endpoint.
+   Code bundles and checkpoints must match the manifest's explicit
+   `restoreArtifactId`; mentioning an artifact in chat grants no access.
+   Verdicts must echo the full
    `expectedHead` or `expectedHash`. A corrected result needs a new round.
    On `changes_requested`, the author resumes, addresses the findings and
    requests re-review. Missing room membership or project read access is
@@ -95,6 +98,18 @@ The policy parser separates a literal body from executable shell syntax,
 checks trailing commands and retains approval for substitutions and
 consequential actions. A decided approval folds into a short outcome with
 a disclosure of its exact request; pending requests keep their full detail.
+
+Permission requests and later owner decisions recheck the run's current room
+and project access. A read-only attempt cannot push, merge or publish through
+provider commands even when its engineer holds broader project grants.
+Authorized yip review publication has its own checked tool path. An allowed
+shell command with potential external effects prevents automatic crash retry,
+just as a direct push or publication action does; rejected and routine local
+commands retain safe retry behavior.
+
+Conversation and review attempts require a provider that can enforce read-only
+execution. An installation that reports otherwise remains queued with a named
+limitation until its capability changes, rather than being dispatched to fail.
 
 **Clarifying work in conversation.** A message to an engineer who is
 working on something in the room right now goes into that work as the

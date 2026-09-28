@@ -60,3 +60,17 @@ func TestReviewPromptSuppliesExactTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestReadOnlyInstructionsExplainVerificationWithinScope(t *testing.T) {
+	m := &Manifest{Mode: "readonly"}
+	instructions := m.Instructions()
+	for _, guidance := range []string{"git diff and git show", "existing project checks through work_run_check", "Do not write outside the workspace", "ask the author for that regression", "unable_to_review"} {
+		if !strings.Contains(instructions, guidance) {
+			t.Errorf("reviewer lacks guidance for verification within its scope: %q", guidance)
+		}
+	}
+	m.Mode = "edit"
+	if strings.Contains(m.Instructions(), "Do not silently skip verification or rewrite the review snapshot") {
+		t.Fatal("review-only restrictions were applied to an author's edit run")
+	}
+}

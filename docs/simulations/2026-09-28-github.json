@@ -1,0 +1,371 @@
+{
+  "date": "2026-09-28",
+  "repositories": [
+    "binbandit/yip-simulation-playground",
+    "binbandit/yip-simulation-public"
+  ],
+  "pullRequests": {
+    "private-fix": {
+      "repo": "binbandit/yip-simulation-playground",
+      "number": 1,
+      "url": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "head": "a6b9fca2afb4724726948011cff91c697c03b6f9",
+      "branch": "simulation/private-fix"
+    },
+    "team-fix": {
+      "repo": "binbandit/yip-simulation-public",
+      "number": 1,
+      "url": "https://github.com/binbandit/yip-simulation-public/pull/1",
+      "head": "2e34acf914acf149b2887cbdd66628b9ae69db08",
+      "branch": "simulation/team-fix"
+    },
+    "fork-fix": {
+      "repo": "binbandit/yip-simulation-public",
+      "number": 2,
+      "url": "https://github.com/binbandit/yip-simulation-public/pull/2",
+      "head": "2318bf0f2de6e71d11d946e4640dc332104257e2",
+      "branch": "sage-smudge:simulation/contributor"
+    },
+    "draft-doc": {
+      "repo": "binbandit/yip-simulation-playground",
+      "number": 2,
+      "url": "https://github.com/binbandit/yip-simulation-playground/pull/2",
+      "head": "6ef37baddf6396eaf673a22fa5b3b63be716857e",
+      "branch": "simulation/draft-doc"
+    },
+    "broken-ci": {
+      "repo": "binbandit/yip-simulation-playground",
+      "number": 3,
+      "url": "https://github.com/binbandit/yip-simulation-playground/pull/3",
+      "head": "f394d3aa65bb3c7f4616f1bd7f903039c95790bd",
+      "branch": "simulation/broken-ci"
+    },
+    "conflict": {
+      "repo": "binbandit/yip-simulation-playground",
+      "number": 4,
+      "url": "https://github.com/binbandit/yip-simulation-playground/pull/4",
+      "head": "281606d633f5e8e380c6aa6b45cfb81ae7ff49a5",
+      "branch": "simulation/conflict-head"
+    }
+  },
+  "privateRevokedAccess": {
+    "denied": true,
+    "status": "404"
+  },
+  "scenarios": [
+    {
+      "label": "private-owner-read",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_author": "binbandit",
+        "expect_state": "open",
+        "expect_draft": false
+      }
+    },
+    {
+      "label": "private-author-self-approval",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "event": "APPROVE",
+        "expect_error": "ineligible"
+      }
+    },
+    {
+      "label": "private-author-self-changes",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "event": "REQUEST_CHANGES",
+        "expect_error": "ineligible"
+      }
+    },
+    {
+      "label": "private-peer-requests-changes",
+      "actor": "sage-smudge",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "event": "REQUEST_CHANGES"
+      }
+    },
+    {
+      "label": "private-pending-is-not-published",
+      "actor": "WastedHippie",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_marker_absent": "simulation-pending-20260928"
+      }
+    },
+    {
+      "label": "private-submitted-marker-reconciles",
+      "actor": "WastedHippie",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "event": "COMMENT",
+        "marker": "simulation-pending-20260928"
+      }
+    },
+    {
+      "label": "private-copied-marker-other-actor",
+      "actor": "sage-smudge",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_marker_absent": "simulation-pending-20260928"
+      }
+    },
+    {
+      "label": "private-stale-review-refused",
+      "actor": "sage-smudge",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "event": "APPROVE",
+        "commit": "25b4129467194511ff59dc687258f39c0c7cedc8",
+        "expect_error": "stale",
+        "expect_head": "a6b9fca2afb4724726948011cff91c697c03b6f9"
+      }
+    },
+    {
+      "label": "private-rereview-approval",
+      "actor": "sage-smudge",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "event": "APPROVE",
+        "expect_head": "a6b9fca2afb4724726948011cff91c697c03b6f9"
+      }
+    },
+    {
+      "label": "private-second-reviewer",
+      "actor": "WastedHippie",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "event": "APPROVE",
+        "expect_head": "a6b9fca2afb4724726948011cff91c697c03b6f9"
+      }
+    },
+    {
+      "label": "private-access-restored",
+      "actor": "WastedHippie",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_head": "a6b9fca2afb4724726948011cff91c697c03b6f9"
+      }
+    },
+    {
+      "label": "team-required-check-pending",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_checks": "pending",
+        "expect_merge": "blocked"
+      }
+    },
+    {
+      "label": "team-required-check-failed",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_checks": "failure",
+        "expect_merge": "blocked"
+      }
+    },
+    {
+      "label": "team-green-without-approvals",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_checks": "success",
+        "expect_merge": "blocked"
+      }
+    },
+    {
+      "label": "team-first-reviewer",
+      "actor": "sage-smudge",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/1",
+      "passed": true,
+      "expected": {
+        "event": "APPROVE"
+      }
+    },
+    {
+      "label": "team-one-review-is-not-two",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_merge": "blocked"
+      }
+    },
+    {
+      "label": "team-second-reviewer",
+      "actor": "WastedHippie",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/1",
+      "passed": true,
+      "expected": {
+        "event": "APPROVE"
+      }
+    },
+    {
+      "label": "team-policy-satisfied",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_checks": "success",
+        "expect_merge": "clean"
+      }
+    },
+    {
+      "label": "team-new-commit-dismisses-approvals",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_merge": "blocked",
+        "expect_head": "2e34acf914acf149b2887cbdd66628b9ae69db08"
+      }
+    },
+    {
+      "label": "team-old-head-approval-refused",
+      "actor": "sage-smudge",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/1",
+      "passed": true,
+      "expected": {
+        "event": "APPROVE",
+        "commit": "c54a2ca3e3e0e035060ad7bd939e0f58d85bdca0",
+        "expect_error": "stale"
+      }
+    },
+    {
+      "label": "fork-contributor-identity",
+      "actor": "WastedHippie",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/2",
+      "passed": true,
+      "expected": {
+        "expect_author": "sage-smudge"
+      }
+    },
+    {
+      "label": "fork-author-self-approval",
+      "actor": "sage-smudge",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/2",
+      "passed": true,
+      "expected": {
+        "event": "APPROVE",
+        "expect_error": "ineligible"
+      }
+    },
+    {
+      "label": "fork-maintainer-requests-changes",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/2",
+      "passed": true,
+      "expected": {
+        "event": "REQUEST_CHANGES"
+      }
+    },
+    {
+      "label": "fork-distinct-peer-approval",
+      "actor": "WastedHippie",
+      "pr": "https://github.com/binbandit/yip-simulation-public/pull/2",
+      "passed": true,
+      "expected": {
+        "event": "APPROVE"
+      }
+    },
+    {
+      "label": "private-merged-is-terminal",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_state": "merged",
+        "expect_merge": "blocked",
+        "event": "COMMENT",
+        "expect_error": "stale"
+      }
+    },
+    {
+      "label": "private-deleted-source-still-readable",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/1",
+      "passed": true,
+      "expected": {
+        "expect_state": "merged"
+      }
+    },
+    {
+      "label": "private-draft-blocks-merge",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/2",
+      "passed": true,
+      "expected": {
+        "expect_draft": true,
+        "expect_merge": "blocked"
+      }
+    },
+    {
+      "label": "private-draft-comment",
+      "actor": "sage-smudge",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/2",
+      "passed": true,
+      "expected": {
+        "event": "COMMENT"
+      }
+    },
+    {
+      "label": "private-closed-is-terminal",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/2",
+      "passed": true,
+      "expected": {
+        "expect_state": "closed",
+        "expect_merge": "blocked",
+        "event": "COMMENT",
+        "expect_error": "stale"
+      }
+    },
+    {
+      "label": "private-real-ci-failure",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/3",
+      "passed": true,
+      "expected": {
+        "expect_checks": "failure"
+      }
+    },
+    {
+      "label": "private-real-ci-repaired",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/3",
+      "passed": true,
+      "expected": {
+        "expect_checks": "success",
+        "expect_head": "f394d3aa65bb3c7f4616f1bd7f903039c95790bd"
+      }
+    },
+    {
+      "label": "private-conflict-is-dirty",
+      "actor": "binbandit",
+      "pr": "https://github.com/binbandit/yip-simulation-playground/pull/4",
+      "passed": true,
+      "expected": {
+        "expect_merge": "dirty"
+      }
+    }
+  ]
+}

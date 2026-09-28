@@ -165,6 +165,7 @@
   .name {
     font-weight: 650;
     font-size: 16px;
+    overflow-wrap: anywhere;
   }
   .desc {
     font-size: 14px;

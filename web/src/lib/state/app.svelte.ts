@@ -498,7 +498,7 @@ class AppState {
     } catch (err) {
       // The event stream can confirm delivery before the HTTP response is lost.
       // It may also arrive after failure; afterMessage clears that saved copy.
-      if (!this.data.pending[clientKey]) {
+      if (Object.values(this.data.messages).some((m) => m.clientKey === clientKey && m.roomId === p.roomId)) {
         clearUnsent(clientKey);
         return null;
       }

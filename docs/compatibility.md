@@ -3,19 +3,31 @@
 Recorded 25 September 2026 on macOS 27.0 (Darwin 27.0.0), Apple Silicon
 (arm64), Go 1.26.5. This record distinguishes **implemented**, **verified
 against a scripted fake** (deterministic, automated), and **verified against
-the real provider with a signed-in account** (manual smoke test). Per the
-build policy, **no prompt was sent to a real provider and no account was used
-while building yip**; every real-account column is therefore *not yet
-verified*. The smoke tests to fill it in are written and gated (below).
+the real provider with a signed-in account**. The original build used scripted
+providers only. On 28 September the owner authorized bounded real-provider
+tests; their results and limits are recorded below.
 
 | Provider | Pinned / tested version | Interface | Auth route | Real-account smoke test |
 |---|---|---|---|---|
-| Codex | `codex-cli 0.147.0` | `codex app-server --listen stdio://` (JSON-RPC); bindings checked against the schema generated from this binary (`internal/providers/codex/schema/`) | Codex-managed ChatGPT sign-in (`subscription`) or the user's API key (`api`), read via `account/read` | **Not run.** `YIP_REAL_PROVIDER_TESTS=1 go test -run TestRealCodex -v ./internal/providers/codex/` |
-| Claude Code | `2.1.282` | Unmodified CLI: `-p --output-format stream-json --input-format stream-json`, yip MCP server only (`--strict-mcp-config`), permission prompts via `--permission-prompt-tool mcp__yip__permission_prompt` | User's own sign-in to the unmodified binary on each runner (`claude auth login`) → `subscription`; or an explicitly configured `ANTHROPIC_API_KEY` → `api`. Never inherited implicitly. | **Not run.** `YIP_REAL_PROVIDER_TESTS=1 go test -run TestRealClaudeSmoke -v ./internal/providers/claude/` |
+| Codex | Schema pin `codex-cli 0.147.0`; smoke run `0.157.1` | `codex app-server --listen stdio://` (JSON-RPC); bindings checked against the schema generated from the pin (`internal/providers/codex/schema/`) | Codex-managed ChatGPT sign-in (`subscription`) or the user's API key (`api`), read via `account/read` | **Passed 28 Sep.** MCP call, file edit, denied escalation and same-session resume through `TestRealCodex`. |
+| Claude Code | CLI pin `2.1.282`; smoke run `2.1.283` | Unmodified CLI: `-p --output-format stream-json --input-format stream-json`, yip MCP server only (`--strict-mcp-config`), permission prompts via `--permission-prompt-tool mcp__yip__permission_prompt` | User's own sign-in to the unmodified binary on each runner (`claude auth login`) → `subscription`; or an explicitly configured `ANTHROPIC_API_KEY` → `api`. Never inherited implicitly. | **Passed 28 Sep.** Required flags and MCP/Bash permission round trip through `TestRealHelpHasRequiredFlags` and `TestRealClaudeSmoke`. |
 | Cursor | none (not installed on the build machine) | `agent acp` (ACP v1) with Cursor's `cursor/ask_question` and `cursor/create_plan` extensions | Cursor CLI login on the runner (`agent login`) or `CURSOR_API_KEY`; billing `unknown` | **Not run; no installation available.** Probe reports `Tested=false`. `YIP_REAL_PROVIDER_TESTS=1 go test -v ./internal/providers/cursor/` |
 | Fake (deterministic) | built-in | Scripted MCP client of the real `yip bridge` | none | n/a — used by the demo and the integration suite |
 
-## Sign-in detection on real installations (26 September 2026)
+## Real-run limits (28 September 2026)
+
+The smoke runs used the existing subscription sign-ins and isolated temporary
+repositories. They did not read credential files, change account configuration
+or use permission-bypass flags. The installed versions are newer than the
+adapter pins, so the probe still reports `Tested=false`; a passing smoke test
+does not validate every feature or update the generated protocol bindings.
+
+This machine's Codex allow-rules prevent safe conversation/review mode. The
+adapter correctly reports that limit and refuses the mode. The campaign found
+that the scheduler nevertheless dispatched conversations; it now respects
+the capability and names the limitation. The rules were not changed.
+
+## Sign-in detection on real installations (26 September 2026, historical)
 
 Probed on the build machine through the adapters' own `Probe` (the same call
 the runner makes; no prompt is sent):
@@ -53,8 +65,8 @@ replaced by API billing.
 
 ## Known limitations and open verification
 
-- All real-account behaviour above is unverified until the smoke tests run.
-  They use a small amount of the signed-in account's allowance.
+- The bounded smoke paths above passed. Other real-account behavior remains
+  unverified unless explicitly covered by the campaign record.
 - Codex: per-thread config overrides (trust entries, required MCP, tool
   auto-approval) and the read-only approval policy must be confirmed on the
   real binary.
@@ -63,8 +75,8 @@ replaced by API billing.
 - Cursor: whether `agent acp` loads MCP servers passed in `session/new`,
   whether `ask` mode removes write tools, and its real error texts are
   unknown.
-- The GitHub connector has been tested only against an emulated API; its
-  contract test needs `YIP_GITHUB_CONTRACT_REPO` and `YIP_GITHUB_TOKEN`.
+- The GitHub contract test passed under all three accounts, with additional
+  real playground scenarios recorded in [the campaign](simulations/2026-09-28.md).
 
 See `docs/providers/*.md` and `docs/forge/github.md` for the full adapter
 records, exact launch arguments, and event mappings.

@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import sqlite3
 import sys
 import time
 
@@ -60,6 +61,7 @@ def capture(hub, directory):
     jobs = hub.jobs()
     messages = hub.messages("Security")
     ids = {job["id"] for job in jobs}
+    ids.update(run["jobId"] for run in hub.req("GET", "/v1/runs"))
     ids.update(message["jobId"] for message in messages if message.get("jobId"))
     for message in messages:
         ids.update(ref["id"] for ref in message.get("refs") or [] if ref["kind"] == "job")
@@ -94,6 +96,46 @@ def completed_evidence(details):
         if head and checked and reviewed and authored:
             return {"jobId": job["id"], "head": head, "summary": job.get("summary", "")}
     return None
+
+
+def recall(hub, directory, evidence, deadline):
+    engineer = hub.engineer("Oren")
+    room = hub.room("Engineering")
+    hub.req("PUT", f"/v1/rooms/{room['id']}/members/{engineer['id']}", {})
+    request = hub.post("Engineering", "@Oren where did we land on the session expiry work? "
+        "Summarize the actual completed change, its regression coverage, and the approved "
+        "revision from our saved work record. This is a recall question only; do not create "
+        "or modify work.", ["Oren"])
+    result = {"passed": False, "reason": "recall reached its time bound"}
+    while time.monotonic() < deadline:
+        messages = hub.messages("Engineering")
+        save(directory / "recall-messages.json", messages)
+        answers = [m for m in messages if m["seq"] > request["message"]["seq"]
+                   and m["author"]["id"] == engineer["id"] and m.get("jobId")]
+        if answers:
+            detail = hub.req("GET", "/v1/jobs/" + answers[-1]["jobId"])
+            save(directory / "recall-job.json", detail)
+            if detail["job"]["state"] == "completed" and all(r["state"] == "succeeded" for r in detail["runs"]):
+                body = "\n".join(m["body"] for m in answers)
+                run = detail["runs"][-1]
+                activity = hub.req("GET", f"/v1/jobs/{detail['job']['id']}/runs/{run['id']}/activity")
+                save(directory / "recall-activity.json", activity)
+                with sqlite3.connect(f"file:{directory / 'demo' / 'hub.db'}?mode=ro", uri=True) as db:
+                    manifest = json.loads(db.execute("SELECT manifest FROM runs WHERE id = ?", (run["id"],)).fetchone()[0])
+                save(directory / "recall-manifest.json", manifest)
+                sourced = any(n.get("kind") == "record" and evidence["head"][:8] in json.dumps(n)
+                              for n in manifest.get("notes") or [])
+                text = body.lower()
+                accurate = (evidence["head"][:7] in text and "expir" in text
+                            and ("test" in text or "regression" in text))
+                result = {"passed": run["provider"] == "claude" and sourced and accurate,
+                          "reason": "checked recall against completed work record and approved revision",
+                          "body": body, "provider": run["provider"], "sourcedWorkRecord": sourced}
+                break
+        time.sleep(2)
+    save(directory / "recall-result.json", result)
+    print(json.dumps({"recall": result}), flush=True)
+    return result
 
 
 def run(args):
@@ -152,9 +194,16 @@ def run(args):
                 print(json.dumps({"elapsed": round(time.monotonic() - start), "jobs": state}), flush=True)
                 previous = state
             evidence = completed_evidence(details)
-            if evidence:
+            if evidence and not hub.req("GET", "/v1/runs"):
                 result = {"passed": True, "reason": "autonomous code, checks and independent review completed",
                           "remote": REMOTE, **evidence}
+                save(directory / "primary-result.json", result)
+                if args.recall:
+                    result["recall"] = recall(hub, directory, evidence,
+                        min(start + args.seconds, time.monotonic() + 120))
+                    if not result["recall"]["passed"]:
+                        result["passed"] = False
+                        result["reason"] = "primary work passed; cross-room recall failed"
                 break
             pending = [a for d in details for a in d.get("approvals") or [] if a["status"] == "pending"]
             questions = [q for d in details for q in d.get("questions") or [] if q["status"] == "open"]
@@ -170,6 +219,7 @@ def run(args):
         else:
             result["reason"] = "campaign reached its wall-time bound"
     except BaseException as exc:
+        result["passed"] = False
         result["reason"] = str(exc)
         if isinstance(exc, KeyboardInterrupt):
             result["reason"] = "campaign interrupted"
@@ -193,6 +243,8 @@ if __name__ == "__main__":
     parser.add_argument("--seconds", type=int, default=600)
     parser.add_argument("--delegate-through-reviewer", action="store_true",
                         help="Claude receives the request and delegates implementation to Codex")
+    parser.add_argument("--recall", action="store_true",
+                        help="after settled completion, ask Claude to recall it in another room")
     args = parser.parse_args()
     if not args.run_real_providers:
         parser.error("real model use must be explicitly enabled with --run-real-providers")

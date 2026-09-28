@@ -19,7 +19,7 @@ c := github.New(github.Options{
 |---|---|---|
 | `Host` | `github.com` | Decides which URLs `ParseURL` accepts and which `RepoRef.Host` values the connector will contact. A repository on any other host is refused before a request is sent, so a token is never sent to the wrong forge. |
 | `APIBase` | `https://api.github.com`, or `https://{Host}/api/v3` for GHES | Override for tests. |
-| `Token` | none (unauthenticated) | Called once per request, which lets a secret store rotate credentials. Sent as `Authorization: Bearer …`. |
+| `Token` | none (unauthenticated) | Called per request normally; publication and marker reconciliation snapshot one credential for the entire operation so the checked actor cannot change mid-write. Rotation takes effect on the next operation. Sent as `Authorization: Bearer …`. |
 | `Timeout` | 30s | Applied through the request context. The caller's `http.Client` is left unchanged. |
 | `MaxPages` | 10 | Page cap (100 items per page) for reviews, check runs and statuses. |
 | `MergeablePolls` / `MergeablePollInterval` | 3 / 1s | Bounded re-fetch while GitHub computes mergeability. A negative `MergeablePolls` disables polling. |
@@ -115,6 +115,7 @@ The POST outcome maps to errors as follows. All errors wrap forge sentinels, so 
 After `ErrAmbiguous`, the caller must call `FindReviewByMarker` before retrying. `FindReviewByMarker` scans the reviews for one whose body contains the exact marker comment:
 
 - Only reviews written by the viewer count. Anyone with read access can see the marker in the raw markdown, so a copied marker in someone else's review is ignored.
+- Pending drafts do not confirm publication. A dismissed submitted review still records a past publication and prevents a duplicate.
 - If the scan cannot finish, because there are more than 100 pages of reviews, it returns an error wrapping `ErrTruncated` rather than `found == false`. A false "not found" would lead to a duplicate review.
 
 The connector does not claim exactly-once delivery. GitHub's review listing can briefly lag a successful create, so a reconciliation that runs immediately after a timeout may miss the review. Wait before reconciling, or reconcile again later. Callers should journal the marker before the publish attempt.
@@ -143,6 +144,10 @@ The overall state is the first rule that applies:
 If both sources return 404, `Checks` returns `forge.ErrNotFound`. A rate limit or any other error aborts the call instead of degrading to `unknown`.
 
 GitHub limits check runs to the 1000 most recent check suites on a ref. The count covers what GitHub returns.
+
+If access is lost on a later page, counts already observed are retained. A
+known failure stays a failure; a readable prefix of passing checks cannot
+turn an unreadable remainder into success.
 
 ## Merge status
 
@@ -245,7 +250,7 @@ A rate limit never matches `forge.ErrForbidden`. The connector never sleeps or r
   - Case-insensitive header names.
   - `pull_request`, `pull_request_review`, `check_run`, `check_suite` (both one and several linked PRs) and `status` payloads.
 
-### Contract test (not yet run)
+### Contract test
 
 `TestContractGitHub` in `contract_test.go` runs against a real repository. It is skipped unless both `YIP_GITHUB_CONTRACT_REPO=owner/name` and `YIP_GITHUB_TOKEN` are set. Optional variables:
 
@@ -269,4 +274,10 @@ With `YIP_GITHUB_CONTRACT_WRITE=1`, it also:
 - Confirms that `FindReviewByMarker` returns that review's ID.
 - Confirms that publishing again with the same marker returns the same ID and creates no duplicate.
 
-**This contract test has not been run against real GitHub.** The mock responses follow GitHub's REST documentation, but real behavior is unverified until someone runs it against a test repository.
+On 28 September 2026, the write-enabled contract test passed against the
+dedicated public playground under all three authorized accounts. A separate
+32-case real GitHub campaign covered private access, fork contributors,
+protected branches, changing checks, stale reviews, drafts, terminal PRs and
+conflicts. Three full hub/runner/bridge scenarios verified publication grants,
+self-review refusal and permitted publication. See the
+[campaign record](../simulations/2026-09-28.md) for fixtures and limitations.

@@ -427,6 +427,35 @@ describe('action flows', () => {
     await waitFor(() => (document.querySelector<HTMLSelectElement>('.rev-pick select')?.selectedOptions[0]?.textContent ?? '').startsWith(round1.slice(0, 7)), 'reviewed revision chosen');
   });
 
+  it('keeps the assignment when editing restored unsent work before its job snapshot arrives', async () => {
+    const room = roomId('Engineering');
+    const jobId = 'restored-running-assignment';
+    const clientKey = 'restore-assignment-context';
+    const body = 'Keep the existing response contract.';
+    app.go({ name: 'room', roomId: room });
+    await settle();
+    hub.override('POST', new RegExp(`^/v1/rooms/${room}/messages$`), () => ({
+      status: 503, body: { code: 'unavailable', message: 'Response lost', recoverable: true },
+    }));
+    await app.send({ roomId: room, body, mentions: [], projectIds: [], jobId, clientKey });
+    expect(app.data.jobs[jobId]).toBeUndefined();
+    const failed = await waitFor(() => byText('.pending.failed', body), 'restored unsent assignment input');
+    [...failed.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Edit')!.click();
+    const composer = await waitFor(() => document.querySelector<HTMLTextAreaElement>('.room-composer textarea'), 'composer');
+    await waitFor(() => composer.value === body, 'restored text');
+    hub.override('POST', new RegExp(`^/v1/rooms/${room}/messages$`), (c) => {
+      const sent = c.body as { body: string; clientKey: string };
+      return { status: 201, body: {
+        message: msg('restored-assignment-message', room, 90, { author: { kind: 'user', id: boot.user.id }, ...sent }),
+        duplicate: false, dispatched: [], resolvedQuestionIds: [],
+      } };
+    });
+    type(composer, `${body} Include the migration guide.`);
+    key(composer, 'Enter');
+    await waitFor(() => (hub.last('POST', new RegExp(`${room}/messages$`))?.body as { body?: string })?.body?.includes('migration guide'), 'edited input sent');
+    expect((hub.last('POST', new RegExp(`${room}/messages$`))!.body as { jobId?: string }).jobId).toBe(jobId);
+  });
+
   for (const confirmation of ['before failure', 'after failure', 'history'] as const) {
     it(`clears saved unsent work when delivery is confirmed by ${confirmation}`, async () => {
       const room = roomId('Engineering');

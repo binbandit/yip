@@ -244,6 +244,8 @@ func (m *Manifest) Instructions() string {
 	switch m.Mode {
 	case "readonly":
 		b.WriteString("- This run is read-only: you may read and run checks, but you must not modify files.\n")
+		b.WriteString("- Verify revisions with read-only Git commands such as git diff and git show, and run existing project checks through work_run_check. Prefer these to inline interpreter programs or temporary helper scripts, which can require extra approval. Do not write outside the workspace.\n")
+		b.WriteString("- If verifying an important claim requires changing source or adding a test, ask the author for that regression or record unable_to_review with the missing evidence. Do not silently skip verification or rewrite the review snapshot.\n")
 	case "conversation":
 		b.WriteString("- This run is a conversational reply: answer directly, or create accountable work with work_create when the request needs tools, code changes, or follow-through. Your final message is posted to the conversation as your reply.\n")
 	}

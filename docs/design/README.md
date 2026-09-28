@@ -120,11 +120,13 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
 - **Composer:**
   - The mention **combobox** (`role=combobox`, `aria-activedescendant`, arrow keys, Enter/Tab, Escape) lists room members with their role. Engineers outside the room are listed but unavailable ("Not in this room — add them in room settings first").
   - Only choices made from the list become structured mentions. Mentions inside code are ignored, and "Asking Mira, Oren" confirms who will be addressed.
+  - Keyboard selection keeps the active engineer visible in long menus. Project choices stay inside the available viewport, and long project names wrap in list and detail headings.
   - With one open question, **Answering Mira's question** targets the answer explicitly. **Not an answer** applies to the next sent message only; the answer target returns afterwards. A mention alone never resolves a question.
   - A project context picker.
   - Enter or Mod+Enter per the owner's preference, and IME-safe.
   - A draft per room and per thread, saved on this device.
   - An optimistic send that reconciles by `clientKey`. A failed send shows "Not sent · Retry · Edit · Discard", and Retry reuses the same key.
+  - Editing an unsent message preserves its selected project and structured mentions in rooms and threads. A canonical event or fetched message confirms delivery even when the HTTP response was lost, clearing the saved unsent copy.
   - An offline notice: "Can't reach your workspace. Your draft is saved on this device."
   - The steering scope ("Adding to: Fix Atlas session expiry · Mira") is shown as a bar at the top of the composer and can be cleared with × or Escape. Its receipt reads, in turn, "Delivering to Mira…" → "Mira received your update" or "Queued for Mira's next step", driven only by `input.delivery`.
   - One quiet line under the box, where a group chat shows typing: "Mira is typing…", "Mira and Oren are typing…", "Pip is working on Document Beacon's request flow", or "Pip will reply when possible — No machines are paired yet". Receipts for your updates take the same line. Keyboard hints are for screen readers only. Engineers' streamed text is never shown as it arrives.

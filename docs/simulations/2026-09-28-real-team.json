@@ -1,0 +1,17 @@
+{
+  "primary": {
+    "passed": true,
+    "reason": "autonomous code, checks and independent review completed",
+    "remote": "https://github.com/binbandit/yip-simulation-public.git",
+    "jobId": "01a0e6c9-f3be-7816-8ad5-469a7bad6e2b",
+    "head": "d098f10e59cef06d0503b3423a53f76c4422647c",
+    "summary": "Fixed session validity to require now < expires, rejecting sessions at exact expiry and afterward. Added the equality regression test and preserved both existing cases. The change remains local to yip."
+  },
+  "recall": {
+    "passed": true,
+    "reason": "checked recall against completed work record and approved revision",
+    "body": "The session expiry work is done. Here's what our saved work record shows:\n\n- **Change:** Mira fixed the session expiry boundary. A session is now valid only while `now < expires`, so it is rejected at the exact expiry time and at any time after it.\n- **Regression coverage:** Mira added a test for the case where `now == expires`. Both existing test cases were kept. `python3 -m unittest discover -s tests -v` passed on the final revision.\n- **Approved revision:** `d098f10e`, which I reviewed and approved independently. The work was completed on 28 Sep.\n\nThe change is still local to yip. Nothing has been pushed, merged or deployed.",
+    "provider": "claude",
+    "sourcedWorkRecord": true
+  }
+}

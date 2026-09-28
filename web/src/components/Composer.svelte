@@ -375,8 +375,7 @@
     dismissedProjects = new Set();
     restoredReplyTo = p.replyToId ?? null;
     notAnswer = null;
-    const job = p.jobId ? app.data.jobs[p.jobId] : undefined;
-    app.steer[rkey] = job && isLiveJob(job) ? job.id : null;
+    app.steer[rkey] = p.jobId ?? null;
     fill(p.body, p.mentions
       .filter((m) => m.kind === 'engineer' && app.data.engineers[m.id])
       .map((m) => ({ kind: 'engineer', id: m.id, handle: app.data.engineers[m.id].handle })));

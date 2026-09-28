@@ -675,6 +675,7 @@ button.chip {
   font-size: var(--text-display);
   font-weight: 600;
   letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
 }
 .screen-sub {
   color: var(--ink-secondary);
