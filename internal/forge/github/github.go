@@ -46,8 +46,10 @@ type Options struct {
 	// for github.com and https://{Host}/api/v3 otherwise. Tests point it at an
 	// httptest server.
 	APIBase string
-	// Token returns the credential for each request. A nil func or an empty
-	// token sends unauthenticated requests.
+	// Token returns the credential for each request. Review publication and
+	// reconciliation keep one credential for their entire operation so their
+	// actor cannot change between requests. A nil func or an empty token sends
+	// unauthenticated requests.
 	Token func(ctx context.Context) (string, error)
 	// HTTPClient defaults to a new http.Client. The connector applies its own
 	// per-request timeout through the request context.
@@ -142,6 +144,21 @@ func (c *Connector) Name() string { return "github" }
 
 // Host returns the configured web host.
 func (c *Connector) Host() string { return c.host }
+
+// withCredential keeps actor checks and their follow-up requests under the
+// same account even if the stored credential changes while they run.
+func (c *Connector) withCredential(ctx context.Context) (*Connector, error) {
+	if c.token == nil {
+		return c, nil
+	}
+	token, err := c.token(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("github: credential unavailable: %w", err)
+	}
+	operation := *c
+	operation.token = func(context.Context) (string, error) { return token, nil }
+	return &operation, nil
+}
 
 type ghUser struct {
 	Login string `json:"login"`

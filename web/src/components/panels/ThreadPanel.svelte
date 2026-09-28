@@ -38,7 +38,7 @@
 
   function editPending(p: PendingMessage) {
     app.discard(p.clientKey);
-    composer?.fill(p.body);
+    composer?.restorePending(p);
   }
 </script>
 

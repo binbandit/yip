@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from 'svelte';
-  import { app, receiptKey } from '../lib/state/app.svelte';
+  import { app } from '../lib/state/app.svelte';
   import { errorMessage } from '../lib/api/client';
   import type { PendingMessage } from '../lib/state/data';
   import RoomHeader from '../components/RoomHeader.svelte';
@@ -53,13 +53,7 @@
 
   function editPending(p: PendingMessage) {
     app.discard(p.clientKey);
-    composer?.fill(
-      p.body,
-      p.mentions
-        .filter((m) => m.kind === 'engineer' && app.data.engineers[m.id])
-        .map((m) => ({ kind: 'engineer' as const, id: m.id, handle: app.data.engineers[m.id].handle })),
-    );
-    if (p.jobId) app.steer[receiptKey(roomId)] = p.jobId;
+    composer?.restorePending(p);
   }
 
   const placeholder = $derived(
@@ -112,7 +106,7 @@
             <button class="btn btn-primary btn-sm" onclick={() => app.openPanel({ kind: 'room', id: roomId })}>Add engineers</button>
           {:else}
             <p>
-              <strong>Tell {engineersHere.map((m) => app.engineerName(m.id)).join(' and ')} what you're working on.</strong>
+              <strong>Tell {engineersHere.length > 3 ? 'the team' : engineersHere.map((m) => app.engineerName(m.id)).join(' and ')} what you're working on.</strong>
             </p>
             <p class="muted">
               Mention someone with @ to ask them directly.

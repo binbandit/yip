@@ -167,8 +167,8 @@ func (h *Hub) AuthorizeNode(ctx context.Context, nodeID, serial string) error {
 // leaseStatesSQL lists the run states in which a machine holds a run's lease.
 const leaseStatesSQL = `('offered','preparing','running','awaiting_input','stopping')`
 
-// OpenArtifactForNode serves a code bundle or checkpoint to a runner, but
-// only one named in the manifest of a run currently assigned to it.
+// OpenArtifactForNode serves artifacts assigned to a runner's live runs,
+// provided the assigned engineer still has conversation and project access.
 func (h *Hub) OpenArtifactForNode(ctx context.Context, nodeID, id string) (protocol.Artifact, *os.File, error) {
 	a, err := store.GetArtifact(ctx, h.st.R(), id)
 	if err != nil {
@@ -177,23 +177,48 @@ func (h *Hub) OpenArtifactForNode(ctx context.Context, nodeID, id string) (proto
 	if a.Kind != "bundle" && a.Kind != "checkpoint" && a.Kind != "source_bundle" && a.Kind != "document" && a.Kind != "file" {
 		return a, nil, domain.Forbidden("runners may only fetch bundles, checkpoints and assigned review artifacts")
 	}
-	var n int
-	query, arg := `SELECT COUNT(*) FROM runs WHERE node_id = ? AND state IN `+leaseStatesSQL+` AND instr(manifest, ?) > 0`, `"`+a.ID+`"`
+	query, arg := `SELECT id FROM runs WHERE node_id = ? AND state IN `+leaseStatesSQL+` AND instr(manifest, ?) > 0`, `"`+a.ID+`"`
 	if a.Kind == "document" || a.Kind == "file" {
-		query = `SELECT COUNT(*) FROM runs r JOIN review_rounds rr ON rr.review_job_id = r.job_id
+		query = `SELECT r.id FROM runs r JOIN review_rounds rr ON rr.review_job_id = r.job_id
 			WHERE r.node_id = ? AND r.state IN ` + leaseStatesSQL + ` AND rr.artifact_id = ? AND rr.superseded_by IS NULL`
 		arg = a.ID
 	}
 	if a.Kind == "source_bundle" {
 		// An imported repository's bundle: only while holding a run for work in that repository.
-		query = `SELECT COUNT(*) FROM runs r JOIN jobs j ON j.id = r.job_id JOIN repos rp ON rp.id = j.repo_id
+		query = `SELECT r.id FROM runs r JOIN jobs j ON j.id = r.job_id JOIN repos rp ON rp.id = j.repo_id
 			WHERE r.node_id = ? AND r.state IN ` + leaseStatesSQL + ` AND rp.source_bundle_id = ?`
 		arg = a.ID
 	}
-	if err := h.st.R().QueryRowContext(ctx, query, nodeID, arg).Scan(&n); err != nil {
+	rows, err := h.st.R().QueryContext(ctx, query, nodeID, arg)
+	if err != nil {
 		return a, nil, err
 	}
-	if n == 0 {
+	var runIDs []string
+	for rows.Next() {
+		var runID string
+		if err := rows.Scan(&runID); err != nil {
+			rows.Close()
+			return a, nil, err
+		}
+		runIDs = append(runIDs, runID)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return a, nil, err
+	}
+	allowed := false
+	for _, runID := range runIDs {
+		run, err := store.GetRun(ctx, h.st.R(), runID)
+		if err != nil {
+			return a, nil, err
+		}
+		if h.checkRunAccess(ctx, h.st.R(), run) == nil {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
 		return a, nil, domain.NotFound("unknown artifact")
 	}
 	f, err := h.artifacts.Open(a.Hash)

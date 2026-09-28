@@ -128,6 +128,10 @@ func (c *Connector) PublishReview(ctx context.Context, repo forge.RepoRef, numbe
 		comments = append(comments, ghReviewComment{Path: cm.Path, Line: cm.Line, Side: "RIGHT", Body: cm.Body})
 	}
 
+	c, err = c.withCredential(ctx)
+	if err != nil {
+		return "", err
+	}
 	viewer, err := c.Viewer(ctx)
 	if err != nil {
 		return "", err
@@ -194,6 +198,10 @@ func (c *Connector) FindReviewByMarker(ctx context.Context, repo forge.RepoRef, 
 	if err := validMarker(marker); err != nil {
 		return "", false, err
 	}
+	c, err := c.withCredential(ctx)
+	if err != nil {
+		return "", false, err
+	}
 	viewer, err := c.Viewer(ctx)
 	if err != nil {
 		return "", false, err
@@ -208,7 +216,7 @@ func (c *Connector) findMarker(ctx context.Context, repo forge.RepoRef, number i
 	}
 	needle := MarkerComment(marker)
 	for _, r := range list {
-		if r.User == nil || !strings.EqualFold(r.User.Login, login) {
+		if r.State == "PENDING" || r.User == nil || !strings.EqualFold(r.User.Login, login) {
 			continue
 		}
 		if strings.Contains(r.Body, needle) {

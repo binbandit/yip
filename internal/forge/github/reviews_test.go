@@ -244,6 +244,36 @@ func TestFindReviewByMarkerIgnoresOtherActors(t *testing.T) {
 	}
 }
 
+func TestPendingReviewCannotConfirmPublication(t *testing.T) {
+	f := newFake(t)
+	f.addPull(&fakePull{Number: 7, Author: "mira", Head: shaA})
+	f.addReview(7, f.viewer, "PENDING", shaA, MarkerComment("draft-marker"))
+	f.hooks["POST /repos/acme/widgets/pulls/7/reviews"] = func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 422, map[string]any{"message": "Validation Failed", "errors": []string{"User can only have one pending review per pull request"}})
+	}
+	c := f.connector()
+	if id, found, err := c.FindReviewByMarker(context.Background(), testRepoRef, 7, "draft-marker"); err != nil || found || id != "" {
+		t.Fatalf("unsubmitted draft confirmed as publication: id=%q found=%v err=%v", id, found, err)
+	}
+	if id, err := c.PublishReview(context.Background(), testRepoRef, 7, publishReq(forge.EventApprove, shaA, "draft-marker")); err == nil || id != "" || errors.Is(err, forge.ErrAmbiguous) {
+		t.Fatalf("pending-review conflict must remain a rejected publication: id=%q err=%v", id, err)
+	}
+	if got := f.count("POST /repos/acme/widgets/pulls/7/reviews"); got != 1 {
+		t.Fatalf("publication requests = %d, want 1", got)
+	}
+}
+
+func TestDismissedReviewStillConfirmsPastPublication(t *testing.T) {
+	f := newFake(t)
+	f.addPull(&fakePull{Number: 7, Author: "mira", Head: shaB})
+	id := f.addReview(7, f.viewer, "DISMISSED", shaA, MarkerComment("dismissed-marker"))
+	c := f.connector()
+	got, err := c.PublishReview(context.Background(), testRepoRef, 7, publishReq(forge.EventApprove, shaA, "dismissed-marker"))
+	if err != nil || got != itoa(id) || f.postCount() != 0 {
+		t.Fatalf("dismissal must not cause duplicate publication: id=%q err=%v posts=%d", got, err, f.postCount())
+	}
+}
+
 func TestPublishReviewValidation(t *testing.T) {
 	f := newFake(t)
 	f.addPull(&fakePull{Number: 7, Author: "mira", Head: shaA})

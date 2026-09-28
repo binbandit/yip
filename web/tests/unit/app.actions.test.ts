@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
+import { loadUnsent } from '../../src/lib/state/drafts';
 import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
 import type { Approval, Bootstrap, Decision, DecisionRequest, JobDetail, Message } from '../../src/lib/api/types.gen';
 
@@ -425,4 +426,39 @@ describe('action flows', () => {
     const round1 = codeDetail.reviews[0].rounds[0].target.head!;
     await waitFor(() => (document.querySelector<HTMLSelectElement>('.rev-pick select')?.selectedOptions[0]?.textContent ?? '').startsWith(round1.slice(0, 7)), 'reviewed revision chosen');
   });
+
+  for (const confirmation of ['before failure', 'after failure', 'history'] as const) {
+    it(`clears saved unsent work when delivery is confirmed by ${confirmation}`, async () => {
+      const room = roomId('Engineering');
+      const clientKey = `response-loss-${confirmation}`;
+      const message = msg(`confirmed-${confirmation}`, room, 100, {
+        author: { kind: 'user', id: boot.user.id }, clientKey, body: 'The hub received this message.',
+      });
+      const confirm = () => {
+        const sequence = app.data.lastSeq + 1;
+        FakeEventSource.latest().emit('message.created', {
+          schemaVersion: 1, eventId: message.id, orgId: boot.org.id, sequence,
+          type: 'message.created', actor: message.author, roomId: room, occurredAt: message.createdAt, payload: message,
+        }, sequence);
+      };
+      hub.override('POST', new RegExp(`^/v1/rooms/${room}/messages$`), () => {
+        if (confirmation === 'before failure') confirm();
+        return { status: 503, body: { code: 'unavailable', message: 'Response lost', recoverable: true } };
+      });
+      await app.send({ roomId: room, body: message.body, mentions: [], projectIds: [], clientKey });
+      if (confirmation !== 'before failure') {
+        expect(loadUnsent().some((m) => m.clientKey === clientKey)).toBe(true);
+        if (confirmation === 'after failure') confirm();
+        else {
+          hub.override('GET', new RegExp(`^/v1/rooms/${room}/messages`), () => ({ body: { messages: [message], hasMore: false } }));
+          delete app.data.timelines[room];
+          await app.loadRoom(room);
+        }
+      }
+      await settle();
+      expect(app.data.messages[message.id]?.body).toBe(message.body);
+      expect(app.data.pending[clientKey]).toBeUndefined();
+      expect(loadUnsent().some((m) => m.clientKey === clientKey)).toBe(false);
+    });
+  }
 });

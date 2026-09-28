@@ -77,30 +77,34 @@ func (h *Hub) resolveQuestionsFromMessage(ctx context.Context, t *txn, userID st
 			mentioned[m.ID] = true
 		}
 	}
-	var resolved []string
+	var candidates []protocol.Question
 	for _, q := range open {
-		match := false
 		switch {
-		case msg.ReplyToID != "" && msg.ReplyToID == q.MessageID:
-			match = true
+		case msg.ReplyToID != "":
+			if msg.ReplyToID == q.MessageID {
+				candidates = []protocol.Question{q}
+			}
 		case msg.ThreadID != "" && msg.ThreadID == q.MessageID:
-			match = true
+			candidates = []protocol.Question{q}
+			// A thread rooted in the question is an explicit answer target.
+			return h.resolveQuestionCandidate(ctx, t, candidates, msg)
 		case msg.ThreadID != "" && q.Source.ThreadID == msg.ThreadID && (mentioned[q.AskerID] || len(msg.Mentions) == 0):
-			match = true
+			candidates = append(candidates, q)
 		}
-		if !match {
-			continue
-		}
-		ok, err := h.answerQuestion(ctx, t, q.ID, msg)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			resolved = append(resolved, q.ID)
-		}
-		break // one reply answers one question
 	}
-	return resolved, nil
+	return h.resolveQuestionCandidate(ctx, t, candidates, msg)
+}
+
+func (h *Hub) resolveQuestionCandidate(ctx context.Context, t *txn, candidates []protocol.Question, msg protocol.Message) ([]string, error) {
+	// Several questions in one discussion need an explicit reply target.
+	if len(candidates) != 1 {
+		return nil, nil
+	}
+	ok, err := h.answerQuestion(ctx, t, candidates[0].ID, msg)
+	if err != nil || !ok {
+		return nil, err
+	}
+	return []string{candidates[0].ID}, nil
 }
 
 // answerQuestion resolves a question exactly once and resumes only its live
@@ -163,5 +167,5 @@ func (h *Hub) AnswerQuestion(ctx context.Context, userID, questionID string, req
 	if thread == "" {
 		thread = q.MessageID
 	}
-	return h.PostMessage(ctx, userID, q.Source.RoomID, protocol.PostMessageRequest{Body: req.Body, ThreadID: thread, ClientKey: req.ClientKey})
+	return h.PostMessage(ctx, userID, q.Source.RoomID, protocol.PostMessageRequest{Body: req.Body, ThreadID: thread, ReplyToID: q.MessageID, ClientKey: req.ClientKey})
 }

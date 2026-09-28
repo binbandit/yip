@@ -96,7 +96,7 @@ func sourceErr(t *tally, err error) error {
 			return nil
 		case 404:
 			t.unreadable = true
-			t.notFound = true
+			t.notFound = t.passed+t.failed+t.pending == 0
 			return nil
 		}
 	}
@@ -131,7 +131,6 @@ func (c *Connector) checkRuns(ctx context.Context, path string) (tally, error) {
 		return nil
 	})
 	if err != nil {
-		t = tally{} // discard partial counts from earlier pages
 		if err := sourceErr(&t, err); err != nil {
 			return tally{}, err
 		}
@@ -169,7 +168,6 @@ func (c *Connector) commitStatuses(ctx context.Context, path string) (tally, err
 		return nil
 	})
 	if err != nil {
-		t = tally{} // discard partial counts from earlier pages
 		if err := sourceErr(&t, err); err != nil {
 			return tally{}, err
 		}

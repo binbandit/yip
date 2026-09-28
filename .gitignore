@@ -29,3 +29,6 @@
 
 # Local agent worktrees
 /.claude/worktrees/
+
+# Python fixture caches
+__pycache__/

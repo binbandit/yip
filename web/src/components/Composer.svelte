@@ -8,7 +8,7 @@
   import { draftKey, loadDraft, saveDraft, clearDraft } from '../lib/state/drafts';
   import { filterCandidates, findMentionQuery, insertMention, projectsNamedIn, pruneSelected, resolveMentions, type MentionCandidate, type SelectedMention } from '../lib/util/mentions';
   import { deliveryReceipt, jobStateLabel, waitingReasonLabel } from '../lib/util/labels';
-  import { isLiveJob, jobRunState, pendingReplies, workingInRoom } from '../lib/state/data';
+  import { isLiveJob, jobRunState, pendingReplies, workingInRoom, type PendingMessage } from '../lib/state/data';
   import type { Mention } from '../lib/api/types.gen';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
@@ -60,6 +60,7 @@
   // you, a message sent here answers it by default, as in any group chat.
   // The chip says so before you send, and one click says it isn't.
   let notAnswer = $state<string | null>(null);
+  let restoredReplyTo = $state<string | null | undefined>(undefined);
   const waitingQuestion = $derived.by(() => {
     if (threadId || scopeJobId) return null;
     const me = app.me?.id;
@@ -69,7 +70,10 @@
     return open.length === 1 ? open[0] : null;
   });
   const answering = $derived.by(() => {
-    const q = waitingQuestion;
+    if (threadId || scopeJobId) return null;
+    const q = restoredReplyTo === undefined ? waitingQuestion : Object.values(app.data.questions).find(
+      (q) => q.status === 'open' && q.messageId === restoredReplyTo && q.source.roomId === roomId,
+    );
     if (!q || notAnswer === q.id) return null;
     // Mentioning someone other than the asker means you're talking to them.
     const others = resolveMentions(body, selected).filter((m) => m.kind === 'engineer' && m.id !== q.askerId);
@@ -177,6 +181,9 @@
   const options = $derived(query ? filterCandidates(candidates, query.query) : []);
   const open = $derived(!!query && options.length > 0);
   const mentioned = $derived(pruneSelected(body, selected));
+  $effect(() => {
+    if (open) document.getElementById(`${uid}-opt-${activeIndex}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
 
   // ---- drafts ----
   onMount(() => {
@@ -310,6 +317,7 @@
     const pids = projectIds.filter((p) => room?.projectIds.includes(p));
     body = '';
     notAnswer = null;
+    restoredReplyTo = undefined;
     selected = [];
     query = null;
     sendError = '';
@@ -358,6 +366,20 @@
       textarea?.focus();
     });
     scheduleSave();
+  }
+
+  /** Editing changes the text while retaining who and what the failed send addressed. */
+  export function restorePending(p: PendingMessage) {
+    projectIds = p.projectIds.filter((id) => room?.projectIds.includes(id));
+    autoProjects = new Set();
+    dismissedProjects = new Set();
+    restoredReplyTo = p.replyToId ?? null;
+    notAnswer = null;
+    const job = p.jobId ? app.data.jobs[p.jobId] : undefined;
+    app.steer[rkey] = job && isLiveJob(job) ? job.id : null;
+    fill(p.body, p.mentions
+      .filter((m) => m.kind === 'engineer' && app.data.engineers[m.id])
+      .map((m) => ({ kind: 'engineer', id: m.id, handle: app.data.engineers[m.id].handle })));
   }
 
   export function focus() {
@@ -477,7 +499,7 @@
             <fieldset class="project-pop" id="{uid}-projects">
               <legend class="vh">Projects for this message</legend>
               {#each roomProjects as p (p.id)}
-                <label class="check"><input type="checkbox" checked={projectIds.includes(p.id)} onchange={() => toggleProject(p.id)} />{p.name}</label>
+                <label class="check"><input type="checkbox" checked={projectIds.includes(p.id)} onchange={() => toggleProject(p.id)} /><span>{p.name}</span></label>
               {/each}
               <button class="btn btn-sm" onclick={() => (projectsOpen = false)}>Done</button>
             </fieldset>
@@ -569,6 +591,7 @@
     margin-bottom: 8px;
   }
   .box {
+    position: relative;
     border: 1px solid var(--line-strong);
     border-radius: var(--r-surface);
     background: color-mix(in srgb, var(--surface) 88%, transparent);
@@ -664,22 +687,32 @@
     background: var(--hover);
   }
   .projects {
-    position: relative;
+    position: static;
   }
   .project-pop {
     position: absolute;
     bottom: calc(100% + 6px);
-    left: 0;
+    left: 44px;
     z-index: 20;
     display: grid;
     gap: 4px;
-    min-width: 200px;
+    width: min(320px, calc(100% - 56px));
+    min-width: 0;
+    max-height: min(300px, 50vh);
+    overflow: auto;
     margin: 0;
     padding: 10px 12px;
     border: 1px solid var(--line);
     border-radius: 12px;
     background: var(--surface);
     box-shadow: var(--shadow-pop);
+  }
+  .project-pop .check {
+    align-items: flex-start;
+  }
+  .project-pop .check span {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .send {
     display: grid;

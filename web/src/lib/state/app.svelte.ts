@@ -231,7 +231,10 @@ class AppState {
 
   private afterMessage(m: Message): void {
     const mine = m.author.kind === 'user' && m.author.id === this.me?.id;
-    if (mine) return;
+    if (mine) {
+      if (m.clientKey) clearUnsent(m.clientKey);
+      return;
+    }
     const viewing = this.loc.route.name === 'room' && this.loc.route.roomId === m.roomId;
     if (viewing && !m.threadId && m.kind !== 'status' && document.visibilityState === 'visible') {
       this.announce(`${this.actorName(m.author)}: ${plainText(m.body, 140)}`);
@@ -388,7 +391,10 @@ class AppState {
       // Includes live conversational replies for the composer's activity line.
       api.roomWork(roomId, true).catch(() => []),
     ]);
-    if (page) mergeRoomPage(this.data, roomId, page.messages ?? [], page.hasMore, false);
+    if (page) {
+      mergeRoomPage(this.data, roomId, page.messages ?? [], page.hasMore, false);
+      this.clearConfirmedUnsent(page.messages ?? []);
+    }
     mergeWorkRows(this.data, work);
   }
 
@@ -399,12 +405,20 @@ class AppState {
     if (!first) return false;
     const page = await api.messages(roomId, first.seq);
     mergeRoomPage(this.data, roomId, page.messages ?? [], page.hasMore, true);
+    this.clearConfirmedUnsent(page.messages ?? []);
     return (page.messages ?? []).length > 0;
   }
 
   async loadThread(rootId: string): Promise<void> {
     const page = await api.thread(rootId);
     mergeThread(this.data, rootId, page.messages ?? []);
+    this.clearConfirmedUnsent(page.messages ?? []);
+  }
+
+  private clearConfirmedUnsent(messages: Message[]): void {
+    for (const m of messages) {
+      if (m.clientKey && m.author.kind === 'user' && m.author.id === this.me?.id) clearUnsent(m.clientKey);
+    }
   }
 
   async refreshRoom(roomId: string): Promise<void> {
@@ -482,6 +496,12 @@ class AppState {
       if (resp.input) this.recordInput(resp.input, receiptKey(p.roomId, p.threadId));
       return resp;
     } catch (err) {
+      // The event stream can confirm delivery before the HTTP response is lost.
+      // It may also arrive after failure; afterMessage clears that saved copy.
+      if (!this.data.pending[clientKey]) {
+        clearUnsent(clientKey);
+        return null;
+      }
       const message = err instanceof ApiError && err.offline ? "Can't reach your workspace." : errorMessage(err);
       failPending(this.data, clientKey, message);
       saveUnsent({

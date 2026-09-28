@@ -1201,13 +1201,31 @@ func retryBackoff(n int) time.Duration {
 // its workspace: a push, publish, merge, or network action, by policy or by
 // an owner's approval. Such an attempt is never retried automatically.
 func (h *Hub) hadExternalEffects(ctx context.Context, q store.Q, runID string) bool {
-	var n int
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM approvals WHERE run_id = ? AND status IN ('approved', 'consumed')
-		AND json_extract(action, '$.kind') IN ('push', 'publish', 'merge', 'network')`, runID).Scan(&n)
-	if n > 0 {
-		return true
+	rows, err := q.QueryContext(ctx, `SELECT action FROM approvals WHERE run_id = ? AND status IN ('approved', 'consumed')
+		UNION ALL SELECT json_extract(payload, '$.action') FROM events WHERE run_id = ? AND type = 'permission.auto'
+		AND json_extract(payload, '$.decision') = 'allow'`, runID, runID)
+	if err != nil {
+		return true // Uncertain authority is not safe to replay.
 	}
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE run_id = ? AND type = 'permission.auto'
-		AND json_extract(payload, '$.decision') = 'allow' AND json_extract(payload, '$.action.kind') IN ('push', 'publish', 'merge', 'network')`, runID).Scan(&n)
-	return n > 0
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		var action protocol.ApprovalAction
+		if err := rows.Scan(&raw); err != nil || json.Unmarshal([]byte(raw), &action) != nil {
+			return true
+		}
+		switch action.Kind {
+		case "mcp", "read", "edit":
+		case "exec":
+			// Shell actions retain their original kind in the permission log.
+			// Any exceptional class can act outside the workspace, including
+			// commands whose effects cannot be inspected statically.
+			if len(classifyCommand(action.Command)) > 0 {
+				return true
+			}
+		default:
+			return true
+		}
+	}
+	return rows.Err() != nil
 }
