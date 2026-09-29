@@ -26,24 +26,25 @@ type Script struct {
 
 // Step is one scripted action. Exactly one action field is set.
 type Step struct {
-	Say       string                   `json:"say,omitempty"`
-	Status    string                   `json:"status,omitempty"`
-	Tool      string                   `json:"tool,omitempty"`
-	Args      json.RawMessage          `json:"args,omitempty"`
-	Save      string                   `json:"save,omitempty"`
-	Shell     string                   `json:"shell,omitempty"`
-	Write     *WriteFile               `json:"write,omitempty"`
-	Replace   *ReplaceText             `json:"replace,omitempty"`
-	Approval  *protocol.ApprovalAction `json:"approval,omitempty"`
-	If        *Cond                    `json:"if,omitempty"`
-	Then      []Step                   `json:"then,omitempty"`
-	Else      []Step                   `json:"else,omitempty"`
-	Sleep     string                   `json:"sleep,omitempty"`
-	Pause     bool                     `json:"pause,omitempty"` // a paced pause (scaled by the runner's fake delay)
-	Fault     string                   `json:"fault,omitempty"` // crash | hang | rate_limit | auth
-	FaultArg  string                   `json:"faultArg,omitempty"`
-	Final     string                   `json:"final,omitempty"`
-	Summarize string                   `json:"summarize,omitempty"` // var holding a work_status result → final text
+	Say         string                   `json:"say,omitempty"`
+	Status      string                   `json:"status,omitempty"`
+	Tool        string                   `json:"tool,omitempty"`
+	Args        json.RawMessage          `json:"args,omitempty"`
+	HandleError bool                     `json:"handleError,omitempty"` // the script explicitly branches on the saved error
+	Save        string                   `json:"save,omitempty"`
+	Shell       string                   `json:"shell,omitempty"`
+	Write       *WriteFile               `json:"write,omitempty"`
+	Replace     *ReplaceText             `json:"replace,omitempty"`
+	Approval    *protocol.ApprovalAction `json:"approval,omitempty"`
+	If          *Cond                    `json:"if,omitempty"`
+	Then        []Step                   `json:"then,omitempty"`
+	Else        []Step                   `json:"else,omitempty"`
+	Sleep       string                   `json:"sleep,omitempty"`
+	Pause       bool                     `json:"pause,omitempty"` // a paced pause (scaled by the runner's fake delay)
+	Fault       string                   `json:"fault,omitempty"` // crash | hang | rate_limit | auth
+	FaultArg    string                   `json:"faultArg,omitempty"`
+	Final       string                   `json:"final,omitempty"`
+	Summarize   string                   `json:"summarize,omitempty"` // var holding a work_status result → final text
 }
 
 type WriteFile struct {
@@ -379,7 +380,7 @@ func (s *session) tool(st Step) error {
 		s.set(st.Save, map[string]any{"error": v, "ok": false})
 		s.emit(providers.Event{Kind: providers.EventToolFinished, Tool: "mcp__yip__" + st.Tool, Text: toolLabel(st.Tool) + " failed"})
 		s.emit(providers.Event{Kind: providers.EventWarning, Text: st.Tool + ": " + truncate(text, 400)})
-		if st.Save == "" {
+		if !st.HandleError {
 			return fmt.Errorf("%s failed: %s", st.Tool, truncate(text, 300))
 		}
 		return nil

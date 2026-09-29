@@ -47,6 +47,14 @@ func tool(name string, args map[string]any, save string) Step {
 	b, _ := json.Marshal(args)
 	return Step{Tool: name, Args: b, Save: save}
 }
+
+// createWork is the only operation whose failure has an explicit fallback.
+func createWork(args map[string]any) Step {
+	s := tool("work_create", args, "w")
+	s.HandleError = true
+	return s
+}
+
 func ifEq(v string, eq any, then, els []Step) Step {
 	return Step{If: &Cond{Var: v, Eq: eq}, Then: then, Else: els}
 }
@@ -178,8 +186,8 @@ func replyScript(m *manifest.Manifest) Script {
 			acceptance = []string{"Expired sessions are rejected at and after ExpiresAt", "Regression tests cover the exact boundary", "go test ./... passes", "Security review approves the final revision"}
 		}
 		return Script{Steps: []Step{
-			tool("work_create", map[string]any{"title": title, "objective": requestText(m), "kind": "code", "project": p.name, "repo": p.repos[0],
-				"acceptance": acceptance}, "w"),
+			createWork(map[string]any{"title": title, "objective": requestText(m), "kind": "code", "project": p.name, "repo": p.repos[0],
+				"acceptance": acceptance}),
 			ifEq("w.ok", true,
 				[]Step{final(fmt.Sprintf("On it. I'll check the %s change against the existing contract.", p.name))},
 				[]Step{final("I couldn't start that: {{w.error.message}}")}),
@@ -199,7 +207,7 @@ func replyScript(m *manifest.Manifest) Script {
 			args["repo"] = p.repos[0]
 		}
 		return Script{Steps: []Step{
-			tool("work_create", args, "w"),
+			createWork(args),
 			ifEq("w.ok", true,
 				[]Step{final("I'll trace the flow and write up what the code confirms.")},
 				[]Step{final("I couldn't start that: {{w.error.message}}")}),
@@ -409,6 +417,9 @@ func reviewScript(m *manifest.Manifest) Script {
 		}
 	}
 	author := r.Author
+	unable := []Step{tool("work_review", map[string]any{"verdict": "unable_to_review", "expectedHead": r.Head,
+		"summary": "The required check failed or was not recorded for this revision. No approving verdict can be given.",
+		"message": "I cannot approve this revision because its required check did not pass."}, "")}
 	return Script{Steps: []Step{
 		status(fmt.Sprintf("Reading %s's change %s..%s", author, short(r.Base), short(r.Head))),
 		shell(fmt.Sprintf("git diff --stat %s %s", r.Base, r.Head), "stat"),
@@ -416,7 +427,7 @@ func reviewScript(m *manifest.Manifest) Script {
 		pause(),
 		status("Running the tests against this exact revision"),
 		tool("work_run_check", map[string]any{"name": "go test (review)", "command": "go test ./..."}, "check"),
-		ifEq("g.exit", 0,
+		ifEq("check.passed", true, []Step{ifEq("check.revision", r.Head, []Step{ifEq("g.exit", 0,
 			[]Step{tool("work_review", map[string]any{"verdict": "changes_requested", "expectedHead": r.Head,
 				"summary": "Validate now rejects expired tokens, but the refresh path still accepts a token at the exact expiry instant.",
 				"findings": []map[string]any{{"severity": "blocking", "file": "session/refresh.go", "line": "{{g.line}}",
@@ -425,7 +436,7 @@ func reviewScript(m *manifest.Manifest) Script {
 				"message": "One change before I can approve: the refresh handler still accepts a token at the exact expiry instant. Please use the shared validator there and add a regression test."}, "")},
 			[]Step{tool("work_review", map[string]any{"verdict": "approved", "expectedHead": r.Head, "resolve": resolve,
 				"summary": "Checked the updated diff and the boundary tests: refresh now rejects the token at expiry through the shared validator, and normal refresh still works. go test ./... passes on this revision.",
-				"message": "Checked the updated diff and the boundary test. That fixes it. Approved."}, "")}),
+				"message": "Checked the updated diff and the boundary test. That fixes it. Approved."}, "")})}, unable)}, unable),
 	}}
 }
 
