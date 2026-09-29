@@ -45,9 +45,7 @@
       return {
         shape: 'check-filled' as const,
         tone: 'success' as const,
-        // Name where work runs: it keeps going when this window closes, but
-        // not if the named machine itself sleeps.
-        text: `${online.length} ${online.length === 1 ? 'machine' : 'machines'} connected · work runs on ${online.map((n) => n.name).join(', ')}, not in this window`,
+        text: online.length === 1 ? `${online[0].name} connected` : `${online.length} machines connected`,
       };
     if (online.length === 0) return { shape: 'pause' as const, tone: 'attention' as const, text: `No machines connected · ${nodes.length} paired` };
     return { shape: 'pause' as const, tone: 'attention' as const, text: `${online.length} of ${nodes.length} machines connected` };

@@ -78,7 +78,7 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
 
 ## Components and their states
 
-- **Sidebar** (on the frame, no box of its own): the monochrome branching-y mark and wordmark; a "Search everything ⌘K" launcher; Overview, Engineers, Projects and Machines; Rooms and Direct messages with sentence-case labels and a + to create; and a footer with machine health ("1 machine connected · work runs on studio-mini, not in this window") and a profile card (name and workspace) whose menu has Settings, Day/Night appearance and Sign out. Room rows show:
+- **Sidebar** (on the frame, no box of its own): the monochrome branching-y mark and wordmark; a "Search everything ⌘K" launcher; Overview, Engineers, Projects and Machines; Rooms and Direct messages with sentence-case labels and a + to create; and a footer with machine health ("studio-mini connected", or "3 machines connected") and a profile card (name and workspace) whose menu has Settings, Day/Night appearance and Sign out. Room rows show:
   - read rows in slightly quieter ink, unread rows in semibold;
   - mentions as an ink count pill (an Astryx `Badge`);
   - a pencil when a draft is saved;

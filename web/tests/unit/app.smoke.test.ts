@@ -119,7 +119,7 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     expect(eng.closest('.yip-room')!.classList.contains('unread')).toBe(false);
     // Working indicator from GET /v1/runs, without replaying history.
     expect(byText('nav.side a', 'Security')!.textContent).toContain('Mira working');
-    expect(text()).toMatch(/1 machine connected · work runs on .+, not in this window/);
+    expect(document.querySelector('a.health')?.textContent?.trim()).toBe('Studio mini connected');
   });
 
   it('renders a room like a group chat: names, one link per piece of work, a compact result', async () => {
