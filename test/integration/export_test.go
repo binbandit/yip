@@ -11,6 +11,7 @@ import (
 )
 
 func TestExportIncludesArchivedRooms(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	sent := e.post("Engineering", "Keep this after the room is archived.", nil, nil)
 
