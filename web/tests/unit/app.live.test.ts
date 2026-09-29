@@ -44,7 +44,6 @@ beforeAll(async () => {
   const hub = new FakeHub()
     .json('GET', /^\/v1\/setup$/, { needsSetup: false, orgName: boot.org.name, version: 'test' })
     .json('GET', /^\/v1\/bootstrap$/, boot)
-    .json('GET', /^\/v1\/overview/, { catchup: [], work: [], decisions: [], questions: [], roomId: boot.rooms[0].id })
     .json('GET', /^\/v1\/rooms\/[^/]+\/messages/, { messages: [], hasMore: false })
     .json('GET', /^\/v1\/rooms\/[^/]+\/work/, [])
     .json('GET', new RegExp(`^/v1/jobs/${job.job.id}$`), job)

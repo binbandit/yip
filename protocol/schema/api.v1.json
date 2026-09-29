@@ -385,54 +385,6 @@
       ],
       "type": "object"
     },
-    "CatchupItem": {
-      "additionalProperties": false,
-      "properties": {
-        "actorId": {
-          "type": "string"
-        },
-        "at": {
-          "format": "date-time",
-          "type": "string"
-        },
-        "detail": {
-          "type": "string"
-        },
-        "eventSeq": {
-          "type": "integer"
-        },
-        "kind": {
-          "type": "string"
-        },
-        "messageId": {
-          "type": "string"
-        },
-        "refs": {
-          "items": {
-            "$ref": "#/$defs/Ref"
-          },
-          "type": "array"
-        },
-        "roomId": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "title": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "kind",
-        "title",
-        "detail",
-        "at",
-        "refs",
-        "eventSeq"
-      ],
-      "type": "object"
-    },
     "Check": {
       "additionalProperties": false,
       "properties": {
@@ -2539,57 +2491,6 @@
       ],
       "type": "object"
     },
-    "Overview": {
-      "additionalProperties": false,
-      "properties": {
-        "catchup": {
-          "items": {
-            "$ref": "#/$defs/CatchupItem"
-          },
-          "type": "array"
-        },
-        "decisions": {
-          "items": {
-            "$ref": "#/$defs/Decision"
-          },
-          "type": "array"
-        },
-        "questions": {
-          "items": {
-            "$ref": "#/$defs/Question"
-          },
-          "type": "array"
-        },
-        "roomId": {
-          "type": "string"
-        },
-        "since": {
-          "anyOf": [
-            {
-              "format": "date-time",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "work": {
-          "items": {
-            "$ref": "#/$defs/WorkRow"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "catchup",
-        "work",
-        "decisions",
-        "questions",
-        "roomId"
-      ],
-      "type": "object"
-    },
     "PostMessageRequest": {
       "additionalProperties": false,
       "properties": {
@@ -2675,9 +2576,6 @@
         "density": {
           "type": "string"
         },
-        "lastSeenAt": {
-          "type": "string"
-        },
         "mutedRoomIds": {
           "items": {
             "type": "string"
@@ -2698,8 +2596,7 @@
         "theme",
         "density",
         "sendKey",
-        "notify",
-        "lastSeenAt"
+        "notify"
       ],
       "type": "object"
     },
@@ -4467,12 +4364,6 @@
         },
         "projectName": {
           "type": "string"
-        },
-        "questions": {
-          "items": {
-            "$ref": "#/$defs/Question"
-          },
-          "type": "array"
         },
         "roomName": {
           "type": "string"

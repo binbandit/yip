@@ -8,7 +8,7 @@ means it is not done or not verified; it blocks declaring the MVP complete.
 Performance (28 September, §9 fixture, `TestLargeHistoryReadLatency`: 10,100
 messages across ten rooms and 100 jobs, this build machine): p95 bootstrap
 37.354 ms, room page 1.422 ms, older page 1.339 ms, search 23.545 ms,
-jobs 0.392 ms, overview 17.236 ms,
+jobs 0.392 ms,
 within the 200 ms target. Measured, not an advertised capacity.
 
 Automated evidence: `go test ./...` (unit tests; `test/integration` runs the
@@ -110,14 +110,16 @@ benchmark is skipped under the race detector).
 A second pass over the spec against the running product found these gaps,
 now closed (each with a test):
 
-- First-run journey on Overview (§7A), derived from live state and ending
-  with finished work, not a connection dot.
+- First-run journey (§7A), derived from live state and ending with finished
+  work, not a connection dot. It was on the Overview and is now Getting
+  started (ADR 0016).
 - Provider accounts: sign-in re-check on demand, per-account concurrency,
   pinning an engineer to one account, no silent API billing, and an
   exhausted allowance pausing the whole account until it resets.
 - Search by short work ID and by project, filtered before ranking.
 - Overview status covering every project (quiet ones named) and what waits
-  on you, with active work never crowded out.
+  on you, with active work never crowded out. Withdrawn with the Overview
+  (ADR 0016).
 - Owner review in place of peer review when nobody else is in the
   conversation; a present colleague without access still gets asked (A42).
 - Interrupt and restart for updates a provider can only queue (§8D).
@@ -161,10 +163,10 @@ The race detector passed three repetitions of the provider regression and
 both clarification paths; the idle path then passed ten repetitions.
 
 [Room capture checks](../scripts/e2e/shots/room.js) cover 390, 900, 1280 and
-1440px in both themes. [Overview capture checks](../scripts/e2e/shots/overview.js)
-cover the summary and review evidence at each width and theme. Regenerate
-either set with `scripts/e2e/run-webkit.sh OUT scripts/e2e/shots/room.js`
-(or `overview.js`), using a temporary output directory. Historical captures
+1440px in both themes. The Overview capture checks were removed with the
+Overview (ADR 0016). Regenerate the room set with
+`scripts/e2e/run-webkit.sh OUT scripts/e2e/shots/room.js`, using a temporary
+output directory. Historical captures
 are available in Git history, not the current checkout. Architecture and
 design docs describe the resulting behaviour.
 
@@ -220,7 +222,7 @@ other chats' test hubs were not used. Builds reused installed web dependencies
 | A18 | Verified | `TestAccessRevokedMidJob`; grant/membership changes invalidate provider sessions |
 | A19 | Partial | Separate worktree and branch per job; reviews on fixed revisions. A project-level integration lock for merges is not implemented (yip performs no merges itself). |
 | A20 | Verified | `TestDoneWithoutEvidence`; `work_respond` can't complete the caller's own job (`TestRegressionWorkRespondCannotSelfComplete`) |
-| A21 | Verified | Overview conversation answers from the ledger without reciting raw timestamps or waking an engineer, covering every project and what waits on you (`TestRegressionOverviewStatusCoversAllProjects`) |
+| A21 | Withdrawn | The Overview conversation was removed with journey F ([0016](decisions/0016-no-overview.md)); status is still read from the ledger, never by waking an engineer |
 | A22 | Verified | `TestDecisionCorrection`; correction from the decision drawer keeps the sources (unit test) |
 | A23 | Verified | `TestIncompatibleMachineExplains`, `TestRegressionBillingGateAndAccountPin`, `TestRegressionProjectToolchainRequirement` |
 | A24 | Verified | Workspaces are never deleted automatically. Machines lists them with their work and what deleting loses; removal needs explicit selection, a named confirmation, and `force` for uncommitted/unpublished work, and is refused for open or in-use work (`TestRegressionRemoveWorkspaceFromMachines`, Machines unit test). CLI: `yip runner workspaces` / `cleanup`. |

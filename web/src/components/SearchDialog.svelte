@@ -46,7 +46,7 @@
   const quick: SearchResult[] = $derived.by(() => {
     const s = q.trim().toLowerCase();
     const rooms = app.rooms
-      .filter((r) => r.kind !== 'overview' && (!s || r.name.toLowerCase().includes(s)) && (!project || r.projectIds.includes(project)))
+      .filter((r) => (!s || r.name.toLowerCase().includes(s)) && (!project || r.projectIds.includes(project)))
       .map((r) => ({ kind: 'room', id: r.id, title: r.kind === 'dm' ? `${r.name} (direct)` : r.name, snippet: r.purpose, roomId: r.id }));
     const people = Object.values(app.data.engineers)
       .filter((e) => !project && (!s || e.name.toLowerCase().includes(s) || e.role.toLowerCase().includes(s)))
@@ -151,7 +151,8 @@
         if (r.roomId) app.go({ name: 'room', roomId: r.roomId }, { msg: r.id, panel: r.threadId ? { kind: 'thread', id: r.threadId } : null });
         break;
       case 'decision':
-        app.go(r.roomId ? { name: 'room', roomId: r.roomId } : { name: 'overview' }, { panel: { kind: 'decision', id: r.id } });
+        if (r.roomId) app.go({ name: 'room', roomId: r.roomId }, { panel: { kind: 'decision', id: r.id } });
+        else app.openPanel({ kind: 'decision', id: r.id });
         break;
     }
   }

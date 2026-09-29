@@ -52,8 +52,8 @@ test('connection setup stays in its workspace, including links opened in a new t
   const dialog = page.getByRole('dialog', { name: 'Create workspace', exact: true });
   await dialog.getByLabel('Workspace name').fill('Connection checks');
   await dialog.getByRole('button', { name: 'Create workspace', exact: true }).click();
-  await expect(page).toHaveURL(/\/w\/[^/]+\/overview$/);
-  const base = new URL(page.url()).pathname.replace(/\/overview$/, '');
+  await expect(page).toHaveURL(/\/w\/[^/]+\/start$/);
+  const base = new URL(page.url()).pathname.replace(/\/start$/, '');
   await expect(page.getByRole('link', { name: 'Connect subscription', exact: true })).toHaveAttribute('href', `${base}/connections`);
   await page.getByRole('navigation', { name: 'Workspace', exact: true }).getByRole('link', { name: 'Connections', exact: true }).click();
   const setup = page.getByRole('link', { name: 'Set up OpenCode', exact: true });

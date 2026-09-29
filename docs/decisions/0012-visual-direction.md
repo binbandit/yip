@@ -21,7 +21,7 @@ The system is described in [docs/design/README.md](../design/README.md):
   success, red for failure, amber for anything waiting on the owner.
 - **Inter** at 14/20 for messages, semibold names and titles with tight
   tracking, sentence-case section labels.
-- Search, navigation (Overview, Engineers, Projects, Machines), rooms,
+- Search, navigation (Engineers, Projects, Machines), rooms,
   direct messages, machine health and the profile menu all live in the
   sidebar; there is no top bar on wide screens. A room's header is a single
   52px row.

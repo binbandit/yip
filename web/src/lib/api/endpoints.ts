@@ -31,7 +31,6 @@ import type {
   Node,
   NoteActionRequest,
   NoteRequest,
-  Overview,
   PostMessageRequest,
   PostMessageResponse,
   Preferences,
@@ -117,11 +116,13 @@ export const api = {
     put<Project>(`/v1/projects/${q(projectId)}/grants/${q(engineerId)}`, req),
 
   // work
-  jobs: (params: { state?: string[]; project?: string; owner?: string } = {}) => {
+  jobs: (params: { state?: string[]; project?: string; owner?: string; root?: boolean; limit?: number } = {}) => {
     const s = new URLSearchParams();
     if (params.state?.length) s.set('state', params.state.join(','));
     if (params.project) s.set('project', params.project);
     if (params.owner) s.set('owner', params.owner);
+    if (params.root) s.set('root', '1');
+    if (params.limit) s.set('limit', String(params.limit));
     const qs = s.toString();
     return get<Job[]>(`/v1/jobs${qs ? `?${qs}` : ''}`);
   },
@@ -154,7 +155,7 @@ export const api = {
   stopNodeWork: (id: string) => post<{ ok: boolean }>(`/v1/nodes/${q(id)}/stop`),
   revokeNode: (id: string) => del<{ ok: boolean }>(`/v1/nodes/${q(id)}/credential`),
 
-  // knowledge, overview, search
+  // knowledge, search
   decisions: (status?: string) => get<Decision[]>(`/v1/decisions${status ? `?status=${q(status)}` : ''}`),
   decision: (id: string) => get<Decision>(`/v1/decisions/${q(id)}`),
   decideDecision: (id: string, req: DecisionActionRequest) => post<Decision>(`/v1/decisions/${q(id)}`, req),
@@ -162,9 +163,6 @@ export const api = {
   createNote: (engineerId: string, req: NoteRequest) => post<EngineerNote>(`/v1/engineers/${q(engineerId)}/notes`, req),
   decideNote: (id: string, req: NoteActionRequest) => post<EngineerNote>(`/v1/notes/${q(id)}`, req),
   createDecision: (req: DecisionRequest) => post<Decision>('/v1/decisions', req),
-  overview: (since?: string) => get<Overview>(`/v1/overview${since ? `?since=${q(since)}` : ''}`),
-  /** Records the visit that "Since you were here" is measured from. */
-  overviewSeen: () => post<{ ok: boolean }>('/v1/overview/seen'),
   search: (query: string, scope: { room?: string; project?: string } = {}, signal?: AbortSignal) =>
     get<SearchResult[]>(`/v1/search?q=${q(query)}${scope.room ? `&room=${q(scope.room)}` : ''}${scope.project ? `&project=${q(scope.project)}` : ''}`, {
       signal,

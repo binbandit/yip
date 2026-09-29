@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
-import GettingStarted from '../../src/components/GettingStarted.svelte';
+import StartScreen from '../../src/screens/StartScreen.svelte';
 import EngineerScreen from '../../src/screens/EngineerScreen.svelte';
 import ProviderSelect from '../../src/components/ProviderSelect.svelte';
 import { app } from '../../src/lib/state/app.svelte';
@@ -104,6 +104,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
   localStorage.clear();
   history.replaceState(null, '', '/overview');
+  app.startSkipped = false;
 });
 
 describe('setup next actions', () => {
@@ -113,9 +114,9 @@ describe('setup next actions', () => {
     const completed = fixture<JobDetail>('job-code.json').job;
     data.jobs = { [completed.id]: { ...completed, state: 'completed' } };
     app.data = data;
-    component = mount(GettingStarted, { target: document.body });
+    component = mount(StartScreen, { target: document.body });
     flushSync();
-    expect(document.querySelector('.start header')?.textContent).toContain('7 of 7 done');
+    expect(document.querySelector('.head')?.textContent).toContain('7 of 7 done');
     const notice = document.querySelector('.availability')!;
     for (const engineer of [author, reviewer]) {
       const link = notice.querySelector(`a[href="/engineers/${engineer.id}#eng-prov"]`);
@@ -130,12 +131,12 @@ describe('setup next actions', () => {
     const { data, node } = team();
     node.status = 'offline';
     app.data = data;
-    component = mount(GettingStarted, { target: document.body });
+    component = mount(StartScreen, { target: document.body });
     flushSync();
     const notice = document.querySelector('.availability')!;
     expect(notice.textContent).toContain('Signed in, but no machine is available for new work.');
     expect(notice.querySelector('a')?.getAttribute('href')).toBe(`/connections/${node.providers[0].provider}`);
-    expect(document.querySelector('.start header')?.textContent).toContain('6 of 7 done');
+    expect(document.querySelector('.head')?.textContent).toContain('6 of 7 done');
   });
 
   it('updates provider readiness from live nodes when the bootstrap summary stays stale', () => {
@@ -166,51 +167,44 @@ describe('setup next actions', () => {
     expect(providerReadiness([node], { provider: 'claude', allowApiBilling: true }).signedIn).toHaveLength(0);
   });
 
-  it('restores a hidden guide after remounting without losing the steps', async () => {
-    app.data = team().data;
-    component = mount(GettingStarted, { target: document.body });
+  it('opens on getting started until a team is set up, then in the room you were last in', () => {
+    const { data, room, project } = team();
+    const engineering = fixture<Bootstrap>('bootstrap.json').rooms.find((r) => r.name === 'Engineering')!;
+    data.rooms[engineering.id] = engineering;
+    const grants = project.grants;
+    project.grants = [];
+    app.data = data;
+    expect(app.homePath()).toBe('/start');
+    component = mount(StartScreen, { target: document.body });
     flushSync();
-    [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Hide')!.click();
+    [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Skip for now')!.click();
     flushSync();
-    await unmount(component);
-    component = mount(GettingStarted, { target: document.body });
-    flushSync();
-    expect(document.querySelector('#gs-steps')).toBeNull();
-    document.querySelector('button')!.click();
-    flushSync();
-    expect(document.querySelector('#gs-steps')?.hasAttribute('hidden')).toBe(false);
-    expect(localStorage.getItem('yip.gettingStarted.dismissed')).toBeNull();
+    expect(localStorage.getItem('yip.gettingStarted.dismissed')).toBe('1');
+    expect(location.pathname).toBe(`/rooms/${engineering.id}`);
+    expect([...document.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Skip for now')).toBe(false);
+
+    app.startSkipped = false;
+    app.data.projects[project.id].grants = grants;
+    expect(app.homePath()).toBe(`/rooms/${engineering.id}`);
+    app.rememberRoom(room.id);
+    expect(app.homePath()).toBe(`/rooms/${room.id}`);
+    app.data = { ...data, rooms: {} };
+    expect(app.homePath()).toBe('/start');
   });
 
-  it('keeps guide dismissal workspace-local while preserving the original root preference', async () => {
-    app.data = emptyState();
-    localStorage.setItem('yip.gettingStarted.dismissed', '1');
-    async function open(path: string) {
-      if (component) await unmount(component);
-      history.replaceState(null, '', path);
-      component = mount(GettingStarted, { target: document.body });
-      flushSync();
-    }
-    await open('/overview');
-    expect(document.querySelector('#gs-steps')).toBeNull();
-
-    await open('/w/personal/overview');
-    expect(document.querySelector('#gs-steps')).not.toBeNull();
-    [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Hide')!.click();
-    flushSync();
+  it('keeps skipped setup and the last room workspace-local', () => {
+    const { data, room } = team();
+    app.data = data;
+    history.replaceState(null, '', '/w/personal/start');
+    app.rememberRoom(room.id);
+    app.skipStart();
     expect(localStorage.getItem('yip.workspace.personal.gettingStarted.dismissed')).toBe('1');
-
-    await open('/w/another/overview');
-    expect(document.querySelector('#gs-steps')).not.toBeNull();
-    await open('/w/personal/overview');
-    expect(document.querySelector('#gs-steps')).toBeNull();
-    document.querySelector('button')!.click();
-    flushSync();
-    expect(localStorage.getItem('yip.workspace.personal.gettingStarted.dismissed')).toBeNull();
-    expect(localStorage.getItem('yip.gettingStarted.dismissed')).toBe('1');
-
-    await open('/overview');
-    expect(document.querySelector('#gs-steps')).toBeNull();
+    expect(localStorage.getItem('yip.workspace.personal.lastRoom')).toBe(room.id);
+    expect(location.pathname).toBe(`/w/personal/rooms/${room.id}`);
+    expect(localStorage.getItem('yip.gettingStarted.dismissed')).toBeNull();
+    expect(localStorage.getItem('yip.lastRoom')).toBeNull();
+    history.replaceState(null, '', '/w/another/start');
+    expect(localStorage.getItem('yip.workspace.another.gettingStarted.dismissed')).toBeNull();
   });
 
   it('points missing access to the actual project and review membership to the actual room', () => {
@@ -218,7 +212,7 @@ describe('setup next actions', () => {
     project.grants = [];
     room.members = room.members.filter((m) => m.id !== reviewer.id);
     app.data = data;
-    component = mount(GettingStarted, { target: document.body });
+    component = mount(StartScreen, { target: document.body });
     flushSync();
     const links = [...document.querySelectorAll('a')];
     expect(links.find((a) => a.textContent?.trim() === 'Choose access')?.getAttribute('href')).toBe(`/projects/${project.id}#p-access`);

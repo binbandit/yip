@@ -32,7 +32,7 @@ window.__journeys = (() => {
 
   // Screens every layout must fit without sideways scrolling.
   const sweep = async (t) => {
-    for (const path of ['/overview', '/engineers', '/projects', '/machines', '/settings']) {
+    for (const path of ['/start', '/engineers', '/projects', '/machines', '/settings']) {
       await t.goto(path);
       await t.waitFor(() => t.q('[data-screen-title]'), path);
       await t.sleep(300);
@@ -50,11 +50,11 @@ window.__journeys = (() => {
 
   return [
     {
-      name: 'sign in lands on the Overview',
+      name: 'sign in opens a room',
       width: 1440, height: 900,
       run: async (t) => {
-        await t.waitFor(() => t.byText('h1', 'Overview'), 'Overview');
-        await t.waitFor(() => t.byText('h2', 'Since you were here'), 'Since you were here');
+        await t.waitFor(() => location.pathname.startsWith('/rooms/') && t.q('#room-title'), 'a room');
+        t.expect(!t.qa('nav a').some((a) => a.textContent.trim() === 'Overview'), 'no Overview in the navigation');
       },
     },
     {
@@ -105,7 +105,7 @@ window.__journeys = (() => {
         await t.press('Enter');
         await t.waitFor(() => t.text().includes("Added to Pip's"), 'the added-to receipt', 30000);
         // Not an answer: the question is still waiting (the chip returns).
-        await t.goto('/overview');
+        await t.goto('/engineers');
         await openRoom(t, 'Reverse engineering');
         await t.waitFor(() => t.byText('.room-composer .scope', "Answering Pip's question"), 'the question still open', 10000);
       },
@@ -187,7 +187,7 @@ window.__journeys = (() => {
       name: '390px: no sideways scroll, rooms sheet, composer and 44px send',
       width: 390, height: 844,
       run: async (t) => {
-        noScroll(t, 'the Overview');
+        noScroll(t, 'the first room');
         await t.click(t.q('button[aria-label="Rooms and navigation"]'));
         const sheet = await t.waitFor(() => t.q('dialog[open][aria-label="Rooms and navigation"]'), 'the rooms sheet');
         await t.click(t.qa('a', sheet).find((a) => a.textContent.trim().startsWith('Reverse engineering')));

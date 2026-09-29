@@ -76,7 +76,6 @@ func (s *Server) routes() {
 	a("GET /v1/runs", s.activeRuns)
 	a("GET /v1/questions/{id}", s.getQuestion)
 	a("GET /v1/decisions/{id}", s.getDecision)
-	a("POST /v1/overview/seen", s.overviewSeen)
 	a("GET /v1/approvals/{id}", s.getApproval)
 	a("POST /v1/approvals/{id}/decision", s.decideApproval)
 	a("POST /v1/questions/{id}/answer", s.answerQuestion)
@@ -98,7 +97,6 @@ func (s *Server) routes() {
 	a("POST /v1/notes/{id}", s.decideNote)
 	a("POST /v1/decisions/{id}", s.decideDecision)
 
-	a("GET /v1/overview", s.getOverview)
 	a("GET /v1/search", s.search)
 	a("GET /v1/artifacts/{id}", s.getArtifact)
 	a("GET /v1/diagnostics", s.diagnostics)
@@ -188,7 +186,6 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userFrom(r)
-	req.Preferences.LastSeenAt = u.Preferences.LastSeenAt
 	if err := s.hub.SetPreferences(r.Context(), u.ID, req.Preferences); err != nil {
 		s.fail(w, r, err)
 		return
@@ -433,7 +430,8 @@ func (s *Server) putGrant(w http.ResponseWriter, r *http.Request) {
 // ---- work ----
 
 func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
-	f := store.JobFilter{OwnerID: r.URL.Query().Get("owner"), ProjectID: r.URL.Query().Get("project"), Limit: int(queryInt(r, "limit", 200))}
+	f := store.JobFilter{OwnerID: r.URL.Query().Get("owner"), ProjectID: r.URL.Query().Get("project"),
+		RootOnly: r.URL.Query().Get("root") == "1", Limit: int(queryInt(r, "limit", 200))}
 	for _, st := range strings.Split(r.URL.Query().Get("state"), ",") {
 		if st != "" {
 			f.States = append(f.States, protocol.JobState(st))
@@ -630,7 +628,7 @@ func (s *Server) revokeNode(w http.ResponseWriter, r *http.Request) {
 	respond(s, w, r, map[string]bool{"ok": true}, err)
 }
 
-// ---- knowledge, overview, search ----
+// ---- knowledge, search ----
 
 func (s *Server) listDecisions(w http.ResponseWriter, r *http.Request) {
 	ds, err := s.hub.ListDecisions(r.Context(), userFrom(r).ID, r.URL.Query().Get("status"))
@@ -653,20 +651,6 @@ func (s *Server) decideDecision(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := s.hub.DecideDecision(r.Context(), userFrom(r).ID, r.PathValue("id"), req)
 	respond(s, w, r, d, err)
-}
-
-func (s *Server) getOverview(w http.ResponseWriter, r *http.Request) {
-	var baseline []time.Time
-	if raw := r.URL.Query().Get("since"); raw != "" {
-		at, err := time.Parse(time.RFC3339Nano, raw)
-		if err != nil {
-			s.fail(w, r, domain.Invalid("The catch-up start must be a valid timestamp."))
-			return
-		}
-		baseline = append(baseline, at)
-	}
-	ov, err := s.hub.Overview(r.Context(), userFrom(r).ID, r.URL.Query().Get("seen") == "1", baseline...)
-	respond(s, w, r, ov, err)
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
@@ -788,9 +772,4 @@ func (s *Server) getQuestion(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getDecision(w http.ResponseWriter, r *http.Request) {
 	d, err := s.hub.GetDecision(r.Context(), userFrom(r).ID, r.PathValue("id"))
 	respond(s, w, r, d, err)
-}
-
-func (s *Server) overviewSeen(w http.ResponseWriter, r *http.Request) {
-	err := s.hub.MarkOverviewSeen(r.Context(), userFrom(r).ID)
-	respond(s, w, r, map[string]bool{"ok": true}, err)
 }

@@ -45,7 +45,6 @@ test('create separate work and personal spaces, switch back to the draft, and ke
   await signIn(page);
   const initial = await (await page.request.get('/v1/bootstrap')).json();
   const workName = initial.org.name as string;
-  await page.locator('.start').getByRole('button', { name: 'Hide', exact: true }).click();
   await openRoom(page, 'Security');
   const workRoomURL = page.url();
   const composer = page.getByRole('combobox', { name: /^Message / });
@@ -56,16 +55,16 @@ test('create separate work and personal spaces, switch back to the draft, and ke
   const dialog = page.getByRole('dialog', { name: 'Create workspace', exact: true });
   await dialog.getByLabel('Workspace name').fill('Personal');
   await dialog.getByRole('button', { name: 'Create workspace', exact: true }).click();
-  await expect(page).toHaveURL(/\/w\/[^/]+\/overview$/);
-  const personalBase = new URL(page.url()).pathname.replace(/\/overview$/, '');
+  await expect(page).toHaveURL(/\/w\/[^/]+\/start$/);
+  const personalBase = new URL(page.url()).pathname.replace(/\/start$/, '');
   await expect(page.getByRole('button', { name: 'Workspace: Personal', exact: true })).toBeVisible();
-  await expect(page.locator('#gs-steps')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Setup steps' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Workspace', exact: true }).getByRole('link', { name: /^Security/ })).toHaveCount(0);
   const personal = await (await page.request.get(`${personalBase}/v1/bootstrap`)).json();
   expect(personal.engineers).toHaveLength(0);
   expect(personal.projects).toHaveLength(0);
   expect(personal.nodes).toHaveLength(0);
-  expect(personal.rooms.every((room: { kind: string }) => room.kind === 'overview')).toBe(true);
+  expect(personal.rooms).toHaveLength(0);
   const crossRoom = await page.request.get(`${personalBase}/v1/rooms/${initial.rooms.find((r: { name: string }) => r.name === 'Security').id}`);
   expect(crossRoom.status()).toBe(404);
 
@@ -117,6 +116,7 @@ test('workspace creation and keyboard switching fit a phone', async ({ page }) =
   await signIn(page);
   const initial = await (await page.request.get('/v1/bootstrap')).json();
   const workName = initial.org.name as string;
+  const workURL = page.url();
   const switcher = page.getByRole('button', { name: `Workspace: ${workName}`, exact: true });
   await switcher.focus();
   await switcher.press('Enter');
@@ -126,7 +126,7 @@ test('workspace creation and keyboard switching fit a phone', async ({ page }) =
   await dialog.getByLabel('Workspace name').fill(personalName);
   await expect(page.getByRole('dialog', { name: 'Create workspace', exact: true })).toHaveCount(1);
   await dialog.getByRole('button', { name: 'Create workspace', exact: true }).click();
-  await expect(page).toHaveURL(/\/w\/[^/]+\/overview$/);
+  await expect(page).toHaveURL(/\/w\/[^/]+\/start$/);
   const pocket = page.getByRole('button', { name: `Workspace: ${personalName}`, exact: true });
   await expect(pocket).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -134,7 +134,7 @@ test('workspace creation and keyboard switching fit a phone', async ({ page }) =
   await pocket.press('Enter');
   await page.getByRole('menuitem', { name: workName, exact: true }).focus();
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/overview$/);
+  await expect(page).toHaveURL(workURL);
   await expect(switcher).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe('/overview');
+
 });

@@ -21,3 +21,4 @@ criteria.
 | [0013](0013-astryx-design-system.md) | The web client is built on Astryx (astryx-svelte) with a yip theme over neutral |
 | [0014](0014-profile-pictures.md) | The owner can give themselves and engineers profile pictures (GIFs too); shape still tells engineers from the human |
 | [0015](0015-github-owner-name-and-gh-sign-in.md) | GitHub repositories are added by owner/name and reached with the GitHub CLI's sign-in |
+| [0016](0016-no-overview.md) | No Overview page or Overview conversation; yip opens in your rooms, or on Getting started for a new workspace |

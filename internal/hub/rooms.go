@@ -137,9 +137,6 @@ func (h *Hub) UpdateRoom(ctx context.Context, userID, roomID string, req protoco
 		if r.Version != req.Version {
 			return domain.Conflict("This room changed since you opened it. Reload and try again.")
 		}
-		if r.Kind == protocol.RoomKindOverview {
-			return domain.Forbidden("The Overview conversation can't be reconfigured.")
-		}
 		if req.Name != nil {
 			r.Name = strings.TrimSpace(*req.Name)
 		}

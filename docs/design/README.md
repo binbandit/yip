@@ -72,7 +72,7 @@ The shell is Astryx's `AppShell` with a `SideNav`. yip draws the frame gradient 
 
 | Width | Layout |
 |---|---|
-| ≥1200px | The sidebar, the work card, and an **inline** right panel. The panel defaults to 336px and can be resized with a pointer or the keyboard (Astryx's resize handle); the width is remembered. Detail drawers (job, review) are at least 480px wide. The Overview docks its workspace summary in a 400px column. |
+| ≥1200px | The sidebar, the work card, and an **inline** right panel. The panel defaults to 336px and can be resized with a pointer or the keyboard (Astryx's resize handle); the width is remembered. Detail drawers (job, review) are at least 480px wide. |
 | 769–1199px | The right panel **overlays** the conversation instead of crushing it. It is modal: the rest of the page is inert and focus is trapped. |
 | ≤768px | One primary surface (AppShell's `md` breakpoint). A top bar holds the mark, search and a "Rooms and navigation" button that opens the sidebar in AppShell's drawer, which slides in from that button's side and opens on the current page. Threads and drawers are full-screen views with a Back button; while one is open the top bar steps aside. The chrome, drawer and composer respect the safe areas, and there is no horizontal page scroll. |
 
@@ -80,7 +80,7 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
 
 ## Components and their states
 
-- **Sidebar** (on the frame, no box of its own): the monochrome branching-y mark and wordmark; a "Search everything ⌘K" launcher; Overview, Engineers, Projects and Machines; Rooms and Direct messages with sentence-case labels and a + to create; and a footer with machine health ("studio-mini connected", or "3 machines connected") and a profile card (name and workspace) whose menu has Settings, Day/Night appearance and Sign out. Room rows show:
+- **Sidebar** (on the frame, no box of its own): the monochrome branching-y mark and wordmark; a "Search everything ⌘K" launcher; Engineers, Projects and Machines; Rooms and Direct messages with sentence-case labels and a + to create; and a footer with machine health ("studio-mini connected", or "3 machines connected") and a profile card (name and workspace) whose menu has Settings, Getting started, Day/Night appearance and Sign out. Room rows show:
   - read rows in slightly quieter ink, unread rows in semibold;
   - mentions as an ink count pill (an Astryx `Badge`);
   - a pencil when a draft is saved;
@@ -134,9 +134,7 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
     - **Activity:** the job timeline, plus per-run tool logs in collapsed sections (Astryx `Collapsible`) that load on open.
     - **Runs:** each attempt with its state (unknown reads "Outcome not confirmed"), and the provider, model and billing — the only place these appear.
   - The tab bar keeps its height when the drawer contains a long diff, so Evidence, Review, Activity and Runs remain reachable.
-- **Overview:** "Since you were here" summarizes changed assignments from current ledger facts, with one entry per assignment and explicit open questions, permission requests and revision-bound review outcomes. Work events refresh the catch-up and accepted decisions during the visit. The first response's baseline is retained on later reads, so recording the visit does not erase its earlier entries. Evidence links preserve the original room, thread and message. Reading Overview never marks rooms read. Below catch-up are Recently completed, Active, Needs a look and Worth remembering. Normal peer-review waiting stays Active; genuine questions and failures retain their concrete explanation. Completed rows lead with the result summary and completion time. A row whose latest attempt's `runState` is `unknown` shows "Not confirmed". The visit is recorded (`POST /v1/overview/seen`) only after the page has rendered.
-  - **Workspace summary** is an explicit **Get a fresh summary** action, not a freeform question box. It records a factual snapshot of active work, recent results and open questions without starting an engineer run. Other questions belong in an engineer's conversation. The summary and its history are docked at ≥1180px when no evidence panel is open; opening evidence uses that side space, and closing it restores the summary. Narrower screens use **Open workspace summary** and the same action. Catch-up rows adapt to their actual column width.
-  - **Getting started** follows one connected engineer, room and project, including repository access and a distinct reviewer where required. Unrelated setup objects do not complete each other's steps. Saved setup and finished work remain checked when a machine goes offline; current availability has its own explanation. The guide names the missing connection and links to its room or project settings. Once work exists it folds into **Show steps**. **Hide** leaves **Show getting started**, so the guide can be restored later.
+- **Getting started** (`/start`) is where a new workspace opens, until it has a room and an engineer who can work on a project there with a reviewer, or the owner chooses **Skip for now**; after that `/` opens the room you were last in, and the checklist stays in the profile menu. It follows one connected engineer, room and project, including repository access and a distinct reviewer where required. Unrelated setup objects do not complete each other's steps. Saved setup and finished work remain checked when a machine goes offline; current availability has its own explanation. The guide names the missing connection and links to its room or project settings.
 - **Engineer profile:** role and versioned standing instructions, active and queued work, decisions they recorded, rooms, **projects they can work on** (from the projects' grants, in plain words: "Atlas · can change code · can push"), and provider preference. Empty room and access sections link to the relevant setup choices. Provider availability follows live machine reports, the selected account, allowed billing and required read-only capability; a previously signed-in provider on an offline or drained machine is not described as ready for new work.
 - **Review states:** "Changes requested" is an engineering state, not an alert: it uses the pause shape in neutral ink, like any other waiting state, and never red.
 - **Notices and form errors:** a sentence led by a 16px status shape (a circled i for information, a triangle for attention, a circled ! for danger), with no box, tint or edge stripe (yip's `Notice`, used in place of Astryx's `Banner`). The shape carries the hue, and danger text is red as well. Toasts and blocking review findings use the same shapes. Why work is in its state (why it failed, what it waits on) is the state's second line, not a separate notice, and missing evidence it already names is not repeated.
@@ -210,9 +208,8 @@ Where yip differs, and why:
 
 The scripted browser journey covers assignment, clarification, a genuine
 question, owner answer, peer requested changes, author correction, re-review,
-completion and recall from another permitted room, followed by Overview
-review evidence opened with Enter. It needs no owner relay or mandatory
-acceptance. [Room capture checks](../../scripts/e2e/shots/room.js)
+completion and recall from another permitted room. It needs no owner relay
+or mandatory acceptance. [Room capture checks](../../scripts/e2e/shots/room.js)
 cover 390, 900, 1280 and 1440px in both themes. See the
 [release checklist](../release-checklist.md) for current counts and the
 [adversarial campaign](../simulations/2026-09-28.md) for the separately
@@ -226,5 +223,4 @@ It covers live Overview updates during one visit, threaded source navigation,
 drafted follow-ups after work ends, connected setup, drawer navigation and
 stale permission decisions. The report records UI checks separately from the
 real-provider recall check.
-The explicit workspace summary is the current implementation boundary for
-spec journey F; arbitrary questions are handled in conversations with engineers.
+The Overview it covers was later removed ([0016](../decisions/0016-no-overview.md)).

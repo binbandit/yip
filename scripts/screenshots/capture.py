@@ -5,8 +5,8 @@
     python3 scripts/screenshots/capture.py --hub http://127.0.0.1:7821 --credentials /tmp/yip-demo-shots/demo-credentials.txt
 
 It plays the two demo scenarios through the browser API (the Atlas fix with
-peer review, and Pip's Beacon investigation with a question), asks the
-Overview for status, then captures each screen with shoot.swift, which renders
+peer review, and Pip's Beacon investigation with a question), then captures
+each screen with shoot.swift, which renders
 pages in the system WebKit (macOS only; no browser download, nothing stored),
 or elsewhere with shoot.mjs, which drives Chrome through Playwright.
 Images are written to docs/screenshots/.
@@ -87,9 +87,6 @@ def populate(h):
     done = ("completed", "failed")
     wait("the Atlas fix", lambda: (h.job("Fix Atlas session expiry") or {}).get("state") in done)
     wait("the Beacon investigation", lambda: (h.job("Beacon") or {}).get("state") in done)
-    if not any(m["author"]["kind"] == "user" for m in h.messages("Overview")):
-        h.post("Overview", "Where are we with everything?")
-        time.sleep(3)
     # Open rooms at their latest messages rather than an unread divider.
     for r in h.boot["rooms"]:
         ms = h.req("GET", f"/v1/rooms/{r['id']}/messages?limit=100")["messages"]
@@ -115,7 +112,6 @@ def shots(h):
         {"name": "room-job-evidence", "path": f"/rooms/{sec}?panel=job:{atlas}&tab=evidence", "js": BOTTOM, **desk},
         {"name": "review-rounds", "path": f"/rooms/{sec}?panel=review:{review}", "js": BOTTOM, **desk},
         {"name": "question-thread", "path": f"/rooms/{rev}?panel=thread:{question}", "js": BOTTOM, **desk},
-        {"name": "overview", "path": "/overview", **desk},
         {"name": "engineer", "path": f"/engineers/{mira}", **desk},
         {"name": "machines", "path": "/machines", **desk},
         {"name": "room-job-evidence-dark", "path": f"/rooms/{sec}?panel=job:{atlas}&tab=evidence", "js": BOTTOM, "dark": True, **desk},

@@ -4,7 +4,7 @@
   // elapsed-time "working" pill. Selection is a grey wash, never a colour.
   // Every marker has a visually hidden text equivalent.
   import { Badge, DropdownMenu, Icon, IconButton, Kbd, SideNav, SideNavItem, SideNavSection, Text, Tooltip, VisuallyHidden, useSideNavRenderMode } from '@astryx-svelte/core';
-  import { BellOff, Folder, Hash, LayoutDashboard, Lock, LogOut, MessageSquare, Monitor, Moon, Pencil, Plug, Plus, Search, Settings, Sun, Users } from '@lucide/svelte';
+  import { BellOff, Folder, Hash, ListChecks, Lock, LogOut, MessageSquare, Monitor, Moon, Pencil, Plug, Plus, Search, Settings, Sun, Users } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { roomsWithDrafts } from '../lib/state/drafts';
   import { workspaceUrl } from '../lib/workspace';
@@ -115,6 +115,7 @@
       alignment="start"
       items={[
         { label: 'Settings', icon: settingsIcon, onClick: () => { go(); app.navigate('/settings'); } },
+        { label: 'Getting started', icon: startIcon, onClick: () => { go(); app.navigate('/start'); } },
         {
           label: shown === 'night' ? 'Day appearance' : 'Night appearance',
           icon: shown === 'night' ? sunIcon : moonIcon,
@@ -140,7 +141,7 @@
 {#snippet sunIcon()}<Icon icon={Sun} size="sm" />{/snippet}
 {#snippet moonIcon()}<Icon icon={Moon} size="sm" />{/snippet}
 {#snippet signOutIcon()}<Icon icon={LogOut} size="sm" />{/snippet}
-{#snippet overviewIcon()}<Icon icon={LayoutDashboard} size="sm" color="secondary" />{/snippet}
+{#snippet startIcon()}<Icon icon={ListChecks} size="sm" />{/snippet}
 {#snippet engineersIcon()}<Icon icon={Users} size="sm" color="secondary" />{/snippet}
 {#snippet projectsIcon()}<Icon icon={Folder} size="sm" color="secondary" />{/snippet}
 {#snippet machinesIcon()}<Icon icon={Monitor} size="sm" color="secondary" />{/snippet}
@@ -184,7 +185,6 @@
   {footer}
 >
   <SideNavSection title="Pages" isHeaderHidden>
-    <SideNavItem label="Overview" icon={overviewIcon} href={workspaceUrl('/overview')} onclick={go} isSelected={route.name === 'overview'} />
     <SideNavItem label="Engineers" icon={engineersIcon} href={workspaceUrl('/engineers')} onclick={go} isSelected={route.name === 'engineers' || route.name === 'engineer'} />
     <SideNavItem label="Projects" icon={projectsIcon} href={workspaceUrl('/projects')} onclick={go} isSelected={route.name === 'projects' || route.name === 'project'} />
     <SideNavItem label="Machines" icon={machinesIcon} href={workspaceUrl('/machines')} onclick={go} isSelected={route.name === 'machines'} />

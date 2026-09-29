@@ -39,15 +39,6 @@ window.__journeys = (() => {
       await send(t, 'where did we land on Atlas expiry?', true);
       await t.waitFor(() => t.text().includes('final revision') && t.text().includes('approved by Oren'), 'recall of finished work', 30000);
       t.expect(t.text().includes('resolved'), 'recall retains the review decision');
-      await t.goto('/overview');
-      await t.waitFor(() => t.q('.catchup')?.textContent.includes('approved the updated result after re-review'), 'catch-up with current review evidence');
-      const item = t.qa('.catchup li').find((row) => row.textContent.includes('completed Fix Atlas session expiry'));
-      t.expect(!!item && !!t.byText('button', 'view review', item), 'catch-up links the actual review');
-      const reviewLink = t.byText('button', 'view review', item);
-      reviewLink.focus();
-      await t.press('Enter');
-      await t.waitFor(() => t.q('#panel-title')?.textContent.includes('Review') || t.q('.panel')?.textContent.includes('Approved'), 'review evidence opens from the keyboard');
-
     },
   }];
 })();

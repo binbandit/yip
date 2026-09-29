@@ -4,6 +4,7 @@
   // card are split by hairlines; the right panel is the one contextual drawer
   // (inline at ≥1200px, overlaid below, full screen on phones). Below the
   // AppShell breakpoint the sidebar moves into its drawer behind a top bar.
+  import { untrack } from 'svelte';
   import { AppShell, Button, Icon, Link } from '@astryx-svelte/core';
   import { RefreshCw, WifiOff } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
@@ -12,7 +13,7 @@
   import PanelHost from '../components/PanelHost.svelte';
   import SearchDialog from '../components/SearchDialog.svelte';
   import CreateRoomDialog from '../components/CreateRoomDialog.svelte';
-  import OverviewScreen from './OverviewScreen.svelte';
+  import StartScreen from './StartScreen.svelte';
   import RoomScreen from './RoomScreen.svelte';
   import EngineersScreen from './EngineersScreen.svelte';
   import EngineerScreen from './EngineerScreen.svelte';
@@ -38,6 +39,10 @@
           ? 'Connecting…'
           : '',
   );
+
+  $effect(() => {
+    if (route.name === 'home') untrack(() => app.navigate(app.homePath(), { replace: true }));
+  });
 
   $effect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -70,8 +75,8 @@
       switch (route.name) {
         case 'room':
           return app.data.rooms[route.roomId]?.name ?? 'Room';
-        case 'overview':
-          return 'Overview';
+        case 'start':
+          return 'Getting started';
         case 'engineers':
           return 'Engineers';
         case 'engineer':
@@ -120,8 +125,8 @@
 >
   <div class="work" bind:this={workEl}>
     <div class="content" inert={modal}>
-      {#if route.name === 'overview'}
-        <OverviewScreen />
+      {#if route.name === 'start'}
+        <StartScreen />
       {:else if route.name === 'room'}
         {#key route.roomId}
           <RoomScreen roomId={route.roomId} />
@@ -140,9 +145,9 @@
         <ConnectionsScreen provider={route.provider} />
       {:else if route.name === 'settings'}
         <SettingsScreen />
-      {:else}
+      {:else if route.name !== 'home'}
         <Screen title="That page doesn't exist">
-          {#snippet subtitle()}It may have been moved or archived. <Link hasUnderline href={workspaceUrl('/overview')}>Go to Overview</Link>.{/snippet}
+          {#snippet subtitle()}It may have been moved or archived. <Link hasUnderline href={workspaceUrl('/')}>Go to your workspace</Link>.{/snippet}
         </Screen>
       {/if}
     </div>

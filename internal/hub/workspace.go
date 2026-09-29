@@ -8,7 +8,7 @@ import (
 	"github.com/binbandit/yip/protocol"
 )
 
-// SeedWorkspace creates only a local owner and their personal Overview.
+// SeedWorkspace creates an empty workspace with a local owner.
 // Credentials and sessions remain exclusively in the installation's root hub.
 func (h *Hub) SeedWorkspace(ctx context.Context, name string, owner protocol.User) error {
 	if h.cfg.SessionHub == nil {
@@ -35,13 +35,7 @@ func (h *Hub) SeedWorkspace(ctx context.Context, name string, owner protocol.Use
 		if err := store.SetSetting(ctx, t.tx, settingInstance, domain.NewID()); err != nil {
 			return err
 		}
-		room := protocol.Room{ID: domain.NewID(), OrgID: org.ID, Name: "Overview", Kind: protocol.RoomKindOverview,
-			Purpose: "Ask where things stand across your projects.", Private: true, ReplyMode: protocol.ReplyModeQuiet, CreatedAt: h.now()}
-		if err := store.InsertRoom(ctx, t.tx, room); err != nil {
-			return err
-		}
-		_, err = store.AddMember(ctx, t.tx, room.ID, protocol.Member{Kind: protocol.ActorUser, ID: owner.ID})
-		return err
+		return nil
 	})
 	if err == nil {
 		h.setOrg(org)

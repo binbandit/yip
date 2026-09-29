@@ -290,16 +290,6 @@ func EventsForJob(ctx context.Context, q Q, jobID string, limit int) ([]EventRow
 	return list(ctx, q, scanEvent, `SELECT `+eventCols+` FROM events WHERE job_id = ? ORDER BY seq LIMIT ?`, jobID, limit)
 }
 
-func EventsSince(ctx context.Context, q Q, since time.Time, types []string, limit int) ([]EventRow, error) {
-	args := []any{ts(since)}
-	for _, t := range types {
-		args = append(args, t)
-	}
-	args = append(args, limit)
-	return list(ctx, q, scanEvent, `SELECT `+eventCols+` FROM events WHERE occurred_at >= ? AND type IN `+InClause(len(types))+`
-		ORDER BY seq DESC LIMIT ?`, args...)
-}
-
 func MaxEventSeq(ctx context.Context, q Q) (int64, error) {
 	var n sql.NullInt64
 	err := q.QueryRowContext(ctx, `SELECT MAX(seq) FROM events`).Scan(&n)
