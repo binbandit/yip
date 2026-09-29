@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -11,12 +11,14 @@ import { fileURLToPath } from 'node:url';
 const air = fileURLToPath(new URL('../bin/air', import.meta.url));
 const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
 
-function alive(pid) {
+function alive(pid, inspect = execFileSync) {
   try {
-    process.kill(pid, 0);
-    return true;
+    // kill(pid, 0) also succeeds for exited zombies. Some container PID 1s
+    // leave those unreaped, but they cannot retain hub listeners or do work.
+    const state = inspect('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim();
+    return state !== '' && !state.startsWith('Z');
   } catch (error) {
-    if (error.code === 'ESRCH') return false;
+    if (error.status === 1) return false; // ps found no matching PID.
     throw error;
   }
 }
@@ -112,6 +114,8 @@ exec ${quote(air)} "$@"
 `, { mode: 0o755 });
   await writeFile(join(root, 'hub.cjs'), `
 const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const alive = ${alive.toString()};
 const record = (event) => fs.appendFileSync('events.jsonl', JSON.stringify({ ...event, pid: process.pid }) + '\\n');
 // Air starts /bin/sh -c in its own process group. Some shells exec the hub;
 // others retain a shell parent. Record both forms for emergency cleanup only.
@@ -120,8 +124,7 @@ const group = process.ppid === airPid ? process.pid : process.ppid;
 let previousAlive = false;
 try {
   const previous = Number(fs.readFileSync('hub.pid', 'utf8'));
-  try { process.kill(previous, 0); previousAlive = true; }
-  catch (error) { if (error.code !== 'ESRCH') throw error; }
+  previousAlive = alive(previous);
 } catch (error) { if (error.code !== 'ENOENT') throw error; }
 process.on('SIGINT', () => record({ type: 'interrupt' }));
 process.on('SIGTERM', () => record({ type: 'terminate' }));
@@ -152,6 +155,19 @@ console.log('Vite ready');
   }, 'real Air, hub, and Vite startup', log);
   return { child, root, events, pid, log, exit: () => exited };
 }
+
+test('process probe distinguishes live hubs from exited zombies', () => {
+  for (const state of ['R', 'S+', 'T', 'D']) {
+    assert.equal(alive(123, () => ` ${state}\n`), true);
+  }
+  for (const state of ['Z', 'Z+', 'Zs', '']) {
+    assert.equal(alive(123, () => ` ${state}\n`), false);
+  }
+  assert.equal(alive(123, () => { throw Object.assign(new Error('no PID'), { status: 1 }); }), false);
+  // A missing/broken ps must fail the test, not hide an unverified live hub.
+  const unavailable = Object.assign(new Error('no ps'), { code: 'ENOENT' });
+  assert.throws(() => alive(123, () => { throw unavailable; }), { code: 'ENOENT' });
+});
 
 test('real Air stops the old hub before starting its replacement', { timeout: 25_000 }, async (t) => {
   const run = await fixture(t);
