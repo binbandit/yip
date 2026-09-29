@@ -64,7 +64,7 @@ new workspace's Machines enrollment command.
 | `GET /v1/setup` | → `SetupStatus` (no auth) |
 | `POST /v1/setup` | `SetupRequest` (needs the one-time setup code printed on the hub host) → sets cookie |
 | `POST /v1/session` / `DELETE /v1/session` | `SignInRequest` → sets cookie / sign out |
-| `GET /v1/bootstrap` | → `Bootstrap` (user, org, rooms with unread/mention counts, engineers, projects, nodes, provider summary, `cursor`, `csrfToken`, preferences, `demo`) |
+| `GET /v1/bootstrap` | → `Bootstrap` (user, org, rooms with unread/mention counts, engineers, projects, nodes, provider summary, `cursor`, `csrfToken`, preferences) |
 | `PUT /v1/preferences` | `PreferencesRequest` → `Preferences` |
 | `PATCH /v1/profile` | `ProfileRequest` (`name`, 1–80 characters; whitespace is collapsed) → `User`. The handle can't be changed: it signs in and is how engineers mention you. Engineers use the new name from their next run |
 | `PUT/DELETE /v1/profile/avatar` | raw body: your profile picture (PNG, JPEG, GIF — animated too — or WebP; up to 10 MB and 8,192 px a side) → `User` with `avatarId` / remove it → `User`. The format is read from the bytes, never the declared type; anything else (SVG included) is refused |

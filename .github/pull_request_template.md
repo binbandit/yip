@@ -30,14 +30,12 @@ size, anything left undone or now out of date.
 | `go test -race ./internal/... ./test/integration/` | |
 | `cd web && npm run check` | |
 | `cd web && npm test` | |
-| `cd web && npm run e2e` | |
 
 <!--
 Keep the rows you ran and add others you ran: `cd web && node scripts/contrast.mjs`
-for theme changes, `scripts/e2e/run-webkit.sh`, a real-provider or live GitHub
-scenario. Name the provider a run used: the fake provider never stands in for
-a real-provider gate (ADR 0004). For UI changes, say which screens you checked,
-in which themes, and at phone width.
+for theme changes, a real-provider or live GitHub scenario. Name the provider
+a run used. For UI changes, say which screens you checked, in which themes,
+and at phone width.
 -->
 
 ## Checklist

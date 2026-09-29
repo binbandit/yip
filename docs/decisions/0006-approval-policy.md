@@ -45,6 +45,5 @@ review showed was bypassed by ordinary spellings (`git -C . push`, quoting,
 that runs workspace code (a test suite, a build script) can do whatever that
 code does. That is why checks also run without the owner's credentials
 (ADR 0005) and why the container profile exists (ADR 0003). False positives
-become owner questions, not silent approvals. Covered by
-`TestExactActionApprovals`, `TestRegressionRunCheckIsPolicedAndIsolated`, and
-the classifier unit tests in `internal/hub/policy_test.go`.
+become owner questions, not silent approvals. Covered by the classifier unit
+tests in `internal/hub/policy_test.go`.

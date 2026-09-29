@@ -38,9 +38,8 @@ evidence are one loop**:
 
 ## A quick tour
 
-The screenshots show the demo workspace, where engineers run on yip's
-deterministic fake provider — no model is called, and each engineer's
-provider preference says so.
+The screenshots were captured from a scripted sample workspace; no model
+produced the conversations shown.
 
 ### Peer review on exact revisions
 
@@ -90,36 +89,18 @@ revoke it.
 
 The product documents that specify yip live in [`docs/spec/`](docs/spec/README.md).
 
-## Quick start (demo)
-
-The demo seeds a workspace whose engineers run on yip's **deterministic fake
-provider** — no model is called, and the UI says so. It exercises the whole
-pipeline: hub, runner over mutual TLS, git worktrees, the MCP bridge, reviews,
-questions, steering, and recovery.
-
-```sh
-just            # builds the web client (npm) and the yip binary
-./bin/yip demo  # prints the URL and demo credentials
-```
-
-Then, in **Security**, send `@Mira can you fix Atlas accepting expired
-sessions?` and watch Mira fix it, pick Oren to review, get a real defect found
-in the refresh path, fix that, and complete after re-review. In **Reverse
-engineering**, ask `@Pip how does Beacon retry requests?` to see a genuine
-question in the room and a resumed job after you reply in its thread.
-
-## Real use
+## Quick start
 
 From a source checkout, `just start` builds the web client and binary, then
 runs the real hub at **http://127.0.0.1:7420**. The first run prints a one-time
 setup code; data persists in `~/.yip/hub` (or `YIP_DATA`). Hub flags pass
 through, for example `just start --local-runner` to also run work on this
-machine, or `just start --data "/path/to/workspace"`. Use `just demo` for the
-seeded fake-provider workspace instead.
+machine, or `just start --data "/path/to/workspace"`.
 
 With an installed binary:
 
 ```sh
+just                             # builds the web client (npm) and the yip binary
 yip hub                          # first run prints a one-time setup code
 # Machines → Add machine shows a pairing command; on each machine:
 yip runner pair --hub https://HUB:7443 --fingerprint sha256:… --token yipe_…
@@ -161,13 +142,12 @@ Claude Code or Codex sign-in.
 | Area | State |
 |---|---|
 | Hub (rooms, routing, jobs, runs, reviews, questions, approvals, decisions, scheduler, SSE, auth) | Implemented; covered by unit and in-process integration tests |
-| Runner (pairing, mTLS, journal, leases, worktrees, snapshots, checks, revisions, bridge) | Implemented; exercised by the integration suite on one machine |
-| Deterministic fake provider | Implemented (demo + failure injection) |
+| Runner (pairing, mTLS, journal, leases, worktrees, snapshots, checks, revisions, bridge) | Implemented; covered by unit tests and the real-provider campaigns on one machine |
 | OpenCode and Pi Agent Harness adapters | Implemented with permission and bridge tests; real OpenCode handshake and Pi SDK tool restrictions checked without model calls. See [OpenCode](docs/adapter-opencode.md) and [Pi](docs/adapter-pi.md) for supported versions and limitations. Live account-backed work remains unverified. |
 | Codex, Claude Code, Cursor adapters | Real Codex edits and Claude conversation/review, cross-room recall, cancellation/retry and restart tested on 28 September. This machine's Codex rules prevent conversation/review mode; Cursor remains untested. See [compatibility](docs/compatibility.md). |
 | GitHub connector | Emulated tests plus 32 real scenarios in dedicated private/public playgrounds, including three-account collaboration and protected branches. See the [campaign](docs/simulations/2026-09-28.md). |
-| Web client | System WebKit and installed Chrome journeys passed. The [UX campaign](docs/simulations/2026-09-28-ux.md) covers onboarding, catch-up, interruptions, evidence and responsive navigation. Firefox remains untested. |
-| Two physical machines | Protocol is multi-machine; tested with one hub and one runner per test on a single host |
+| Web client | Covered by unit tests and smoke suites that mount the app against captured payloads. The [UX campaign](docs/simulations/2026-09-28-ux.md) covers onboarding, catch-up, interruptions, evidence and responsive navigation. Firefox remains untested. |
+| Two physical machines | Protocol is multi-machine; not yet tested across two physical machines |
 
 The release gates (A01–A44) and what remains are tracked in
 [docs/release-checklist.md](docs/release-checklist.md). Departures from the
@@ -180,16 +160,16 @@ cmd/yip/                 hub, runner, bridge, doctor, backup, restore, service, 
 internal/hub/            canonical state: routing, jobs, runs, reviews, approvals, scheduler, tools
 internal/runner/         runner: journal, leases, workspaces, execution, local tools
 internal/bridge/         agent-facing MCP tools (stdio server) and runner socket
-internal/providers/      adapter contract + codex, claude, cursor, opencode, pi, fake
+internal/providers/      adapter contract + codex, claude, cursor, opencode, pi
 internal/forge/github/   GitHub PR/review connector
 internal/context/        context manifests and scope fingerprints
 internal/store/          SQLite schema, migrations, repositories
 internal/httpapi/        browser API, SSE, runner listener, embedded web client
 protocol/                wire types + generated JSON Schemas
 web/                     Svelte 5 + TypeScript client
-test/integration/        hub + runner + bridge + fake provider scenarios
+test/integration/        in-process hub scenarios over the browser and runner protocols
 packaging/               launchd/systemd units, hub image, container runner profile
-scripts/screenshots/     demo scenario + WebKit capture for the README images
+scripts/simulation/      opt-in real-provider and live GitHub campaigns
 docs/                    spec, operations, compatibility, API, decisions, checklist, screenshots
 ```
 
@@ -204,7 +184,7 @@ dependencies and a pinned [Air](https://github.com/air-verse/air) watcher into
   Build errors stop the backend and appear in the terminal; fix the source
   to resume.
 
-This is a real, initially empty workspace, not the demo. Its data persists
+This is a real, initially empty workspace. Its data persists
 in `.yip/dev`, separate from `just start`; use the setup code printed by the
 hub on first run. The API listens on `127.0.0.1:7521`, and the runner listener
 on `127.0.0.1:7543`. Vite proxies `/v1` to this hub. Ctrl-C stops both servers.
@@ -230,8 +210,7 @@ paste into a coding agent. It is dev-only; built clients never include it.
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs these
 checks on every pull request and on manual dispatch: `just lint`, a check that
 `just schema` output is committed, `go test ./...`, `just test-race`, the
-client's `npm run check`, unit tests, build and contrast check, and the
-browser journeys (`npm run e2e`) in Chromium.
+client's `npm run check`, unit tests, build and contrast check.
 
 The [merge queue](docs/merge-queue.md) tests each pull request together with
 the latest `main` before merging, so CI does not repeat the suite on pushes
@@ -252,18 +231,5 @@ Mergify's integration PRs run every check, since the queue requires each to
 succeed, and so does **Re-run all jobs**. The Plan job's summary says why each
 check ran or was skipped. If a check starts reading files outside its listed
 inputs, update the lists in the Plan job.
-
-To try it on a phone or another computer while developing, `just lan` serves
-the demo on your local network (built app on :7721, live-reload client on
-:5173; plain HTTP, demo data only).
-
-To refresh the screenshots, start a fresh demo and run the capture script. On
-macOS it renders with the system WebKit (no browser download); elsewhere it
-drives Chrome through Playwright, so run `npm ci` in `web/` first.
-
-```sh
-./bin/yip demo --reset --data /tmp/yip-demo-shots --listen 127.0.0.1:7821 --runner-listen 127.0.0.1:7844
-python3 scripts/screenshots/capture.py --credentials /tmp/yip-demo-shots/demo-credentials.txt
-```
 
 Requirements: Go 1.26, Node 20+ and [just](https://just.systems) (build only; `just docker` needs only Docker and just), git on every runner.

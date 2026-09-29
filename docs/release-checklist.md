@@ -12,8 +12,10 @@ jobs 0.392 ms,
 within the 200 ms target. Measured, not an advertised capacity.
 
 Automated evidence: `go test ./...` (unit tests; `test/integration` runs the
-hub, a paired runner over mutual TLS, the bridge, and the deterministic fake
-provider against a temporary database and git fixtures).
+hub in process against a temporary database, with the test playing the runner
+over the runner protocol). Removing the fake provider (ADR 0004) also removed
+the integration tests that drove scripted provider runs, so gates they
+verified are now **Implemented** until they have an automated check again.
 
 ## Blocking items
 
@@ -25,17 +27,14 @@ These must be done before the MVP can be called complete (MVP brief §10):
    machine's Codex allow-rules prevent conversation/review mode; the tested
    configuration uses Claude for those roles and Codex for edits. Versions
    are newer than the schema pins. Cursor is not installed or real-tested.
-2. **Two physical machines (Slice F).** `TestTwoMachinesAndCheckpointMove`
-   runs two independent runners (separate state, replicas, journals, and
-   certificates) against one hub: concurrent jobs land on different machines,
-   and after a machine is revoked, work resumes elsewhere only from the
-   verified bundle of its published revision, as an explicit retry. All of
-   this ran on a single host; a run across two physical machines has not been
-   recorded.
-3. **Remaining browser verification (A26, A27).** System WebKit passed 53
-   distinct journeys, including keyboard access, responsive layouts and
-   interrupted delivery. Installed Chrome 153 passed all six Playwright
-   journeys with Chromium sandboxing enabled. Firefox remains untested.
+2. **Two physical machines (Slice F).** The two-runner integration test
+   (concurrent jobs on different machines, and resumption elsewhere from the
+   verified bundle after a revocation) ran on the removed fake provider
+   (ADR 0004). A run across two physical machines has not been recorded.
+3. **Remaining browser verification (A26, A27).** On 28 September system
+   WebKit passed 53 distinct journeys and installed Chrome 153 passed six
+   Playwright journeys. They ran against the removed demo (ADR 0004), so no
+   browser journeys remain. Firefox remains untested.
 4. **Runner reboot (A30)** under the intended service account has not been
    performed.
 
@@ -99,9 +98,10 @@ terminal acknowledgements, tool calls that could run twice after a
 reconnect, a completion policy that let one approval outvote requested
 changes, runner artifact endpoints that ignored revocation, unbounded
 sign-in cost, and incomplete redaction. All are fixed; the rules are recorded
-in ADRs 0005, 0006, and 0011, and each is pinned by a
-`TestRegression…` test in `test/integration/regression_test.go` (plus
-classifier unit tests in `internal/hub/policy_test.go`). `go test -race` over
+in ADRs 0005, 0006, and 0011. Each was pinned by a `TestRegression…` test in
+`test/integration/regression_test.go`, plus classifier unit tests in
+`internal/hub/policy_test.go`; the regression tests that drove scripted
+provider runs were removed with the fake provider (ADR 0004). `go test -race` over
 `internal/...` and `test/integration` reports no data races (the latency
 benchmark is skipped under the race detector).
 
@@ -162,11 +162,9 @@ and synchronized the idle-engineer test with the end of its actual attempt.
 The race detector passed three repetitions of the provider regression and
 both clarification paths; the idle path then passed ten repetitions.
 
-[Room capture checks](../scripts/e2e/shots/room.js) cover 390, 900, 1280 and
-1440px in both themes. The Overview capture checks were removed with the
-Overview (ADR 0016). Regenerate the room set with
-`scripts/e2e/run-webkit.sh OUT scripts/e2e/shots/room.js`, using a temporary
-output directory. Historical captures
+Room captures covered 390, 900, 1280 and 1440px in both themes, and Overview
+captures covered the summary and review evidence at each width and theme.
+The capture scripts ran against the removed demo (ADR 0004); the captures
 are available in Git history, not the current checkout. Architecture and
 design docs describe the resulting behaviour.
 
@@ -203,46 +201,46 @@ other chats' test hubs were not used. Builds reused installed web dependencies
 | ID | Status | Evidence / note |
 |---|---|---|
 | A01 | Verified (backend) | One engineer ID and version history across rooms; sessions keyed by a scope fingerprint that includes the room (`manifest.Fingerprint`, `TestFingerprintChangesWithScope`). Profile view: UI. |
-| A02 | Verified | `TestScopeIsExplicitInMultiProjectRoom`; ambiguous repositories are rejected with the options (`resolveScope`); runs never switch directories. |
-| A03 | Verified | `TestIdempotentSendQuietRoomsAndAgentMentions` |
-| A04 | Verified | `TestEachMessageKeepsItsDestination` |
-| A05 | Verified | `TestSharedAccountSingleSlot` |
-| A06 | Verified | `TestIdempotentSendQuietRoomsAndAgentMentions` |
-| A07 | Verified | `TestWakeupBudgetAndCycles` |
-| A08 | Verified | `TestSteeringReceipts` (pending → immediate; queued when no active attempt); explicit interrupt and restart for queued updates (`TestRegressionInterruptAndRestart`, composer unit test) |
-| A09 | Verified | `TestCancelJobTree`; unconfirmed termination is recorded as `unknown` (`applyTerminal`) |
-| A10 | Verified | `TestEventReplayAfterDisconnect` (gap-free replay from `Last-Event-ID`; `reset` for an unknown cursor). Browser simulation covers canonical event/page confirmation after a lost HTTP response without leaving an unsent duplicate. Runs are owned by hub and runner. |
-| A11 | Verified | `TestOutboxRedeliveryExecutesOnce` (outbox rows forced back to pending across a hub restart) |
-| A12 | Verified | Same test: the runner journal returns the original acknowledgement for a repeated command. A re-sent tool call returns its recorded result (`TestRegressionToolCallRetryRunsOnce`); terminal reports are settled only by an explicit, epoch-matched ack (`TestRegressionTerminalAckIsExplicit`). |
-| A13 | Verified | `TestPartitionProducesUnknownThenReconciles` |
+| A02 | Implemented | Ambiguous repositories are rejected with the options (`resolveScope`); runs never switch directories. Previously verified by `TestScopeIsExplicitInMultiProjectRoom`, removed with the fake provider (ADR 0004). |
+| A03 | Implemented | Previously verified by `TestIdempotentSendQuietRoomsAndAgentMentions`, removed with the fake provider (ADR 0004). |
+| A04 | Implemented | Previously verified by `TestEachMessageKeepsItsDestination`, removed with the fake provider (ADR 0004). |
+| A05 | Implemented | Previously verified by `TestSharedAccountSingleSlot`, removed with the fake provider (ADR 0004). |
+| A06 | Implemented | Previously verified by `TestIdempotentSendQuietRoomsAndAgentMentions`, removed with the fake provider (ADR 0004). |
+| A07 | Implemented | Previously verified by `TestWakeupBudgetAndCycles`, removed with the fake provider (ADR 0004). |
+| A08 | Implemented | Explicit interrupt and restart for queued updates (composer unit test). Steering receipts (pending → immediate; queued when no active attempt) were previously verified by `TestSteeringReceipts` and `TestRegressionInterruptAndRestart`, removed with the fake provider (ADR 0004). |
+| A09 | Implemented | Unconfirmed termination is recorded as `unknown` (`applyTerminal`). Previously verified by `TestCancelJobTree`, removed with the fake provider (ADR 0004). |
+| A10 | Verified | `TestEventReplayAfterDisconnect` (gap-free replay from `Last-Event-ID`; `reset` for an unknown cursor). Runs are owned by hub and runner. The browser simulation of a lost HTTP response ran against the removed demo (ADR 0004). |
+| A11 | Implemented | Previously verified by `TestOutboxRedeliveryExecutesOnce`, removed with the fake provider (ADR 0004). |
+| A12 | Verified | A re-sent tool call returns its recorded result (`TestRegressionToolCallRetryRunsOnce`); terminal reports are settled only by an explicit, epoch-matched ack (`TestRegressionTerminalAckIsExplicit`). The runner journal's original acknowledgement for a repeated command was verified by `TestOutboxRedeliveryExecutesOnce`, removed with the fake provider (ADR 0004). |
+| A13 | Implemented | Previously verified by `TestPartitionProducesUnknownThenReconciles`, removed with the fake provider (ADR 0004). |
 | A14 | Partial | Forge publications record a pending delivery before the network call and reconcile by marker before any retry. A push executed by a provider during a partition surfaces as an `unknown` run outcome; nothing replays it automatically. No end-to-end test. |
-| A15 | Verified | `TestProviderAllowanceWaits` (the account pauses until its reset; other work on that account is held with the reason and resumes by itself) |
-| A16 | Verified | `TestExactActionApprovals` (stale version, expiry, single use); checks go through the same policy (`TestRegressionRunCheckIsPolicedAndIsolated`) |
-| A17 | Verified | `TestPrivateCanaryIsolation` (context manifests, knowledge search, room search, decisions, replies; positive control); removed members are neither woken nor given new messages (`TestRegressionRemovedMemberNotRoutedOrLeaked`); deleted messages leave no copy in events, jobs, run context, or search (`TestRegressionRedactionIsComplete`) |
-| A18 | Verified | `TestAccessRevokedMidJob`; grant/membership changes invalidate provider sessions |
+| A15 | Implemented | The account pauses until its reset; other work on that account is held with the reason and resumes by itself. Previously verified by `TestProviderAllowanceWaits`, removed with the fake provider (ADR 0004). |
+| A16 | Implemented | Stale version, expiry and single use; checks go through the same policy. Previously verified by `TestExactActionApprovals` and `TestRegressionRunCheckIsPolicedAndIsolated`, removed with the fake provider (ADR 0004). |
+| A17 | Implemented | Context manifests, knowledge search, room search, decisions and replies stay private; removed members are neither woken nor given new messages; deleted messages leave no copy in events, jobs, run context, or search. Previously verified by `TestPrivateCanaryIsolation`, `TestRegressionRemovedMemberNotRoutedOrLeaked` and `TestRegressionRedactionIsComplete`, removed with the fake provider (ADR 0004). |
+| A18 | Implemented | Grant/membership changes invalidate provider sessions. Previously verified by `TestAccessRevokedMidJob`, removed with the fake provider (ADR 0004). |
 | A19 | Partial | Separate worktree and branch per job; reviews on fixed revisions. A project-level integration lock for merges is not implemented (yip performs no merges itself). |
-| A20 | Verified | `TestDoneWithoutEvidence`; `work_respond` can't complete the caller's own job (`TestRegressionWorkRespondCannotSelfComplete`) |
+| A20 | Implemented | `work_respond` can't complete the caller's own job. Previously verified by `TestDoneWithoutEvidence` and `TestRegressionWorkRespondCannotSelfComplete`, removed with the fake provider (ADR 0004). |
 | A21 | Withdrawn | The Overview conversation was removed with journey F ([0016](decisions/0016-no-overview.md)); status is still read from the ledger, never by waking an engineer |
-| A22 | Verified | `TestDecisionCorrection`; correction from the decision drawer keeps the sources (unit test) |
-| A23 | Verified | `TestIncompatibleMachineExplains`, `TestRegressionBillingGateAndAccountPin`, `TestRegressionProjectToolchainRequirement` |
-| A24 | Verified | Workspaces are never deleted automatically. Machines lists them with their work and what deleting loses; removal needs explicit selection, a named confirmation, and `force` for uncommitted/unpublished work, and is refused for open or in-use work (`TestRegressionRemoveWorkspaceFromMachines`, Machines unit test). CLI: `yip runner workspaces` / `cleanup`. |
+| A22 | Implemented | Correction from the decision drawer keeps the sources (unit test). Previously verified by `TestDecisionCorrection`, removed with the fake provider (ADR 0004). |
+| A23 | Verified (partial) | `TestRegressionBillingGateAndAccountPin`. Incompatible machines and project toolchain requirements were verified by `TestIncompatibleMachineExplains` and `TestRegressionProjectToolchainRequirement`, removed with the fake provider (ADR 0004). |
+| A24 | Implemented | Workspaces are never deleted automatically. Machines lists them with their work and what deleting loses; removal needs explicit selection, a named confirmation, and `force` for uncommitted/unpublished work, and is refused for open or in-use work (Machines unit test). CLI: `yip runner workspaces` / `cleanup`. Previously verified by `TestRegressionRemoveWorkspaceFromMachines`, removed with the fake provider (ADR 0004). |
 | A25 | Verified | `yip backup` / `yip restore` verified integrity, artifact hashes and record counts (25 Sep). On 28 Sep a new restored hub accepted the owner login and retained both real-provider approved results, reviewer records and 11 unique artifact blobs. Encrypted backups round-trip and refuse a wrong passphrase leaving nothing behind (`TestEncryptedBackupRoundTrip`, `internal/backupcrypt` tampering/truncation tests). |
-| A26 | Verified (WebKit, Chrome) | Real key presses in system WebKit: skip link, mentions, Enter to send, drawer focus trapping/return, search, and 200% zoom. Six installed-Chrome journeys also passed, including keyboard, drawers and search. Firefox untested. |
-| A27 | Verified (WebKit, Chrome) | System WebKit layouts at 390, 1024 and 1440 px, mobile controls and crowded selectors passed. Chrome mobile journey passed. Firefox untested. |
+| A26 | Implemented | On 28 September, real key presses in system WebKit covered the skip link, mentions, Enter to send, drawer focus trapping/return, search, and 200% zoom, and six installed-Chrome journeys covered keyboard, drawers and search. Those journeys ran against the removed demo (ADR 0004). Firefox untested. |
+| A27 | Implemented | On 28 September, system WebKit layouts at 390, 1024 and 1440 px, mobile controls, crowded selectors and a Chrome mobile journey passed. Those journeys ran against the removed demo (ADR 0004). Firefox untested. |
 | A28 | Verified in tested configuration | Real Codex edit/permission/resume and Claude MCP/permission smoke tests, independent team review, recall, cancellation/retry and restart durability passed. Cursor and other combinations remain unverified. |
 | A29 | Verified (partial) | Agent-authored mentions never wake anyone; tool arguments cannot set identity or scope (bridge binds the run token; hub derives authority from the lease). |
 | A30 | Incomplete | Service install exists; reboot behaviour not yet tested. Restarted runners report interrupted attempts as unknown (ADR 0009). |
 | A31 | Implemented | Each adapter excludes unapproved startup configuration (see `docs/compatibility.md`); verified against fakes only. |
-| A32 | Verified | `TestAtlasFixReviewLoop` |
-| A33 | Verified | `TestQuestionFlowAndLateReplies` |
-| A34 | Verified | `TestQuestionFlowAndLateReplies`, `TestReplyAfterCancelDoesNotRestart` |
-| A35 | Verified | `TestExactActionApprovals` (granted push proceeds without asking; exceptional request inline; engineers have no approval tool); commands are parsed, so `git -C . push` and similar spellings reach the same decision (`internal/hub/policy_test.go`). Routine checkout heredoc edits run without approval, while substitutions and consequential trailing commands retain exact-action approval (`TestRegressionHeredocEditNeedsNoApproval`). Decided cards collapse and reopen the exact action (web action tests). |
-| A36 | Verified | `TestHumanReviewPolicy` |
-| A37 | Verified | `TestAtlasFixReviewLoop` (author selects the security reviewer) |
-| A38 | Verified | `TestAtlasFixReviewLoop` (finding with file/line evidence; approval only of the revised head) |
-| A39 | Verified | `TestReviewDedupeAndRevisionBinding` (an old approval can't satisfy a new head); `TestWebhookSupersedesReviewOnNewCommits` (new PR commits schedule one new round). Every active reviewer must be satisfied on the current head (`TestRegressionCompletionNeedsEveryReviewer`). Real protected GitHub fixtures also verified that new commits dismiss stale approvals. |
-| A40 | Verified | `TestSharedCredentialCannotFabricateApproval` |
-| A41 | Verified | Duplicate review requests map to one round (`TestReviewDedupeAndRevisionBinding`); a replayed webhook delivery changes nothing (`TestWebhookSupersedesReviewOnNewCommits`); publications reconcile by marker before retry. |
-| A42 | Verified | `TestNoPermittedReviewer` names the missing project read access; initial and subsequent rounds also check room membership. With no colleague in the conversation at all, the owner reviews instead (`TestRegressionSoloEngineerOwnerReviews`) |
-| A43 | Verified | `TestDocumentReviewWithoutForge`, `TestRegressionDocumentCorrectionAndRereview`, `TestRegressionCorrectingApprovedDocumentRequiresNewApproval`: document review and completion use the same content hash, with or without a Git revision; corrected content requires re-review; reviewers inspect the exact stored artifact and reject a mismatched hash. |
-| A44 | Verified | `TestSharedCredentialCannotFabricateApproval` (failing checks, blocked merge, and internal approval shown as separate facts; nothing merged) |
+| A32 | Implemented | Previously verified by `TestAtlasFixReviewLoop`, removed with the fake provider (ADR 0004). |
+| A33 | Implemented | Previously verified by `TestQuestionFlowAndLateReplies`, removed with the fake provider (ADR 0004). |
+| A34 | Implemented | Previously verified by `TestQuestionFlowAndLateReplies` and `TestReplyAfterCancelDoesNotRestart`, removed with the fake provider (ADR 0004). |
+| A35 | Implemented | Engineers have no approval tool. Commands are parsed, so `git -C . push` and similar spellings reach the same decision (`internal/hub/policy_test.go`). Decided cards collapse and reopen the exact action (web action tests). A granted push proceeding without asking, the inline exceptional request and approval-free checkout heredoc edits were verified by `TestExactActionApprovals` and `TestRegressionHeredocEditNeedsNoApproval`, removed with the fake provider (ADR 0004). |
+| A36 | Implemented | Previously verified by `TestHumanReviewPolicy`, removed with the fake provider (ADR 0004). |
+| A37 | Implemented | The author selects the security reviewer. Previously verified by `TestAtlasFixReviewLoop`, removed with the fake provider (ADR 0004). |
+| A38 | Implemented | Findings carry file/line evidence; only the revised head can be approved. Previously verified by `TestAtlasFixReviewLoop`, removed with the fake provider (ADR 0004). |
+| A39 | Implemented | An old approval can't satisfy a new head; new PR commits schedule one new round; every active reviewer must be satisfied on the current head. Real protected GitHub fixtures verified that new commits dismiss stale approvals. Previously verified by `TestReviewDedupeAndRevisionBinding`, `TestWebhookSupersedesReviewOnNewCommits` and `TestRegressionCompletionNeedsEveryReviewer`, removed with the fake provider (ADR 0004). |
+| A40 | Implemented | Previously verified by `TestSharedCredentialCannotFabricateApproval`, removed with the fake provider (ADR 0004). |
+| A41 | Implemented | Duplicate review requests map to one round; a replayed webhook delivery changes nothing; publications reconcile by marker before retry. Previously verified by `TestReviewDedupeAndRevisionBinding` and `TestWebhookSupersedesReviewOnNewCommits`, removed with the fake provider (ADR 0004). |
+| A42 | Implemented | Missing project read access is named; initial and subsequent rounds also check room membership. With no colleague in the conversation at all, the owner reviews instead. Previously verified by `TestNoPermittedReviewer` and `TestRegressionSoloEngineerOwnerReviews`, removed with the fake provider (ADR 0004). |
+| A43 | Implemented | Document review and completion use the same content hash, with or without a Git revision; corrected content requires re-review; reviewers inspect the exact stored artifact and reject a mismatched hash. Previously verified by `TestDocumentReviewWithoutForge`, `TestRegressionDocumentCorrectionAndRereview` and `TestRegressionCorrectingApprovedDocumentRequiresNewApproval`, removed with the fake provider (ADR 0004). |
+| A44 | Implemented | Failing checks, blocked merge, and internal approval are shown as separate facts; nothing is merged. Previously verified by `TestSharedCredentialCannotFabricateApproval`, removed with the fake provider (ADR 0004). |
