@@ -3,6 +3,9 @@
 This guide covers installing the hub and runners, keeping them running,
 remote access, backups, upgrades, and where your data lives.
 
+For provider setup, start with [Connections](#connections): choose a tool,
+connect a machine, and check its local sign-in before assigning an engineer.
+
 ## Topology
 
 - **Hub** — one always-on machine. It serves the web client and API, owns the
@@ -91,7 +94,8 @@ Without just, run `docker compose -f packaging/container/compose.hub.yml up --bu
    `agent login`. yip never asks for or stores provider tokens. For private
    GitHub repositories, also `gh auth login` as that account
    ([Adding a repository](#adding-a-repository)).
-4. Run it: `yip runner --providers codex,claude,cursor --slots 2`.
+4. Run it: `yip runner --slots 2`. All supported real tools are enabled by
+   default; use `--providers` only to restrict which ones this machine may use.
 5. Check it: `yip doctor` shows identity, certificate expiry, journal, git,
    and each provider's version and sign-in state.
 
@@ -111,6 +115,48 @@ available on the machine as `yip runner workspaces` / `yip runner cleanup`.
 
 Revoke a machine from Machines. It can't regain authority by replaying its
 queue; its in-flight runs are marked unknown until reconciled.
+
+## Connections
+
+Open **Connections** (`/connections`) and choose a tool. Its guide (for
+example `/connections/codex`) walks through:
+
+1. Select a connected machine or pair one with **Add machine**.
+2. Install the official CLI on that machine, following the guide's link.
+3. Sign in locally with that CLI **as the OS user running the runner**.
+   Provider credentials stay on the machine; they are never uploaded to yip.
+4. Choose **Check connection** and wait for a fresh, asynchronous machine
+   report. Sending the check is not confirmation of a successful sign-in.
+5. Choose the provider on an engineer's profile once the report is ready.
+
+The stock adapters include the tools listed above, **OpenCode**, and
+**Pi Agent Harness**. A harness is not itself a model subscription: connect
+an eligible model account inside it, then choose that harness and its model
+on your engineer's profile. Cursor remains experimental.
+
+| Tool | Sign in on the runner machine | Choose in yip |
+|---|---|---|
+| OpenCode | `opencode auth login`, then select the model provider | OpenCode and a `provider/model` |
+| Pi Agent Harness | Start `pi`, run `/login`, and select the model provider | Pi Agent Harness and a `provider/model` |
+
+The runner enables both harnesses by default. If you set `--providers`
+explicitly, add `opencode,pi` to your existing list and restart it. For an
+embedded runner, update the hub's `--local-providers` list instead. The
+demo keeps real accounts disabled unless you opt in with
+`yip demo --with-providers opencode,pi`.
+
+Billing is reported separately from sign-in: **unknown is not a confirmed
+subscription**. API billing requires the engineer's explicit
+**Allow runs billed to an API key** opt-in.
+When a harness has both subscription and API accounts configured, yip
+conservatively requires that opt-in for the whole harness connection.
+
+Runners probe every five minutes or on a manual check. Signing in or
+installing a CLI on the runner's existing `PATH` needs a new probe, not a
+restart. Changing `PATH` or the enabled provider list requires restarting
+the runner with the updated environment or `--providers` option. For the
+embedded local runner, use `yip hub --local-runner --local-providers …` and
+restart the hub instead.
 
 ## Adding a repository
 

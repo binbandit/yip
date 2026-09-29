@@ -78,7 +78,7 @@ type Preferences struct {
 
 // ProviderPreference is an engineer's configured provider route.
 type ProviderPreference struct {
-	Provider  string `json:"provider"` // codex | claude | cursor | fake
+	Provider  string `json:"provider"` // adapter identifier from the provider catalog
 	Model     string `json:"model,omitempty"`
 	ProfileID string `json:"profileId,omitempty"`
 	// Alternatives are explicitly configured fallbacks. Empty means wait.

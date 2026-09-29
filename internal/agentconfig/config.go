@@ -11,6 +11,8 @@
 // and the global .claude.json mcpServers registry; Cursor skills and mcp.json.
 // Cursor's local login store is not a documented portable credential format,
 // so use an explicitly selected CURSOR_API_KEY or CURSOR_AUTH_TOKEN instead.
+// OpenCode and Pi import only their selected profile's opaque auth.json;
+// their isolated adapters do not inherit skills or MCP configuration.
 // File-backed login is conditional on the installed CLI storing it;
 // it does not import a macOS keychain login. No sessions, history, rules,
 // hooks, plugins, permission grants or account metadata are imported.
@@ -46,8 +48,9 @@ type Snapshot struct {
 
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// Stage imports only the selected provider and shared ~/.agents/skills. Missing
-// files are normal. Symlinks (including parent directories), sockets and other
+// Stage imports only the selected provider and, for providers supporting user
+// configuration, shared ~/.agents/skills. Missing files are normal.
+// Symlinks (including parent directories), sockets and other
 // special files are refused, not silently skipped; materialize skills as regular
 // files before importing. Config JSON/TOML is rebuilt from allowlisted fields,
 // excluding hooks, rules, permission grants, history, caches and helper commands.
@@ -68,7 +71,7 @@ func StageIn(parent, provider, workspace string, extraEnv []string) (snap Snapsh
 		workspace = filepath.Clean(workspace)
 	}
 	switch provider {
-	case "claude", "codex", "cursor", "fake":
+	case "claude", "codex", "cursor", "opencode", "pi", "fake":
 	default:
 		return snap, errors.New("agent config: unsupported provider")
 	}
@@ -107,6 +110,19 @@ func StageIn(parent, provider, workspace string, extraEnv []string) (snap Snapsh
 		return
 	}
 	b := &builder{dir: snap.Dir}
+	// These adapters deliberately isolate all non-authentication user config.
+	switch provider {
+	case "opencode":
+		src := configHome("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+		snap.Env = append(snap.Env, "XDG_DATA_HOME="+HOME+"/.local/share")
+		err = b.file(filepath.Join(src, "opencode", "auth.json"), ".local/share/opencode/auth.json")
+		return
+	case "pi":
+		src := configHome("PI_CODING_AGENT_DIR", filepath.Join(home, ".pi", "agent"))
+		snap.Env = append(snap.Env, "PI_CODING_AGENT_DIR="+HOME+"/.pi/agent")
+		err = b.file(filepath.Join(src, "auth.json"), ".pi/agent/auth.json")
+		return
+	}
 	if err = b.tree(filepath.Join(home, ".agents", "skills"), ".agents/skills"); err != nil {
 		return
 	}
@@ -175,7 +191,8 @@ func configHome(key, fallback string) string {
 func reserved(key string) bool {
 	switch key {
 	case "HOME", "PATH", "USER", "LOGNAME", "SHELL", "TMPDIR", "XDG_CONFIG_HOME",
-		"XDG_RUNTIME_DIR", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "CURSOR_CONFIG_DIR",
+		"XDG_DATA_HOME", "XDG_RUNTIME_DIR", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "CURSOR_CONFIG_DIR",
+		"PI_CODING_AGENT_DIR",
 		"SSH_AUTH_SOCK", "SSH_AGENT_PID", "DOCKER_HOST", "DOCKER_CONTEXT",
 		"LD_PRELOAD", "LD_LIBRARY_PATH", "NODE_OPTIONS", "PYTHONPATH":
 		return true

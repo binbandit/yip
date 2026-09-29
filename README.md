@@ -125,7 +125,7 @@ With an installed binary:
 yip hub                          # first run prints a one-time setup code
 # Machines → Add machine shows a pairing command; on each machine:
 yip runner pair --hub https://HUB:7443 --fingerprint sha256:… --token yipe_…
-yip runner --providers codex,claude,cursor
+yip runner --providers codex,claude,cursor,opencode,pi
 yip service install runner       # launchd (macOS) or systemd (Linux)
 ```
 
@@ -136,6 +136,19 @@ To run the hub and web client in Docker instead, use `just docker` (web on
 Sign in to each provider **with its own tool on each runner** (`codex login`,
 `claude auth login`, `agent login`). yip never collects, stores, or proxies
 provider credentials.
+
+Start in **Connections** (`/connections`): choose a tool, then follow its
+guide to select or pair a machine, install the official CLI, sign in locally
+as the runner's OS user, and **Check connection**. Wait for the machine's
+report before choosing an engineer's provider. See the short
+[connection guide](docs/operations.md#connections) for billing, supported
+adapters, and when to probe or restart.
+
+**OpenCode and Pi Agent Harness** can run engineers too. Connect the model
+account inside the harness (`opencode auth login`, or `pi` then `/login`),
+then select the harness and model in yip. These are model-access tools, not
+interchangeable subscriptions; the account you select determines usage
+limits and billing.
 
 Add code from **Projects → New project** with just a GitHub `owner/name`
 (`acme/atlas`) or any git URL your machines can clone. Private GitHub
@@ -152,6 +165,7 @@ Claude Code or Codex sign-in.
 | Hub (rooms, routing, jobs, runs, reviews, questions, approvals, decisions, scheduler, SSE, auth) | Implemented; covered by unit and in-process integration tests |
 | Runner (pairing, mTLS, journal, leases, worktrees, snapshots, checks, revisions, bridge) | Implemented; exercised by the integration suite on one machine |
 | Deterministic fake provider | Implemented (demo + failure injection) |
+| OpenCode and Pi Agent Harness adapters | Implemented with permission and bridge tests; real OpenCode handshake and Pi SDK tool restrictions checked without model calls. See [OpenCode](docs/adapter-opencode.md) and [Pi](docs/adapter-pi.md) for supported versions and limitations. Live account-backed work remains unverified. |
 | Codex, Claude Code, Cursor adapters | Real Codex edits and Claude conversation/review, cross-room recall, cancellation/retry and restart tested on 28 September. This machine's Codex rules prevent conversation/review mode; Cursor remains untested. See [compatibility](docs/compatibility.md). |
 | GitHub connector | Emulated tests plus 32 real scenarios in dedicated private/public playgrounds, including three-account collaboration and protected branches. See the [campaign](docs/simulations/2026-09-28.md). |
 | Web client | System WebKit and installed Chrome journeys passed. The [UX campaign](docs/simulations/2026-09-28-ux.md) covers onboarding, catch-up, interruptions, evidence and responsive navigation. Firefox remains untested. |
@@ -168,7 +182,7 @@ cmd/yip/                 hub, runner, bridge, doctor, backup, restore, service, 
 internal/hub/            canonical state: routing, jobs, runs, reviews, approvals, scheduler, tools
 internal/runner/         runner: journal, leases, workspaces, execution, local tools
 internal/bridge/         agent-facing MCP tools (stdio server) and runner socket
-internal/providers/      adapter contract + codex, claude, cursor, fake
+internal/providers/      adapter contract + codex, claude, cursor, opencode, pi, fake
 internal/forge/github/   GitHub PR/review connector
 internal/context/        context manifests and scope fingerprints
 internal/store/          SQLite schema, migrations, repositories
@@ -203,6 +217,7 @@ jobs on your normal hub.
 ```sh
 go test ./...            # unit + integration (≈1 min)
 just test-race           # unit + integration under the race detector
+node --test internal/providers/pi/host.test.mjs # Pi tool and billing guards
 just schema              # regenerate JSON Schemas and web types from protocol/*.go
 just test-dev            # dev-server lifecycle tests, including real Air restarts
 cd web && npm run dev    # frontend only; expects a hub on :7521 (override with YIP_HUB)

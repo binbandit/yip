@@ -10,9 +10,11 @@ Everything here uses your own account and allowance. yip never asks for,
 reads, or stores provider tokens: each provider signs in with its own tool,
 and yip asks the CLI whether it's signed in.
 
-## 1. Sign in where the work will run
+## 1. Prepare the CLI where the work will run
 
-On each machine that will run engineers, as the user the runner runs as:
+Install the official CLI on each machine that will run engineers, then
+sign in as the OS user the runner runs as. If you need installation links,
+start the hub below and use its **Connections** guide.
 
 ```sh
 claude auth login        # Claude Code: your Claude subscription
@@ -40,13 +42,21 @@ Other machines pair from **Machines → Add machine** ([operations](operations.m
 The dialog watches for the machine and, once it connects, shows each provider
 it found with its sign-in, billing, and account.
 
-## 3. Check Machines
+## 3. Check the connection
 
-For each machine, **Machines** shows every provider as *Signed in*, *Needs
-sign-in* (with the exact command to run there), or *Not installed*, along
-with its billing (subscription, API billed, or unknown) and account. After
-signing in, choose **Check sign-in again**. Otherwise the runner re-checks
-every five minutes.
+Open **Connections** (`/connections`), choose your tool, and follow its guide
+(for example `/connections/codex`). Select the machine you paired, or pair a
+new one there. The guide links to the official CLI installation and local
+login instructions; provider credentials are never uploaded to yip.
+
+Choose **Check connection** and wait for the asynchronous machine report,
+not just the check request to be accepted. It shows installation, sign-in,
+and billing state. **Unknown billing is not a confirmed subscription.**
+Probes also run every five minutes. Sign-in changes and installs on the
+runner's existing `PATH` need only a probe; changing `PATH` or enabled
+providers needs a runner restart. For the embedded runner, configure
+`yip hub --local-runner --local-providers …` and restart the hub.
+See [Connections](operations.md#connections) for the adapter support boundary.
 
 **Runs at once on this account** defaults to 1. Runs on one account share
 its allowance, so raise it only if your plan allows. If the allowance runs
@@ -96,7 +106,7 @@ What to expect:
 
 | You see | Meaning | Do |
 |---|---|---|
-| *Provider needs sign-in* | The CLI on that machine isn't signed in, or its sign-in expired | Run the command shown, then **Check sign-in again** |
+| *Provider needs sign-in* | The CLI on that machine isn't signed in, or its sign-in expired | Run the command shown, then **Connections → Check connection** |
 | *Allowance reached* / account paused | The account's usage limit was hit | Nothing: it resumes at the reset time |
 | *Waiting for a machine* | No connected machine has the provider signed in, or all are busy | See Machines; the reason names the machine |
 | *billed to an API key* | Only an API-billed installation could run it | Allow API billing on the engineer, or sign in with a subscription |

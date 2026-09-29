@@ -26,8 +26,9 @@ authentication and toolchain probes run **inside the image**, not against host
 executables. An unavailable Docker engine stops startup; it is never treated
 as permission to execute on the host.
 
-The supplied image includes pinned `codex` and `claude` CLIs, Git, Go, Node,
-and Python. Extend it deliberately for other toolchains, a pinned Cursor CLI,
+The supplied image includes pinned `codex`, `claude`, `opencode` (1.18.33)
+and `pi` (0.87.1) CLIs, Git, Go, Node 22 (>=22.19), Bash and Python.
+Extend it deliberately for other toolchains, a pinned Cursor CLI,
 or local MCP dependencies. Images are never pulled or rebuilt automatically.
 Run the runner as a non-root account with access to a local Linux Docker
 engine (including Docker Desktop). Remote Docker endpoints are rejected.
@@ -69,7 +70,10 @@ engine (including Docker Desktop). Remote Docker endpoints are rejected.
   execution controls are rejected. Selecting an API key can change billing
   from a subscription to API usage; no host API keys are silently forwarded.
 
-Skills and imported MCP servers are enabled for editing attempts only.
+For providers supporting inherited configuration, skills and imported MCP
+servers are enabled for editing attempts only. OpenCode and Pi retain their
+isolated configuration in all modes: only authentication is imported, never
+host skills, plugins, extensions, agents, models, settings or MCP servers.
 Conversation/review attempts retain the providers' stricter read-only
 configuration and a read-only workspace mount. Native runners retain their
 existing configuration restrictions.
@@ -89,6 +93,17 @@ automatically portable**. yip does not extract keychain secrets. Use a
 provider-supported token/API-key environment variable when no portable login
 exists. Cursor requires an explicitly supplied supported authentication
 variable; no undocumented credential file is guessed.
+
+OpenCode imports `${XDG_DATA_HOME:-$HOME/.local/share}/opencode/auth.json`
+to `/home/yip/.local/share/opencode/auth.json`. Pi imports
+`${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/auth.json` to
+`/home/yip/.pi/agent/auth.json`. Both files are copied opaquely within the
+import size limits, including any model-provider accounts in the selected
+profile. Auth-file helper references, if supported by the harness, still
+need trusted Linux executables/dependencies inside the image; host helpers
+are not copied. `XDG_DATA_HOME` and `PI_CODING_AGENT_DIR` are remapped to
+controlled container paths and cannot be supplied through `--docker-env`.
+Any environment-based authentication must be explicitly selected.
 
 Imports respect supported provider config-home overrides, but do not copy
 arbitrary settings, hooks, plugins or permission grants. Symlinked imported

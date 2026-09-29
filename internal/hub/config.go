@@ -12,10 +12,12 @@ import (
 )
 
 var knownProviders = map[string]string{
-	"codex":  "Codex",
-	"claude": "Claude Code",
-	"cursor": "Cursor",
-	"fake":   "Fake provider (deterministic)",
+	"codex":    "Codex",
+	"claude":   "Claude Code",
+	"cursor":   "Cursor",
+	"opencode": "OpenCode",
+	"pi":       "Pi Agent Harness",
+	"fake":     "Fake provider (deterministic)",
 }
 
 // ProviderLabel returns the user-facing provider name.
@@ -52,7 +54,7 @@ func (h *Hub) GetEngineer(ctx context.Context, id string) (protocol.Engineer, []
 
 func validateProvider(p protocol.ProviderPreference) error {
 	if _, ok := knownProviders[p.Provider]; !ok {
-		return domain.Invalid("Choose a provider: Codex, Claude Code, or Cursor.")
+		return domain.Invalid("Choose a supported tool from Connections.")
 	}
 	for _, alt := range p.Alternatives {
 		if _, ok := knownProviders[alt]; !ok || alt == p.Provider {

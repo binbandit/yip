@@ -4,7 +4,7 @@
   // elapsed-time "working" pill. Selection is a grey wash, never a colour.
   // Every marker has a visually hidden text equivalent.
   import { Badge, DropdownMenu, Icon, IconButton, Kbd, SideNav, SideNavItem, SideNavSection, Text, Tooltip, VisuallyHidden, useSideNavRenderMode } from '@astryx-svelte/core';
-  import { BellOff, Folder, Hash, LayoutDashboard, Lock, LogOut, MessageSquare, Monitor, Moon, Pencil, Plus, Search, Settings, Sun, Users } from '@lucide/svelte';
+  import { BellOff, Folder, Hash, LayoutDashboard, Lock, LogOut, MessageSquare, Monitor, Moon, Pencil, Plug, Plus, Search, Settings, Sun, Users } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { roomsWithDrafts } from '../lib/state/drafts';
   import { workspaceUrl } from '../lib/workspace';
@@ -144,6 +144,7 @@
 {#snippet engineersIcon()}<Icon icon={Users} size="sm" color="secondary" />{/snippet}
 {#snippet projectsIcon()}<Icon icon={Folder} size="sm" color="secondary" />{/snippet}
 {#snippet machinesIcon()}<Icon icon={Monitor} size="sm" color="secondary" />{/snippet}
+{#snippet connectionsIcon()}<Icon icon={Plug} size="sm" color="secondary" />{/snippet}
 {#snippet roomIcon()}<Icon icon={Hash} size="sm" color="secondary" />{/snippet}
 {#snippet privateRoomIcon()}<Icon icon={Lock} size="sm" color="secondary" />{/snippet}
 {#snippet dmIcon()}<Icon icon={MessageSquare} size="sm" color="secondary" />{/snippet}
@@ -187,6 +188,7 @@
     <SideNavItem label="Engineers" icon={engineersIcon} href={workspaceUrl('/engineers')} onclick={go} isSelected={route.name === 'engineers' || route.name === 'engineer'} />
     <SideNavItem label="Projects" icon={projectsIcon} href={workspaceUrl('/projects')} onclick={go} isSelected={route.name === 'projects' || route.name === 'project'} />
     <SideNavItem label="Machines" icon={machinesIcon} href={workspaceUrl('/machines')} onclick={go} isSelected={route.name === 'machines'} />
+    <SideNavItem label="Connections" icon={connectionsIcon} href={workspaceUrl('/connections')} onclick={go} isSelected={route.name === 'connections'} />
   </SideNavSection>
 
   <SideNavSection title="Rooms">

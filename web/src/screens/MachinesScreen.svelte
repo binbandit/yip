@@ -7,6 +7,7 @@
   import { Button, EmptyState, Icon } from '@astryx-svelte/core';
   import { Plus } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
   import { nodesDigest, providerProfiles } from '../lib/state/profiles.svelte';
   import Screen from '../components/Screen.svelte';
@@ -37,6 +38,7 @@
 
 <Screen title="Machines" subtitle="The computers your engineers’ work runs on. Closing this window doesn’t stop that work." width={1120} class="machines-screen">
   {#snippet actions()}
+    <Button label="Connect subscription" href={workspaceUrl('/connections')} />
     <Button label="Add machine" variant="primary" onclick={() => (adding = true)}>
       {#snippet icon()}<Icon icon={Plus} size="sm" />{/snippet}
     </Button>
