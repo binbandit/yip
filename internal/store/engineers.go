@@ -6,7 +6,7 @@ import (
 	"github.com/binbandit/yip/protocol"
 )
 
-const engineerCols = `e.id, e.org_id, e.handle, e.hue, e.archived, e.created_at, e.updated_at, e.version,
+const engineerCols = `e.id, e.org_id, e.handle, e.hue, COALESCE(e.avatar_id, ''), e.archived, e.created_at, e.updated_at, e.version,
 	v.id, v.version_no, v.name, v.role, v.description, v.instructions, v.capability_tags, v.provider`
 
 const engineerFrom = ` FROM engineers e JOIN engineer_versions v ON v.id = e.current_version_id`
@@ -15,7 +15,7 @@ func scanEngineer(s scanner) (protocol.Engineer, error) {
 	var e protocol.Engineer
 	var archived int
 	var created, updated, tags, prov string
-	err := s.Scan(&e.ID, &e.OrgID, &e.Handle, &e.Hue, &archived, &created, &updated, &e.Version,
+	err := s.Scan(&e.ID, &e.OrgID, &e.Handle, &e.Hue, &e.AvatarID, &archived, &created, &updated, &e.Version,
 		&e.VersionID, &e.VersionNo, &e.Name, &e.Role, &e.Description, &e.Instructions, &tags, &prov)
 	e.Archived = archived == 1
 	e.CreatedAt, e.UpdatedAt = parseTS(created), parseTS(updated)
@@ -56,6 +56,13 @@ func SetEngineerVersion(ctx context.Context, q Q, id, versionID, handle string, 
 func SetEngineerArchived(ctx context.Context, q Q, id string, archived bool, expectVersion int64) (bool, error) {
 	return oneRow(q.ExecContext(ctx, `UPDATE engineers SET archived = ?, updated_at = ?, version = version + 1 WHERE id = ? AND version = ?`,
 		b2i(archived), ts(nowUTC()), id, expectVersion))
+}
+
+// SetEngineerAvatar sets (or, with "", clears) the engineer's picture. It
+// isn't configuration, so no new version is written.
+func SetEngineerAvatar(ctx context.Context, q Q, id, artifactID string) (bool, error) {
+	return oneRow(q.ExecContext(ctx, `UPDATE engineers SET avatar_id = ?, updated_at = ?, version = version + 1 WHERE id = ?`,
+		nullStr(artifactID), ts(nowUTC()), id))
 }
 
 func GetEngineer(ctx context.Context, q Q, id string) (protocol.Engineer, error) {

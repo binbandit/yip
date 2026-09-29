@@ -43,6 +43,8 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `GET /v1/bootstrap` | → `Bootstrap` (user, org, rooms with unread/mention counts, engineers, projects, nodes, provider summary, `cursor`, `csrfToken`, preferences, `demo`) |
 | `PUT /v1/preferences` | `PreferencesRequest` → `Preferences` |
 | `PATCH /v1/profile` | `ProfileRequest` (`name`, 1–80 characters; whitespace is collapsed) → `User`. The handle can't be changed: it signs in and is how engineers mention you. Engineers use the new name from their next run |
+| `PUT/DELETE /v1/profile/avatar` | raw body: your profile picture (PNG, JPEG, GIF — animated too — or WebP; up to 10 MB and 8,192 px a side) → `User` with `avatarId` / remove it → `User`. The format is read from the bytes, never the declared type; anything else (SVG included) is refused |
+| `GET /v1/avatars/{id}` | a profile picture's bytes, served as its image type with a sandbox CSP and cached immutably (a new picture gets a new ID). Only pictures are served here |
 | `GET/POST /v1/rooms` | → `Room[]` / `CreateRoomRequest` → `Room` |
 | `GET/PATCH /v1/rooms/{id}` | → `Room` / `UpdateRoomRequest` (with `version`) → `Room` |
 | `GET /v1/rooms/{id}/members/{engineerId}/preview` | → `MembershipPreview` (show before adding) |
@@ -58,6 +60,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `POST /v1/messages/{id}/reactions` | `ReactRequest` → `Message` |
 | `PATCH/DELETE /v1/messages/{id}` | `{body}` → `Message` / redact own message |
 | `GET/POST /v1/engineers`, `GET/PATCH /v1/engineers/{id}` | `GET {id}` → `{engineer, versions}`. `provider` carries `model`, an optional `profileId` pin (only that account runs this engineer's work) and `allowApiBilling` (off: never run on an API-key-billed install) |
+| `PUT/DELETE /v1/engineers/{id}/avatar` | raw body: the engineer's picture, as for `/v1/profile/avatar` → `Engineer` with `avatarId`. A picture isn't configuration: it bumps `version` but writes no new config version, and running work is unaffected |
 | `GET/POST /v1/projects`, `GET/PATCH /v1/projects/{id}` | `policy.requires` lists what a machine needs for the project's work (a reported tool such as `go`, `node`, `docker`, `cargo`, `swift`, `xcodebuild`, or `os:darwin`/`os:linux`); work waits, naming what's missing, rather than running elsewhere |
 | `PUT /v1/projects/{id}/repos/{repoId\|new}` | `PutRepoRequest` → `Project` |
 | `POST /v1/projects/{id}/repos/import?name=&branch=&repo=` | raw body: a git bundle (`git bundle create <file> --all`, up to 512 MB) → `Project`. For code with no remote the machines can reach: they build their copy from the bundle (`Repo.sourceBundleId`, `importedAt`); nothing can be pushed from it. `repo=` replaces an imported repository's bundle with a newer one. Partial bundles (with prerequisites) are refused |
@@ -86,7 +89,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `GET /v1/artifacts/{id}[?download=1]` | artifact bytes; text types render as plain text, never HTML |
 | `GET /v1/diagnostics` | → `Diagnostics` |
 | `GET /v1/diagnostics/bundle` | → `DiagnosticBundle`: the opt-in troubleshooting export (counts, health, versions, redacted recent failures; no messages, prompts, code, account names or credentials) |
-| `GET /v1/export` | zip of rooms, messages, jobs, decisions, artifacts |
+| `GET /v1/export` | zip of rooms, messages, jobs, decisions, artifacts (profile pictures included, as `avatar` artifacts) |
 | `GET /v1/events` | SSE (below) |
 
 ## Event stream
@@ -115,7 +118,7 @@ Committed event types and their `payload`:
 | `room.created`, `room.updated` | `Room` |
 | `room.member_added`, `room.member_removed` | `{room, engineerId}` |
 | `read.updated` | `{roomId, seq}` |
-| `user.updated` | `User` (the owner renamed themselves) |
+| `user.updated` | `User` (the owner renamed themselves or changed their picture) |
 | `engineer.created`, `engineer.updated` | `Engineer` |
 | `project.created`, `project.updated` | `Project` |
 | `job.created`, `job.updated` | `Job` |

@@ -10,6 +10,7 @@
   import StateIcon from '../components/StateIcon.svelte';
   import Screen from '../components/Screen.svelte';
   import ScreenSection from '../components/ScreenSection.svelte';
+  import AvatarPicker from '../components/AvatarPicker.svelte';
 
   // TextInput forwards unknown attributes to its <input>; the hub allows 80 characters.
   const nameHints = { autocomplete: 'name', maxlength: 80 };
@@ -102,6 +103,11 @@
 <Screen title="Settings" subtitle="{app.me?.name} · @{app.me?.handle} · {app.data.org?.name}" width={760}>
   <div class="groups">
     <ScreenSection title="Profile" id="set-profile" class="group">
+      {#if app.me}
+        <div class="picture">
+          <AvatarPicker actor={{ kind: 'user', id: app.me.id }} hasPicture={!!app.me.avatarId} onchange={(p) => app.setMyPicture(p)} />
+        </div>
+      {/if}
       <form class="body" onsubmit={saveName}>
         <div class="field">
           <TextInput
@@ -284,6 +290,9 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-2);
+  }
+  .picture {
+    margin-bottom: var(--spacing-4);
   }
   .field {
     width: min(100%, 360px);

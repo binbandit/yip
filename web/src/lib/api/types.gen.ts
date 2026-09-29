@@ -293,6 +293,7 @@ export interface Engineer {
   capabilityTags: string[];
   provider: ProviderPreference;
   hue: number;
+  avatarId?: string;
   archived: boolean;
   versionId: string;
   versionNo: number;
@@ -1073,6 +1074,7 @@ export interface User {
   orgId: string;
   name: string;
   handle: string;
+  avatarId?: string;
   createdAt: string;
 }
 

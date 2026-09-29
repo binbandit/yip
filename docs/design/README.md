@@ -33,6 +33,8 @@ Components and app CSS use Astryx's tokens only (`cd web && npx @astryx-svelte/c
 
 Engineers' avatars tint Astryx's avatar fallback with `hsl(engineer.hue …)`: day 34% saturation and 91% lightness for the tint with a 27% initial; night a 26% tint with an 88% initial.
 
+A profile picture (the owner's from Settings, an engineer's from Edit profile) replaces the initial and keeps the avatar's shape, cropped to fill it. Animated GIFs play; when reduced motion is preferred, every picture shows its first frame instead (`lib/util/avatars.ts` draws it to a canvas). See [ADR 0014](../decisions/0014-profile-pictures.md).
+
 ### Contrast checks (WCAG 2.2 AA)
 
 `node web/scripts/contrast.mjs` recomputes these from the theme's actual values. Every text pair we use passes 4.5:1.
@@ -97,7 +99,7 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
 
   Clicking a row opens the job drawer. "Add to this" scopes the composer to that job. The strip collapses to three rows plus "Show all N".
 - **Message row:**
-  - Engineers have **rounded-square** avatars and the human has a **circle**; shape is the only distinction.
+  - Engineers have **rounded-square** avatars and the human has a **circle**; shape is the only distinction, with or without a picture.
   - The first message of a group shows the name, the engineer's role in quiet text ("Mira · Platform engineer"), and the time. Consecutive messages from the same author within 10 minutes compact, so the role appears once per group rather than on every message.
   - A question asked of you sits on a soft amber wash until it is answered.
   - A job, review, PR, decision or file is linked with a chip only on the first message that mentions it in the view; later messages about the same work stay plain.

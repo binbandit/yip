@@ -19,3 +19,4 @@ criteria.
 | [0011](0011-delivery-and-completion.md) | Delivery, wakeup, and completion invariants from the backend review |
 | [0012](0012-visual-direction.md) | The web client looks like Buzz, not the spec's concept; the concept was removed |
 | [0013](0013-astryx-design-system.md) | The web client is built on Astryx (astryx-svelte) with a yip theme over neutral |
+| [0014](0014-profile-pictures.md) | The owner can give themselves and engineers profile pictures (GIFs too); shape still tells engineers from the human |

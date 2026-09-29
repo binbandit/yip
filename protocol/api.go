@@ -61,6 +61,7 @@ type User struct {
 	OrgID     string    `json:"orgId"`
 	Name      string    `json:"name"`
 	Handle    string    `json:"handle"`
+	AvatarID  string    `json:"avatarId,omitempty"` // picture at /v1/avatars/{id}; empty shows the initial
 	CreatedAt time.Time `json:"createdAt"`
 }
 
@@ -116,6 +117,7 @@ type Engineer struct {
 	CapabilityTags []string           `json:"capabilityTags"`
 	Provider       ProviderPreference `json:"provider"`
 	Hue            int                `json:"hue"`
+	AvatarID       string             `json:"avatarId,omitempty"` // picture at /v1/avatars/{id}; not versioned configuration
 	Archived       bool               `json:"archived"`
 	VersionID      string             `json:"versionId"`
 	VersionNo      int                `json:"versionNo"`
@@ -401,7 +403,7 @@ type Artifact struct {
 	Name        string    `json:"name"`
 	ContentType string    `json:"contentType"`
 	Size        int64     `json:"size"`
-	Kind        string    `json:"kind"` // diff | log | file | checkpoint | document | bundle
+	Kind        string    `json:"kind"` // diff | log | file | checkpoint | document | bundle | avatar
 	RunID       string    `json:"runId,omitempty"`
 	JobID       string    `json:"jobId,omitempty"`
 	RoomID      string    `json:"roomId,omitempty"`

@@ -135,12 +135,12 @@ type UserRow struct {
 	Preferences  protocol.Preferences
 }
 
-const userCols = `id, org_id, name, handle, password_hash, preferences, created_at`
+const userCols = `id, org_id, name, handle, COALESCE(avatar_id, ''), password_hash, preferences, created_at`
 
 func scanUser(s scanner) (UserRow, error) {
 	var u UserRow
 	var prefs, created string
-	err := s.Scan(&u.ID, &u.OrgID, &u.Name, &u.Handle, &u.PasswordHash, &prefs, &created)
+	err := s.Scan(&u.ID, &u.OrgID, &u.Name, &u.Handle, &u.AvatarID, &u.PasswordHash, &prefs, &created)
 	unjs(prefs, &u.Preferences)
 	u.CreatedAt = parseTS(created)
 	return u, err
@@ -185,6 +185,11 @@ func SetUserName(ctx context.Context, q Q, id, name string) error {
 func SetUserPreferences(ctx context.Context, q Q, id string, p protocol.Preferences) error {
 	_, err := q.ExecContext(ctx, `UPDATE users SET preferences = ?, version = version + 1 WHERE id = ?`, js(p), id)
 	return err
+}
+
+// SetUserAvatar sets (or, with "", clears) the user's picture.
+func SetUserAvatar(ctx context.Context, q Q, id, artifactID string) (bool, error) {
+	return oneRow(q.ExecContext(ctx, `UPDATE users SET avatar_id = ?, version = version + 1 WHERE id = ?`, nullStr(artifactID), id))
 }
 
 // ---- sessions ----
