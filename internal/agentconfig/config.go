@@ -53,12 +53,20 @@ var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // excluding hooks, rules, permission grants, history, caches and helper commands.
 // Environment values are never interpolated into errors.
 func Stage(provider string, extraEnv []string) (snap Snapshot, err error) {
-	return StageIn("", provider, extraEnv)
+	return StageIn("", provider, "", extraEnv)
 }
 
 // StageIn uses a caller-owned private staging directory so a supervising runner
 // can reap abandoned imports after a crash. Empty parent uses the OS temp dir.
-func StageIn(parent, provider string, extraEnv []string) (snap Snapshot, err error) {
+// When workspace is nonempty, only that exact host workspace's local MCP scope
+// is selected and remapped to /workspace. Probes have no selected workspace.
+func StageIn(parent, provider, workspace string, extraEnv []string) (snap Snapshot, err error) {
+	if workspace != "" {
+		if !filepath.IsAbs(workspace) {
+			return snap, errors.New("agent config: selected workspace must be absolute")
+		}
+		workspace = filepath.Clean(workspace)
+	}
 	switch provider {
 	case "claude", "codex", "cursor", "fake":
 	default:
@@ -131,7 +139,7 @@ func StageIn(parent, provider string, extraEnv []string) (snap Snapshot, err err
 			registry = filepath.Join(src, ".claude.json")
 			destination = ".claude/.claude.json"
 		}
-		err = b.config(registry, destination, false, "mcpServers")
+		err = b.registry(registry, destination, workspace)
 	case "cursor":
 		src := os.Getenv("CURSOR_CONFIG_DIR")
 		if src == "" {
@@ -348,12 +356,12 @@ func (b *builder) copyTree(dir *os.File, dst string, depth int) error {
 	}
 }
 
-func (b *builder) config(src, dst string, isTOML bool, keys ...string) error {
+func (b *builder) readConfig(src string, isTOML bool) (map[string]any, error) {
 	data, err := b.read(src)
 	if errors.Is(err, os.ErrNotExist) {
 		data = nil
 	} else if err != nil {
-		return safeError(err)
+		return nil, safeError(err)
 	}
 	all := map[string]any{}
 	if len(data) > 0 {
@@ -363,8 +371,16 @@ func (b *builder) config(src, dst string, isTOML bool, keys ...string) error {
 			err = json.Unmarshal(data, &all)
 		}
 		if err != nil {
-			return errors.New("agent config: invalid selected config; fix its JSON/TOML syntax before importing")
+			return nil, errors.New("agent config: invalid selected config; fix its JSON/TOML syntax before importing")
 		}
+	}
+	return all, nil
+}
+
+func (b *builder) config(src, dst string, isTOML bool, keys ...string) error {
+	all, err := b.readConfig(src, isTOML)
+	if err != nil {
+		return err
 	}
 	selected := map[string]any{}
 	for _, k := range keys {
@@ -372,8 +388,51 @@ func (b *builder) config(src, dst string, isTOML bool, keys ...string) error {
 			selected[k] = v
 		}
 	}
-	// The bridge is supplied afresh for each run. Never merge a host definition
-	// into it, or import MCP-specific permission bypasses.
+	sanitizeMCP(selected)
+	var data []byte
+	if isTOML {
+		selected["cli_auth_credentials_store"] = "file"
+		data, err = toml.Marshal(selected)
+	} else {
+		data, err = json.Marshal(selected)
+	}
+	if err != nil {
+		return errors.New("agent config: cannot encode selected configuration")
+	}
+	return b.write(dst, data)
+}
+
+// registry preserves user and selected local scopes, never a whole projects
+// record: those records also contain trust grants and unrelated project data.
+func (b *builder) registry(src, dst, workspace string) error {
+	all, err := b.readConfig(src, false)
+	if err != nil {
+		return err
+	}
+	selected := map[string]any{}
+	if servers, ok := all["mcpServers"]; ok {
+		selected["mcpServers"] = servers
+	}
+	sanitizeMCP(selected)
+	if projects, ok := all["projects"].(map[string]any); ok && workspace != "" {
+		if project, ok := projects[workspace].(map[string]any); ok {
+			if servers, ok := project["mcpServers"].(map[string]any); ok {
+				scoped := map[string]any{"mcpServers": servers}
+				sanitizeMCP(scoped)
+				selected["projects"] = map[string]any{"/workspace": scoped}
+			}
+		}
+	}
+	data, err := json.Marshal(selected)
+	if err != nil {
+		return errors.New("agent config: cannot encode selected configuration")
+	}
+	return b.write(dst, data)
+}
+
+// The bridge is supplied afresh for each run. Never merge a host definition
+// into it, or import MCP-specific permission bypasses, in any selected scope.
+func sanitizeMCP(selected map[string]any) {
 	for _, key := range []string{"mcp_servers", "mcpServers"} {
 		if servers, ok := selected[key].(map[string]any); ok {
 			delete(servers, "yip")
@@ -386,14 +445,4 @@ func (b *builder) config(src, dst string, isTOML bool, keys ...string) error {
 			}
 		}
 	}
-	if isTOML {
-		selected["cli_auth_credentials_store"] = "file"
-		data, err = toml.Marshal(selected)
-	} else {
-		data, err = json.Marshal(selected)
-	}
-	if err != nil {
-		return errors.New("agent config: cannot encode selected configuration")
-	}
-	return b.write(dst, data)
 }

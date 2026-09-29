@@ -237,7 +237,11 @@ func (r *Runner) startDocker(ctx context.Context, ar *activeRun, spec providers.
 	if err != nil {
 		return nil, err
 	}
-	snapshot, err := agentconfig.StageIn(staging, ar.m.Provider, r.opts.Docker.Env)
+	hostWorkspace, err := filepath.Abs(ar.ws.Dir)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := agentconfig.StageIn(staging, ar.m.Provider, hostWorkspace, r.opts.Docker.Env)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +283,7 @@ func (r *Runner) probeDocker(ctx context.Context, name string) (inst protocol.Pr
 	if err != nil {
 		return unavailable(err)
 	}
-	snapshot, err := agentconfig.StageIn(staging, name, r.opts.Docker.Env)
+	snapshot, err := agentconfig.StageIn(staging, name, "", r.opts.Docker.Env)
 	if err != nil {
 		return unavailable(err)
 	}

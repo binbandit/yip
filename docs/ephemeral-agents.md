@@ -92,6 +92,12 @@ selected config directory if needed.
 
 MCP **configuration is portable; arbitrary host processes are not**:
 
+- For `.claude.json`, user-scope servers are imported along with the selected
+  host job workspace's local-scope `mcpServers` entry, remapped to `/workspace`. Other
+  projects' entries and trust/permission grants are not copied. A local entry
+  for a different checkout is not implicitly assigned to a runner job: make
+  the intended server user-scoped, or configure it in the job's workspace.
+  Provider probes have no selected project and import user scope only.
 - A stdio MCP executable, its dependencies and referenced files must exist
   inside the image/workspace. Host absolute paths are not mounted or silently
   rewritten.
