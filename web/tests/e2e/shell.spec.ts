@@ -3,25 +3,27 @@
 import { expect, test } from './fixtures';
 import { composer, draftSaved, openRoom, sidebar } from './helpers';
 
-test('the sidebar reaches every page, marks the current one and titles the tab', async ({ app: page }) => {
+test('the sidebar reaches every page, marks the current one and titles the tab', async ({ app: page, api }) => {
   const nav = sidebar(page);
-  await expect(page).toHaveTitle('Overview · yip');
+  const workspaceName: string = api.bootstrap.org.name;
+  await expect(page).toHaveTitle(`Overview · ${workspaceName} · yip`);
   await expect(nav.getByRole('link', { name: 'Overview', exact: true })).toHaveAttribute('aria-current', 'page');
   for (const [name, path] of [
     ['Engineers', '/engineers'],
     ['Projects', '/projects'],
     ['Machines', '/machines'],
+    ['Connections', '/connections'],
   ] as const) {
     await nav.getByRole('link', { name, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
     await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
-    await expect(page).toHaveTitle(`${name} · yip`);
+    await expect(page).toHaveTitle(`${name} · ${workspaceName} · yip`);
     await expect(nav.getByRole('link', { name, exact: true })).toHaveAttribute('aria-current', 'page');
   }
   await openRoom(page, 'Engineering');
-  await expect(page).toHaveTitle('Engineering · yip');
+  await expect(page).toHaveTitle(`Engineering · ${workspaceName} · yip`);
   await expect(nav.getByRole('link', { name: /^Engineering/ })).toHaveAttribute('aria-current', 'page');
-  await nav.getByRole('link', { name: 'yip — Overview' }).click();
+  await nav.getByRole('link', { name: 'Overview', exact: true }).click();
   await expect(page).toHaveURL(/\/overview$/);
 });
 

@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { signIn } from './helpers';
 
-test('find and follow a subscription connection guide', async ({ page }) => {
-  await signIn(page);
+test('find and follow a subscription connection guide', async ({ page, hub }) => {
+  await signIn(page, hub);
   await page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name: 'Connections', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Connections', exact: true })).toBeVisible();
   await expect(page.getByText('The demo is not a subscription connection')).toHaveCount(0);
@@ -20,9 +20,9 @@ test('find and follow a subscription connection guide', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Connect Codex', exact: true })).toBeVisible();
 });
 
-test('mobile harness connection navigation stays usable', async ({ page }) => {
+test('mobile harness connection navigation stays usable', async ({ page, hub }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await signIn(page);
+  await signIn(page, hub);
   await page.getByRole('button', { name: 'Rooms and navigation' }).click();
   await page.getByRole('dialog', { name: 'Rooms and navigation' }).getByRole('link', { name: 'Connections', exact: true }).click();
   await page.getByRole('link', { name: 'Set up Pi Agent Harness' }).click();
@@ -38,8 +38,8 @@ test('mobile harness connection navigation stays usable', async ({ page }) => {
   expect(await page.locator('.screen').evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
 });
 
-test('connection setup stays in its workspace, including links opened in a new tab', async ({ page, context }) => {
-  await signIn(page);
+test('connection setup stays in its workspace, including links opened in a new tab', async ({ page, context, hub }) => {
+  await signIn(page, hub);
   const initial = await (await page.request.get('/v1/bootstrap')).json();
   await page.getByRole('button', { name: `Workspace: ${initial.org.name}`, exact: true }).click();
   await page.getByRole('menuitem', { name: 'Create workspace', exact: true }).click();
