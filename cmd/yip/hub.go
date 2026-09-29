@@ -270,6 +270,14 @@ func runHub(args []string) error {
 		fmt.Printf("\nNo owner exists yet. Finish setup in your browser:\n\n  http://%s/setup\n\nOne-time setup code (expires %s): %s\n\n", displayAddr(f.listen), exp.Local().Format("15:04"), secret)
 	}
 	if f.localRunner {
+		// Pairing needs the organisation that owner setup creates.
+		for need, _ := h.NeedsSetup(ctx); need; need, _ = h.NeedsSetup(ctx) {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(time.Second):
+			}
+		}
 		stopRunner, err := startLocalRunner(ctx, h, f, log)
 		if err != nil {
 			return err
