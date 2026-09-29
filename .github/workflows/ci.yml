@@ -14,8 +14,136 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # A check is skipped when this pull request changes none of the files it
+  # reads (main, which takes only code that passed every check in the merge
+  # queue, already passed with them), or when an earlier run of this pull
+  # request passed with exactly those files, so rebasing onto changes a check
+  # doesn't read costs nothing. Mergify's integration pull requests and
+  # "Re-run all jobs" run every check.
+  plan:
+    name: Plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # the pass markers checks leave in the Actions cache
+      contents: read
+    outputs:
+      go-key: ${{ steps.plan.outputs.go-key }}
+      go-skip: ${{ steps.plan.outputs.go-skip }}
+      go-race-key: ${{ steps.plan.outputs.go-race-key }}
+      go-race-skip: ${{ steps.plan.outputs.go-race-skip }}
+      web-key: ${{ steps.plan.outputs.web-key }}
+      web-skip: ${{ steps.plan.outputs.web-skip }}
+      e2e-key: ${{ steps.plan.outputs.e2e-key }}
+      e2e-skip: ${{ steps.plan.outputs.e2e-skip }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2 # the merge commit GitHub tests, and both its parents
+      - id: plan
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const { execFileSync } = require('node:child_process');
+            const { createHash } = require('node:crypto');
+            const { join } = require('node:path');
+
+            // The tracked files each check reads, as groups of git pathspecs.
+            // Everything counts unless excluded, so new files are never missed.
+            const unread = [
+              // No check reads these.
+              ':!.github', ':!.mergify.yml', ':!docs', ':!packaging', ':!.dockerignore', ':!.gitignore', ':!README.md', ':!agents.md', ':!CLAUDE.md',
+              // Local tooling: WebKit journeys, screenshots, simulations, LAN serving.
+              ':!scripts/e2e', ':!scripts/screenshots', ':!scripts/simulation', ':!scripts/lan-dev.sh', ':!web/tests/webkit',
+            ];
+            const go = [
+              ['.', ...unread, ':!web', ':!scripts', ':!.air.toml'],
+              // The package embedding the web build, and the types `just schema` checks.
+              ['web/embed.go', 'web/dist', 'web/src/lib/api/types.gen.ts'],
+            ];
+            const checks = [
+              { job: 'go', name: 'Go', inputs: go },
+              { job: 'go-race', name: 'Go (race detector)', inputs: go },
+              { job: 'web', name: 'Web client', inputs: [['web', ...unread]] },
+              { job: 'e2e', name: 'Browser journeys', inputs: [['.', ...unread]] },
+            ];
+
+            // Of this workflow, a check reads its own job, this one (which
+            // decides whether it runs, so a change here is tested rather than
+            // trusted) and the workflow-wide settings. Editing another job or
+            // a comment doesn't run it.
+            function side(rev, env) {
+              const yaml = execFileSync('git', ['show', `${rev}:.github/workflows/ci.yml`]);
+              const workflow = JSON.parse(execFileSync('yq', ['--output-format=json', 'explode(.)'], { input: yaml }));
+              return { env, workflow };
+            }
+
+            // Hashes a check's job, this one and the index entries (mode,
+            // blob and path) of its inputs.
+            const plan = process.env.GITHUB_JOB;
+            function fingerprint({ job, inputs }, { env, workflow: { jobs, ...settings } }) {
+              const hash = createHash('sha256');
+              hash.update(JSON.stringify({ ...settings, plan: jobs?.[plan] ?? null, job: jobs?.[job] ?? null }));
+              for (const pathspecs of inputs) {
+                hash.update(execFileSync('git', ['ls-files', '--stage', '--', ...pathspecs], { env }));
+              }
+              return hash.digest('hex');
+            }
+
+            // The merge commit's first parent is the base branch; index it too.
+            const parents = execFileSync('git', ['rev-list', '--parents', '-n1', 'HEAD'], { encoding: 'utf8' }).trim().split(' ');
+            if (parents.length !== 3) throw new Error(`Expected a merge commit, got ${parents[0]}`);
+            const baseIndex = { ...process.env, GIT_INDEX_FILE: join(process.env.RUNNER_TEMP, 'base.index') };
+            execFileSync('git', ['read-tree', 'HEAD^1'], { env: baseIndex });
+            const head = side('HEAD', process.env);
+            const base = side('HEAD^1', baseIndex);
+            if (!head.workflow.jobs?.[plan]) throw new Error(`No job ${plan} in ci.yml`);
+
+            const { owner, repo } = context.repo;
+            const markers = (await github.paginate(github.rest.actions.getActionsCacheList, {
+              owner, repo, ref: `refs/pull/${context.issue.number}/merge`, key: 'ci-pass-', per_page: 100,
+            })).map(cache => cache.key);
+
+            const { pull_request: pr, repository } = context.payload;
+            // Run every check on a re-run, and on Mergify's integration pull
+            // requests: the queue needs each check to succeed there, and a
+            // skipped one doesn't count.
+            const runAll = process.env.GITHUB_RUN_ATTEMPT !== '1' || pr.head.ref.startsWith('mergify/merge-queue/');
+            // Only main is known to have passed every check.
+            const intoMain = pr.base.ref === repository.default_branch;
+            const rows = [[{ data: 'Check', header: true }, { data: 'Plan', header: true }]];
+            const outputs = {};
+            for (const check of checks) {
+              const { job, name } = check;
+              const current = fingerprint(check, head);
+              const key = `ci-pass-${job}-${current}`;
+              // A check that passes saves `${key}-${run_id}-${run_attempt}`.
+              const pass = markers.find(marker => marker.startsWith(`${key}-`));
+              let skip = '';
+              if (runAll) {
+                // Run everything.
+              } else if (intoMain && fingerprint(check, base) === current) {
+                skip = 'this pull request changes none of the files it reads';
+              } else if (pass) {
+                const [id, attempt] = pass.slice(key.length + 1).split('-');
+                const url = `${context.serverUrl}/${owner}/${repo}/actions/runs/${id}/attempts/${attempt}`;
+                skip = `<a href="${url}">run ${id}</a> passed with the same files`;
+              }
+              outputs[`${job}-key`] = key;
+              outputs[`${job}-skip`] = String(skip !== '');
+              rows.push([name, skip ? `Skipped: ${skip}` : 'Runs']);
+            }
+            await core.summary.addTable(rows).write();
+            // Publish the plan only once it's complete. The checks also
+            // ignore it unless this job succeeds.
+            for (const [name, value] of Object.entries(outputs)) core.setOutput(name, value);
+
   go:
     name: Go
+    needs: plan
+    # A failed or skipped plan runs every check.
+    if: ${{ !cancelled() && (needs.plan.result != 'success' || needs.plan.outputs.go-skip != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -33,9 +161,20 @@ jobs:
             || { echo "::error::Run 'just schema' and commit the result."; exit 1; }
       - name: Test (unit + integration)
         run: just test
+      # Lets later runs of this pull request skip the check (see plan).
+      - name: Record the pass
+        if: needs.plan.outputs.go-key != ''
+        run: touch "$RUNNER_TEMP/ci-pass"
+      - if: needs.plan.outputs.go-key != ''
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ci-pass
+          key: ${{ needs.plan.outputs.go-key }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   go-race:
     name: Go (race detector)
+    needs: plan
+    if: ${{ !cancelled() && (needs.plan.result != 'success' || needs.plan.outputs.go-race-skip != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -55,9 +194,20 @@ jobs:
           restore-keys: go-race-${{ runner.os }}-
       - uses: extractions/setup-just@v4
       - run: just test-race
+      # Lets later runs of this pull request skip the check (see plan).
+      - name: Record the pass
+        if: needs.plan.outputs.go-race-key != ''
+        run: touch "$RUNNER_TEMP/ci-pass"
+      - if: needs.plan.outputs.go-race-key != ''
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ci-pass
+          key: ${{ needs.plan.outputs.go-race-key }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   web:
     name: Web client
+    needs: plan
+    if: ${{ !cancelled() && (needs.plan.result != 'success' || needs.plan.outputs.web-skip != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -79,9 +229,20 @@ jobs:
         run: npm run build
       - name: Colour contrast
         run: node scripts/contrast.mjs
+      # Lets later runs of this pull request skip the check (see plan).
+      - name: Record the pass
+        if: needs.plan.outputs.web-key != ''
+        run: touch "$RUNNER_TEMP/ci-pass"
+      - if: needs.plan.outputs.web-key != ''
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ci-pass
+          key: ${{ needs.plan.outputs.web-key }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   e2e:
     name: Browser journeys
+    needs: plan
+    if: ${{ !cancelled() && (needs.plan.result != 'success' || needs.plan.outputs.e2e-skip != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -121,3 +282,12 @@ jobs:
           path: web/test-results/
           if-no-files-found: ignore
           retention-days: 7
+      # Lets later runs of this pull request skip the check (see plan).
+      - name: Record the pass
+        if: needs.plan.outputs.e2e-key != ''
+        run: touch "$RUNNER_TEMP/ci-pass"
+      - if: needs.plan.outputs.e2e-key != ''
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ci-pass
+          key: ${{ needs.plan.outputs.e2e-key }}-${{ github.run_id }}-${{ github.run_attempt }}
