@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test --pass-with-no-tests"
   },
   "dependencies": {
     "@astryx-svelte/core": "^0.5.2",
@@ -19,6 +20,7 @@
     "@stylexjs/stylex": "^0.19.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tsconfig/svelte": "^5.0.4",
     "@types/node": "^24.13.6",

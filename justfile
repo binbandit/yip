@@ -50,6 +50,10 @@ test-race:
 test-dev: _dev-tools
     node --test scripts/dev.test.mjs scripts/dev-air.test.mjs
 
+# browser smoke journeys against a new real hub (needs Chromium or Chrome)
+e2e: all
+    cd web && npm run e2e
+
 # type-check and test the web client
 test-web:
     cd web && npm run check && npm run test

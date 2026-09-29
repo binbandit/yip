@@ -18,6 +18,8 @@
 !/web/dist/.gitkeep
 /web/.svelte-kit/
 /web/.vite/
+/web/test-results/
+/web/playwright-report/
 
 # Keep README screenshots, not historical capture batches.
 /docs/screenshots/*/
