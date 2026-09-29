@@ -52,6 +52,10 @@ demo: all
 lan: all
     ./scripts/lan-dev.sh
 
+# run the hub and web client in Docker on localhost:7420 (arguments go to docker compose, e.g. `just docker down`)
+docker *args="up --build":
+    YIP_VERSION="{{ version }}" YIP_RUNNER_URL="${YIP_RUNNER_URL:-https://$(uname -n):7443}" docker compose -f packaging/container/compose.hub.yml {{ args }}
+
 # cross-compile release binaries and their checksums into dist/
 release:
     GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "{{ ldflags }}" -o dist/yip-darwin-arm64 ./cmd/yip

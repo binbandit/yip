@@ -1,0 +1,40 @@
+# The yip hub and web client in a container. `just docker` wraps this file:
+#
+#   just docker                 build and run it (Ctrl-C stops it)
+#   just docker up --build -d   the same, in the background
+#   just docker logs hub        the one-time setup code, after a detached start
+#   just docker exec hub yip doctor
+#   just docker down            stop it (the hub-data volume keeps your workspace)
+#
+# The browser API is plain HTTP, published on this machine's loopback only.
+# For other machines, put HTTPS in front (Tailscale Serve, docs/operations.md)
+# or mount a certificate and add --tls-cert/--tls-key to the command.
+#
+# Runners pair over the runner listener (mutual TLS) at YIP_RUNNER_URL, which
+# is shown in Machines → Add machine and must be reachable from each runner.
+# `just docker` sets it to https://<this machine's hostname>:7443.
+#
+# The root filesystem stays writable: encrypted backups and restores stage the
+# whole hub in /tmp, which a memory-backed tmpfs would cap.
+name: yip
+services:
+  hub:
+    build:
+      context: ../..
+      dockerfile: packaging/container/Dockerfile.hub
+      args:
+        VERSION: ${YIP_VERSION:-0.1.0-dev}
+    image: yip-hub
+    user: "10001:10001"
+    volumes:
+      - hub-data:/var/lib/yip
+    ports:
+      - "127.0.0.1:7420:7420"
+      - "7443:7443"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    command: ["hub", "--listen", ":7420", "--insecure-http", "--runner-url", "${YIP_RUNNER_URL:-https://localhost:7443}"]
+    restart: unless-stopped
+volumes:
+  hub-data: {}
