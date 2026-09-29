@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request supersedes the running checks.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: extractions/setup-just@v4
+      - name: Lint (gofmt, go vet)
+        run: just lint
+      - name: Generated schemas and web types are up to date
+        run: |
+          just schema
+          git diff --exit-code -- protocol/schema web/src/lib/api/types.gen.ts \
+            || { echo "::error::Run 'just schema' and commit the result."; exit 1; }
+      - name: Test (unit + integration)
+        run: just test
+
+  go-race:
+    name: Go (race detector)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # test/integration runs in the Go job without -race. Under -race,
+      # TestRegressionTeamConversation can hang: an answer delivered to a run
+      # that is already finishing is never picked up. Add ./test/integration/
+      # here (with -timeout 35m; it takes ~20 minutes) once that is fixed.
+      - run: go test -race ./internal/...
+
+  web:
+    name: Web client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Type and Svelte check
+        run: npm run check
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Colour contrast
+        run: node scripts/contrast.mjs
+
+  e2e:
+    name: Browser journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: extractions/setup-just@v4
+      - name: Build web client and yip binary
+        run: just all
+      - name: Install Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      # playwright.config.ts keeps Chromium's sandbox on. Ubuntu 24.04 lets
+      # AppArmor deny the unprivileged user namespaces it needs, and Chromium
+      # then refuses to start ("No usable sandbox!").
+      - name: Allow Chromium's sandbox
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - name: Run journeys against a demo hub
+        working-directory: web
+        run: npm run e2e
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
