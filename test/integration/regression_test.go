@@ -33,8 +33,11 @@ func (e *env) ownerID() string {
 type testNode struct {
 	id     string
 	conn   *hub.NodeConn
+	inst   protocol.ProviderInstallation
 	mu     sync.Mutex
 	frames []protocol.Frame
+	taken  map[string]bool
+	seq    map[string]int64
 }
 
 // connectNode connects an in-process machine offering a signed-in Codex.
@@ -60,21 +63,29 @@ func (e *env) connectNodeWith(name string, inst protocol.ProviderInstallation) *
 		e.t.Fatal(err)
 	}
 	id, serial := auth.NodeIDFromCert(cert)
-	n := &testNode{id: id}
-	n.conn = &hub.NodeConn{NodeID: id, Serial: serial, ConnectedAt: time.Now(), Send: func(f protocol.Frame) error {
+	n := &testNode{id: id, inst: inst, taken: map[string]bool{}, seq: map[string]int64{}}
+	n.conn = &hub.NodeConn{NodeID: id, Serial: serial}
+	n.connect(e, nil)
+	return n
+}
+
+// connect (re)connects the machine to the env's current hub, reporting the
+// attempts its journal holds, and sends its capabilities.
+func (n *testNode) connect(e *env, runs []protocol.JournalRunState) {
+	e.t.Helper()
+	n.conn = &hub.NodeConn{NodeID: n.id, Serial: n.conn.Serial, ConnectedAt: time.Now(), Send: func(f protocol.Frame) error {
 		n.mu.Lock()
 		n.frames = append(n.frames, f)
 		n.mu.Unlock()
 		return nil
 	}}
-	if err := e.hub.ConnectRunner(e.ctx, n.conn, protocol.Hello{NodeID: id, ProtocolVersion: protocol.RunnerProtocolVersion}); err != nil {
+	if err := e.hub.ConnectRunner(e.ctx, n.conn, protocol.Hello{NodeID: n.id, ProtocolVersion: protocol.RunnerProtocolVersion, Runs: runs}); err != nil {
 		e.t.Fatal(err)
 	}
 	caps, _ := json.Marshal(protocol.RunnerCapabilities{Slots: 2,
 		Profiles:  []protocol.ExecutionProfile{{Name: "native", Available: true}, {Name: "readonly", Available: true}},
-		Providers: []protocol.ProviderInstallation{inst}})
+		Providers: []protocol.ProviderInstallation{n.inst}})
 	e.hub.RunnerFrame(e.ctx, n.conn, protocol.Frame{Type: protocol.EvCapabilities, ID: domain.NewID(), Payload: caps})
-	return n
 }
 
 func (n *testNode) send(e *env, typ, runID string, epoch int64, payload any) {

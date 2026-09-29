@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,7 @@ const (
 type envOptions struct {
 	forge      func(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error)
 	githubRepo func(ctx context.Context, h *hub.Hub, owner, name string) (github.RepoInfo, error)
+	limits     func(*domain.Limits)
 }
 
 type env struct {
@@ -64,6 +66,9 @@ func newEnv(t *testing.T, opts envOptions) *env {
 	e := &env{t: t, dir: t.TempDir(), ctx: ctx, cancel: cancel, opts: opts}
 	lim := domain.DefaultLimits()
 	lim.HeartbeatInterval = 500 * time.Millisecond
+	if opts.limits != nil {
+		opts.limits(&lim)
+	}
 	e.startHub(lim)
 	var err error
 	if e.engineers, err = seedWorkspace(ctx, e.hub); err != nil {
@@ -310,6 +315,22 @@ func (e *env) messages(room string) []protocol.Message {
 	var page protocol.MessagePage
 	e.c.must("GET", "/v1/rooms/"+e.roomID(room)+"/messages?limit=200", nil, &page)
 	return page.Messages
+}
+
+// waitMessage waits for a message in the room whose body starts with prefix.
+func (e *env) waitMessage(room, prefix string) protocol.Message {
+	e.t.Helper()
+	var got protocol.Message
+	e.waitFor("a message starting "+strconv.Quote(prefix)+" in "+room, 30*time.Second, func() bool {
+		for _, m := range e.messages(room) {
+			if strings.HasPrefix(m.Body, prefix) {
+				got = m
+				return true
+			}
+		}
+		return false
+	})
+	return got
 }
 
 func (e *env) jobs() []protocol.Job {
