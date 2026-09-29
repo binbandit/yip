@@ -29,7 +29,12 @@ Do not resolve conflicts by editing Mergify's temporary branches.
 
 The queue uses two speculative CI slots and merges one pull request at a time.
 All four required CI jobs run again on the temporary integration pull request.
-Pullfrog's checks and GitHub's review approval gate the original pull request.
+Pullfrog's checks are explicit queue-entry conditions, and GitHub's review
+approval gates the original pull request. Keep the two Pullfrog checks out of
+GitHub's required-check list and Mergify's merge protections: those checks are
+otherwise copied onto temporary integration PRs and trigger redundant reviews.
+GitHub still requires the four CI checks, Mergify Merge Protections, and an
+approving review; only Mergify can update `main`.
 
 GitHub's rules restrict updates to `main` to Mergify. The original PR must pass
 its required checks and review, but its branch does not have to be up to date:
