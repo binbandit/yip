@@ -1,29 +1,13 @@
-// Workspace journeys on the hub the smoke project set up (see
-// playwright.config.ts). They build on each other: the first creates the room
-// in the original workspace that the second keeps a draft in.
-import { expect, test, type Page } from '@playwright/test';
-import { openRoom, signIn, workspaceNav } from './helpers';
-
-test.describe.configure({ mode: 'serial' });
+import { expect, test } from './fixtures';
+import { openRoom, signIn } from './helpers';
 
 // Exercise browser Back with BFCache available rather than Playwright's default.
 test.use({ launchOptions: { chromiumSandbox: true, ignoreDefaultArgs: ['--disable-back-forward-cache'] } });
 
-const workRoom = 'Launch plans';
-
-async function createRoom(page: Page, name: string): Promise<void> {
-  await workspaceNav(page).getByRole('button', { name: 'Create a room', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Create a room', exact: true });
-  await dialog.getByLabel('Name', { exact: true }).fill(name);
-  await dialog.getByRole('button', { name: 'Create room', exact: true }).click();
-  await expect(page.locator('#room-title')).toHaveText(new RegExp(`^#?${name}$`));
-}
-
-test('create several freely named workspaces and switch to any of them', async ({ page }, testInfo) => {
-  await signIn(page);
+test('create several freely named workspaces and switch to any of them', async ({ page, hub }, testInfo) => {
+  await signIn(page, hub);
   const initial = await (await page.request.get('/v1/bootstrap')).json();
   const rootName = initial.org.name as string;
-  await createRoom(page, workRoom);
   const names = ['Design studio', 'Acme / R&D', 'Book club 📚'];
   let activeName = rootName;
   const urls = new Map<string, string>();
@@ -48,7 +32,7 @@ test('create several freely named workspaces and switch to any of them', async (
     if (name !== rootName) await expect(page).toHaveURL(urls.get(name)!);
     activeName = name;
   }
-  await openRoom(page, workRoom);
+  await openRoom(page, 'Security');
   await page.getByRole('button', { name: `Workspace: ${rootName}`, exact: true }).click();
   for (const name of names) await expect(page.getByRole('menuitem', { name, exact: true })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Create workspace', exact: true })).toBeVisible();
@@ -57,11 +41,11 @@ test('create several freely named workspaces and switch to any of them', async (
   await testInfo.attach('workspace-switcher', { path: screenshot, contentType: 'image/png' });
 });
 
-test('create separate work and personal spaces, switch back to the draft, and keep tabs independent', async ({ page, context }) => {
-  await signIn(page);
+test('create separate work and personal spaces, switch back to the draft, and keep tabs independent', async ({ page, context, hub }) => {
+  await signIn(page, hub);
   const initial = await (await page.request.get('/v1/bootstrap')).json();
   const workName = initial.org.name as string;
-  await openRoom(page, workRoom);
+  await openRoom(page, 'Security');
   const workRoomURL = page.url();
   const composer = page.getByRole('combobox', { name: /^Message / });
   await composer.fill('Keep this draft in my work workspace.');
@@ -75,17 +59,19 @@ test('create separate work and personal spaces, switch back to the draft, and ke
   const personalBase = new URL(page.url()).pathname.replace(/\/start$/, '');
   await expect(page.getByRole('button', { name: 'Workspace: Personal', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Setup steps' })).toBeVisible();
-  await expect(workspaceNav(page).getByRole('link', { name: new RegExp(`^${workRoom}`) })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Workspace', exact: true }).getByRole('link', { name: /^Security/ })).toHaveCount(0);
   const personal = await (await page.request.get(`${personalBase}/v1/bootstrap`)).json();
   expect(personal.engineers).toHaveLength(0);
   expect(personal.projects).toHaveLength(0);
   expect(personal.nodes).toHaveLength(0);
   expect(personal.rooms).toHaveLength(0);
-  const workRoomID = initial.rooms.find((r: { name: string }) => r.name === workRoom).id;
-  const crossRoom = await page.request.get(`${personalBase}/v1/rooms/${workRoomID}`);
+  const crossRoom = await page.request.get(`${personalBase}/v1/rooms/${initial.rooms.find((r: { name: string }) => r.name === 'Security').id}`);
   expect(crossRoom.status()).toBe(404);
 
-  await createRoom(page, 'Hobbies');
+  await page.getByRole('navigation', { name: 'Workspace', exact: true }).getByRole('button', { name: 'Create a room', exact: true }).click();
+  const roomDialog = page.getByRole('dialog', { name: 'Create a room', exact: true });
+  await roomDialog.getByLabel('Name', { exact: true }).fill('Hobbies');
+  await roomDialog.getByRole('button', { name: 'Create room', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${personalBase}/rooms/`));
   const personalRoomURL = page.url();
   await page.getByRole('combobox', { name: /^Message / }).fill('Plan the garden here, not at work.');
@@ -99,7 +85,7 @@ test('create separate work and personal spaces, switch back to the draft, and ke
   await page.getByRole('menuitem', { name: workName, exact: true }).click();
   await expect(page).toHaveURL(workRoomURL);
   await expect(page.getByRole('combobox', { name: /^Message / })).toHaveValue('Keep this draft in my work workspace.');
-  await expect(workspaceNav(page).getByRole('link', { name: /^Hobbies/ })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Workspace', exact: true }).getByRole('link', { name: /^Hobbies/ })).toHaveCount(0);
 
   const otherTab = await context.newPage();
   await otherTab.goto(personalRoomURL);
@@ -124,10 +110,10 @@ test('create separate work and personal spaces, switch back to the draft, and ke
   await expect(page.getByRole('combobox', { name: /^Message / })).toHaveValue('Keep this draft in my work workspace.');
 });
 
-test('workspace creation and keyboard switching fit a phone', async ({ page }) => {
+test('workspace creation and keyboard switching fit a phone', async ({ page, hub }) => {
   const personalName = 'Personal projects, hobbies and weekend plans';
   await page.setViewportSize({ width: 390, height: 844 });
-  await signIn(page);
+  await signIn(page, hub);
   const initial = await (await page.request.get('/v1/bootstrap')).json();
   const workName = initial.org.name as string;
   const workURL = page.url();
@@ -150,5 +136,5 @@ test('workspace creation and keyboard switching fit a phone', async ({ page }) =
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(workURL);
   await expect(switcher).toBeVisible();
-  expect(page.url()).toBe(workURL);
+
 });

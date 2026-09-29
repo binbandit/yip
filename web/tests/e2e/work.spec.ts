@@ -122,7 +122,7 @@ test.describe('finished work', () => {
     await p.getByRole('button', { name: 'Show log' }).first().click();
     const hideLog = p.getByRole('button', { name: 'Hide log' });
     await expect(hideLog).toHaveAttribute('aria-expanded', 'true');
-    await expect(p.locator('.check-row .log')).not.toContainText('Loading…');
+    await expect(p.locator('.check-row .log')).toContainText(/ok\s+example\.com\/atlas\/session\s/);
     await hideLog.click();
     await expect(p.locator('.check-row .log')).toHaveCount(0);
     await expect(p.getByRole('heading', { name: 'Decisions recorded' })).toBeVisible();
