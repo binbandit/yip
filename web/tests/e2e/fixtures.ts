@@ -60,7 +60,9 @@ async function startHub(kind: HubKind, fakeDelay: string): Promise<Started> {
       ? ['demo', '--reset', '--data', dataDir, '--listen', `127.0.0.1:${port}`, '--runner-listen', `127.0.0.1:${runnerPort}`]
       : ['hub', '--data', dataDir, '--listen', `127.0.0.1:${port}`, '--runner-listen', `127.0.0.1:${runnerPort}`];
   const child: ChildProcess = spawn(YIP_BIN, args, {
-    env: { ...process.env, YIP_FAKE_DELAY: fakeDelay },
+    // The hub runs git for its fixture repositories and work; a personal git
+    // config (commit signing, fsmonitor) would slow it and vary between hosts.
+    env: { ...process.env, YIP_FAKE_DELAY: fakeDelay, GIT_CONFIG_GLOBAL: '/dev/null' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -79,7 +81,9 @@ async function startHub(kind: HubKind, fakeDelay: string): Promise<Started> {
     rmSync(work, { recursive: true, force: true });
   };
 
-  const ready = kind === 'demo' ? /runner connected/ : /setup code[^:]*: *(\S+)/;
+  // "One-time setup code (expires 15:04): <code>"
+  const codeRe = /setup code \(expires [^)]*\): *(\S+)/;
+  const ready = kind === 'demo' ? /runner connected/ : codeRe;
   const deadline = Date.now() + 30_000;
   while (!ready.test(output)) {
     if (exited || Date.now() > deadline) {
@@ -95,7 +99,7 @@ async function startHub(kind: HubKind, fakeDelay: string): Promise<Started> {
     dataDir,
     handle: /handle:\s*(\S+)/.exec(output)?.[1] ?? '',
     password: /password:\s*(\S+)/.exec(output)?.[1] ?? '',
-    setupCode: /setup code[^:]*: *(\S+)/.exec(output)?.[1] ?? '',
+    setupCode: codeRe.exec(output)?.[1] ?? '',
     log: () => output,
   };
   return { hub, stop };
