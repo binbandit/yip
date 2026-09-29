@@ -375,6 +375,11 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
       }
       break;
     }
+    case 'user.updated': {
+      const u = asPayload<User>(ev);
+      if (s.user?.id === u.id) s.user = u;
+      break;
+    }
     case 'engineer.created':
     case 'engineer.updated': {
       const e = asPayload<Engineer>(ev);

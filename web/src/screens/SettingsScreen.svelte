@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Code, Icon, MetadataList, MetadataListItem, RadioList, RadioListItem, SegmentedControl, SegmentedControlItem, Text, TextArea } from '@astryx-svelte/core';
+  import { Button, Code, Icon, MetadataList, MetadataListItem, RadioList, RadioListItem, SegmentedControl, SegmentedControlItem, Text, TextArea, TextInput } from '@astryx-svelte/core';
   import Notice from '../components/Notice.svelte';
   import { Download, LogOut, RefreshCw } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
@@ -10,6 +10,44 @@
   import StateIcon from '../components/StateIcon.svelte';
   import Screen from '../components/Screen.svelte';
   import ScreenSection from '../components/ScreenSection.svelte';
+
+  // TextInput forwards unknown attributes to its <input>; the hub allows 80 characters.
+  const nameHints = { autocomplete: 'name', maxlength: 80 };
+  const tidy = (v: string) => v.trim().replace(/\s+/g, ' ');
+  let name = $state(app.me?.name ?? '');
+  // A rename from another window replaces the field unless you're editing it.
+  let shownName = app.me?.name ?? '';
+  $effect(() => {
+    const current = app.me?.name ?? '';
+    if (current === shownName) return;
+    if (name === shownName) name = current;
+    shownName = current;
+  });
+  const nameChanged = $derived(!!app.me && tidy(name) !== app.me.name);
+  let nameError = $state('');
+  let nameSaving = $state(false);
+  let nameSaved = $state(false);
+
+  async function saveName(e: SubmitEvent) {
+    e.preventDefault();
+    nameSaved = false;
+    if (!tidy(name)) {
+      nameError = 'Enter your name.';
+      return;
+    }
+    nameError = '';
+    nameSaving = true;
+    try {
+      await app.rename(tidy(name));
+      name = app.me?.name ?? name;
+      nameSaved = true;
+      setTimeout(() => (nameSaved = false), 2500);
+    } catch (err) {
+      nameError = errorMessage(err);
+    } finally {
+      nameSaving = false;
+    }
+  }
 
   const prefs = $derived(app.data.preferences);
   // Unknown or missing stored values read as the default choice.
@@ -63,6 +101,29 @@
 
 <Screen title="Settings" subtitle="{app.me?.name} · @{app.me?.handle} · {app.data.org?.name}" width={760}>
   <div class="groups">
+    <ScreenSection title="Profile" id="set-profile" class="group">
+      <form class="body" onsubmit={saveName}>
+        <div class="field">
+          <TextInput
+            label="Your name"
+            {...nameHints}
+            width="100%"
+            bind:value={name}
+            onChange={() => (nameError = '')}
+            status={nameError ? { type: 'error', message: nameError } : undefined}
+            description={nameError ? undefined : 'Shown on your messages and to your engineers.'}
+          />
+        </div>
+        <Text as="p" display="block" type="supporting">
+          Engineers mention you as @{app.me?.handle}. Your handle is also how you sign in, so it stays the same.
+        </Text>
+        <div class="row-actions">
+          <Button size="sm" variant="primary" type="submit" label={nameSaving ? 'Saving…' : 'Save name'} isDisabled={!nameChanged || nameSaving} />
+          {#if nameSaved}<Text type="supporting" role="status">Saved.</Text>{/if}
+        </div>
+      </form>
+    </ScreenSection>
+
     <ScreenSection title="Appearance" id="set-appearance" class="group">
       <div class="body">
         <SegmentedControl label="Appearance" value={app.theme} onChange={(v) => app.setPreferences({ theme: v })}>
@@ -221,7 +282,11 @@
   }
   .row-actions {
     display: flex;
+    align-items: center;
     gap: var(--spacing-2);
+  }
+  .field {
+    width: min(100%, 360px);
   }
   .checks {
     display: grid;

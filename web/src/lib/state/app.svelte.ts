@@ -592,6 +592,11 @@ class AppState {
     }
   }
 
+  /** Changes the name you're shown by, to yourself and to engineers. */
+  async rename(name: string): Promise<void> {
+    this.data.user = await api.updateProfile({ name });
+  }
+
   /**
    * The appearance as an Astryx colour mode; <Theme> applies it to the document.
    * Until the workspace's preferences load (boot, sign-in, setup) it keeps the

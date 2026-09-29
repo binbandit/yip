@@ -177,6 +177,11 @@ func SetUserPassword(ctx context.Context, q Q, id, hash string) error {
 	return err
 }
 
+func SetUserName(ctx context.Context, q Q, id, name string) error {
+	_, err := q.ExecContext(ctx, `UPDATE users SET name = ?, version = version + 1 WHERE id = ?`, name, id)
+	return err
+}
+
 func SetUserPreferences(ctx context.Context, q Q, id string, p protocol.Preferences) error {
 	_, err := q.ExecContext(ctx, `UPDATE users SET preferences = ?, version = version + 1 WHERE id = ?`, js(p), id)
 	return err

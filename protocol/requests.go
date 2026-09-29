@@ -254,6 +254,12 @@ type PreferencesRequest struct {
 	Preferences Preferences `json:"preferences"`
 }
 
+// ProfileRequest changes how the owner appears. The handle stays fixed: it
+// signs in and is how engineers mention the owner.
+type ProfileRequest struct {
+	Name string `json:"name"`
+}
+
 type NodeActionRequest struct {
 	Drain bool `json:"drain"`
 }

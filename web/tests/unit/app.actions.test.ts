@@ -493,4 +493,35 @@ describe('action flows', () => {
       expect(loadUnsent().some((m) => m.clientKey === clientKey)).toBe(false);
     });
   }
+
+  it('renames you from Settings, keeping your handle', async () => {
+    hub.override('PATCH', /^\/v1\/profile$/, (c) => ({ body: { ...boot.user, name: (c.body as { name: string }).name } }));
+    app.go({ name: 'settings' });
+    const form = await waitFor(() => byText('form', 'Save name'), 'profile form');
+    const input = form.querySelector<HTMLInputElement>('input')!;
+    expect(input.value).toBe(boot.user.name);
+    expect(form.textContent).toContain(`@${boot.user.handle}`);
+    type(input, '  Brayden   Moon ');
+    byText('form button', 'Save name')!.click();
+    await waitFor(() => hub.last('PATCH', /^\/v1\/profile$/), 'rename sent');
+    expect(hub.last('PATCH', /^\/v1\/profile$/)!.body).toEqual({ name: 'Brayden Moon' });
+    await waitFor(() => app.me?.name === 'Brayden Moon' && text().includes('Saved.'), 'renamed');
+    expect(document.querySelector('.profile')?.textContent).toContain('Brayden Moon');
+    expect(app.me?.handle).toBe(boot.user.handle);
+
+    // A rename in another window shows here while the field is untouched.
+    const sequence = app.data.lastSeq + 1;
+    FakeEventSource.latest().emit('user.updated', {
+      schemaVersion: 1, eventId: 'rename', orgId: boot.org.id, sequence, type: 'user.updated',
+      actor: { kind: 'user', id: boot.user.id }, occurredAt: new Date().toISOString(), payload: { ...boot.user, name: 'B. Moon' },
+    }, sequence);
+    await waitFor(() => input.value === 'B. Moon', 'field follows the other window');
+
+    hub.override('PATCH', /^\/v1\/profile$/, () => ({ status: 400, body: { code: 'invalid', message: 'Use a name of at most 80 characters.', recoverable: true } }));
+    type(input, 'Someone else');
+    byText('form button', 'Save name')!.click();
+    await waitFor(() => text().includes('Use a name of at most 80 characters.'), 'refusal shown');
+    expect(app.me?.name).toBe('B. Moon');
+    expect(input.value).toBe('Someone else');
+  });
 });

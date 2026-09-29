@@ -195,6 +195,15 @@ describe('event reducer', () => {
     expect(s.rooms.r1.name).toBe('Renamed');
   });
 
+  it('renames me when my profile changes in another window', () => {
+    const s = emptyState();
+    boot(s);
+    applyEvent(s, ev('user.updated', { id: 'someone-else', orgId: 'org', name: 'Nope', handle: 'nope', createdAt: '' }));
+    expect(s.user?.name).toBe('Brayden');
+    applyEvent(s, ev('user.updated', { id: ME, orgId: 'org', name: 'Brayden Moon', handle: 'brayden', createdAt: '' }));
+    expect(s.user).toMatchObject({ name: 'Brayden Moon', handle: 'brayden' });
+  });
+
   it('applies jobs by version so stale snapshots never regress state', () => {
     const s = emptyState();
     boot(s);

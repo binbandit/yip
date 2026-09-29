@@ -13,6 +13,7 @@ export const COMMITTED_TYPES = [
   'room.member_added',
   'room.member_removed',
   'read.updated',
+  'user.updated',
   'engineer.created',
   'engineer.updated',
   'project.created',

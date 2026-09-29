@@ -2691,6 +2691,18 @@
       ],
       "type": "object"
     },
+    "ProfileRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
     "Project": {
       "additionalProperties": false,
       "properties": {
