@@ -13,6 +13,7 @@
   import type { Decision, Job, Project, Repo } from '../lib/api/types.gen';
   import { isLiveJob, newer } from '../lib/state/data';
   import { GRANT_ACTIONS, jobShape, jobStateLabel, jobTone } from '../lib/util/labels';
+  import { parseGitHubRepo, repoNameFor } from '../lib/util/repos';
   import Avatar from '../components/Avatar.svelte';
   import StateIcon from '../components/StateIcon.svelte';
   import MessageBody from '../components/MessageBody.svelte';
@@ -94,23 +95,42 @@
   let repoForm = $state<null | { id: string | 'new'; name: string; remoteUrl: string; defaultBranch: string; forge: string; forgeRepo: string }>(null);
   let repoError = $state('');
   let repoBusy = $state(false);
+  // What the repository field names: a GitHub owner/name or URL, or another git remote.
+  const repoGitHub = $derived(repoForm ? parseGitHubRepo(repoForm.remoteUrl) : null);
+  const ownerName = (gh: { owner: string; name: string } | null) => (gh ? `${gh.owner}/${gh.name}` : '');
   function editRepo(r?: Repo) {
     repoError = '';
     repoForm = r
       ? { id: r.id, name: r.name, remoteUrl: r.remoteUrl, defaultBranch: r.defaultBranch, forge: r.forge || 'none', forgeRepo: r.forgeRepo ?? '' }
-      : { id: 'new', name: '', remoteUrl: '', defaultBranch: 'main', forge: 'github', forgeRepo: '' };
+      : { id: 'new', name: '', remoteUrl: '', defaultBranch: '', forge: 'none', forgeRepo: '' };
+  }
+  // The forge follows the repository field while it still says what the field
+  // implied; once changed by hand (a fork linked to its upstream) it stays.
+  function setRemote(v: string) {
+    if (!repoForm) return;
+    const implied = ownerName(parseGitHubRepo(repoForm.remoteUrl));
+    const following = implied ? repoForm.forge === 'github' && repoForm.forgeRepo === implied : repoForm.forge === 'none' && !repoForm.forgeRepo;
+    repoForm.remoteUrl = v;
+    if (following) {
+      const next = ownerName(parseGitHubRepo(v));
+      repoForm.forge = next ? 'github' : 'none';
+      repoForm.forgeRepo = next;
+    }
   }
   async function saveRepo(e: SubmitEvent) {
     e.preventDefault();
     if (!repoForm) return;
-    if (!repoForm.name.trim() || !repoForm.remoteUrl.trim()) {
-      repoError = 'A repository needs a name and a remote URL.';
+    if (!repoForm.remoteUrl.trim()) {
+      repoError = 'Enter a GitHub owner/name, like acme/atlas, or a remote URL your machines can reach.';
       return;
     }
-    if (repoForm.forge === 'github' && !/^[\w.-]+\/[\w.-]+$/.test(repoForm.forgeRepo.trim())) {
+    const linked = repoForm.forgeRepo.trim() ? parseGitHubRepo(repoForm.forgeRepo) : repoGitHub;
+    if (repoForm.forge === 'github' && !linked) {
       repoError = 'Use owner/name for the GitHub repository, e.g. acme/atlas.';
       return;
     }
+    // Left to the hub when it's the repository itself, so both use GitHub's own spelling.
+    const forgeRepo = repoForm.forge === 'github' && ownerName(linked) !== ownerName(repoGitHub) ? ownerName(linked) : '';
     repoBusy = true;
     repoError = '';
     try {
@@ -118,9 +138,10 @@
         await api.putRepo(id, repoForm.id, {
           name: repoForm.name.trim(),
           remoteUrl: repoForm.remoteUrl.trim(),
-          defaultBranch: repoForm.defaultBranch.trim() || 'main',
+          // Empty: GitHub's default branch for a GitHub repository, otherwise main.
+          defaultBranch: repoForm.defaultBranch.trim(),
           forge: repoForm.forge,
-          forgeRepo: repoForm.forge === 'github' ? repoForm.forgeRepo.trim() : '',
+          forgeRepo,
         }),
       );
       repoForm = null;
@@ -273,7 +294,8 @@
       <div class="stack">
         {#if p.repos.length === 0 && !repoForm}
           <Text as="p" type="supporting">
-            No repositories yet. Add one by a remote URL your machines can reach, or import one from a folder on this computer.
+            No repositories yet. Add one by its GitHub owner/name or a remote URL your machines can reach, or import one from a folder on this
+            computer.
           </Text>
         {/if}
         {#if p.repos.length}
@@ -342,18 +364,32 @@
         {#if repoForm}
           <Card>
             <form class="form" onsubmit={saveRepo}>
-              <div class="two">
-                <TextInput label="Name" bind:value={repoForm.name} placeholder="atlas" {...literalHints} />
-                <TextInput label="Default branch" bind:value={repoForm.defaultBranch} {...literalHints} />
-              </div>
               <TextInput
-                label="Remote URL"
+                label="Repository"
                 class="mono"
-                bind:value={repoForm.remoteUrl}
-                placeholder="git@github.com:acme/atlas.git"
-                description="Must be reachable from your machines — they clone it themselves."
+                value={repoForm.remoteUrl}
+                onChange={setRemote}
+                placeholder="acme/atlas"
+                description="A GitHub owner/name, or any git URL your machines can clone. Private GitHub repositories work wherever the GitHub CLI is signed in (gh auth login) with access."
+                hasAutoFocus={repoForm.id === 'new'}
                 {...literalHints}
               />
+              <div class="two">
+                <TextInput
+                  label="Name"
+                  isOptional
+                  bind:value={repoForm.name}
+                  placeholder={repoNameFor(repoForm.remoteUrl) || 'atlas'}
+                  {...literalHints}
+                />
+                <TextInput
+                  label="Default branch"
+                  isOptional
+                  bind:value={repoForm.defaultBranch}
+                  placeholder={repoForm.forge === 'github' ? 'From GitHub' : 'main'}
+                  {...literalHints}
+                />
+              </div>
               <div class="two">
                 <Selector
                   label="Forge"

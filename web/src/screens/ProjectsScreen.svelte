@@ -6,12 +6,17 @@
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
   import { isLiveJob } from '../lib/state/data';
+  import { parseGitHubRepo, repoNameFor } from '../lib/util/repos';
   import Dialog from '../components/Dialog.svelte';
   import Screen from '../components/Screen.svelte';
 
   const projects = $derived(Object.values(app.data.projects).sort((a, b) => a.name.localeCompare(b.name)));
   const linkableRooms = $derived(app.rooms.filter((r) => r.kind === 'room'));
+  // Repository names and URLs are typed exactly; keep the browser from "correcting" them.
+  const literalHints = { spellcheck: false };
   let creating = $state(false);
+  // A GitHub owner/name or git URL; the project is named after it unless named.
+  let repo = $state('');
   let name = $state('');
   let description = $state('');
   let instructions = $state('');
@@ -26,8 +31,8 @@
 
   async function create(e: SubmitEvent) {
     e.preventDefault();
-    if (!name.trim()) {
-      error = 'Give the project a name.';
+    if (!name.trim() && !repo.trim()) {
+      error = 'Give the project a name, or a repository to name it after.';
       return;
     }
     busy = true;
@@ -39,6 +44,8 @@
         instructions: instructions.trim(),
         policy: { requirePeerReview: peer, requireHumanReview: false, autoPublish: false, checks: [], executionProfile: 'native' },
         roomIds,
+        // The hub fills in the rest: for a GitHub repository its clone URL, forge link and default branch.
+        repos: repo.trim() ? [{ name: '', remoteUrl: repo.trim(), defaultBranch: '', forge: '', forgeRepo: '' }] : [],
       });
       app.data.projects[p.id] = p;
       creating = false;
@@ -90,7 +97,25 @@
 {#if creating}
   <Dialog title="New project" onclose={() => (creating = false)} width={560} purpose="form">
     <form id="new-project" class="form" onsubmit={create}>
-      <TextInput label="Name" bind:value={name} placeholder="e.g. Atlas" status={error && !name.trim() ? { type: 'error' } : undefined} />
+      <TextInput
+        label="Repository"
+        isOptional
+        class="mono"
+        bind:value={repo}
+        placeholder="acme/atlas"
+        description={parseGitHubRepo(repo)
+          ? 'On GitHub. Its default branch comes from GitHub; a private repository needs the GitHub CLI signed in (gh auth login) with access.'
+          : 'A GitHub owner/name, or any git URL your machines can clone. Code that is only in a folder can be imported afterwards.'}
+        hasAutoFocus
+        {...literalHints}
+      />
+      <TextInput
+        label="Name"
+        bind:value={name}
+        placeholder={repoNameFor(repo) || 'e.g. Atlas'}
+        isOptional={!!repo.trim()}
+        status={error && !name.trim() && !repo.trim() ? { type: 'error' } : undefined}
+      />
       <TextInput label="Description" bind:value={description} />
       <TextArea label="Instructions for engineers" rows={3} bind:value={instructions} placeholder="Contracts to preserve, commands to run, where docs live…" />
       <CheckboxInput label="Require a colleague's review before work is complete" value={peer} onChange={(on) => (peer = on)} />
@@ -99,7 +124,7 @@
           {#each linkableRooms as r (r.id)}<CheckboxListItem label={r.name} value={r.id} />{/each}
         </CheckboxList>
       {/if}
-      <Text as="p" type="supporting">Add repositories and access after creating it.</Text>
+      <Text as="p" type="supporting">Set access, and add more repositories, after creating it.</Text>
       {#if error}<Notice tone="danger" role="alert">{error}</Notice>{/if}
     </form>
     {#snippet footer()}
@@ -167,5 +192,8 @@
   .form {
     display: grid;
     gap: var(--spacing-4);
+  }
+  .form :global(.mono input) {
+    font-family: var(--font-family-code);
   }
 </style>

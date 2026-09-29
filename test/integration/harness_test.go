@@ -57,11 +57,12 @@ func TestMain(m *testing.M) {
 }
 
 type envOptions struct {
-	forge    func(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error)
-	limits   func(*domain.Limits)
-	director func(m *manifest.Manifest) json.RawMessage
-	noRunner bool
-	slots    int
+	forge      func(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error)
+	githubRepo func(ctx context.Context, h *hub.Hub, owner, name string) (github.RepoInfo, error)
+	limits     func(*domain.Limits)
+	director   func(m *manifest.Manifest) json.RawMessage
+	noRunner   bool
+	slots      int
 }
 
 type env struct {
@@ -134,7 +135,7 @@ func newEnv(t *testing.T, opts envOptions) *env {
 
 func (e *env) startHub(lim domain.Limits) {
 	h, err := hub.Open(e.ctx, hub.Config{DataDir: filepath.Join(e.dir, "hub"), Version: "test", Limits: lim, Logger: quietLogger(),
-		RunnerURL: e.runnerURL, Demo: true, ForgeFactory: e.opts.forge, WebhookVerifier: github.New(github.Options{}).VerifyWebhook})
+		RunnerURL: e.runnerURL, Demo: true, ForgeFactory: e.opts.forge, GitHubRepo: e.opts.githubRepo, WebhookVerifier: github.New(github.Options{}).VerifyWebhook})
 	if err != nil {
 		e.t.Fatal(err)
 	}

@@ -192,7 +192,20 @@ func (h *Hub) GetProject(ctx context.Context, id string) (protocol.Project, erro
 }
 
 func (h *Hub) CreateProject(ctx context.Context, userID string, req protocol.CreateProjectRequest) (protocol.Project, error) {
+	// Repositories are resolved first (possibly asking GitHub), so a project
+	// made from a mistyped owner/name isn't left behind half created.
+	repos := make([]protocol.PutRepoRequest, 0, len(req.Repos))
+	for _, r := range req.Repos {
+		r, err := h.resolveRepo(ctx, r)
+		if err != nil {
+			return protocol.Project{}, err
+		}
+		repos = append(repos, r)
+	}
 	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" && len(repos) > 0 {
+		req.Name = repos[0].Name
+	}
 	if req.Name == "" {
 		return protocol.Project{}, domain.Invalid("Give the project a name.")
 	}
@@ -211,6 +224,12 @@ func (h *Hub) CreateProject(ctx context.Context, userID string, req protocol.Cre
 		p.Policy.Checks = nonNil(p.Policy.Checks)
 		if err := store.InsertProject(ctx, t.tx, p); err != nil {
 			return err
+		}
+		for _, r := range repos {
+			if err := store.PutRepo(ctx, t.tx, protocol.Repo{ID: domain.NewID(), ProjectID: p.ID, Name: r.Name, RemoteURL: r.RemoteURL,
+				DefaultBranch: r.DefaultBranch, Forge: r.Forge, ForgeRepo: r.ForgeRepo, CreatedAt: h.now()}); err != nil {
+				return err
+			}
 		}
 		for _, roomID := range req.RoomIDs {
 			r, err := h.requireRoom(ctx, t.tx, userID, roomID)
@@ -273,28 +292,17 @@ func (h *Hub) UpdateProject(ctx context.Context, userID, id string, req protocol
 	return p, err
 }
 
-// PutRepo registers a repository by reachable remote URL. There is no hidden
-// synchronization from the laptop: uncommitted local files are not available
-// to runners until deliberately pushed or imported.
+// PutRepo registers a repository by GitHub owner/name or reachable remote
+// URL (see resolveRepo). There is no hidden synchronization from the laptop:
+// uncommitted local files are not available to runners until deliberately
+// pushed or imported.
 func (h *Hub) PutRepo(ctx context.Context, userID, projectID, repoID string, req protocol.PutRepoRequest) (protocol.Project, error) {
-	req.Name, req.RemoteURL = strings.TrimSpace(req.Name), strings.TrimSpace(req.RemoteURL)
-	if req.Name == "" || req.RemoteURL == "" {
-		return protocol.Project{}, domain.Invalid("A repository needs a name and a remote URL reachable from your machines, or import it from a bundle.")
-	}
-	if req.DefaultBranch == "" {
-		req.DefaultBranch = "main"
-	}
-	if req.Forge == "" {
-		req.Forge = "none"
-	}
-	if req.Forge != "none" && req.Forge != "github" {
-		return protocol.Project{}, domain.Invalid("Supported forges: github, or none.")
-	}
-	if req.Forge == "github" && !strings.Contains(req.ForgeRepo, "/") {
-		return protocol.Project{}, domain.Invalid("GitHub repositories are written as owner/name.")
+	req, err := h.resolveRepo(ctx, req)
+	if err != nil {
+		return protocol.Project{}, err
 	}
 	var p protocol.Project
-	err := h.do(ctx, func(t *txn) error {
+	err = h.do(ctx, func(t *txn) error {
 		if _, err := store.GetProject(ctx, t.tx, projectID); err != nil {
 			return domain.NotFound("That project doesn't exist.")
 		}

@@ -50,15 +50,17 @@ Useful flags:
    Machines.
 3. Sign in to each provider you'll use **with the provider's own tool, as the
    account the runner runs under**: `codex login`, `claude auth login`,
-   `agent login`. yip never asks for or stores provider tokens.
+   `agent login`. yip never asks for or stores provider tokens. For private
+   GitHub repositories, also `gh auth login` as that account
+   ([Adding a repository](#adding-a-repository)).
 4. Run it: `yip runner --providers codex,claude,cursor --slots 2`.
 5. Check it: `yip doctor` shows identity, certificate expiry, journal, git,
    and each provider's version and sign-in state.
 
 A project can say what its work needs on a machine (Project → Policy →
 *What a machine needs*, e.g. `go, docker` or `os:darwin` for Xcode work).
-The runner reports git, go, node, python3, docker, cargo, swift and
-xcodebuild; work only goes to machines that have what the project needs, and
+The runner reports git, go, node, python3, docker, cargo, swift, xcodebuild
+and gh; work only goes to machines that have what the project needs, and
 otherwise waits with the missing piece named.
 
 Workspaces (a git worktree per piece of work, plus review snapshots) are
@@ -71,6 +73,35 @@ available on the machine as `yip runner workspaces` / `yip runner cleanup`.
 
 Revoke a machine from Machines. It can't regain authority by replaying its
 queue; its in-flight runs are marked unknown until reconciled.
+
+## Adding a repository
+
+**Projects → New project** (or **Add repository** on a project) takes just a
+GitHub `owner/name`, such as `acme/atlas`. The hub turns it into
+`https://github.com/acme/atlas.git`, links it to GitHub as `acme/atlas`,
+names it `atlas`, and asks GitHub for its default branch. A full URL works
+too: `https://github.com/acme/atlas`, `git@github.com:acme/atlas.git`, or any
+other git remote your machines can clone (name and branch then default to the
+URL's last segment and `main`).
+
+**Private GitHub repositories** need no token in yip, only the
+[GitHub CLI](https://cli.github.com) signed in (`gh auth login`) as an account
+that can see them:
+
+- **On the hub's machine**, to look the repository up. Without `gh` the hub
+  asks the GitHub API anonymously (or with the stored forge credential),
+  which can't see a private repository; enter its default branch to add it
+  anyway.
+- **On each machine that runs its work**, to clone it. For a github.com HTTPS
+  remote the runner uses `gh auth git-credential` as the git credential
+  helper, as `gh auth setup-git` would, but only for that repository's copy:
+  its fetches, and pushes an engineer is granted or you approve, use the same
+  sign-in. Credential helpers you already configured still run first. Checks
+  get no credential helper at all (see below). If a clone is refused, the
+  error says to sign in or check `gh auth status` on that machine. Add `gh` to
+  *What a machine needs* to keep the work on machines that have it.
+
+An SSH remote (`git@github.com:…`) uses the machine's SSH keys instead.
 
 ## Code with no remote
 
@@ -223,7 +254,10 @@ conversations to route work and build context.
 ## Forge (GitHub)
 
 `yip forge github add` stores a token (read from stdin) sealed with the hub
-key. Link a repository to `github` + `owner/name` in the project. Engineers
+key; `yip forge github add --from-gh` stores the token the GitHub CLI is
+signed in with on the hub's machine (`gh auth token`), which reaches the same
+private repositories that account can. A repository added by `owner/name` or
+a GitHub URL is linked to `github` + `owner/name` already. Engineers
 can read PRs; **publishing a review requires the `publish_review` grant** on
 the project, and yip refuses approvals the remote account isn't eligible to
 give (a PR author can't approve their own PR). Several engineers sharing one

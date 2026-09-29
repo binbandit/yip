@@ -89,6 +89,33 @@ func githubFactory(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.C
 	return c, forge.RepoRef{Host: host, Owner: parts[0], Name: parts[1]}, nil
 }
 
+// githubRepo asks GitHub about a repository being added: through the GitHub
+// CLI signed in on this machine first, so a private repository its account can
+// see needs no stored token, then the REST API with the stored forge
+// credential (or anonymously, which sees public repositories).
+func githubRepo(ctx context.Context, h *hub.Hub, owner, name string) (github.RepoInfo, error) {
+	info, cliErr := github.ViewWithCLI(ctx, owner, name)
+	if cliErr == nil {
+		return info, nil
+	}
+	host := "github.com"
+	token := func(ctx context.Context) (string, error) {
+		t, err := h.ForgeToken(ctx, "github", host)
+		if err != nil {
+			return "", nil // no stored credential: ask anonymously
+		}
+		return t, nil
+	}
+	info, apiErr := github.New(github.Options{Host: host, Token: token}).Repo(ctx, forge.RepoRef{Host: host, Owner: owner, Name: name})
+	if apiErr == nil {
+		return info, nil
+	}
+	if !errors.Is(cliErr, github.ErrCLIUnavailable) {
+		return info, cliErr // gh was asked and answered; its answer is the owner's view
+	}
+	return info, apiErr
+}
+
 // startHub opens the hub and its listeners. It returns a stop function.
 func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*hub.Hub, func(), error) {
 	// Remote access is HTTPS through an explicit setup step (brief §7); plain
@@ -112,7 +139,7 @@ func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*
 		f.runnerURL = "https://" + net.JoinHostPort(host, rport)
 	}
 	h, err := hub.Open(ctx, hub.Config{DataDir: f.data, Version: buildinfo.Version, Logger: log, RunnerURL: f.runnerURL, Demo: isDemo,
-		ForgeFactory: githubFactory, WebhookVerifier: github.New(github.Options{}).VerifyWebhook})
+		ForgeFactory: githubFactory, GitHubRepo: githubRepo, WebhookVerifier: github.New(github.Options{}).VerifyWebhook})
 	if err != nil {
 		return nil, nil, err
 	}

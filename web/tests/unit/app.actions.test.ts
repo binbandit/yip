@@ -322,6 +322,60 @@ describe('action flows', () => {
     expect(text()).toContain("there's nothing to push to");
   });
 
+  it('adds a GitHub repository by owner/name alone', async () => {
+    const proj = Object.values(app.data.projects)[0];
+    hub.override('PUT', new RegExp(`^/v1/projects/${proj.id}/repos/new$`), () => ({
+      body: {
+        ...proj,
+        repos: [
+          ...proj.repos,
+          { id: 'r-gh', projectId: proj.id, name: 'widgets', remoteUrl: 'https://github.com/acme/widgets.git', defaultBranch: 'develop', forge: 'github', forgeRepo: 'acme/widgets', createdAt: '' },
+        ],
+      },
+    }));
+    app.go({ name: 'project', id: proj.id });
+    (await waitFor(() => byText('button', 'Add repository'), 'add button')).click();
+    const repo = await waitFor(() => document.querySelector<HTMLInputElement>('form input[placeholder="acme/atlas"]'), 'repository field');
+    type(repo, 'acme/widgets');
+    await settle();
+    // The forge follows the field; the name and default branch are left to it and to GitHub.
+    const [, ownerName] = document.querySelectorAll<HTMLInputElement>('form input[placeholder="acme/atlas"]');
+    expect(ownerName?.value).toBe('acme/widgets');
+    expect(document.querySelector('form input[placeholder="widgets"]')).not.toBeNull();
+    expect(document.querySelector('form input[placeholder="From GitHub"]')).not.toBeNull();
+    byText('form button', 'Add repository')!.click();
+    await waitFor(() => hub.last('PUT', /\/repos\/new$/), 'repository saved');
+    expect(hub.last('PUT', /\/repos\/new$/)!.body).toEqual({ name: '', remoteUrl: 'acme/widgets', defaultBranch: '', forge: 'github', forgeRepo: '' });
+    await waitFor(() => text().includes('GitHub · acme/widgets'), 'repository listed');
+  });
+
+  it('creates a project from just a GitHub owner/name', async () => {
+    const proj = Object.values(app.data.projects)[0];
+    const created = {
+      ...proj,
+      id: 'p-widgets',
+      name: 'widgets',
+      roomIds: [],
+      grants: [],
+      repos: [{ id: 'r-w', projectId: 'p-widgets', name: 'widgets', remoteUrl: 'https://github.com/acme/widgets.git', defaultBranch: 'develop', forge: 'github', forgeRepo: 'acme/widgets', createdAt: '' }],
+    };
+    hub.override('POST', /^\/v1\/projects$/, () => ({ status: 201, body: created }));
+    hub.override('GET', /^\/v1\/projects\/p-widgets$/, () => ({ body: created }));
+    app.go({ name: 'projects' });
+    (await waitFor(() => byText('button', 'New project'), 'new project button')).click();
+    const repo = await waitFor(() => document.querySelector<HTMLInputElement>('dialog[open] input[placeholder="acme/atlas"]'), 'repository field');
+    type(repo, 'acme/widgets');
+    await settle();
+    expect(document.querySelector('dialog[open] input[placeholder="widgets"]')).not.toBeNull();
+    expect(document.querySelector('dialog[open]')!.textContent).toContain('Its default branch comes from GitHub');
+    byText('dialog[open] button', 'Create project')!.click();
+    await waitFor(() => hub.last('POST', /^\/v1\/projects$/), 'project created');
+    const body = hub.last('POST', /^\/v1\/projects$/)!.body as { name: string; repos: unknown[] };
+    expect(body.name).toBe('');
+    expect(body.repos).toEqual([{ name: '', remoteUrl: 'acme/widgets', defaultBranch: '', forge: '', forgeRepo: '' }]);
+    await waitFor(() => location.pathname === '/projects/p-widgets', 'the new project opens');
+  });
+
   it("shows an engineer's notes, keeps a suggestion and renews one due for review", async () => {
     const mira = engineer('Mira');
     const proj = Object.values(app.data.projects)[0];

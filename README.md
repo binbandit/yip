@@ -113,7 +113,13 @@ yip service install runner       # launchd (macOS) or systemd (Linux)
 
 Sign in to each provider **with its own tool on each runner** (`codex login`,
 `claude auth login`, `agent login`). yip never collects, stores, or proxies
-provider credentials. See [docs/operations.md](docs/operations.md), and
+provider credentials.
+
+Add code from **Projects → New project** with just a GitHub `owner/name`
+(`acme/atlas`) or any git URL your machines can clone. Private GitHub
+repositories work wherever the [GitHub CLI](https://cli.github.com) is signed
+in (`gh auth login`) with access: on the hub to look them up, and on each
+runner to clone them. See [docs/operations.md](docs/operations.md), and
 [docs/scenario.md](docs/scenario.md) for a first session with your existing
 Claude Code or Codex sign-in.
 

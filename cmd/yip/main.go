@@ -23,7 +23,7 @@ Usage:
   yip backup --out DIR         Write an online, verified backup of the hub
   yip restore --from DIR       Restore a backup into a new data directory
   yip owner reset-password     Reset the owner's password (revokes sessions)
-  yip forge github add         Store a GitHub credential for PR integration
+  yip forge github add         Store a GitHub credential for PR integration (--from-gh reuses the gh sign-in)
   yip service install hub|runner  Write a launchd/systemd service definition
   yip schema --out DIR         Generate JSON schemas and TypeScript types
   yip version                  Print the version

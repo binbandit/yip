@@ -48,7 +48,11 @@ func (w *Workspaces) lock(key string) func() {
 
 func gitEnv() []string {
 	env := []string{"GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_ASKPASS=true"}
-	for _, k := range []string{"PATH", "HOME", "SSH_AUTH_SOCK", "LANG", "TMPDIR"} {
+	// Besides git's own needs, what the GitHub CLI reads to find its sign-in
+	// when git runs it as the credential helper (config dir, token variables,
+	// and the session bus of the keyring it may store the token in).
+	for _, k := range []string{"PATH", "HOME", "SSH_AUTH_SOCK", "LANG", "TMPDIR",
+		"USER", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "GH_CONFIG_DIR", "GH_TOKEN", "GITHUB_TOKEN"} {
 		if v, ok := os.LookupEnv(k); ok {
 			env = append(env, k+"="+v)
 		}
@@ -88,18 +92,71 @@ func (w *Workspaces) replica(ctx context.Context, repo protocol.RepoSpec, fetch 
 	if repo.RemoteURL == "" && repo.SourceBundle != nil {
 		return path, bundleReplica(ctx, path, repo, fetch)
 	}
+	helper := ghCredentialHelper(repo.RemoteURL)
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		if _, err := git(ctx, w.paths.replicas(), "clone", "--quiet", "--bare", repo.RemoteURL, path); err != nil {
-			return "", fmt.Errorf("clone %s: %w", repo.Name, err)
+		args := []string{"clone", "--quiet", "--bare", repo.RemoteURL, path}
+		if helper != "" {
+			args = append([]string{"-c", ghCredentialKey + "=" + helper}, args...)
+		}
+		if _, err := git(ctx, w.paths.replicas(), args...); err != nil {
+			return "", fmt.Errorf("clone %s: %w%s", repo.Name, err, cloneHint(repo.RemoteURL, helper, err))
 		}
 		if _, err := git(ctx, path, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
 			return "", err
+		}
+	}
+	if helper != "" {
+		// Kept in the replica so its fetches, and pushes from worktrees an
+		// engineer is allowed to make, authenticate the same way. Checks
+		// clear every credential helper (checkEnv), so they never get it.
+		if cur, _ := git(ctx, path, "config", "--local", "--get-all", ghCredentialKey); cur != helper {
+			if _, err := git(ctx, path, "config", "--local", "--replace-all", ghCredentialKey, helper); err != nil {
+				return "", err
+			}
 		}
 	}
 	// A stale replica is still usable for a recorded base, so a failed fetch
 	// is not an error.
 	_, _ = git(ctx, path, "fetch", "--quiet", "--prune", "origin")
 	return path, nil
+}
+
+// ghCredentialKey scopes the GitHub CLI credential helper to github.com.
+const ghCredentialKey = "credential.https://github.com.helper"
+
+// ghCredentialHelper returns the git credential helper that authenticates a
+// github.com HTTPS remote with the GitHub CLI's sign-in on this machine (as
+// `gh auth setup-git` would), so a private repository the signed-in account
+// can see clones without a token in its URL. It is empty for other remotes
+// or when gh isn't installed. Helpers configured by the owner still run
+// first; gh answers only when none of them has a credential.
+func ghCredentialHelper(remote string) string {
+	if !strings.HasPrefix(strings.ToLower(remote), "https://github.com/") {
+		return ""
+	}
+	gh, err := exec.LookPath("gh")
+	if err != nil {
+		return ""
+	}
+	if abs, err := filepath.Abs(gh); err == nil {
+		gh = abs
+	}
+	return "!'" + strings.ReplaceAll(gh, "'", `'\''`) + "' auth git-credential"
+}
+
+// cloneHint explains how to reach a GitHub repository that refused an
+// HTTPS clone for lack of a credential.
+func cloneHint(remote, helper string, err error) string {
+	msg := err.Error()
+	if !strings.HasPrefix(strings.ToLower(remote), "https://github.com/") ||
+		!(strings.Contains(msg, "could not read Username") || strings.Contains(msg, "Repository not found") ||
+			strings.Contains(msg, "Authentication failed") || strings.Contains(msg, "403")) {
+		return ""
+	}
+	if helper == "" {
+		return ". If it's private, install the GitHub CLI on this machine and sign in with `gh auth login` as an account that can see it"
+	}
+	return ". If it's private, check `gh auth status` on this machine: the signed-in account needs access to it"
 }
 
 // bundleReplica builds (or refreshes) the replica of a repository imported
