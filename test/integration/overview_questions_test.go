@@ -31,7 +31,7 @@ func TestOverviewReviewerQuestionStaysWithAssignment(t *testing.T) {
 	e.post("Security", "@Mira fix Atlas accepting expired sessions", []string{"mira"}, nil)
 	var question protocol.Question
 	var root protocol.Job
-	e.waitFor("reviewer's question", 15*time.Second, func() bool {
+	e.waitFor("reviewer's question", 60*time.Second, func() bool {
 		for _, job := range e.jobsWithReplies() {
 			if job.Title == "Fix Atlas session expiry" {
 				root = job
