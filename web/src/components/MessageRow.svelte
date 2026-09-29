@@ -37,8 +37,8 @@
   const engineer = $derived(isEngineer ? app.data.engineers[author.id] : undefined);
   const mine = $derived(author.kind === 'user' && author.id === app.me?.id);
   const systemAuthored = $derived(message.kind === 'status' || message.kind === 'system' || author.kind === 'system');
-  // One-line hub facts are quiet lines; longer hub answers (e.g. the Overview
-  // status reply) read as a full message from the work ledger.
+  // One-line hub facts are quiet lines; longer hub messages read as a full
+  // message from the work ledger.
   const isStatus = $derived(systemAuthored && !message.body.trim().includes('\n') && message.kind !== 'approval');
   // The quiet text after the name: an engineer's role, or where a hub answer comes from.
   const role = $derived(isEngineer ? engineer?.role : systemAuthored ? 'From the work ledger' : undefined);

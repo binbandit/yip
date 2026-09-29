@@ -69,6 +69,8 @@ export function setupReadiness(data: SetupData) {
     projectLinked: target?.projectLinked ?? false,
     projectReady: target?.projectReady ?? false,
     reviewReady: !needsReviewer || !!reviewer,
+    /** Every step but the first piece of work, which needs jobs the bootstrap doesn't carry. */
+    configured: nodes.length > 0 && providerSignedIn && !!target?.projectReady && (!needsReviewer || !!reviewer),
     completed,
     unavailable,
     readyNow: !!target?.projectReady && (!needsReviewer || !!reviewer) && unavailable.length === 0,

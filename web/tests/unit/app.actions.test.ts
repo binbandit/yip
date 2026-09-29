@@ -96,7 +96,7 @@ beforeAll(async () => {
   hub.override('GET', /^\/v1\/approvals\/ap-1$/, () => ({ body: approval }));
   hub.install();
   (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
-  history.replaceState(null, '', '/overview');
+  history.replaceState(null, '', '/');
   component = mount(App, { target: document.body });
   app.start();
   await waitFor(() => app.phase === 'ready', 'ready');

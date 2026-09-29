@@ -115,7 +115,6 @@ export const defaultPreferences: Preferences = {
   density: 'comfortable',
   sendKey: 'enter',
   notify: 'mentions',
-  lastSeenAt: '',
 };
 
 export function emptyState(): DataState {

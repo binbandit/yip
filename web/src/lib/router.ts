@@ -7,7 +7,8 @@ import { workspaceBase, workspaceLocalPath, workspaceUrl } from './workspace';
 export type Route =
   | { name: 'setup' }
   | { name: 'signin' }
-  | { name: 'overview' }
+  | { name: 'home' }
+  | { name: 'start' }
   | { name: 'room'; roomId: string }
   | { name: 'engineers' }
   | { name: 'engineer'; id: string }
@@ -52,14 +53,15 @@ export function parseRoute(pathname: string): Route {
   if (rest.length) return { name: 'notfound', path: pathname };
   switch (a) {
     case undefined:
-    case 'overview':
-      return b ? { name: 'notfound', path: pathname } : { name: 'overview' };
+      return { name: 'home' };
+    case 'start':
+      return b ? { name: 'notfound', path: pathname } : { name: 'start' };
     case 'setup':
       return { name: 'setup' };
     case 'signin':
       return { name: 'signin' };
     case 'rooms':
-      return b ? { name: 'room', roomId: b } : { name: 'overview' };
+      return b ? { name: 'room', roomId: b } : { name: 'home' };
     case 'engineers':
       return b ? { name: 'engineer', id: b } : { name: 'engineers' };
     case 'projects':
@@ -107,8 +109,10 @@ function localRoutePath(r: Route): string {
       return '/setup';
     case 'signin':
       return '/signin';
-    case 'overview':
-      return '/overview';
+    case 'home':
+      return '/';
+    case 'start':
+      return '/start';
     case 'room':
       return `/rooms/${e(r.roomId)}`;
     case 'engineers':

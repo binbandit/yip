@@ -26,7 +26,8 @@ import { EventStream, type ConnectionState } from './events';
 import { clearUnsent, loadUnsent, saveUnsent } from './drafts';
 import { href, parseLocation, safeNext, withPanel, type Location, type Panel, type Route } from '../router';
 import { plainText } from '../util/markdown';
-import { recalledWorkspaceLocation, rememberWorkspaceLocation, workspaceBase, workspaceLocalPath, workspaceUrl, type WorkspaceSummary } from '../workspace';
+import { recalledWorkspaceLocation, rememberWorkspaceLocation, workspaceBase, workspaceLocalPath, workspaceStoragePrefix, workspaceUrl, type WorkspaceSummary } from '../workspace';
+import { setupReadiness } from '../util/setup';
 
 export type Phase = 'loading' | 'setup' | 'signin' | 'ready' | 'error';
 
@@ -48,6 +49,26 @@ function savedTheme(): Theme {
     return 'system';
   }
 }
+
+function stored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function store(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable: this session only */
+  }
+}
+
+const lastRoomKey = () => workspaceStoragePrefix('lastRoom').slice(0, -1);
+const startSkippedKey = () => workspaceStoragePrefix('gettingStarted') + 'dismissed';
 
 function currentLocation(): Location {
   if (typeof window === 'undefined') return parseLocation('/', '');
@@ -79,6 +100,8 @@ class AppState {
   /** A review finding's location to show in its work's diff (file:line at a revision). */
   diffFocus = $state<null | { jobId: string; file: string; line?: number; head?: string; at: number }>(null);
   viewport = $state(typeof window === 'undefined' ? 1440 : window.innerWidth);
+  /** Getting started no longer opens first; it stays reachable from the profile menu. */
+  startSkipped = $state(stored(startSkippedKey()) === '1');
 
   /** The room whose newest message is on screen (not reactive; read by the reducer). */
   viewingBottomRoomId: string | null = null;
@@ -102,8 +125,27 @@ class AppState {
     return Object.values(this.data.rooms).filter((r) => !r.archived);
   }
 
-  get overviewRoom(): Room | undefined {
-    return this.rooms.find((r) => r.kind === 'overview');
+  /**
+   * Where "/" opens: getting started until the workspace has a room and a
+   * team set up to work in it (or the owner skips it), then the room you were
+   * last in.
+   */
+  homePath(): string {
+    const byName = (a: Room, b: Room) => a.name.localeCompare(b.name);
+    const rooms = [...this.rooms.filter((r) => r.kind === 'room').sort(byName), ...this.rooms.filter((r) => r.kind === 'dm').sort(byName)];
+    if (!rooms.length || (!this.startSkipped && !setupReadiness(this.data).configured)) return '/start';
+    const last = stored(lastRoomKey());
+    return `/rooms/${rooms.find((r) => r.id === last)?.id ?? rooms[0].id}`;
+  }
+
+  rememberRoom(roomId: string): void {
+    store(lastRoomKey(), roomId);
+  }
+
+  skipStart(): void {
+    this.startSkipped = true;
+    store(startSkippedKey(), '1');
+    this.navigate(this.homePath());
   }
 
   get theme(): Theme {
@@ -192,14 +234,13 @@ class AppState {
     const fresh = emptyState();
     applyBootstrap(fresh, b);
     this.data = fresh;
+    this.startSkipped = stored(startSkippedKey()) === '1';
     this.restoreUnsent();
     this.phase = 'ready';
     this.applyAppearance();
     const r = this.loc.route.name;
     if (r === 'signin' || r === 'setup') {
-      this.navigate(safeNext(this.loc.next) ?? '/overview', { replace: true });
-    } else if (workspaceLocalPath(window.location.pathname) === '/') {
-      this.navigate('/overview', { replace: true });
+      this.navigate(safeNext(this.loc.next) ?? '/', { replace: true });
     }
     this.startStream();
     void this.loadRuns();
@@ -234,7 +275,7 @@ class AppState {
     const remembered = recalledWorkspaceLocation(workspace.path);
     // Stored paths are local to the destination, never a different workspace or an API.
     const destination = remembered && !workspaceBase(remembered) ? safeNext(remembered) : null;
-    const resume = destination ? workspaceLocalPath(destination) : '/overview';
+    const resume = destination ? workspaceLocalPath(destination) : '/';
     this.leaveWorkspace(workspaceUrl(resume, workspace.path));
   }
 

@@ -6,7 +6,7 @@ export async function signIn(page: Page): Promise<void> {
   await page.getByLabel('Handle').fill(process.env.YIP_E2E_HANDLE ?? 'brayden');
   await page.getByLabel('Password').fill(process.env.YIP_E2E_PASSWORD ?? '');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
+  await expect(page.locator('#room-title')).toBeVisible();
 }
 
 export async function openRoom(page: Page, name: string): Promise<void> {

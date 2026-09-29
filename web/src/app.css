@@ -53,7 +53,7 @@
 
   /*
    * Astryx's Link template leaves whitespace after its label inside the <a>,
-   * which shows as a gap before punctuation that follows a link ("Overview .").
+   * which shows as a gap before punctuation that follows a link ("Retry .").
    * A flex anchor doesn't render whitespace-only text. The cost: a link wraps
    * as one box, which suits yip's short in-sentence links (long titles sit in
    * rows of their own).

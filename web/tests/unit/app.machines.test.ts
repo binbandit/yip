@@ -112,7 +112,7 @@ beforeAll(async () => {
 afterAll(() => unmount(component));
 
 beforeEach(async () => {
-  app.go({ name: 'overview' });
+  app.go({ name: 'engineers' });
   await settle();
   load();
   app.go({ name: 'machines' });
@@ -174,7 +174,7 @@ describe('the Machines list', () => {
 
   it('shows an empty state with one way to add a machine', async () => {
     app.data.nodes = {};
-    app.go({ name: 'overview' });
+    app.go({ name: 'engineers' });
     await settle();
     const saved = [...machines];
     machines.length = 0;

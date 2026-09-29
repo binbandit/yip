@@ -1,28 +1,25 @@
 <script lang="ts">
-  import { Button, Heading, Link, Text } from '@astryx-svelte/core';
+  // Where a new workspace opens (see app.homePath); also in the profile menu.
+  import { onMount } from 'svelte';
+  import { Button, Link, Text } from '@astryx-svelte/core';
+  import { api } from '../lib/api/endpoints';
   import { app } from '../lib/state/app.svelte';
-  import { workspaceStoragePrefix, workspaceUrl } from '../lib/workspace';
+  import { workspaceUrl } from '../lib/workspace';
+  import { newer } from '../lib/state/data';
   import { providerLabel } from '../lib/util/labels';
   import { roomSettings, setupReadiness } from '../lib/util/setup';
   import { connectionPath } from '../lib/util/connections';
-  import StateIcon from './StateIcon.svelte';
+  import Screen from '../components/Screen.svelte';
+  import StateIcon from '../components/StateIcon.svelte';
 
-  const KEY = workspaceStoragePrefix('gettingStarted') + 'dismissed';
-  let dismissed = $state(false);
-  let expanded = $state(false);
-  const hasRecordedWork = $derived(Object.values(app.data.jobs).some((j) => j.kind !== 'reply' && j.kind !== 'review' && !j.parentId));
-  const showSteps = $derived(expanded || !hasRecordedWork);
-  try {
-    dismissed = localStorage.getItem(KEY) === '1';
-  } catch { /* storage unavailable: show it */ }
-  function setDismissed(value: boolean) {
-    dismissed = value;
-    if (!value) expanded = true;
-    try {
-      if (value) localStorage.setItem(KEY, '1');
-      else localStorage.removeItem(KEY);
-    } catch { /* ignore */ }
-  }
+  onMount(() => {
+    api
+      .jobs({ state: ['completed'] })
+      .then((js) => {
+        for (const j of js ?? []) if (newer(app.data.jobs[j.id], j)) app.data.jobs[j.id] = j;
+      })
+      .catch(() => {});
+  });
 
   const setup = $derived(setupReadiness(app.data));
   const engineer = $derived(setup.engineer);
@@ -94,31 +91,15 @@
     },
   ]);
   const remaining = $derived(steps.filter((s) => !s.done).length);
+  const canSkip = $derived(app.rooms.length > 0 && !setup.configured && !app.startSkipped);
 </script>
 
-{#if dismissed}
-  <div class="restore">
-    <Button label="Show getting started" variant="ghost" size="sm" onclick={() => setDismissed(false)} />
-  </div>
-{:else}
-  <section class="start" aria-labelledby="gs-title">
-    <header>
-      <Heading level={2} id="gs-title">Getting started</Heading>
-      <Text type="supporting">{steps.length - remaining} of {steps.length} done</Text>
-      <div class="actions">
-        {#if hasRecordedWork}
-          <Button
-            label={showSteps ? 'Show less' : 'Show steps'}
-            variant="ghost"
-            size="sm"
-            aria-expanded={showSteps}
-            aria-controls="gs-steps"
-            onclick={() => (expanded = !expanded)}
-          />
-        {/if}
-        <Button label="Hide" variant="ghost" size="sm" onclick={() => setDismissed(true)} />
-      </div>
-    </header>
+{#snippet skip()}
+  <Button label="Skip for now" variant="ghost" onclick={() => app.skipStart()} />
+{/snippet}
+
+<Screen title="Getting started" subtitle="{steps.length - remaining} of {steps.length} done" actions={canSkip ? skip : undefined} width={760}>
+  <section class="start" aria-label="Setup steps">
     {#if setup.unavailable.length > 0}
       <div class="availability">
         {#each setup.unavailable as issue (issue.engineer.id)}
@@ -129,7 +110,7 @@
         <Text as="p" display="block" type="supporting">Your completed setup stays in place.</Text>
       </div>
     {/if}
-    <ol id="gs-steps" hidden={!showSteps}>
+    <ol>
       {#each steps as s, i (s.title)}
         {@const next = !s.done && steps.slice(0, i).every((x) => x.done)}
         <li>
@@ -149,33 +130,11 @@
       {/each}
     </ol>
   </section>
-{/if}
+</Screen>
 
 <style>
-  .restore {
-    margin-bottom: var(--spacing-5);
-  }
   .start {
     container-type: inline-size;
-    margin-bottom: var(--spacing-7);
-    padding: var(--spacing-3) var(--spacing-4) var(--spacing-2);
-    border: 1px solid var(--color-border-emphasized);
-    border-radius: var(--radius-container);
-  }
-  header {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: var(--spacing-2) var(--spacing-3);
-    margin-bottom: var(--spacing-1-5);
-  }
-  header :global(h2) {
-    font-size: var(--font-size-lg);
-  }
-  .actions {
-    display: flex;
-    gap: var(--spacing-1);
-    margin-left: auto;
   }
   .availability {
     display: grid;
@@ -184,9 +143,6 @@
   }
   ol {
     display: grid;
-  }
-  ol[hidden] {
-    display: none;
   }
   li {
     display: flex;

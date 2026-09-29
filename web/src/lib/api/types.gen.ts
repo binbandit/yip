@@ -109,19 +109,6 @@ export interface CancelJobRequest {
   includeChildren: boolean;
 }
 
-export interface CatchupItem {
-  kind: string;
-  title: string;
-  detail: string;
-  at: string;
-  actorId?: string;
-  roomId?: string;
-  threadId?: string;
-  messageId?: string;
-  refs: Ref[];
-  eventSeq: number;
-}
-
 export interface Check {
   id: string;
   jobId: string;
@@ -639,15 +626,6 @@ export interface Org {
   createdAt: string;
 }
 
-export interface Overview {
-  since?: string | null;
-  catchup: CatchupItem[];
-  work: WorkRow[];
-  decisions: Decision[];
-  questions: Question[];
-  roomId: string;
-}
-
 export interface PostMessageRequest {
   body: string;
   threadId?: string;
@@ -671,7 +649,6 @@ export interface Preferences {
   density: string;
   sendKey: string;
   notify: string;
-  lastSeenAt: string;
   mutedRoomIds?: string[];
 }
 
@@ -1092,7 +1069,6 @@ export interface WorkRow {
   lastConfirmed: string;
   lastConfirmedAt?: string | null;
   blocker?: string;
-  questions?: Question[];
   runState?: RunState;
 }
 

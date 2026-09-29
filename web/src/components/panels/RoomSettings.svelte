@@ -139,7 +139,7 @@
     if (!room) return;
     await api.updateRoom(room.id, { version: room.version, archived: true });
     app.data.rooms[room.id] = { ...room, archived: true };
-    app.navigate('/overview');
+    app.navigate('/');
   }
 </script>
 

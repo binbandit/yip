@@ -113,7 +113,7 @@ function boot(s: DataState, rooms: Room[] = [room('r1')], cursor = 100): void {
     nodes: [],
     cursor,
     csrfToken: 'x',
-    preferences: { theme: 'system', density: 'comfortable', sendKey: 'enter', notify: 'mentions', lastSeenAt: '' },
+    preferences: { theme: 'system', density: 'comfortable', sendKey: 'enter', notify: 'mentions' },
     serverTime: '',
     version: 'test',
     demo: true,

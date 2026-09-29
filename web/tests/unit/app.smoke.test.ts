@@ -69,46 +69,14 @@ afterAll(() => {
 });
 
 describe('app smoke (jsdom, captured fixtures)', () => {
-  it('boots into the Overview with catch-up and the factual ledger', async () => {
-    await waitFor(() => text().includes('Since you were here'), 'overview');
-    expect(location.pathname).toBe('/overview');
+  it('opens in a room rather than a dashboard', async () => {
+    await waitFor(() => location.pathname.startsWith('/rooms/') && document.querySelector('#room-title'), 'a room');
+    expect(location.pathname).toBe(`/rooms/${roomId('Engineering')}`);
     expect(document.querySelector('.notices')).toBeNull();
-    await waitFor(() => text().includes('Needs a look') && text().includes("Document Beacon's request flow"), 'ledger');
-    expect(text()).toContain('Tracing the retry worker needs its repository location');
-    expect(text()).toContain('Recently completed');
-    expect(text()).toContain('Atlas uses strict server-side expiry');
-    expect(byText('.catchup button', 'view decision')).toBeTruthy();
-    expect(byText('.catchup button', 'open the work')).toBeTruthy();
-    // The visit is recorded only after rendering, and nothing marks rooms read.
-    await waitFor(() => hub.calls.some((c) => c.method === 'POST' && c.path === '/v1/overview/seen'), 'overview/seen');
-    const first = hub.calls.findIndex((c) => c.method === 'GET' && c.path === '/v1/overview');
-    const seen = hub.calls.findIndex((c) => c.method === 'POST' && c.path === '/v1/overview/seen');
-    expect(first).toBeGreaterThanOrEqual(0);
-    expect(seen).toBeGreaterThan(first);
-    expect(hub.calls.some((c) => c.path.includes('seen=1'))).toBe(false);
-    expect(hub.calls.some((c) => /\/read$/.test(c.path))).toBe(false);
+    expect(byText('nav.side a', 'Overview')).toBeFalsy();
     // The stream resumes exactly at the snapshot cursor; active runs come from GET /v1/runs.
     expect(FakeEventSource.latest().url).toBe(`/v1/events?cursor=${bootCursor}`);
     expect(hub.calls.some((c) => c.method === 'GET' && c.path === '/v1/runs')).toBe(true);
-  });
-
-  it('gives Overview evidence the side space and restores the conversation on close', async () => {
-    app.viewport = 1440;
-    await settle();
-    expect(document.querySelector('.overview .convo')).toBeTruthy();
-    expect(document.querySelector('#gs-steps')?.hasAttribute('hidden')).toBe(true);
-    byText('.start button', 'Show steps')!.click();
-    await settle();
-    expect(document.querySelector('#gs-steps')?.hasAttribute('hidden')).toBe(false);
-    byText('.start button', 'Show less')!.click();
-    await settle();
-    byText('.catchup button', 'view decision')!.click();
-    await waitFor(() => document.querySelector('.panel'), 'decision evidence');
-    expect(document.querySelector('.overview .convo')).toBeNull();
-    expect(text()).toContain('Open workspace summary');
-    key(document.activeElement ?? document.body, 'Escape');
-    await waitFor(() => !document.querySelector('.panel'), 'evidence closes');
-    expect(document.querySelector('.overview .convo')).toBeTruthy();
   });
 
   it('shows unread by weight and mention counts in the sidebar', () => {
@@ -179,7 +147,7 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     app.go({ name: 'room', roomId: roomId('Reverse engineering') });
     await waitFor(() => text().includes('which repository contains'), 'question');
     expect(text()).toContain('Pip asked you');
-    // The question itself is known (from the Overview or GET /v1/questions/{id}), not its whole job.
+    // The question itself is known (from GET /v1/questions/{id}), not its whole job.
     const qid = fixture<{ id: string }>('question.json').id;
     await waitFor(() => app.data.questions[qid], 'question state');
     expect(hub.calls.some((c) => c.path === `/v1/jobs/${pipJob.id}`)).toBe(false);
