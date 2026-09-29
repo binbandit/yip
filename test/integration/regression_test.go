@@ -350,6 +350,123 @@ func TestRegressionAnswerBeforeWaitResumes(t *testing.T) {
 	}
 }
 
+// An answer that lands after an attempt was offered but before it reports
+// that it started (its machine is still preparing the workspace) is missing
+// from the manifest the attempt was planned from, even though the runner
+// hands it to the provider as soon as the session starts. When that attempt
+// parks on the question again, the job resumes with the answer instead of
+// waiting forever. The machine is played by hand to hold that window open.
+func TestRegressionAnswerWhileStartingResumes(t *testing.T) {
+	e := newEnv(t, envOptions{noRunner: true})
+	n := e.fakeNode("slow-box")
+	seen := map[string]bool{}
+	accept := func(what string, jobID string) protocol.Frame {
+		t.Helper()
+		f := n.waitFrame(e, what, func(f protocol.Frame) bool {
+			if f.Type != protocol.CmdOfferRun || seen[f.RunID] {
+				return false
+			}
+			run, err := store.GetRun(e.ctx, e.hub.Store().R(), f.RunID)
+			return err == nil && (jobID == "" || run.JobID == jobID)
+		})
+		seen[f.RunID] = true
+		n.send(e, protocol.EvRunAck, f.RunID, f.LeaseEpoch, protocol.RunAck{CommandID: f.ID, Accepted: true, State: "accepted"})
+		return f
+	}
+	seq := map[string]int64{}
+	event := func(offer protocol.Frame, kind string, data any) {
+		seq[offer.RunID]++
+		ev := protocol.RunEvent{Seq: seq[offer.RunID], Kind: kind, At: time.Now()}
+		if data != nil {
+			ev.Data, _ = json.Marshal(data)
+		}
+		n.send(e, protocol.EvRunEvent, offer.RunID, offer.LeaseEpoch, ev)
+	}
+	call := func(offer protocol.Frame, tool string, args map[string]any) {
+		t.Helper()
+		b, _ := json.Marshal(args)
+		if res := e.hub.HandleToolCall(e.ctx, n.id, offer.RunID, offer.LeaseEpoch, protocol.ToolCall{CallID: domain.NewID(), Tool: tool, Args: b}); !res.OK {
+			t.Fatalf("%s: %+v", tool, res.Error)
+		}
+	}
+	finish := func(offer protocol.Frame) {
+		n.send(e, protocol.EvRunTerminal, offer.RunID, offer.LeaseEpoch, protocol.RunTerminal{Outcome: protocol.OutcomeSucceeded, ExitConfirmed: true, LastSeq: seq[offer.RunID]})
+	}
+	manifestOf := func(offer protocol.Frame) manifest.Manifest {
+		t.Helper()
+		run, err := store.GetRun(e.ctx, e.hub.Store().R(), offer.RunID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m manifest.Manifest
+		if err := json.Unmarshal(run.Manifest, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	answered := func(m manifest.Manifest) bool {
+		for _, in := range m.Inputs {
+			if in.Kind == "answer" && strings.Contains(in.Body, "us-east-1") {
+				return true
+			}
+		}
+		return false
+	}
+
+	e.post("Engineering", "@Mira plan the rollout", []string{"mira"}, nil)
+	reply := accept("the reply", "")
+	event(reply, protocol.RunEvStarted, nil)
+	call(reply, "work_create", map[string]any{"title": "Plan rollout", "objective": "plan", "kind": "investigation", "project": "Atlas"})
+	finish(reply)
+	j, ok := e.job("Plan rollout")
+	if !ok {
+		t.Fatal("the work was not created")
+	}
+
+	first := accept("the first attempt", j.ID)
+	event(first, protocol.RunEvStarted, nil)
+	call(first, "human_ask", map[string]any{"question": "Which region first?", "missingFact": "region", "contextChecked": "docs"})
+	call(first, "work_wait", map[string]any{"reason": "missing_information"})
+	finish(first)
+	e.waitJob("Plan rollout", protocol.JobWaiting)
+	qs := e.jobDetail(j.ID).Questions
+	if len(qs) != 1 {
+		t.Fatalf("questions: %+v", qs)
+	}
+
+	// A clarification starts a second attempt, planned before any answer.
+	e.c.must("POST", "/v1/jobs/"+j.ID+"/input", protocol.JobInputRequest{Body: "also keep the error codes", ClientKey: domain.NewID()}, nil)
+	second := accept("the clarification's attempt", j.ID)
+	if answered(manifestOf(second)) {
+		t.Fatal("the second attempt was planned after the answer; this test needs it planned before")
+	}
+
+	// Its machine is still preparing the workspace when the owner answers.
+	answer := e.post("Engineering", "us-east-1", nil, func(r *protocol.PostMessageRequest) { r.ReplyToID = qs[0].MessageID })
+	if len(answer.Resolved) != 1 {
+		t.Fatalf("the answer did not reach the question: %+v", answer)
+	}
+	deliver := n.waitFrame(e, "the answer sent to the preparing attempt", func(f protocol.Frame) bool {
+		return f.Type == protocol.CmdDeliverInput && f.RunID == second.RunID
+	})
+	var in protocol.DeliverInput
+	if err := json.Unmarshal(deliver.Payload, &in); err != nil {
+		t.Fatal(err)
+	}
+
+	// The session starts and takes the answer at once, but this turn was
+	// planned without it: it parks on the question again.
+	event(second, protocol.RunEvStarted, nil)
+	event(second, protocol.RunEvInputDelivered, protocol.InputDelivered{InputID: in.InputID, Mode: "immediate"})
+	call(second, "work_wait", map[string]any{"reason": "missing_information"})
+	finish(second)
+
+	third := accept("an attempt planned with the answer", j.ID)
+	if m := manifestOf(third); m.Purpose != "answer" || !answered(m) {
+		t.Fatalf("the resumed attempt should carry the answer: purpose %q, inputs %+v", m.Purpose, m.Inputs)
+	}
+}
+
 // A delegated child that fails resolves its parent's dependency, and the
 // parent is told the outcome.
 func TestRegressionFailedChildResolvesParent(t *testing.T) {
