@@ -4,6 +4,43 @@ import { openRoom, signIn } from './helpers';
 // Exercise browser Back with BFCache available rather than Playwright's default.
 test.use({ launchOptions: { chromiumSandbox: true, ignoreDefaultArgs: ['--disable-back-forward-cache'] } });
 
+test('create several freely named workspaces and switch to any of them', async ({ page }, testInfo) => {
+  await signIn(page);
+  const initial = await (await page.request.get('/v1/bootstrap')).json();
+  const rootName = initial.org.name as string;
+  const names = ['Design studio', 'Acme / R&D', 'Book club 📚'];
+  let activeName = rootName;
+  const urls = new Map<string, string>();
+
+  for (const name of names) {
+    await page.getByRole('button', { name: `Workspace: ${activeName}`, exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Create workspace', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Create workspace', exact: true });
+    await dialog.getByLabel('Workspace name').fill(name);
+    await dialog.getByRole('button', { name: 'Create workspace', exact: true }).click();
+    await expect(page.getByRole('button', { name: `Workspace: ${name}`, exact: true })).toBeVisible();
+    urls.set(name, page.url());
+    activeName = name;
+  }
+  expect(new Set(urls.values()).size).toBe(names.length);
+
+  // All entries are real, independently addressable workspaces, not fixed categories.
+  for (const name of [...names, rootName]) {
+    await page.getByRole('button', { name: `Workspace: ${activeName}`, exact: true }).click();
+    await page.getByRole('menuitem', { name, exact: true }).click();
+    await expect(page.getByRole('button', { name: `Workspace: ${name}`, exact: true })).toBeVisible();
+    if (name !== rootName) await expect(page).toHaveURL(urls.get(name)!);
+    activeName = name;
+  }
+  await openRoom(page, 'Security');
+  await page.getByRole('button', { name: `Workspace: ${rootName}`, exact: true }).click();
+  for (const name of names) await expect(page.getByRole('menuitem', { name, exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Create workspace', exact: true })).toBeVisible();
+  const screenshot = testInfo.outputPath('workspace-switcher.png');
+  await page.screenshot({ path: screenshot, animations: 'disabled' });
+  await testInfo.attach('workspace-switcher', { path: screenshot, contentType: 'image/png' });
+});
+
 test('create separate work and personal spaces, switch back to the draft, and keep tabs independent', async ({ page, context }) => {
   await signIn(page);
   const initial = await (await page.request.get('/v1/bootstrap')).json();

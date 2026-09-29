@@ -127,7 +127,7 @@ describe('workspace switcher', () => {
     component = mount(WorkspaceSwitcher, { target: document.body });
     await openCreate();
     expect(document.querySelector('input')?.maxLength).toBe(80);
-    expect(document.querySelector('input')?.placeholder).toBe('Work or Personal');
+    expect(document.querySelector('input')?.placeholder).toBe('e.g. Design studio');
     expect(document.querySelector('label')?.textContent).toContain('Workspace name');
     expect(document.querySelector('dialog')?.textContent).toContain('Pair a machine');
     input('   ');

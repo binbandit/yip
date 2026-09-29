@@ -4,17 +4,22 @@ One `yip hub` installation can host independent workspaces. The original
 workspace keeps its existing URL and data directory. Create another through
 the workspace menu or the authenticated `POST /v1/workspaces` endpoint.
 
-## Using work and personal workspaces
+## Create and switch workspaces
 
 Open the workspace name at the top of the sidebar (or the top bar on a phone)
-and choose **Create workspace**. Give it a name such as **Work** or
-**Personal**. The new workspace starts with just Overview; add its engineers,
-rooms, projects, and machines independently.
+and choose **Create workspace**. Use any name for any team, project, client,
+or interest: **Design studio**, **Acme / R&D**, **Book club**, or whatever
+fits. There are no fixed workspace types and no built-in workspace-count
+limit. Names must be unique within the installation and 1–80 characters long.
+The new workspace starts with just Overview; add its engineers, rooms,
+projects, and machines independently.
+
+![Workspace switcher with three custom-named workspaces and the option to create another](screenshots/workspaces.png)
 
 Choose another name from the same menu to switch. The browser remembers the
 page you left in each workspace and preserves composer drafts and failed
 sends separately. Existing drafts in the original workspace survive the
-upgrade. Each tab's URL determines its workspace, so work and personal tabs
+upgrade. Each tab's URL determines its workspace, so different workspace tabs
 can stay open together. Browser Back refreshes the restored workspace before
 resuming live updates.
 

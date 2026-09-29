@@ -103,7 +103,7 @@
 {#if creating}
   <Dialog title="Create workspace" onclose={closeCreate} width={480} purpose={busy ? 'required' : 'form'}>
     <form id={formId} class="form" onsubmit={create} novalidate aria-busy={busy}>
-      <TextInput label="Workspace name" bind:value={name} placeholder="Work or Personal" {...nameHints} isRequired isReadOnly={busy} hasAutoFocus width="100%" />
+      <TextInput label="Workspace name" bind:value={name} placeholder="e.g. Design studio" description="Choose a name for any team, project, or purpose." {...nameHints} isRequired isReadOnly={busy} hasAutoFocus width="100%" />
       <Text as="p" type="supporting">Chats, rooms, engineers, projects and machine pairings stay separate. Signing in is shared.</Text>
       <Text as="p" type="supporting">Your new workspace starts empty. Pair a machine there to get started.</Text>
       {#if error}<Notice tone="danger" role="alert">{error}</Notice>{/if}
