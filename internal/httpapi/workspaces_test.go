@@ -138,7 +138,7 @@ func TestWorkspaces(t *testing.T) {
 		return b
 	}
 	b := readBootstrap(workspace.Path)
-	if len(b.Rooms) != 1 || b.Rooms[0].Name != "Overview" || len(b.Engineers)+len(b.Projects)+len(b.Nodes) != 0 || b.Demo || b.User.ID != owner.ID {
+	if len(b.Rooms) != 0 || len(b.Engineers)+len(b.Projects)+len(b.Nodes) != 0 || b.Demo || b.User.ID != owner.ID {
 		t.Fatalf("fresh bootstrap: %+v", b)
 	}
 	childChanged := child.Bus().Changed()
