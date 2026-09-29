@@ -17,6 +17,7 @@ import (
 
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/protocol"
+	"golang.org/x/sys/unix"
 )
 
 // Workspaces manages repository replicas and per-job worktrees. Git worktrees
@@ -645,11 +646,7 @@ func (ws *Workspace) Head(ctx context.Context) (head string, dirty bool, untrack
 	if err != nil {
 		return "", false, 0, err
 	}
-	args := []string{"status", "--porcelain", "--untracked-files=all"}
-	if ws.Isolated {
-		args = append(args, "--ignore-submodules=all")
-	}
-	st, err := ws.git(ctx, args...)
+	st, err := ws.status(ctx)
 	if err != nil {
 		return head, false, 0, err
 	}
@@ -665,27 +662,180 @@ func (ws *Workspace) Head(ctx context.Context) (head string, dirty bool, untrack
 	return head, dirty, untracked, nil
 }
 
-// Commit records all outstanding changes as the engineer.
-func (ws *Workspace) Commit(ctx context.Context, name, email, message string) (string, error) {
-	ws.mutationMu.Lock()
-	defer ws.mutationMu.Unlock()
-	if err := ws.add(ctx, ws.gitEnv()); err != nil {
+// status must not let Git discover repositories in the live isolated worktree.
+func (ws *Workspace) status(ctx context.Context) (result string, err error) {
+	env, cleanup, err := ws.snapshotEnv(ctx, ws.gitEnv())
+	if err != nil {
 		return "", err
 	}
-	if _, err := ws.git(ctx, "-c", "user.name="+name, "-c", "user.email="+email, "-c", "commit.gpgsign=false",
+	defer func() { err = errors.Join(err, cleanup()) }()
+	args := []string{"status", "--porcelain", "--untracked-files=all"}
+	if ws.Isolated {
+		args = append(args, "--ignore-submodules=all")
+	}
+	return gitWithEnv(ctx, ws.Dir, env, args...)
+}
+
+// Commit records all outstanding changes as the engineer.
+func (ws *Workspace) Commit(ctx context.Context, name, email, message string) (revision string, err error) {
+	ws.mutationMu.Lock()
+	defer ws.mutationMu.Unlock()
+	env, cleanup, err := ws.snapshotEnv(ctx, ws.gitEnv())
+	if err != nil {
+		return "", err
+	}
+	defer func() { err = errors.Join(err, cleanup()) }()
+	if err := ws.addSnapshot(ctx, env); err != nil {
+		return "", err
+	}
+	if _, err := gitWithEnv(ctx, ws.Dir, env, "-c", "user.name="+name, "-c", "user.email="+email, "-c", "commit.gpgsign=false",
 		"commit", "--quiet", "--no-verify", "-m", message); err != nil {
 		return "", err
 	}
 	return ws.git(ctx, "rev-parse", "HEAD")
 }
 
-// add stages the parent repository only. Git add does not honor
-// diff.ignoreSubmodules while refreshing gitlinks and can execute clean filters
-// from their writable nested configs. Exclude every indexed gitlink explicitly,
-// using the same index (including Checkpoint's temporary index) as the add.
-// Existing gitlinks are frozen, including deleted or modified submodules:
-// isolated jobs publish parent-repository changes, not nested repository work.
-func (ws *Workspace) add(ctx context.Context, env []string) error {
+// snapshotEnv gives Git a private, metadata-free working tree. Never run Git's
+// discovery on agent-writable directories: even an initial status/add can resolve
+// a nested .git file or symlink and load configuration outside the sandbox.
+// Nested working files are ordinary parent-repository files, never gitlinks.
+// Existing gitlinks remain frozen and their working directories are not read.
+func (ws *Workspace) snapshotEnv(ctx context.Context, env []string) ([]string, func() error, error) {
+	if !ws.Isolated {
+		return env, func() error { return nil }, nil
+	}
+	index, err := gitWithEnv(ctx, ws.Dir, env, "ls-files", "--stage", "-z")
+	if err != nil {
+		return nil, nil, err
+	}
+	gitlinks := make(map[string]bool)
+	for _, entry := range strings.Split(index, "\x00") {
+		if strings.HasPrefix(entry, "160000 ") {
+			_, path, ok := strings.Cut(entry, "\t")
+			if !ok {
+				return nil, nil, errors.New("invalid gitlink index entry")
+			}
+			gitlinks[path] = true
+		}
+	}
+	dir, err := os.MkdirTemp("", "yip-stage-*")
+	if err != nil {
+		return nil, nil, err
+	}
+	cleanup := func() error { return os.RemoveAll(dir) }
+	root, err := os.Open(ws.Dir)
+	if err == nil {
+		budget := stagingBudget{entries: 100000, bytes: 1 << 30}
+		err = copyStagingFiles(ctx, root, dir, "", gitlinks, &budget)
+		root.Close()
+	}
+	if err != nil {
+		return nil, nil, errors.Join(err, cleanup())
+	}
+	// The metadata path is host-owned and mounted read-only in the agent.
+	return append(append([]string{}, env...), "GIT_DIR="+filepath.Join(ws.Dir, ".git"),
+		"GIT_WORK_TREE="+dir), cleanup, nil
+}
+
+type stagingBudget struct {
+	entries int
+	bytes   int64
+}
+
+// copyStagingFiles opens children relative to pinned directory descriptors, never
+// following symlinks. A scan followed by path-based copies is not sufficient:
+// the live agent can replace a scanned directory/file with an external symlink.
+// Concurrent replacements may fail a snapshot (the caller can retry), but cannot
+// make it follow a link or pass nested metadata to Git.
+// Bounds apply before Git evaluates ignore files, including ignored content.
+// Exceeding a bound fails closed rather than recording incomplete evidence.
+func copyStagingFiles(ctx context.Context, source *os.File, dest, prefix string, gitlinks map[string]bool, budget *stagingBudget) error {
+	if strings.Count(prefix, "/") > 128 {
+		return errors.New("snapshot exceeds 128 directory levels")
+	}
+	entries, err := source.ReadDir(budget.entries + 1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	budget.entries -= len(entries)
+	if budget.entries < 0 {
+		return errors.New("snapshot exceeds 100000 entries (including ignored files)")
+	}
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		name := entry.Name()
+		path := prefix + name
+		if strings.EqualFold(name, ".git") || gitlinks[path] {
+			continue
+		}
+		target := filepath.Join(dest, name)
+		if entry.Type()&os.ModeSymlink != 0 {
+			// readlinkat reads only the link text, even if its target is outside.
+			buf := make([]byte, 65536)
+			n, err := unix.Readlinkat(int(source.Fd()), name, buf)
+			if err != nil {
+				return err
+			}
+			if n == len(buf) {
+				return fmt.Errorf("symlink target too long: %s", path)
+			}
+			budget.bytes -= int64(n)
+			if budget.bytes < 0 {
+				return fmt.Errorf("snapshot size limit exceeded at symlink %s", path)
+			}
+			if err := os.Symlink(string(buf[:n]), target); err != nil {
+				return err
+			}
+			continue
+		}
+		fd, err := unix.Openat(int(source.Fd()), name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
+		if err != nil {
+			return fmt.Errorf("snapshot %s: %w", path, err)
+		}
+		file := os.NewFile(uintptr(fd), path)
+		err = func() error {
+			defer file.Close()
+			info, err := file.Stat()
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				if err := os.Mkdir(target, 0o700); err != nil {
+					return err
+				}
+				return copyStagingFiles(ctx, file, target, path+"/", gitlinks, budget)
+			}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("unsupported snapshot file: %s", path)
+			}
+			limit := min(int64(256<<20), budget.bytes)
+			if info.Size() > limit {
+				return fmt.Errorf("snapshot size limit exceeded at %s (256 MiB/file, 1 GiB total, including ignored files)", path)
+			}
+			out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm()|0o600)
+			if err != nil {
+				return err
+			}
+			n, copyErr := io.Copy(out, io.LimitReader(file, limit+1))
+			closeErr := out.Close()
+			if n > limit {
+				return fmt.Errorf("snapshot size limit exceeded while reading %s", path)
+			}
+			budget.bytes -= n
+			return errors.Join(copyErr, closeErr)
+		}()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addSnapshot requires the environment returned by snapshotEnv. Exclude indexed
+// gitlinks explicitly: Git add otherwise refreshes even ignored submodules.
+func (ws *Workspace) addSnapshot(ctx context.Context, env []string) error {
 	if !ws.Isolated {
 		_, err := gitWithEnv(ctx, ws.Dir, env, "add", "-A")
 		return err
@@ -786,17 +936,23 @@ func (ws *Workspace) Checkpoint(ctx context.Context, runID string) (commit strin
 	}
 	idx.Close()
 	defer os.Remove(idx.Name())
+	env, cleanup, err := ws.snapshotEnv(ctx, ws.gitEnv())
+	if err != nil {
+		return "", 0, err
+	}
+	defer func() { err = errors.Join(err, cleanup()) }()
+	env = append(env, "GIT_INDEX_FILE="+idx.Name())
 	run := func(args ...string) (string, error) {
 		cmd := exec.CommandContext(ctx, "git", gitArgs(args)...)
 		cmd.Dir = ws.Dir
-		cmd.Env = append(ws.gitEnv(), "GIT_INDEX_FILE="+idx.Name())
+		cmd.Env = env
 		out, err := cmd.Output()
 		return strings.TrimSpace(string(out)), err
 	}
 	if _, err := run("read-tree", "HEAD"); err != nil {
 		return "", 0, err
 	}
-	if err := ws.add(ctx, append(ws.gitEnv(), "GIT_INDEX_FILE="+idx.Name())); err != nil {
+	if err := ws.addSnapshot(ctx, env); err != nil {
 		return "", 0, err
 	}
 	tree, err := run("write-tree")

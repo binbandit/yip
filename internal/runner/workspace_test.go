@@ -7,9 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/binbandit/yip/protocol"
+	"golang.org/x/sys/unix"
 )
 
 // fakeGH puts a `gh` on PATH that answers `gh auth git-credential get` with
@@ -468,8 +470,8 @@ func TestIsolatedCheckpointDoesNotExecuteNestedGitConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(tree, "120000 blob") || !strings.Contains(tree, "160000 commit") {
-		t.Fatalf("expected symlink and gitlink, not traversed file contents: %s", tree)
+	if !strings.Contains(tree, "120000 blob") || strings.Contains(tree, "160000 commit") || strings.Contains(tree, "nested") {
+		t.Fatalf("expected symlink only, no newly discovered gitlink: %s", tree)
 	}
 	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("nested git configuration executed: %v", err)
@@ -511,8 +513,10 @@ func TestIsolatedGitDoesNotRunTrackedSubmoduleFilters(t *testing.T) {
 			t.Fatalf("%s executed tracked submodule filter: %v", stage, err)
 		}
 	}
-	// The first add discovers an untracked embedded repository; subsequent
-	// adds must exclude the gitlink once it exists in the protected index.
+	// Seed a preexisting, trusted gitlink explicitly. Isolated staging must
+	// never create one by discovering agent-written nested metadata.
+	nestedHead := strings.TrimSpace(run(t, nested, nil, "", "git", "rev-parse", "HEAD"))
+	run(t, ws.Dir, nil, "", "git", "update-index", "--add", "--cacheinfo", "160000,"+nestedHead+",nested")
 	if _, err := ws.Commit(ctx, "test", "test@example.com", "track gitlink"); err != nil {
 		t.Fatal(err)
 	}
@@ -561,5 +565,240 @@ func TestIsolatedGitDoesNotRunTrackedSubmoduleFilters(t *testing.T) {
 	after, err := ws.git(ctx, "ls-tree", "HEAD", "--", "nested")
 	if err != nil || after != before {
 		t.Fatalf("gitlink should remain frozen: before=%q after=%q err=%v", before, after, err)
+	}
+}
+
+func TestIsolatedStagingNeverDiscoversNewRepositories(t *testing.T) {
+	for _, kind := range []string{"directory", "symlink", "gitfile"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx := context.Background()
+			w, m := isolatedFixture(t)
+			ws, err := w.Prepare(ctx, m, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nested := filepath.Join(ws.Dir, "nested")
+			if err := os.Mkdir(nested, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			repo := nested
+			if kind != "directory" {
+				repo = t.TempDir()
+			}
+			run(t, repo, nil, "", "git", "init", "--quiet")
+			for name, content := range map[string]string{".gitattributes": "* filter=proof\n", "payload": "safe nested work\n"} {
+				if err := os.WriteFile(filepath.Join(repo, name), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if repo != nested {
+					if err := os.WriteFile(filepath.Join(nested, name), []byte(content), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			run(t, repo, nil, "", "git", "add", ".")
+			run(t, repo, nil, "", "git", "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "-m", "nested")
+			marker := filepath.Join(t.TempDir(), "executed")
+			run(t, repo, nil, "", "git", "config", "filter.proof.clean", "touch '"+marker+"'; cat")
+			if kind == "symlink" {
+				if err := os.Symlink(filepath.Join(repo, ".git"), filepath.Join(nested, ".git")); err != nil {
+					t.Fatal(err)
+				}
+			} else if kind == "gitfile" {
+				if err := os.WriteFile(filepath.Join(nested, ".git"), []byte("gitdir: "+filepath.Join(repo, ".git")+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(nested, "payload"), []byte("changed nested work\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			// If Git even reads nested config (rather than executing it), this
+			// external include causes failure. It must never resolve this path.
+			poison := filepath.Join(t.TempDir(), "outside-config")
+			if err := os.WriteFile(poison, []byte("[invalid\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			run(t, repo, nil, "", "git", "config", "include.path", poison)
+			if err := os.WriteFile(filepath.Join(ws.Dir, ".gitignore"), []byte("ignored\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(filepath.Join(ws.Dir, "aliases"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			for name, content := range map[string]string{"file.txt": "parent edit\n", "ignored": "not evidence\n", "script": "#!/bin/sh\n", "aliases/.GIT": "excluded alias\n"} {
+				if err := os.WriteFile(filepath.Join(ws.Dir, name), []byte(content), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink(repo, filepath.Join(ws.Dir, "link")); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, _, err := ws.Head(ctx); err != nil {
+				t.Fatal(err)
+			}
+			checkpoint, _, err := ws.Checkpoint(ctx, m.RunID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			commit, err := ws.Commit(ctx, "test", "test@example.com", "safe snapshot")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, revision := range []string{checkpoint, commit} {
+				tree, err := ws.git(ctx, "ls-tree", "-r", revision)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(tree, "160000") || strings.Contains(tree, "\tignored") || strings.Contains(tree, "aliases/") || strings.Contains(tree, "nested/.git/") {
+					t.Fatalf("unsafe snapshot: %s", tree)
+				}
+				for _, want := range []string{"nested/payload", "100755 blob", "120000 blob"} {
+					if !strings.Contains(tree, want) {
+						t.Fatalf("snapshot lacks %q: %s", want, tree)
+					}
+				}
+				content, err := ws.git(ctx, "show", revision+":nested/payload")
+				if err != nil || content != "changed nested work" {
+					t.Fatalf("nested files not preserved: %q %v", content, err)
+				}
+			}
+			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("nested filter executed: %v", err)
+			}
+		})
+	}
+}
+
+func TestIsolatedStagingUsesFrozenFilesAfterLiveReplacement(t *testing.T) {
+	ctx := context.Background()
+	w, m := isolatedFixture(t)
+	ws, err := w.Prepare(ctx, m, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(ws.Dir, "nested")
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "safe"), []byte("before replacement"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env, cleanup, err := ws.snapshotEnv(ctx, ws.gitEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := cleanup(); err != nil {
+			t.Error(err)
+		}
+	}()
+	// Mutation after enumeration must not matter: Git only sees private copied
+	// files, not the newly introduced metadata or an external directory target.
+	if err := os.Rename(nested, filepath.Join(ws.Dir, "parked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(m.Repo.RemoteURL, nested); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws.Dir, "parked", ".git"), []byte("gitdir: "+filepath.Join(m.Repo.RemoteURL, ".git")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.addSnapshot(ctx, env); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := ws.git(ctx, "ls-files", "--stage")
+	if err != nil || strings.Contains(tree, "160000") || strings.Contains(tree, "parked") {
+		t.Fatalf("staged live replacement: %s %v", tree, err)
+	}
+	content, err := ws.git(ctx, "show", ":nested/safe")
+	if err != nil || content != "before replacement" {
+		t.Fatalf("snapshot changed after capture: %q %v", content, err)
+	}
+}
+
+func TestIsolatedSnapshotConcurrentDirectoryReplacement(t *testing.T) {
+	ctx := context.Background()
+	w, m := isolatedFixture(t)
+	ws, err := w.Prepare(ctx, m, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "host-secret"), []byte("must not read"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	moving := filepath.Join(ws.Dir, "moving")
+	parked := filepath.Join(ws.Dir, "parked")
+	if err := os.Mkdir(moving, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(moving, "safe"), []byte("work"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(moving, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			// Swap the actual directory with an external symlink between the
+			// reader's directory enumeration and its descriptor-relative open.
+			_ = os.Rename(moving, parked)
+			_ = os.Symlink(outside, moving)
+			_ = os.Remove(moving)
+			_ = os.Rename(parked, moving)
+		}
+	}()
+	defer func() { close(stop); wg.Wait() }()
+	for range 30 {
+		revision, _, err := ws.Checkpoint(ctx, m.RunID)
+		if err != nil {
+			// A raced replacement may abort, but must not publish leaked data.
+			continue
+		}
+		tree, err := ws.git(ctx, "ls-tree", "-r", revision)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(tree, "host-secret") || strings.Contains(tree, "160000") || strings.Contains(tree, "/.git") {
+			t.Fatalf("crossed snapshot boundary: %s", tree)
+		}
+	}
+}
+
+func TestIsolatedSnapshotLimitsAndSpecialFiles(t *testing.T) {
+	for _, kind := range []string{"fifo", "oversized"} {
+		t.Run(kind, func(t *testing.T) {
+			w, m := isolatedFixture(t)
+			ws, err := w.Prepare(context.Background(), m, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(ws.Dir, "unsupported")
+			if kind == "fifo" {
+				err = unix.Mkfifo(path, 0o600)
+			} else {
+				var f *os.File
+				f, err = os.Create(path)
+				if err == nil {
+					err = f.Truncate((256 << 20) + 1)
+					f.Close()
+				}
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := ws.Checkpoint(context.Background(), m.RunID); err == nil {
+				t.Fatal("unsupported snapshot should fail closed")
+			}
+		})
 	}
 }

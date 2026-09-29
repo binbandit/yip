@@ -45,15 +45,10 @@ func (r *Runner) listWorkspaces(ctx context.Context) []protocol.WorkspaceInfo {
 		}
 		if kind != "scratch" {
 			gctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			runGit := git
-			statusArgs := []string{"status", "--porcelain"}
-			if strings.HasPrefix(e.Name(), "docker-") {
-				runGit = isolatedGit
-				statusArgs = append(statusArgs, "--ignore-submodules=all")
-			}
-			info.Branch, _ = runGit(gctx, dir, "branch", "--show-current")
-			info.Head, _ = runGit(gctx, dir, "rev-parse", "HEAD")
-			if st, err := runGit(gctx, dir, statusArgs...); err == nil && strings.TrimSpace(st) != "" {
+			ws := &Workspace{Dir: dir, Isolated: strings.HasPrefix(e.Name(), "docker-")}
+			info.Branch, _ = ws.git(gctx, "branch", "--show-current")
+			info.Head, _ = ws.git(gctx, "rev-parse", "HEAD")
+			if st, err := ws.status(gctx); err == nil && strings.TrimSpace(st) != "" {
 				info.Changes = len(strings.Split(strings.TrimSpace(st), "\n"))
 			}
 			cancel()
@@ -151,13 +146,12 @@ func (r *Runner) cleanupWorkspace(ctx context.Context, req protocol.CleanupWorks
 		return fmt.Errorf("%s is being used by a running attempt", req.Workspace)
 	}
 	if kind != "scratch" && !req.Force {
-		runGit := git
-		statusArgs := []string{"status", "--porcelain"}
-		if strings.HasPrefix(req.Workspace, "docker-") {
-			runGit = isolatedGit
-			statusArgs = append(statusArgs, "--ignore-submodules=all")
+		ws := &Workspace{Dir: dir, Isolated: strings.HasPrefix(req.Workspace, "docker-")}
+		st, err := ws.status(ctx)
+		if err != nil {
+			return fmt.Errorf("could not verify %s has no uncommitted changes; inspect it or explicitly force cleanup: %w", req.Workspace, err)
 		}
-		if st, err := runGit(ctx, dir, statusArgs...); err == nil && strings.TrimSpace(st) != "" {
+		if strings.TrimSpace(st) != "" {
 			return fmt.Errorf("%s has %d uncommitted changes; confirm that they may be lost", req.Workspace, len(strings.Split(strings.TrimSpace(st), "\n")))
 		}
 	}

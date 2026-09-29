@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/binbandit/yip/protocol"
@@ -125,5 +126,28 @@ func TestDockerWorkspaceInspectionIgnoresHostFilters(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatal("workspace inspection executed a host filter")
+	}
+}
+
+func TestDockerCleanupRequiresForceIfSnapshotFails(t *testing.T) {
+	w, m := isolatedFixture(t)
+	ws, err := w.Prepare(t.Context(), m, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{paths: w.paths, log: slog.Default()}
+	if err := syscall.Mkfifo(filepath.Join(ws.Dir, "unsupported-file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	req := protocol.CleanupWorkspace{Workspace: filepath.Base(ws.Dir)}
+	if err := r.cleanupWorkspace(t.Context(), req); err == nil || !strings.Contains(err.Error(), "could not verify") {
+		t.Fatalf("failed inspection must not count as a clean workspace: %v", err)
+	}
+	if _, err := os.Stat(ws.Dir); err != nil {
+		t.Fatal("workspace was removed despite failed inspection")
+	}
+	req.Force = true
+	if err := r.cleanupWorkspace(t.Context(), req); err != nil {
+		t.Fatalf("explicit force cleanup failed: %v", err)
 	}
 }

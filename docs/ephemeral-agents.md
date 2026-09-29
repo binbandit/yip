@@ -45,6 +45,12 @@ engine (including Docker Desktop). Remote Docker endpoints are rejected.
   publication/checkpointing, and host Git does not inspect their dirty state.
   Nested-repository changes need a separate job/repository; they are not
   evidence for the parent repository.
+- Host Git inspects and stages a private file snapshot, never agent-writable
+  nested Git metadata. New embedded repository contents are treated as ordinary
+  files, with all `.git` entries removed. Snapshot limits are 100,000 entries,
+  128 directory levels, 256 MiB per file and 1 GiB total, including ignored
+  content copied before Git evaluates ignores. Exceeding a limit fails closed;
+  it never falls back to inspecting the live tree.
 - A private, allowlisted snapshot of the selected provider's file-backed
   authentication, skills and MCP configuration. It is mounted read-only,
   copied into a disposable tmpfs home, then removed from the host after worker
@@ -131,6 +137,11 @@ runner state's `container-imports` directory if the process is killed during
 startup. Startup removes these abandoned snapshots after reaping the old
 containers. Treat runner state as sensitive. `docker ps -a --filter label=dev.yip.runner`
 lists managed containers for inspection.
+
+Host-side worker event buffering is capped at 1,024 events and 32 MiB,
+including a blocked delivery; inbound worker requests are bounded as well.
+Overflow fails and stops the attempt rather than consuming unbounded host
+memory or blocking permission replies behind event delivery.
 
 Containers reduce host filesystem/process exposure; they are not a VM or an
 absolute security boundary. Default Docker networking permits outbound
