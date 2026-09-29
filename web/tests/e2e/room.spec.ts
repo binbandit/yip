@@ -448,7 +448,7 @@ test.describe('history', () => {
   test('messages you missed are marked when you come back', async ({ app: page, api }) => {
     await openRoom(page, 'Security');
     await send(page, 'before I left');
-    await page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name: 'Overview', exact: true }).click();
+    await page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name: 'Projects', exact: true }).click();
     await api.post('Security', '@Mira are you there?', { mentions: ['Mira'] });
     await api.waitFor("Mira's reply", async () => (await api.messages('Security')).find((m) => replyFromMira.test(m.body)));
     await openRoom(page, 'Security');

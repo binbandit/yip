@@ -26,7 +26,7 @@ test.describe('sign in', () => {
     // The form stays usable: the right password gets in.
     await page.getByLabel('Password').fill(hub.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
+    await expect(page.locator('#room-title')).toBeVisible();
   });
 
   test('accepts a handle typed with a leading @', async ({ page, hub }) => {
@@ -34,8 +34,8 @@ test.describe('sign in', () => {
     await page.getByLabel('Handle').fill(`@${hub.handle}`);
     await page.getByLabel('Password').fill(hub.password);
     await page.getByLabel('Password').press('Enter');
-    await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
-    await expect(page).toHaveURL(/\/overview$/);
+    await expect(page.locator('#room-title')).toBeVisible();
+    await expect(page).toHaveURL(/\/rooms\/[^/]+$/);
   });
 
   test('returns to the page that asked for sign-in', async ({ page, hub }) => {
@@ -53,13 +53,13 @@ test.describe('sign in', () => {
     await page.getByLabel('Handle').fill(hub.handle);
     await page.getByLabel('Password').fill(hub.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL(new RegExp(`^${hub.url}/overview$`));
+    await expect(page).toHaveURL(new RegExp(`^${hub.url}/rooms/[^/]+$`));
   });
 
-  test('a signed-in visit to /signin goes to the Overview', async ({ app: page }) => {
+  test('a signed-in visit to /signin goes to the last room', async ({ app: page }) => {
     await page.goto('/signin');
-    await expect(page).toHaveURL(/\/overview$/);
-    await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
+    await expect(page).toHaveURL(/\/rooms\/[^/]+$/);
+    await expect(page.locator('#room-title')).toBeVisible();
   });
 });
 
@@ -69,8 +69,8 @@ test.describe('sign out', () => {
     await page.getByRole('menuitem', { name: 'Sign out' }).click();
     await expect(page).toHaveURL(/\/signin$/);
     await expect(page.getByLabel('Handle')).toBeVisible();
-    await page.goto('/overview');
-    await expect(page).toHaveURL(/\/signin\?next=%2Foverview/);
+    await page.goto('/projects');
+    await expect(page).toHaveURL(/\/signin\?next=%2Fprojects/);
   });
 
   test('from Settings', async ({ app: page }) => {
@@ -132,7 +132,7 @@ test.describe('boot', () => {
     await expect(page.getByText(/The database is locked\./)).toBeVisible();
     await page.unroute('**/v1/bootstrap');
     await page.getByRole('button', { name: 'Try again' }).click();
-    await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
+    await expect(page.locator('#room-title')).toBeVisible();
   });
 
   test('says it is opening the workspace while it loads', async ({ page }) => {
@@ -203,9 +203,9 @@ test.describe('setup', () => {
     await page.getByLabel('Password', { exact: true }).fill('a-long-password');
     await page.getByLabel('Confirm password').fill('a-long-password');
     await page.getByRole('button', { name: 'Create workspace' }).click();
-    await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
-    await expect(page).toHaveURL(/\/overview$/);
-    await expect(page.getByRole('region', { name: 'Getting started' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Getting started', level: 1 })).toBeVisible();
+    await expect(page).toHaveURL(/\/start$/);
+    await expect(page.getByRole('region', { name: 'Setup steps' })).toBeVisible();
     // Setup is done: the address now leads to sign-in, not setup.
     await page.getByRole('button', { name: 'Your profile' }).click();
     await page.getByRole('menuitem', { name: 'Sign out' }).click();

@@ -6,8 +6,8 @@ import { composer, draftSaved, openRoom, sidebar } from './helpers';
 test('the sidebar reaches every page, marks the current one and titles the tab', async ({ app: page, api }) => {
   const nav = sidebar(page);
   const workspaceName: string = api.bootstrap.org.name;
-  await expect(page).toHaveTitle(`Overview · ${workspaceName} · yip`);
-  await expect(nav.getByRole('link', { name: 'Overview', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page).toHaveTitle(`Engineering · ${workspaceName} · yip`);
+  await expect(nav.getByRole('link', { name: 'Engineering', exact: true })).toHaveAttribute('aria-current', 'page');
   for (const [name, path] of [
     ['Engineers', '/engineers'],
     ['Projects', '/projects'],
@@ -23,8 +23,8 @@ test('the sidebar reaches every page, marks the current one and titles the tab',
   await openRoom(page, 'Engineering');
   await expect(page).toHaveTitle(`Engineering · ${workspaceName} · yip`);
   await expect(nav.getByRole('link', { name: /^Engineering/ })).toHaveAttribute('aria-current', 'page');
-  await nav.getByRole('link', { name: 'Overview', exact: true }).click();
-  await expect(page).toHaveURL(/\/overview$/);
+  await nav.getByRole('link', { name: 'Engineering', exact: true }).click();
+  await expect(page).toHaveURL(/\/rooms\/[^/]+$/);
 });
 
 test('rooms are listed alphabetically with the demo’s engineers in them', async ({ app: page }) => {
@@ -47,7 +47,7 @@ test('back and forward move between screens', async ({ app: page }) => {
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
   await page.goBack();
-  await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
+  await expect(page.locator('#room-title')).toBeVisible();
   await page.goForward();
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 });
@@ -61,13 +61,13 @@ test('the skip link moves focus into the content', async ({ app: page }) => {
   await expect.poll(() => page.evaluate(() => !!document.querySelector('[role=main]')?.contains(document.activeElement))).toBe(true);
 });
 
-test('an unknown address says so and links back to the Overview', async ({ app: page }) => {
+test('an unknown address says so and links back to your rooms', async ({ app: page }) => {
   await page.goto('/nowhere/at/all');
   await expect(page.getByRole('heading', { name: "That page doesn't exist", level: 1 })).toBeVisible();
   await expect(page.getByText('It may have been moved or archived.')).toBeVisible();
-  await page.getByRole('link', { name: 'Go to Overview' }).click();
-  await expect(page).toHaveURL(/\/overview$/);
-  await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
+  await page.getByRole('link', { name: 'Go to your workspace' }).click();
+  await expect(page).toHaveURL(/\/rooms\/[^/]+$/);
+  await expect(page.locator('#room-title')).toBeVisible();
 });
 
 test('a room that doesn’t exist says it isn’t available', async ({ app: page }) => {
@@ -92,7 +92,7 @@ test.describe('profile menu', () => {
     await expect.poll(background).not.toBe(day);
     await expect.poll(() => page.evaluate(() => localStorage.getItem('yip.theme'))).toBe('night');
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
+    await expect(page.locator('#room-title')).toBeVisible();
     await expect.poll(background).not.toBe(day);
     await page.getByRole('button', { name: 'Your profile' }).click();
     await page.getByRole('menuitem', { name: 'Day appearance' }).click();
@@ -130,6 +130,7 @@ test.describe('room markers', () => {
   });
 
   test('replies elsewhere show as unread; a mention of you shows a count', async ({ app: page, api }) => {
+    await sidebar(page).getByRole('link', { name: 'Projects', exact: true }).click();
     await api.post('Engineering', 'Where are we with everything?');
     await api.beaconQuestion();
     await expect(sidebar(page).getByRole('link', { name: /^Engineering.*, \d+ unread/ })).toBeVisible({ timeout: 30_000 });

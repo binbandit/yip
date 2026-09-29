@@ -16,7 +16,7 @@ function tab(page: Page, name: string) {
 }
 
 async function openJob(page: Page, jobId: string, tabName?: string) {
-  await page.goto(`/overview?panel=job%3A${jobId}${tabName ? `&tab=${tabName}` : ''}`);
+  await page.goto(`/projects?panel=job%3A${jobId}${tabName ? `&tab=${tabName}` : ''}`);
   await expect(panelTitle(page)).not.toHaveText('Work');
 }
 
@@ -288,7 +288,7 @@ test.describe('finished work', () => {
 
 test('the engineer drawer introduces the engineer', async ({ app: page, api }) => {
   const mira = api.engineer('Mira');
-  await page.goto(`/overview?panel=engineer%3A${mira.id}`);
+  await page.goto(`/projects?panel=engineer%3A${mira.id}`);
   const p = panel(page);
   await expect(panelTitle(page)).toHaveText('Mira');
   await expect(p).toContainText('Platform engineer · AI engineer · @mira');
@@ -298,13 +298,13 @@ test('the engineer drawer introduces the engineer', async ({ app: page, api }) =
   await expect(p).toContainText('Provider preference:');
   await p.getByRole('link', { name: 'Security' }).click();
   await expect(page.locator('#room-title')).toHaveText(/Security/);
-  await page.goto(`/overview?panel=engineer%3A${mira.id}`);
+  await page.goto(`/projects?panel=engineer%3A${mira.id}`);
   await p.getByRole('link', { name: 'Open full profile' }).click();
   await expect(page).toHaveURL(new RegExp(`/engineers/${mira.id}`));
   await expect(page.getByRole('heading', { name: 'Mira', level: 1 })).toBeVisible();
 });
 
 test("work that doesn't exist says so", async ({ app: page }) => {
-  await page.goto('/overview?panel=job%3Anope');
+  await page.goto('/projects?panel=job%3Anope');
   await expect(panel(page).getByRole('alert')).toHaveText("This work doesn't exist or isn't visible to you.");
 });

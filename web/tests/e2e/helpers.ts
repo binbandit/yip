@@ -10,7 +10,8 @@ export async function signIn(page: Page, hub: Hub): Promise<void> {
   await page.getByLabel('Handle').fill(hub.handle);
   await page.getByLabel('Password').fill(hub.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.locator('#room-title')).toBeVisible();
+  await expect(page).toHaveURL(/\/(start|rooms\/[^/]+)$/);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
 export function sidebar(page: Page): Locator {

@@ -284,15 +284,15 @@ export const test = base.extend<Options & Fixtures>({
     await api.dispose();
   },
 
-  /** A page signed in as the owner, showing the Overview. */
+  /** A page signed in as the owner, showing the first room. */
   app: async ({ page, hub }, use) => {
     const res = await page.request.post(`${hub.url}/v1/session`, {
       data: { handle: hub.handle, password: hub.password },
       headers: { Origin: hub.url },
     });
     expect(res.ok()).toBe(true);
-    await page.goto('/overview');
-    await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
+    await page.goto('/');
+    await expect(page.locator('#room-title')).toBeVisible();
     await use(page);
   },
 });
