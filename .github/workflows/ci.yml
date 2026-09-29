@@ -49,9 +49,13 @@ jobs:
             const { join } = require('node:path');
 
             // The tracked files each check reads, as groups of git pathspecs.
-            // Everything counts unless excluded, so new files are never missed;
-            // no check reads these.
-            const unread = [':!.github', ':!docs', ':!packaging', ':!.dockerignore', ':!.gitignore', ':!README.md', ':!agents.md', ':!CLAUDE.md'];
+            // Everything counts unless excluded, so new files are never missed.
+            const unread = [
+              // No check reads these.
+              ':!.github', ':!docs', ':!packaging', ':!.dockerignore', ':!.gitignore', ':!README.md', ':!agents.md', ':!CLAUDE.md',
+              // Local tooling: WebKit journeys, screenshots, simulations, LAN serving.
+              ':!scripts/e2e', ':!scripts/screenshots', ':!scripts/simulation', ':!scripts/lan-dev.sh', ':!web/tests/webkit',
+            ];
             const go = [
               ['.', ...unread, ':!web', ':!scripts', ':!.air.toml'],
               // The package embedding the web build, and the types `just schema` checks.
@@ -60,15 +64,25 @@ jobs:
             const checks = [
               { job: 'go', name: 'Go', inputs: go },
               { job: 'go-race', name: 'Go (race detector)', inputs: go },
-              { job: 'web', name: 'Web client', inputs: [['web']] },
+              { job: 'web', name: 'Web client', inputs: [['web', ...unread]] },
               { job: 'e2e', name: 'Browser journeys', inputs: [['.', ...unread]] },
             ];
 
-            // Hashes the index entries (mode, blob and path) of a check's
-            // inputs and of this workflow.
-            function fingerprint(inputs, env) {
+            // Of this workflow, a check reads only its own job and the
+            // workflow-wide settings. Editing Plan, another job or a comment
+            // doesn't run it.
+            function side(rev, env) {
+              const yaml = execFileSync('git', ['show', `${rev}:.github/workflows/ci.yml`]);
+              const workflow = JSON.parse(execFileSync('yq', ['--output-format=json', 'explode(.)'], { input: yaml }));
+              return { env, workflow };
+            }
+
+            // Hashes a check's job and the index entries (mode, blob and
+            // path) of its inputs.
+            function fingerprint({ job, inputs }, { env, workflow: { jobs, ...settings } }) {
               const hash = createHash('sha256');
-              for (const pathspecs of [['.github/workflows/ci.yml'], ...inputs]) {
+              hash.update(JSON.stringify({ ...settings, job: jobs?.[job] ?? null }));
+              for (const pathspecs of inputs) {
                 hash.update(execFileSync('git', ['ls-files', '--stage', '--', ...pathspecs], { env }));
               }
               return hash.digest('hex');
@@ -77,8 +91,10 @@ jobs:
             // The merge commit's first parent is the base branch; index it too.
             const parents = execFileSync('git', ['rev-list', '--parents', '-n1', 'HEAD'], { encoding: 'utf8' }).trim().split(' ');
             if (parents.length !== 3) throw new Error(`Expected a merge commit, got ${parents[0]}`);
-            const base = { ...process.env, GIT_INDEX_FILE: join(process.env.RUNNER_TEMP, 'base.index') };
-            execFileSync('git', ['read-tree', 'HEAD^1'], { env: base });
+            const baseIndex = { ...process.env, GIT_INDEX_FILE: join(process.env.RUNNER_TEMP, 'base.index') };
+            execFileSync('git', ['read-tree', 'HEAD^1'], { env: baseIndex });
+            const head = side('HEAD', process.env);
+            const base = side('HEAD^1', baseIndex);
 
             const { owner, repo } = context.repo;
             const markers = (await github.paginate(github.rest.actions.getActionsCacheList, {
@@ -90,15 +106,16 @@ jobs:
             const { pull_request: pr, repository } = context.payload;
             const intoMain = pr.base.ref === repository.default_branch;
             const rows = [[{ data: 'Check', header: true }, { data: 'Plan', header: true }]];
-            for (const { job, name, inputs } of checks) {
-              const head = fingerprint(inputs);
-              const key = `ci-pass-${job}-${head}`;
+            for (const check of checks) {
+              const { job, name } = check;
+              const current = fingerprint(check, head);
+              const key = `ci-pass-${job}-${current}`;
               // A check that passes saves `${key}-${run_id}-${run_attempt}`.
               const pass = markers.find(marker => marker.startsWith(`${key}-`));
               let skip = '';
               if (rerun) {
                 // Run everything.
-              } else if (intoMain && fingerprint(inputs, base) === head) {
+              } else if (intoMain && fingerprint(check, base) === current) {
                 skip = 'this pull request changes none of the files it reads';
               } else if (pass) {
                 const [id, attempt] = pass.slice(key.length + 1).split('-');
