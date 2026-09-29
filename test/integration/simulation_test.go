@@ -20,8 +20,10 @@ import (
 // A team can ask several independent questions in one discussion. Answering
 // the second question must never attach its answer to the first one.
 func TestSimulationThreadedQuestionsKeepExplicitTargets(t *testing.T) {
+	t.Parallel()
 	for _, answerVia := range []string{"question endpoint", "reply target"} {
 		t.Run(answerVia, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 				switch {
 				case replyTo(m, "Engineering", "regional rollout"):
@@ -84,8 +86,10 @@ func TestSimulationThreadedQuestionsKeepExplicitTargets(t *testing.T) {
 // Revoking a reviewer's access must also revoke the runner's ability to
 // download that review document through its authenticated artifact endpoint.
 func TestSimulationReviewDownloadRechecksRevokedAccess(t *testing.T) {
+	t.Parallel()
 	for _, revoked := range []string{"project", "conversation"} {
 		t.Run(revoked, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 				switch {
 				case replyTo(m, "Restricted rollout", "confidential plan"):
@@ -170,6 +174,7 @@ func simulationArtifactFetcher(t *testing.T, e *env) func(string) (int, string) 
 // Seeing a bundle ID in an ordinary message is not authority to download
 // another room's source code, even on a machine which previously ran it.
 func TestSimulationMentionedBundleDoesNotGrantDownload(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Private security", "private patch"):
@@ -220,8 +225,10 @@ func TestSimulationMentionedBundleDoesNotGrantDownload(t *testing.T) {
 // whether a push happened. Recovery must keep that uncertainty out of the
 // automatic retry path, including after the hub restarts.
 func TestSimulationCrashAfterPushPermissionNeedsExplicitRetry(t *testing.T) {
+	t.Parallel()
 	for _, decision := range []string{"grant", "approve", "reject", "routine check"} {
 		t.Run(decision, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 				switch {
 				case replyTo(m, "Security", "release branch"):
@@ -291,6 +298,7 @@ func TestSimulationCrashAfterPushPermissionNeedsExplicitRetry(t *testing.T) {
 // A project push grant must not keep authorizing an attempt after its
 // engineer has been removed from the private conversation that owns it.
 func TestSimulationRevokedRoomCannotAuthorizePush(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Private release", "release branch"):
@@ -323,8 +331,10 @@ func TestSimulationRevokedRoomCannotAuthorizePush(t *testing.T) {
 }
 
 func TestSimulationPendingApprovalCannotRestoreRevokedAccess(t *testing.T) {
+	t.Parallel()
 	for _, revoked := range []string{"project", "conversation"} {
 		t.Run(revoked, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 				switch {
 				case replyTo(m, "Private release", "release branch"):
@@ -368,6 +378,7 @@ func TestSimulationPendingApprovalCannotRestoreRevokedAccess(t *testing.T) {
 // A reviewer may have broad rights for their own assignments. Those rights
 // must not permit publishing changes from a read-only review snapshot.
 func TestSimulationReviewScopeCannotMutateWithProjectGrant(t *testing.T) {
+	t.Parallel()
 	for _, action := range []struct{ name, kind, command string }{
 		{"shell push", "exec", "git push origin HEAD"},
 		{"shell merge", "exec", "gh pr merge 42 --squash"},
@@ -378,6 +389,7 @@ func TestSimulationReviewScopeCannotMutateWithProjectGrant(t *testing.T) {
 		{"publication", "publish", ""},
 	} {
 		t.Run(action.name, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 				switch {
 				case replyTo(m, "Security", "scope review"):

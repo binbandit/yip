@@ -15,6 +15,7 @@ import (
 // be added to a project the same way. A repository GitHub can't show leaves
 // no half-created project behind.
 func TestProjectFromGitHubOwnerName(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true, githubRepo: func(ctx context.Context, h *hub.Hub, owner, name string) (github.RepoInfo, error) {
 		switch owner + "/" + name {
 		case "acme/widgets":

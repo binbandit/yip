@@ -26,6 +26,7 @@ func (e *env) nodeByName(name string) protocol.Node {
 // worktree; after one machine is revoked, work continues elsewhere only from
 // the verified bundle of its last published revision, as an explicit retry.
 func TestTwoMachinesAndCheckpointMove(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{slots: 1, director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case m.Job.Kind == "reply" && strings.Contains(m.Request.Body, "task"):
@@ -93,6 +94,7 @@ func TestTwoMachinesAndCheckpointMove(t *testing.T) {
 // snapshot); a working checkout joins to its job. Sizes say whether they
 // were measured, so a tiny workspace isn't shown as a measured zero.
 func TestMachineWorkspaceKindsAndSizes(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Reverse engineering", "map the gateway"):

@@ -77,6 +77,7 @@ func replyTo(m *manifest.Manifest, room, contains string) bool {
 // A17: a canary in a private room never reaches a broader room's context,
 // search, knowledge, decisions, or replies.
 func TestPrivateCanaryIsolation(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Incident", "remember"):
@@ -144,6 +145,7 @@ func TestPrivateCanaryIsolation(t *testing.T) {
 // A36: an explicit human-review policy keeps the job review_ready until the
 // owner accepts the exact result revision; stale acceptances are refused.
 func TestHumanReviewPolicy(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	p := e.project("Atlas")
 	pol := p.Policy
@@ -177,6 +179,7 @@ func TestHumanReviewPolicy(t *testing.T) {
 
 // A09: cancelling a job tree stops every active process and child.
 func TestCancelJobTree(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Engineering", "investigate"):
@@ -219,6 +222,7 @@ func TestCancelJobTree(t *testing.T) {
 // journal reconciles the true outcome after the partition heals. Retrying is
 // an explicit new attempt.
 func TestPartitionProducesUnknownThenReconciles(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{
 		limits: func(l *domain.Limits) {
 			l.LeaseDuration = 3 * time.Second
@@ -266,6 +270,7 @@ func TestPartitionProducesUnknownThenReconciles(t *testing.T) {
 // A11, A12: an offer redelivered after a hub restart (as if the hub crashed
 // after commit but before the runner's ack was recorded) executes once.
 func TestOutboxRedeliveryExecutesOnce(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		if replyTo(m, "Security", "once") {
 			return script(fake.Step{Sleep: "3s"}, fake.Step{Final: "Ran once."})
@@ -311,6 +316,7 @@ func TestOutboxRedeliveryExecutesOnce(t *testing.T) {
 // held (with the reason) until it resets instead of hitting the same limit,
 // and then continues by itself.
 func TestProviderAllowanceWaits(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Reverse engineering", "limit"):
@@ -360,6 +366,7 @@ func TestProviderAllowanceWaits(t *testing.T) {
 // clicks conflict; undecided requests expire and deny; existing grants
 // proceed without asking.
 func TestExactActionApprovals(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{
 		limits: func(l *domain.Limits) { l.ApprovalTTL = 4 * time.Second },
 		director: func(m *manifest.Manifest) json.RawMessage {
@@ -440,6 +447,7 @@ func TestExactActionApprovals(t *testing.T) {
 // A07: delegation cycles are rejected and the automatic wakeup budget stops
 // further delegation with an explanation.
 func TestWakeupBudgetAndCycles(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{
 		limits: func(l *domain.Limits) { l.MaxWakeupsPerRoot = 3 },
 		director: func(m *manifest.Manifest) json.RawMessage {
@@ -474,6 +482,7 @@ func TestWakeupBudgetAndCycles(t *testing.T) {
 // A23: a machine without the required provider is never used; the job
 // explains the incompatibility.
 func TestIncompatibleMachineExplains(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	oren := e.engineerID("oren")
 	var eng struct {
@@ -502,6 +511,7 @@ func TestIncompatibleMachineExplains(t *testing.T) {
 // A41, A39: a duplicated review request is one logical request; an approval
 // of an older revision doesn't satisfy completion of a newer one.
 func TestReviewDedupeAndRevisionBinding(t *testing.T) {
+	t.Parallel()
 	change := func(line string) fake.Step {
 		return fake.Step{Write: &fake.WriteFile{Path: "NOTES.md", Content: line + "\n"}}
 	}
@@ -550,6 +560,7 @@ func TestReviewDedupeAndRevisionBinding(t *testing.T) {
 // A05: when builder and reviewer share an account limited to one active run,
 // the builder yields and the review still happens.
 func TestSharedAccountSingleSlot(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	_ = e.hub.Store().Tx(e.ctx, func(tx *sqlTx) error {
 		_, err := tx.ExecContext(e.ctx, `UPDATE provider_profiles SET max_concurrency = 1`)
@@ -561,6 +572,7 @@ func TestSharedAccountSingleSlot(t *testing.T) {
 
 // A22: a corrected decision supersedes the old one for later runs.
 func TestDecisionCorrection(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	e.post("Security", "@Mira can you fix Atlas accepting expired sessions?", []string{"mira"}, nil)
 	e.waitJob("Fix Atlas session expiry", protocol.JobCompleted)
@@ -586,6 +598,7 @@ func TestDecisionCorrection(t *testing.T) {
 // A42: without a permitted reviewer the author asks in the room instead of
 // expanding access or rubber-stamping.
 func TestNoPermittedReviewer(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	a := e.project("Atlas")
 	e.c.must("PUT", "/v1/projects/"+a.ID+"/grants/"+e.engineerID("oren"), protocol.PutGrantRequest{Access: "none"}, nil)

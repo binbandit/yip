@@ -12,6 +12,7 @@ import (
 )
 
 func TestOverviewRefreshPreservesVisitWindow(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	var first protocol.Overview
 	e.c.must("GET", "/v1/overview", nil, &first)
@@ -58,6 +59,7 @@ func TestOverviewRefreshPreservesVisitWindow(t *testing.T) {
 }
 
 func TestOverviewDoesNotPretendToAnswerArbitraryQuestions(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	room := e.roomID("Overview")
 	err := e.c.do("POST", "/v1/rooms/"+room+"/messages", protocol.PostMessageRequest{

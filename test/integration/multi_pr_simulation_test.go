@@ -117,6 +117,7 @@ func linkMultiPR(e *env, job multiPRJob) protocol.PullRequest {
 }
 
 func TestSimulationMultipleLinkedPRsKeepIndependentIdentity(t *testing.T) {
+	t.Parallel()
 	e, jobs, version := multiPREnv(t)
 	linked := make([]protocol.PullRequest, len(jobs))
 	seen := map[string]bool{}
@@ -166,6 +167,7 @@ func TestSimulationMultipleLinkedPRsKeepIndependentIdentity(t *testing.T) {
 }
 
 func TestSimulationLegacyEmptyPRIdentitySurvivesNewLinks(t *testing.T) {
+	t.Parallel()
 	e, jobs, _ := multiPREnv(t)
 	legacy := linkMultiPR(e, jobs[0])
 	reviewID, roundID := domain.NewID(), domain.NewID()

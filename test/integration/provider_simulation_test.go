@@ -9,8 +9,10 @@ import (
 )
 
 func TestConversationWaitsForReadOnlyCapability(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"codex", "claude", "fake"} {
 		t.Run(provider, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, envOptions{noRunner: true})
 			var engineer protocol.Engineer
 			e.c.must("GET", "/v1/engineers/"+e.engineerID("mira"), nil, &struct {

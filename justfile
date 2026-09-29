@@ -40,6 +40,12 @@ schema:
 test:
     go test ./...
 
+# -race also turns on checkptr, which the machine-translated SQLite spends most
+# of its time in, so it's off there and stays on for everything else.
+# run the Go unit and integration tests under the race detector
+test-race:
+    go test -race -gcflags='modernc.org/...=-d=checkptr=0' -timeout 15m ./internal/... ./test/integration/
+
 # test dev-server shutdown and reloads against the pinned Go watcher
 test-dev: _dev-tools
     node --test scripts/dev.test.mjs scripts/dev-air.test.mjs

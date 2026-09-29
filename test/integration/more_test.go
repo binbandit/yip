@@ -70,6 +70,7 @@ func (e *env) sseEvents(cursor string, n int, timeout time.Duration) (ids []int6
 // A10: a client that disconnects resumes from its cursor without gaps; a
 // cursor that no longer exists gets an explicit reset, never silent loss.
 func TestEventReplayAfterDisconnect(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	ids, _, control := e.sseEvents("", 3, 3*time.Second)
 	if len(control) == 0 || control[0] != "ready" || len(ids) < 3 {
@@ -104,6 +105,7 @@ func TestEventReplayAfterDisconnect(t *testing.T) {
 // A43: a document is reviewed without any forge: request, substantive
 // feedback, revised artifact, approval of the new artifact.
 func TestDocumentReviewWithoutForge(t *testing.T) {
+	t.Parallel()
 	doc := func(v string) []fake.Step {
 		return []fake.Step{{Write: &fake.WriteFile{Path: "docs/plan.md", Content: "# Plan\n\n" + v + "\n"}},
 			toolStep("artifact_publish", map[string]any{"path": "docs/plan.md", "name": "Plan", "kind": "document"}, "")}
@@ -159,6 +161,7 @@ func TestDocumentReviewWithoutForge(t *testing.T) {
 
 // A02: a room linked to two projects never guesses the repository.
 func TestScopeIsExplicitInMultiProjectRoom(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	e.post("Engineering", "@Mira please fix the bug where things break", []string{"mira"}, nil)
 	m := e.waitMessage("Engineering", "Which project should I change")
@@ -175,6 +178,7 @@ func TestScopeIsExplicitInMultiProjectRoom(t *testing.T) {
 // §9 performance fixture: 10,000 messages across ten rooms and 100 jobs.
 // Measures (and bounds) ordinary read latency; not an advertised capacity.
 func TestLargeHistoryReadLatency(t *testing.T) {
+	// Not parallel: it measures latency.
 	if testing.Short() {
 		t.Skip("large fixture")
 	}

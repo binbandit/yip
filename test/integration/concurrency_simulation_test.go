@@ -35,6 +35,7 @@ func simulationBrowserBurst(n int, request func(int) error) []error {
 // These clients share the owner's session, as multiple tabs or devices do.
 // This tests concurrent delivery, not multi-human tenancy or RBAC.
 func TestSimulationConcurrentDuplicateMessagesSurviveRestart(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	path := "/v1/rooms/" + e.roomID("Security") + "/messages"
 	req := protocol.PostMessageRequest{Body: "@Mira check this once", ClientKey: "concurrent-owner-message",
@@ -86,6 +87,7 @@ func TestSimulationConcurrentDuplicateMessagesSurviveRestart(t *testing.T) {
 }
 
 func TestSimulationConcurrentRoomBurstsKeepDestinations(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true, slots: 6, director: func(m *manifest.Manifest) json.RawMessage {
 		if m.Job.Kind == "reply" {
 			return script(fake.Step{Sleep: "20ms"}, fake.Step{Final: "Receipt: " + m.Request.Body})
@@ -128,7 +130,7 @@ func TestSimulationConcurrentRoomBurstsKeepDestinations(t *testing.T) {
 		t.Fatalf("distinct sends persisted only %d messages", len(byMessage))
 	}
 	e.startRunner()
-	e.waitFor("all three teams' replies", 30*time.Second, func() bool {
+	e.waitFor("all three teams' replies", 60*time.Second, func() bool {
 		jobs := e.jobsWithReplies()
 		if len(jobs) != len(requests) {
 			return false
@@ -193,6 +195,7 @@ func TestSimulationConcurrentRoomBurstsKeepDestinations(t *testing.T) {
 // Two machines sharing one provider account must retain one active slot
 // while many browser clients race to cancel and explicitly retry a job.
 func TestSimulationConcurrentRetryAndCancelKeepSingleAccountSlot(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		if replyTo(m, "Engineering", "long investigation") {
 			return script(toolStep("work_create", map[string]any{"title": "Concurrent recovery investigation", "objective": "Investigate recovery", "kind": "investigation", "project": "Beacon"}, ""))

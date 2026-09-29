@@ -11,6 +11,7 @@ import (
 )
 
 func TestOverviewReviewerQuestionStaysWithAssignment(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		if m.Review == nil || m.Review.Round != 1 {
 			return nil

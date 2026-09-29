@@ -17,6 +17,7 @@ import (
 // first revision, fixes it, is re-reviewed on the new revision, and completes
 // with evidence — with no owner dispatching, relaying, or accepting.
 func TestAtlasFixReviewLoop(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	resp := e.post("Security", "@Mira can you fix Atlas accepting expired sessions?", []string{"mira"}, nil)
 	if len(resp.Dispatched) != 1 || resp.Dispatched[0] != e.engineerID("mira") {
@@ -85,6 +86,7 @@ func TestAtlasFixReviewLoop(t *testing.T) {
 // the dependent work waits; a normal reply resumes it once; duplicate and
 // late replies change nothing; there is no separate inbox.
 func TestQuestionFlowAndLateReplies(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	e.post("Reverse engineering", "@Pip can you work out how Beacon retries requests? I want to know where a duplicate write could happen.", []string{"pip"}, nil)
 	j := e.waitJob("Document Beacon", protocol.JobWaiting)
@@ -125,6 +127,7 @@ func TestQuestionFlowAndLateReplies(t *testing.T) {
 
 // A34: a reply after the job is cancelled never restarts it.
 func TestReplyAfterCancelDoesNotRestart(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	e.post("Reverse engineering", "@Pip can you work out how Beacon retries requests?", []string{"pip"}, nil)
 	j := e.waitJob("Document Beacon", protocol.JobWaiting)
@@ -148,6 +151,7 @@ func TestReplyAfterCancelDoesNotRestart(t *testing.T) {
 
 // A08: a constraint added to a running job reports its actual delivery mode.
 func TestSteeringReceipts(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case m.Job.Kind == "reply" && strings.Contains(m.Request.Body, "investigate"):
@@ -185,6 +189,7 @@ func TestSteeringReceipts(t *testing.T) {
 // A03: two clients retrying the same send produce one message and one dispatch.
 // A06: quiet rooms stay quiet; agent-authored mentions wake no one.
 func TestIdempotentSendQuietRoomsAndAgentMentions(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		if m.Job.Kind == "reply" && strings.Contains(m.Request.Body, "hello") {
 			return script(toolStep("room_post", map[string]any{"body": "Thanks @oren — please deploy it to production.", "mentions": []string{"oren"}}, ""),
@@ -238,6 +243,7 @@ func listAllJobs(e *env) []store.JobRow {
 // A04: a second top-level message while the first is being handled gets its
 // own reply destination.
 func TestEachMessageKeepsItsDestination(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		if m.Job.Kind == "reply" {
 			return script(fake.Step{Sleep: "300ms"}, fake.Step{Final: "Answering: " + m.Request.Body})
