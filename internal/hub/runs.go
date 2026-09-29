@@ -967,11 +967,8 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 		return nil
 	}
 	// Before parking, re-check: an answer or a dependency may have arrived
-	// while this attempt was still finishing.
-	since := run.CreatedAt
-	if run.StartedAt != nil {
-		since = *run.StartedAt
-	}
+	// after this attempt was planned, so it isn't in the attempt's context.
+	since := contextBuiltAt(run)
 	answeredDuring := h.answeredSince(ctx, t.tx, job.ID, since)
 	resolvedDuring := h.resolvedSince(ctx, t.tx, job.ID, since)
 	openQuestions, _ := h.openQuestionsFor(ctx, t.tx, job.ID)
@@ -1042,6 +1039,21 @@ func (h *Hub) afterRun(ctx context.Context, t *txn, run store.RunRow, term proto
 	}
 	_, err = h.setJobState(ctx, t, job.ID, protocol.JobWaiting, protocol.WaitStalled, detail)
 	return err
+}
+
+// contextBuiltAt is when an attempt's manifest was built, at its offer. An
+// answer or outcome from then on is not in the context the attempt was
+// planned from, even when it reaches the provider mid-run: one that lands
+// while the machine is still preparing the workspace is handed over only as
+// the session starts, after the attempt was planned without it.
+func contextBuiltAt(run store.RunRow) time.Time {
+	var m struct {
+		Now time.Time `json:"now"`
+	}
+	if json.Unmarshal(run.Manifest, &m) == nil && !m.Now.IsZero() {
+		return m.Now
+	}
+	return run.CreatedAt
 }
 
 // answeredSince reports whether one of the job's questions was answered after t0.
