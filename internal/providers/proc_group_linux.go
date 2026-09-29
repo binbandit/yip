@@ -23,8 +23,24 @@ func processGroupExited(pgid int) bool {
 // members and their threads dead, and an unrestricted view of our PID namespace.
 // In particular, hidepid can silently omit live processes from ReadDir.
 func procGroupDead(root string, pgid int) bool {
+	dir, err := os.Open(root)
+	if err != nil {
+		return false
+	}
+	defer dir.Close()
+	// Mount IDs are not ordered by visibility. fdinfo identifies the actual
+	// mount reached by opening root, even when mountinfo lists stacked mounts.
+	fdinfo, err := os.ReadFile(filepath.Join(root, "self/fdinfo", strconv.FormatUint(uint64(dir.Fd()), 10)))
+	mountID, ok := procFDMountID(string(fdinfo))
+	if err != nil || !ok {
+		return false
+	}
+	return procGroupDeadOnMount(root, pgid, mountID)
+}
+
+func procGroupDeadOnMount(root string, pgid, mountID int) bool {
 	mounts, err := os.ReadFile(filepath.Join(root, "self/mountinfo"))
-	if err != nil || !procMountVisible(string(mounts), root) {
+	if err != nil || !procMountVisible(string(mounts), root, mountID) {
 		return false
 	}
 	status, err := os.ReadFile(filepath.Join(root, "self/status"))
@@ -137,8 +153,31 @@ func parseProcStat(stat string) (pid, pgid int, state byte, ok bool) {
 	return pid, pgid, fields[0][0], true
 }
 
-func procMountVisible(mountinfo, root string) bool {
-	found := false
+func procFDMountID(fdinfo string) (int, bool) {
+	id := 0
+	for _, line := range strings.Split(fdinfo, "\n") {
+		if !strings.HasPrefix(line, "mnt_id:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if id != 0 || len(fields) != 2 {
+			return 0, false
+		}
+		var err error
+		id, err = strconv.Atoi(fields[1])
+		if err != nil || id <= 0 {
+			return 0, false
+		}
+	}
+	return id, id > 0
+}
+
+func procMountVisible(mountinfo, root string, activeID int) bool {
+	type mount struct {
+		parent                   int
+		root, point, fs, options string
+	}
+	mounts := make(map[int]mount)
 	for _, line := range strings.Split(strings.TrimSpace(mountinfo), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 10 {
@@ -154,25 +193,63 @@ func procMountVisible(mountinfo, root string) bool {
 		if separator < 0 || len(fields) != separator+4 {
 			return false
 		}
-		mountpoint := fields[4]
-		if mountpoint == root {
-			if found || fields[3] != "/" || fields[separator+1] != "proc" {
-				return false
-			}
-			found = true
-			for _, option := range strings.Split(fields[5]+","+fields[separator+3], ",") {
-				if strings.HasPrefix(option, "hidepid=") && option != "hidepid=0" && option != "hidepid=off" {
-					return false
-				}
-			}
-		} else if strings.HasPrefix(mountpoint, root+"/") {
-			component := strings.Split(strings.TrimPrefix(mountpoint, root+"/"), "/")[0]
-			// Reject overlays that could hide a PID or alter our visibility
-			// checks. Standard /proc/sys, /proc/irq, etc. mounts are harmless.
-			if _, err := strconv.Atoi(component); err == nil || component == "self" || component == "thread-self" || strings.Contains(component, `\`) {
-				return false
-			}
+		id, err := strconv.Atoi(fields[0])
+		if err != nil || id <= 0 {
+			return false
+		}
+		parent, err := strconv.Atoi(fields[1])
+		if _, duplicate := mounts[id]; err != nil || parent < 0 || duplicate {
+			return false
+		}
+		mounts[id] = mount{parent, fields[3], fields[4], fields[separator+1], fields[5] + "," + fields[separator+3]}
+	}
+	active, ok := mounts[activeID]
+	if !ok || active.root != "/" || active.point != root || active.fs != "proc" {
+		return false
+	}
+	for _, option := range strings.Split(active.options, ",") {
+		if strings.HasPrefix(option, "hidepid=") && option != "hidepid=0" && option != "hidepid=off" {
+			return false
 		}
 	}
-	return found
+	// Hidden lower layers may have restrictive options or PID overlays of
+	// their own. Only descendants of the opened mount affect its visibility.
+	ancestors := make(map[int]bool)
+	for id := activeID; ; {
+		if ancestors[id] {
+			return false
+		}
+		ancestors[id] = true
+		m, ok := mounts[id]
+		if !ok {
+			break // The namespace root's parent may be outside mountinfo.
+		}
+		id = m.parent
+	}
+	for id, m := range mounts {
+		if id == activeID || !strings.HasPrefix(m.point, root+"/") {
+			continue
+		}
+		component := strings.Split(strings.TrimPrefix(m.point, root+"/"), "/")[0]
+		_, numeric := strconv.Atoi(component)
+		if numeric != nil && component != "self" && component != "thread-self" && !strings.Contains(component, `\`) {
+			continue
+		}
+		visited := make(map[int]bool)
+		for parent := m.parent; ; {
+			if parent == activeID || visited[parent] {
+				return false
+			}
+			if ancestors[parent] {
+				break // Overlay belongs to an obscured or unrelated layer.
+			}
+			visited[parent] = true
+			m, ok := mounts[parent]
+			if !ok {
+				return false
+			}
+			parent = m.parent
+		}
+	}
+	return true
 }
