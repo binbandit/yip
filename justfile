@@ -11,6 +11,19 @@ all: web build
 build:
     go build -trimpath -ldflags "{{ ldflags }}" -o bin/yip ./cmd/yip
 
+# build and run the real hub (optional arguments go to `yip hub`)
+[positional-arguments]
+start *args: all
+    exec ./bin/yip hub "$@"
+
+# run a separate development hub with Go auto-restart and frontend hot updates
+dev: web-deps _dev-tools
+    node scripts/dev.mjs
+
+# keep the pinned Go watcher local to this checkout
+_dev-tools:
+    GOBIN="{{ justfile_directory() }}/bin" go install github.com/air-verse/air@v1.67.4
+
 # install the web client's locked dependencies
 web-deps:
     cd web && npm ci
