@@ -13,9 +13,10 @@ exclude_dir = ["bin", ".yip", "web/node_modules", "web/dist"]
 exclude_regex = ["_test\\.go$"]
 delay = 300
 stop_on_error = true
-# Let the hub close its database and listeners before restarting.
+# Air v1.67.4 stops waiting after five seconds. Force a slow hub to exit
+# before that deadline so restarts and supervisor shutdown cannot orphan it.
 send_interrupt = true
-kill_delay = "45s"
+kill_delay = "2s"
 
 [screen]
 clear_on_rebuild = false

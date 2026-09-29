@@ -40,6 +40,10 @@ schema:
 test:
     go test ./...
 
+# test dev-server shutdown and reloads against the pinned Go watcher
+test-dev: _dev-tools
+    node --test scripts/dev.test.mjs scripts/dev-air.test.mjs
+
 # type-check and test the web client
 test-web:
     cd web && npm run check && npm run test

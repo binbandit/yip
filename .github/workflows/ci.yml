@@ -91,6 +91,8 @@ jobs:
       - uses: extractions/setup-just@v4
       - name: Build web client and yip binary
         run: just all
+      - name: Dev-server lifecycle
+        run: just test-dev
       - name: Install Chromium
         working-directory: web
         run: npx playwright install --with-deps chromium

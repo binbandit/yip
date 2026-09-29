@@ -179,7 +179,7 @@ dependencies and a pinned [Air](https://github.com/air-verse/air) watcher into
 `bin/`, then runs both servers:
 
 - **Svelte/TypeScript/CSS:** Vite hot updates the browser.
-- **Go, `go.mod`, `go.sum`:** Air rebuilds and gracefully restarts the hub.
+- **Go, `go.mod`, `go.sum`:** Air rebuilds and restarts the hub.
   Build errors stop the backend and appear in the terminal; fix the source
   to resume.
 
@@ -187,14 +187,15 @@ This is a real, initially empty workspace, not the demo. Its data persists
 in `.yip/dev`, separate from `just start`; use the setup code printed by the
 hub on first run. The API listens on `127.0.0.1:7521`, and the runner listener
 on `127.0.0.1:7543`. Vite proxies `/v1` to this hub. Ctrl-C stops both servers.
-Development restarts can interrupt active work, so keep real jobs on your
-normal hub.
+The development hub gets two seconds to shut down gracefully before Air
+force-stops it. Development restarts can interrupt active work, so keep real
+jobs on your normal hub.
 
 ```sh
 go test ./...            # unit + integration (≈1 min)
 go test -race ./internal/... ./test/integration/
 just schema              # regenerate JSON Schemas and web types from protocol/*.go
-node --test scripts/dev.test.mjs # dev-server lifecycle tests
+just test-dev            # dev-server lifecycle tests, including real Air restarts
 cd web && npm run dev    # frontend only; expects a hub on :7521 (override with YIP_HUB)
 cd web && npm test       # client unit and smoke tests
 ```
