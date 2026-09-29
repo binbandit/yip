@@ -4,6 +4,7 @@
   import { workspaceStoragePrefix, workspaceUrl } from '../lib/workspace';
   import { providerLabel } from '../lib/util/labels';
   import { roomSettings, setupReadiness } from '../lib/util/setup';
+  import { connectionPath } from '../lib/util/connections';
   import StateIcon from './StateIcon.svelte';
 
   const KEY = workspaceStoragePrefix('gettingStarted') + 'dismissed';
@@ -30,7 +31,6 @@
   const reviewCandidate = $derived(setup.reviewerCandidate);
   const reviewerInRoom = $derived(!!room && !!reviewCandidate && room.members.some((m) => m.kind === 'engineer' && m.id === reviewCandidate.id));
   const projectHref = $derived(project ? `/projects/${project.id}` : '/projects');
-  const SIGN_IN: Record<string, string> = { codex: 'codex login', claude: 'claude auth login', cursor: 'agent login' };
   const signInProvider = $derived(engineer?.provider.provider ?? setup.providerInstalled.find((p) => p.authState === 'ready')?.provider ?? setup.providerInstalled[0]?.provider);
   const steps = $derived([
     {
@@ -41,13 +41,11 @@
     },
     {
       done: setup.providerSignedIn,
-      title: 'Sign in a provider on it',
+      title: 'Connect your AI subscription',
       detail: setup.providerSignedIn
         ? `${providerLabel(signInProvider ?? '')} sign-in is connected${app.data.demo && signInProvider === 'fake' ? ' for the scripted demo' : ''}.`
-        : signInProvider && SIGN_IN[signInProvider]
-          ? `Run ${SIGN_IN[signInProvider]} on your machine; yip uses that sign-in.`
-          : 'Sign in to Codex, Claude Code or Cursor on your machine with its own tool.',
-      href: '/machines', action: 'Check machines',
+        : 'Choose your tool, sign in on the machine that runs it, and check the connection. No credentials to upload.',
+      href: connectionPath(signInProvider), action: 'Connect subscription',
     },
     {
       done: !!engineer,

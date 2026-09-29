@@ -340,7 +340,16 @@ func (h *Hub) onCapabilities(ctx context.Context, nodeID string, c protocol.Runn
 			return err
 		}
 		t.kickAfter()
-		return h.emitNode(ctx, t, nodeID)
+		n, err := store.GetNode(ctx, t.tx, nodeID)
+		if err != nil {
+			return err
+		}
+		// A report with no enabled providers is still a completed report.
+		// Keep the receipt on the event, separate from durable machine state.
+		return t.emit(ev{Type: "node.updated", Actor: protocol.Actor{Kind: protocol.ActorNode, ID: nodeID}, Payload: struct {
+			protocol.Node
+			CapabilitiesReported bool `json:"capabilitiesReported"`
+		}{Node: n.Node, CapabilitiesReported: true}})
 	})
 }
 

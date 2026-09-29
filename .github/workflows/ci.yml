@@ -225,6 +225,8 @@ jobs:
         run: npm run check
       - name: Unit tests
         run: npm test
+      - name: Pi SDK host tests
+        run: node --test ../internal/providers/pi/host.test.mjs
       - name: Build
         run: npm run build
       - name: Colour contrast

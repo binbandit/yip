@@ -10,6 +10,8 @@ describe('router', () => {
     expect(parseRoute('/engineers/e1')).toEqual({ name: 'engineer', id: 'e1' });
     expect(parseRoute('/projects/p1/')).toEqual({ name: 'project', id: 'p1' });
     expect(parseRoute('/machines')).toEqual({ name: 'machines' });
+    expect(parseRoute('/connections')).toEqual({ name: 'connections' });
+    expect(parseRoute('/connections/cursor')).toEqual({ name: 'connections', provider: 'cursor' });
     expect(parseRoute('/settings')).toEqual({ name: 'settings' });
     expect(parseRoute('/signin')).toEqual({ name: 'signin' });
     expect(parseRoute('/setup')).toEqual({ name: 'setup' });
@@ -23,6 +25,8 @@ describe('router', () => {
       { name: 'engineer', id: 'e1' },
       { name: 'project', id: 'p/1' },
       { name: 'machines' },
+      { name: 'connections' },
+      { name: 'connections', provider: 'cursor' },
     ];
     for (const r of routes) expect(parseRoute(routePath(r))).toEqual(r);
   });
@@ -53,6 +57,7 @@ describe('router', () => {
 
   it('only accepts in-app next targets', () => {
     expect(safeNext('/rooms/r1?panel=job%3Aj')).toBe('/rooms/r1?panel=job%3Aj');
+    expect(safeNext('/connections/codex')).toBe('/connections/codex');
     expect(safeNext('//evil.example')).toBeNull();
     expect(safeNext('https://evil.example')).toBeNull();
     expect(safeNext('/v1/export')).toBeNull();

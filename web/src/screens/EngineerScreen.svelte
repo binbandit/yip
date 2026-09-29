@@ -89,6 +89,27 @@
     { value: '', label: 'Any signed-in account' },
     ...accounts.map((p) => ({ value: p.id, label: `${p.label} · ${billingLabel(p.billing)}` })),
   ]);
+  let modelDraft = $state('');
+  let modelError = $state('');
+  let modelKey = '';
+  $effect(() => {
+    const key = `${e?.provider.provider}:${e?.provider.model ?? ''}`;
+    if (key === modelKey) return;
+    modelKey = key;
+    modelDraft = e?.provider.model ?? '';
+    modelError = '';
+  });
+  function saveModel(event: SubmitEvent) {
+    event.preventDefault();
+    if (!e) return;
+    const model = modelDraft.trim();
+    if (model && !/^[^/\s]+\/\S+$/.test(model)) {
+      modelError = 'Enter a model ID in provider/model format, or leave it blank for the default.';
+      return;
+    }
+    modelError = '';
+    void patch({ provider: { ...e.provider, model } }, () => { modelDraft = model; });
+  }
   // Projects this engineer is permitted to work in, from the projects' grants.
   const ACTION_LABELS: Record<string, string> = { push: 'push', open_pr: 'open PRs', publish_review: 'publish reviews', merge: 'merge' };
   const permitted = $derived(
@@ -367,15 +388,25 @@
             />
             {#if e.provider.provider !== 'fake'}
               <div class="prov-grid">
-                <Selector
-                  label="Model"
-                  width="100%"
-                  options={modelOptions}
-                  value={e.provider.model ?? ''}
-                  onChange={(v: string) => {
-                    if (v !== (e.provider.model ?? '')) void patch({ provider: { ...e.provider, model: v } }, () => {});
-                  }}
-                />
+                {#if e.provider.provider === 'opencode'}
+                  <form class="model-form" onsubmit={saveModel}>
+                    <TextInput label="Model ID" width="100%" bind:value={modelDraft}
+                      placeholder="provider/model"
+                      description="Run opencode models on your machine to find an ID. Leave blank for OpenCode’s default."
+                      status={modelError ? { type: 'error', message: modelError } : undefined} />
+                    <Button label="Save model" size="sm" type="submit" isDisabled={saving || modelDraft.trim() === (e.provider.model ?? '')} />
+                  </form>
+                {:else}
+                  <Selector
+                    label="Model"
+                    width="100%"
+                    options={modelOptions}
+                    value={e.provider.model ?? ''}
+                    onChange={(v: string) => {
+                      if (v !== (e.provider.model ?? '')) void patch({ provider: { ...e.provider, model: v } }, () => {});
+                    }}
+                  />
+                {/if}
                 <Selector
                   label="Account"
                   width="100%"
@@ -388,7 +419,7 @@
               </div>
               <Switch
                 label="Allow runs billed to an API key"
-                description="Off: this engineer only uses subscription sign-ins and waits rather than falling back to paid API usage."
+                description="Off: accounts known to use API billing are blocked, including harnesses with mixed API and subscription accounts. Unknown billing is not a guarantee of subscription usage."
                 value={!!e.provider.allowApiBilling}
                 onChange={(on) => patch({ provider: { ...e.provider, allowApiBilling: on } }, () => {})}
               />
@@ -420,6 +451,11 @@
 {/if}
 
 <style>
+  .model-form {
+    display: grid;
+    gap: var(--spacing-2);
+    justify-items: start;
+  }
   .alert,
   .block {
     margin-bottom: var(--spacing-3);

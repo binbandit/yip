@@ -14,6 +14,7 @@ export type Route =
   | { name: 'projects' }
   | { name: 'project'; id: string }
   | { name: 'machines' }
+  | { name: 'connections'; provider?: string }
   | { name: 'settings' }
   | { name: 'notfound'; path: string };
 
@@ -65,6 +66,8 @@ export function parseRoute(pathname: string): Route {
       return b ? { name: 'project', id: b } : { name: 'projects' };
     case 'machines':
       return b ? { name: 'notfound', path: pathname } : { name: 'machines' };
+    case 'connections':
+      return b ? { name: 'connections', provider: b } : { name: 'connections' };
     case 'settings':
       return b ? { name: 'notfound', path: pathname } : { name: 'settings' };
     default:
@@ -118,6 +121,8 @@ function localRoutePath(r: Route): string {
       return `/projects/${e(r.id)}`;
     case 'machines':
       return '/machines';
+    case 'connections':
+      return r.provider ? `/connections/${e(r.provider)}` : '/connections';
     case 'settings':
       return '/settings';
     case 'notfound':

@@ -102,6 +102,13 @@
 
 <Screen title="Settings" subtitle="{app.me?.name} · @{app.me?.handle} · {app.data.org?.name}" width={760}>
   <div class="groups">
+    <ScreenSection title="AI subscriptions" id="set-connections" class="group">
+      <div class="body">
+        <Text as="p" display="block" type="supporting">Use an existing subscription through its tool on a paired machine. See supported tools, setup steps and sign-in status in Connections.</Text>
+        <div class="row-actions"><Button label="Manage connections" href="/connections" /></div>
+      </div>
+    </ScreenSection>
+
     <ScreenSection title="Profile" id="set-profile" class="group">
       {#if app.me}
         <div class="picture">

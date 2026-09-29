@@ -57,7 +57,7 @@ func runDoctor(args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
 	data := fs.String("data", defaultDataDir(), "hub data directory (skipped if absent)")
 	state := fs.String("state", defaultRunnerDir(), "runner state directory (skipped if absent)")
-	provs := fs.String("providers", "codex,claude,cursor", "providers to probe on this machine")
+	provs := fs.String("providers", defaultProviders, "providers to probe on this machine")
 	_ = fs.Parse(args)
 	ctx := context.Background()
 	healthy := true

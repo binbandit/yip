@@ -1,7 +1,7 @@
 <script lang="ts">
   // Pair a machine: a one-time enrollment command, the hub fingerprint to
   // verify, and when the token expires. The token is shown only once.
-  import { Button, Code, CodeBlock, Icon, MetadataList, MetadataListItem, Text, TextInput } from '@astryx-svelte/core';
+  import { Button, Code, CodeBlock, Icon, Link, MetadataList, MetadataListItem, Text, TextInput } from '@astryx-svelte/core';
   import { Copy } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
@@ -118,8 +118,9 @@
           <StateIcon shape="check-filled" tone="success" size={16} />
           <div class="paired">
             <strong>{paired.name} is paired{paired.status === 'online' ? ' and connected' : ''}.</strong>
+            <Link href="/connections" hasUnderline onclick={onclose}>Next: connect your AI subscription</Link>
             {#if realProviders.length === 0}
-              <Text type="supporting">No Codex, Claude Code or Cursor found on it yet. Install one and sign in with its own tool; yip picks it up on the next check.</Text>
+              <Text type="supporting">No supported agent tool found on it yet. Open Connections to choose a tool, install it and sign in.</Text>
             {:else}
               <ul>
                 {#each realProviders as p (p.provider)}

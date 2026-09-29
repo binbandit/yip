@@ -68,7 +68,7 @@ func (f *hubFlags) register(fs *flag.FlagSet, dataDefault string) {
 	fs.StringVar(&f.allowedOrigins, "allowed-origin", "", "extra comma-separated origins allowed for state-changing requests")
 	fs.BoolVar(&f.localRunner, "local-runner", false, "also run a runner on this machine (paired through the normal enrollment path)")
 	fs.IntVar(&f.localSlots, "local-slots", 2, "concurrent runs for the local runner")
-	fs.StringVar(&f.localProviders, "local-providers", "codex,claude,cursor", "providers the local runner may use")
+	fs.StringVar(&f.localProviders, "local-providers", defaultProviders, "providers the local runner may use")
 	fs.StringVar(&f.localProfile, "local-profile", "native", "local runner execution: native, container, or docker (ephemeral agents)")
 	fs.StringVar(&f.localDockerImage, "local-docker-image", runner.DefaultDockerImage, "local image for ephemeral agents")
 	fs.StringVar(&f.localDockerEnv, "local-docker-env", "", "comma-separated environment variable names explicitly imported into agent containers")
@@ -309,7 +309,7 @@ func runDemo(args []string) error {
 	home, _ := os.UserHomeDir()
 	f.register(fs, filepath.Join(home, ".yip", "demo"))
 	reset := fs.Bool("reset", false, "delete the demo data directory first")
-	withProviders := fs.String("with-providers", "", "also let the demo's local runner use these installed providers (codex,claude,cursor) with the sign-in they already have; engineers you switch to them run on your own account")
+	withProviders := fs.String("with-providers", "", "also let the demo's local runner use these installed providers ("+defaultProviders+") with the sign-in they already have; engineers you switch to them run on your own account")
 	_ = fs.Parse(args)
 	if *reset {
 		if !strings.Contains(f.data, "demo") {
@@ -327,10 +327,10 @@ func runDemo(args []string) error {
 	for _, p := range strings.Split(*withProviders, ",") {
 		switch p = strings.TrimSpace(p); p {
 		case "":
-		case "codex", "claude", "cursor":
+		case "codex", "claude", "cursor", "opencode", "pi":
 			f.localProviders += "," + p
 		default:
-			return fmt.Errorf("--with-providers: unknown provider %q (choose from codex, claude, cursor)", p)
+			return fmt.Errorf("--with-providers: unknown provider %q (choose from %s)", p, defaultProviders)
 		}
 	}
 	log := logger()

@@ -37,6 +37,7 @@
 
 <Screen title="Machines" subtitle="The computers your engineers’ work runs on. Closing this window doesn’t stop that work." width={1120} class="machines-screen">
   {#snippet actions()}
+    <Button label="Connect subscription" href="/connections" />
     <Button label="Add machine" variant="primary" onclick={() => (adding = true)}>
       {#snippet icon()}<Icon icon={Plus} size="sm" />{/snippet}
     </Button>

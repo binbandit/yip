@@ -47,7 +47,7 @@ func (h *Hub) Bootstrap(ctx context.Context, u store.UserRow, s store.Session) (
 }
 
 func (h *Hub) providerSummary(nodes []protocol.Node) []protocol.ProviderSummary {
-	order := []string{"codex", "claude", "cursor", "fake"}
+	order := []string{"codex", "claude", "cursor", "opencode", "pi", "fake"}
 	by := map[string]*protocol.ProviderSummary{}
 	for _, p := range order {
 		by[p] = &protocol.ProviderSummary{Provider: p, Label: ProviderLabel(p), ReadyNodes: []string{}, Billing: protocol.BillingUnknown, Fake: p == "fake"}
