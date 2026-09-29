@@ -1,5 +1,5 @@
-// Screenshot set for docs/screenshots/machines-redesign/after, taken against
-// the disposable Machines hub. Not part of the regular journeys:
+// Temporary screenshot set taken against the disposable Machines hub.
+// Not part of the regular journeys; use a temporary output directory:
 //   scripts/e2e/run-webkit.sh OUT scripts/e2e/shots/machines.js
 // Each "journey" leaves the page in the state to capture; the runner saves
 // it as OUT/<name>.png.

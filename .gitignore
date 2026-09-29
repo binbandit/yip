@@ -21,6 +21,9 @@
 /web/test-results/
 /web/playwright-report/
 
+# Keep README screenshots, not historical capture batches.
+/docs/screenshots/*/
+
 # Editors and OS
 .DS_Store
 .idea/
