@@ -337,15 +337,17 @@ func TestBashDescendantsStaySupervised(t *testing.T) {
 				t.Fatal("session did not terminate")
 			}
 			result := s.Wait()
-			// kill(pid, 0) can briefly see an already exited zombie after its
-			// process group disappeared (notably after a host crash on macOS).
-			// Verify live execution, not whether init has reaped its PID yet.
+			// An exited descendant can stay visible until its adopter reaps
+			// it. Confirm no live work remains, even while zombie PIDs exist.
 			if syscall.Kill(pid, 0) == nil {
 				out, _ := exec.Command("ps", "-o", "stat=", "-p", strconv.Itoa(pid)).Output()
 				state := strings.TrimSpace(string(out))
 				if state != "" && !strings.HasPrefix(state, "Z") {
 					t.Fatalf("descendant %d still running (%s), result: %+v", pid, state, result)
 				}
+			}
+			if !result.ExitConfirmed {
+				t.Fatalf("terminated descendant %d left exit unconfirmed: %+v", pid, result)
 			}
 		})
 	}
