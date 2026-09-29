@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { svelteGrab } from 'point-to-svelte/vite';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -21,7 +22,11 @@ function keepGitkeep(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [svelte(), keepGitkeep()],
+  // point-to-svelte's plugin applies only to `vite dev`, where it serves the
+  // overlay's open-in-editor requests; main.ts loads the overlay itself. Its
+  // HTML injection is off because 0.2.0 injects an inline bare import that
+  // Vite doesn't resolve.
+  plugins: [svelte(), svelteGrab({ inject: false }), keepGitkeep()],
   // Component tests mount the client runtime of Svelte, not the server one.
   resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined,
   build: {

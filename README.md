@@ -162,6 +162,11 @@ cd web && npm run dev    # client dev server (proxy /v1 to a running hub)
 cd web && npm test       # client unit and smoke tests
 ```
 
+The dev server loads [point-to-svelte](https://github.com/jalbarrang/point-to-svelte):
+hold ⌘C / Ctrl+C (or use its toolbar toggle), then click any element to copy
+it with its `.svelte` file, line and column, and component stack, ready to
+paste into a coding agent. It is dev-only; built clients never include it.
+
 To try it on a phone or another computer while developing, `make lan` serves
 the demo on your local network (built app on :7721, live-reload client on
 :5173; plain HTTP, demo data only).
