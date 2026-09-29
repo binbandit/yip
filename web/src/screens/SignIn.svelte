@@ -65,7 +65,7 @@
             <Button label={busy ? 'Signing in…' : 'Sign in'} variant="primary" type="submit" isLoading={busy} />
           </VStack>
         </form>
-        <Text type="supporting" as="p">Your workspace runs on your own hub. Work continues on your machines while you're signed out.</Text>
+        <Text type="supporting" as="p">Your workspace runs on your own hub.</Text>
       </VStack>
     </Card>
   </Center>
