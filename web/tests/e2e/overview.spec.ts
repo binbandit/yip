@@ -19,7 +19,7 @@ test.describe('getting started', () => {
   test('counts what the demo has already set up and links each next step', async ({ app: page }) => {
     const gs = page.getByRole('region', { name: 'Getting started' });
     await expect(gs).toContainText(/\d of 7 done/);
-    for (const step of ['Pair a machine', 'Sign in a provider on it', 'Choose your first engineer', 'Bring them into a room', 'Ask for a small, real piece of work']) {
+    for (const step of ['Pair a machine', 'Connect your AI subscription', 'Choose your first engineer', 'Bring them into a room', 'Ask for a small, real piece of work']) {
       await expect(gs.getByText(step, { exact: true })).toBeVisible();
     }
     await expect(gs).toContainText('Demo provider (fake) sign-in is connected for the scripted demo.');
