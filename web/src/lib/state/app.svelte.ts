@@ -37,6 +37,16 @@ export interface Toast {
 
 export type Theme = 'system' | 'day' | 'night';
 
+/** The appearance saved by this browser's last session (theme-init.js reads the same key). */
+function savedTheme(): Theme {
+  try {
+    const t = localStorage.getItem('yip.theme');
+    return t === 'day' || t === 'night' ? t : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
 function currentLocation(): Location {
   if (typeof window === 'undefined') return parseLocation('/', '');
   return parseLocation(window.location.pathname, window.location.search);
@@ -92,8 +102,9 @@ class AppState {
     return t === 'day' || t === 'night' ? t : 'system';
   }
 
+  /** Phone layout: matches AppShell's `md` breakpoint, where the sidebar becomes a drawer. */
   get narrow(): boolean {
-    return this.viewport < 760;
+    return this.viewport <= 768;
   }
 
   // ---- lifecycle ----
@@ -581,12 +592,20 @@ class AppState {
     }
   }
 
+  /**
+   * The appearance as an Astryx colour mode; <Theme> applies it to the document.
+   * Until the workspace's preferences load (boot, sign-in, setup) it keeps the
+   * one this browser last saved, as theme-init.js did before first paint.
+   */
+  get themeMode(): 'system' | 'light' | 'dark' {
+    const t = this.phase === 'ready' ? this.theme : savedTheme();
+    return t === 'day' ? 'light' : t === 'night' ? 'dark' : 'system';
+  }
+
   applyAppearance(): void {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
     const t = this.theme;
-    if (t === 'system') delete root.dataset.theme;
-    else root.dataset.theme = t;
     const density = this.data.preferences.density === 'compact' ? 'compact' : 'comfortable';
     if (density === 'compact') root.dataset.density = 'compact';
     else delete root.dataset.density;

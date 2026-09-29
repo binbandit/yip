@@ -4,10 +4,12 @@
   // (sign-in, storage, diagnostics and the consequential actions) is in a
   // machine's details, opened in the right-hand panel (?panel=machine:id).
   import { onMount } from 'svelte';
+  import { Button, EmptyState, Icon } from '@astryx-svelte/core';
+  import { Plus } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { nodesDigest, providerProfiles } from '../lib/state/profiles.svelte';
-  import Icon from '../components/Icon.svelte';
+  import Screen from '../components/Screen.svelte';
   import AddMachineDialog from '../components/AddMachineDialog.svelte';
   import MachineRow from '../components/machines/MachineRow.svelte';
 
@@ -33,87 +35,69 @@
   const openId = $derived(app.loc.panel?.kind === 'machine' ? app.loc.panel.id : null);
 </script>
 
-<div class="screen">
-  <div class="screen-inner machines-screen">
-    <header class="screen-head">
-      <div>
-        <h1 class="screen-title" data-screen-title tabindex="-1">Machines</h1>
-        <p class="screen-sub">The computers your engineers’ work runs on. Closing this window doesn’t stop that work.</p>
-      </div>
-      <button class="btn btn-primary" onclick={() => (adding = true)}><Icon name="plus" size={16} />Add machine</button>
-    </header>
+<Screen title="Machines" subtitle="The computers your engineers’ work runs on. Closing this window doesn’t stop that work." width={1120} class="machines-screen">
+  {#snippet actions()}
+    <Button label="Add machine" variant="primary" onclick={() => (adding = true)}>
+      {#snippet icon()}<Icon icon={Plus} size="sm" />{/snippet}
+    </Button>
+  {/snippet}
 
-    {#if nodes.length === 0}
-      <div class="empty">
-        <p><strong>No machines yet.</strong></p>
-        <p>Engineers need a machine to run work on. Pair one with Add machine: an always-on computer keeps work going while this laptop sleeps.</p>
+  {#if nodes.length === 0}
+    <div class="empty">
+      <EmptyState
+        title="No machines yet."
+        headingLevel={2}
+        description="Engineers need a machine to run work on. Pair one with Add machine: an always-on computer keeps work going while this laptop sleeps."
+      />
+    </div>
+  {:else}
+    <div class="list-wrap">
+      <div class="cols" aria-hidden="true">
+        <span>Machine</span><span>Connection</span><span>Work</span><span>Providers and limits</span><span></span>
       </div>
-    {:else}
-      <div class="list-wrap">
-        <div class="cols" aria-hidden="true">
-          <span>Machine</span><span>Connection</span><span>Work</span><span>Providers and limits</span><span></span>
-        </div>
-        <ul class="machines" aria-label="Machines">
-          {#each nodes as n (n.id)}
-            <MachineRow node={n} selected={openId === n.id} />
-          {/each}
-        </ul>
-      </div>
-    {/if}
-  </div>
-</div>
+      <ul class="machines" aria-label="Machines">
+        {#each nodes as n (n.id)}
+          <MachineRow node={n} selected={openId === n.id} />
+        {/each}
+      </ul>
+    </div>
+  {/if}
+</Screen>
 
 {#if adding}<AddMachineDialog onclose={() => (adding = false)} />{/if}
 
 <style>
-  .machines-screen {
-    max-width: 1120px;
-    padding: 24px 24px 48px;
-  }
-  .machines-screen .screen-title {
-    font-size: var(--text-display);
-  }
-  .machines-screen .screen-head {
-    align-items: flex-start;
-    margin-bottom: 20px;
-  }
-  .machines-screen .screen-sub {
-    font-size: var(--text-body);
+  .empty {
+    padding-block: var(--spacing-6);
   }
   .list-wrap {
     container: machines / inline-size;
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
   }
   .machines {
     list-style: none;
     margin: 0;
     padding: 0;
   }
+  /* The same tracks as MachineRow, so the header sits over its columns. */
   .cols {
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.95fr) minmax(0, 0.85fr) minmax(0, 1.9fr) 88px;
-    gap: 20px;
-    padding: 10px 12px 8px;
-    border-bottom: 1px solid var(--line);
-    font-size: var(--text-meta);
-    font-weight: 500;
-    color: var(--ink-secondary);
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.95fr) minmax(0, 0.85fr) minmax(0, 1.65fr) 88px;
+    gap: var(--spacing-5);
+    padding: var(--spacing-2) var(--spacing-3);
+    border-bottom: 1px solid var(--color-border);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-secondary);
   }
+  /* Past the row's device icon (32px) and its gap. */
   .cols span:first-child {
-    padding-left: 42px;
+    padding-left: calc(32px + var(--spacing-3));
   }
   @container machines (max-width: 780px) {
     .cols {
       display: none;
-    }
-  }
-  @media (max-width: 760px) {
-    .machines-screen {
-      padding: 16px 16px 40px;
-    }
-    .machines-screen .screen-title {
-      font-size: var(--text-display);
     }
   }
 </style>

@@ -2,6 +2,7 @@
   // A remembered decision with its provenance: scope, status, who proposed
   // and who accepted it, supersession, and links to its sources.
   import { untrack } from 'svelte';
+  import { Button, Heading, Link, Text, TextArea, TextInput } from '@astryx-svelte/core';
   import { app } from '../../lib/state/app.svelte';
   import { details } from '../../lib/state/details.svelte';
   import { api } from '../../lib/api/endpoints';
@@ -9,6 +10,7 @@
   import { atTime } from '../../lib/util/time';
   import RightPanel, { type PanelMode } from '../RightPanel.svelte';
   import MessageBody from '../MessageBody.svelte';
+  import Notice from '../Notice.svelte';
 
   interface Props {
     decisionId: string;
@@ -82,44 +84,50 @@
 <RightPanel title={d?.title ?? 'Decision'} {mode} onclose={() => app.closePanel()}>
   {#snippet subtitle()}{scopeLabel}{/snippet}
   <div class="pad">
-    {#if error}<p class="notice danger" role="alert">{error}</p>{/if}
+    {#if error}<Notice tone="danger" role="alert">{error}</Notice>{/if}
     {#if !d}
-      {#if !error}<p class="meta">Loading…</p>{/if}
+      {#if !error}<Text as="p" type="supporting">Loading…</Text>{/if}
     {:else}
       <p class="status">
         <strong>{d.status === 'accepted' ? 'Accepted' : d.status === 'proposed' ? 'Proposed' : d.status === 'superseded' ? 'Superseded' : 'Rejected'}</strong>
-        <span class="meta">
+        <Text type="supporting">
           · proposed by {app.actorName(d.createdBy)} {atTime(d.createdAt)}
           {#if d.acceptedBy}
             · accepted {d.acceptedBy.kind === 'system' ? 'automatically under the project policy' : `by ${app.actorName(d.acceptedBy)}`}
             {atTime(d.acceptedAt)}{/if}
-        </span>
+        </Text>
       </p>
       <MessageBody message={{ body: d.body, mentions: [] }} />
       {#if d.supersededById}
-        <p class="notice attention">
-          A newer decision replaces this one. <button class="link-btn" onclick={() => app.openPanel({ kind: 'decision', id: d.supersededById! })}>Open it</button>
-        </p>
+        <Notice tone="warning" title="A newer decision replaces this one.">
+          {#snippet end()}
+            <Button size="sm" label="Open it" onclick={() => app.openPanel({ kind: 'decision', id: d.supersededById! })} />
+          {/snippet}
+        </Notice>
       {/if}
       {#if d.supersedesId}
-        <p class="meta">Replaces <button class="link-btn" onclick={() => app.openPanel({ kind: 'decision', id: d.supersedesId! })}>an earlier decision</button>.</p>
+        <Text as="p" type="supporting"
+          >Replaces <Link onclick={() => app.openPanel({ kind: 'decision', id: d.supersedesId! })} type="inherit" hasUnderline>an earlier decision</Link>.</Text
+        >
       {/if}
-      <section>
-        <h3>Sources</h3>
+      <section class="sources">
+        <Heading level={3}>Sources</Heading>
         {#if d.sources.length === 0}
-          <p class="meta">No sources recorded.</p>
+          <Text as="p" type="supporting">No sources recorded.</Text>
         {:else}
           <ul>
             {#each d.sources as s (s.kind + s.id)}
               {@const h = sourceHref(s)}
               <li>
-                {#if h}<a href={h}>{s.kind === 'message' ? `Message in ${app.data.rooms[s.roomId ?? '']?.name ?? 'a room'}` : s.kind === 'job' ? (app.data.jobs[s.id]?.title ?? 'The work') : s.kind}</a>{:else}{s.kind}{/if}
+                {#if h}<Link hasUnderline href={h}
+                    >{s.kind === 'message' ? `Message in ${app.data.rooms[s.roomId ?? '']?.name ?? 'a room'}` : s.kind === 'job' ? (app.data.jobs[s.id]?.title ?? 'The work') : s.kind}</Link
+                  >{:else}{s.kind}{/if}
               </li>
             {/each}
           </ul>
         {/if}
       </section>
-      <p class="meta">
+      <Text as="p" type="supporting">
         {#if d.visibleRoomIds == null}
           Visible wherever its scope allows.
         {:else if d.visibleRoomIds.length === 0}
@@ -127,28 +135,28 @@
         {:else}
           Visible only from: {d.visibleRoomIds.map((r) => app.data.rooms[r]?.name ?? 'a private room').join(', ')}.
         {/if}
-      </p>
+      </Text>
       {#if d.status === 'accepted' && !d.supersededById}
         {#if correcting}
           <form class="correct" onsubmit={correct}>
-            <label class="field"><span class="label">Title</span><input class="input" bind:value={correcting.title} /></label>
-            <label class="field"><span class="label">What was decided</span><textarea class="input" rows="5" bind:value={correcting.body}></textarea></label>
-            <p class="meta">Engineers use the corrected version from now on; the earlier one stays in the history, marked as replaced.</p>
+            <TextInput label="Title" width="100%" bind:value={correcting.title} />
+            <TextArea label="What was decided" width="100%" rows={5} bind:value={correcting.body} />
+            <Text as="p" type="supporting">Engineers use the corrected version from now on; the earlier one stays in the history, marked as replaced.</Text>
             <div class="actions">
-              <button class="btn btn-sm btn-primary" type="submit" disabled={busy}>Record correction</button>
-              <button class="btn btn-sm" type="button" onclick={() => (correcting = null)}>Cancel</button>
+              <Button size="sm" variant="primary" type="submit" label="Record correction" isDisabled={busy} />
+              <Button size="sm" label="Cancel" onclick={() => (correcting = null)} />
             </div>
           </form>
         {:else}
           <div class="actions">
-            <button class="btn btn-sm" onclick={() => (correcting = { title: d!.title, body: d!.body })}>Correct this decision</button>
+            <Button size="sm" label="Correct this decision" onclick={() => (correcting = { title: d!.title, body: d!.body })} />
           </div>
         {/if}
       {/if}
       {#if d.status === 'proposed'}
         <div class="actions">
-          <button class="btn btn-sm btn-primary" disabled={busy} onclick={() => act('accept')}>Accept</button>
-          <button class="btn btn-sm" disabled={busy} onclick={() => act('reject')}>Reject</button>
+          <Button size="sm" variant="primary" label="Accept" isDisabled={busy} onclick={() => act('accept')} />
+          <Button size="sm" label="Reject" isDisabled={busy} onclick={() => act('reject')} />
         </div>
       {/if}
     {/if}
@@ -156,30 +164,34 @@
 </RightPanel>
 
 <style>
-  .correct {
-    display: grid;
-    gap: 10px;
-    margin-top: 12px;
-  }
   .pad {
-    padding: 14px 18px 24px;
+    padding: var(--spacing-3) var(--spacing-4) var(--spacing-6);
     display: grid;
-    gap: 12px;
+    gap: var(--spacing-3);
   }
-  .status {
-    font-size: 14px;
+  .status strong {
+    font-weight: var(--font-weight-semibold);
   }
-  h3 {
-    font-size: 14px;
-    margin-bottom: 6px;
+  .sources {
+    display: grid;
+    gap: var(--spacing-1-5);
+  }
+  /* Section titles in a drawer sit below its 17px title. */
+  .sources :global(h3.astryx-heading) {
+    font-size: var(--text-heading-4-size);
+    line-height: var(--text-heading-4-leading);
   }
   ul {
-    margin: 0;
-    padding-left: 18px;
-    font-size: 14px;
+    padding-left: var(--spacing-5);
+    list-style: disc;
+  }
+  .correct {
+    display: grid;
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-3);
   }
   .actions {
     display: flex;
-    gap: 8px;
+    gap: var(--spacing-2);
   }
 </style>

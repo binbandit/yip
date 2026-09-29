@@ -3,6 +3,8 @@
   // plain words, evidence (diff, checks, files), review history, activity and
   // tool logs, and each attempt. Stop, Retry and Accept are explicit.
   import { untrack } from 'svelte';
+  import { Button, Card, Code, CodeBlock, Collapsible, Heading, Icon, Link, MetadataList, MetadataListItem, Selector, Tab, TabList, Text } from '@astryx-svelte/core';
+  import { Download, File, MessageSquare, RefreshCw } from '@lucide/svelte';
   import { app, receiptKey } from '../../lib/state/app.svelte';
   import { details } from '../../lib/state/details.svelte';
   import { api, fetchArtifactText } from '../../lib/api/endpoints';
@@ -27,8 +29,8 @@
   import { atTime, bytes, clock, duration, fullTime, relative, shortSha } from '../../lib/util/time';
   import RightPanel, { type PanelMode } from '../RightPanel.svelte';
   import StateIcon from '../StateIcon.svelte';
+  import Notice from '../Notice.svelte';
   import Avatar from '../Avatar.svelte';
-  import Icon from '../Icon.svelte';
   import DiffView from '../DiffView.svelte';
   import ReviewDetail from '../ReviewDetail.svelte';
   import PRFacts from '../PRFacts.svelte';
@@ -53,6 +55,7 @@
   const unknownRun = $derived(runs.find((r) => r.state === 'unknown'));
   // A stop is only confirmed once the machine reports the attempt ended.
   const stoppingRun = $derived(runs.find((r) => r.state === 'stopping'));
+  // Why the work is in its state: the state's second line, not a notice of its own.
   const stateDetail = $derived(job && (job.state === 'waiting' || job.state === 'failed' || job.state === 'review_ready') ? (job.stateDetail ?? '') : '');
   // The hub often phrases the state as "Waiting on <missing evidence>"; list only what that line doesn't already say.
   const missing = $derived((d?.missing ?? []).filter((m) => !stateDetail.includes(m)));
@@ -110,6 +113,13 @@
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map((a) => ({ head: a.revision ?? '', artifactId: a.id, at: a.createdAt }));
   });
+  // Picker labels carry each revision's file and line counts.
+  const revChoices = $derived(
+    revOptions.map((o) => ({
+      value: o.artifactId,
+      label: `${shortSha(o.head)}${o.head === job?.revision?.head ? ' (current)' : ''}${o.stats ? ` · ${o.stats.files} files +${o.stats.ins} −${o.stats.del}` : o.at ? ` · ${clock(o.at)}` : ''}`,
+    })),
+  );
   let chosenRev = $state<string | null>(null);
   // A finding's location opens the diff of the revision that was reviewed.
   $effect(() => {
@@ -227,6 +237,8 @@
     queueMicrotask(() => document.querySelector<HTMLTextAreaElement>('.room-composer textarea, .panel textarea')?.focus());
   }
 
+  // Arrow keys, Home and End move the selection with the focus, as they always
+  // have here, so the strip's own focus-only roving is skipped.
   function tabKey(e: KeyboardEvent) {
     const i = TABS.indexOf(tab);
     let n = i;
@@ -258,9 +270,9 @@
   {#if !job}
     <div class="pad">
       {#if entry?.error}
-        <p class="notice danger" role="alert">{entry.missing ? "This work doesn't exist or isn't visible to you." : entry.error}</p>
+        <Notice tone="danger" role="alert">{entry.missing ? "This work doesn't exist or isn't visible to you." : entry.error}</Notice>
       {:else}
-        <p class="meta">Loading the work…</p>
+        <Text as="p" type="supporting">Loading the work…</Text>
       {/if}
     </div>
   {:else}
@@ -269,190 +281,181 @@
         <p class="state tone-{jobTone(job.state)}">
           <StateIcon shape={jobShape(job.state)} tone={jobTone(job.state)} size={16} live={job.state === 'running'} />
           <strong>{job.state === 'cancelled' && stoppingRun ? 'Stopping' : jobStateLabel(job)}</strong>
-          {#if job.state === 'waiting'}<span class="muted">· {waitingReasonLabel(job.waitingReason)}</span>{/if}
+          {#if job.state === 'waiting'}<span class="reason">· {waitingReasonLabel(job.waitingReason)}</span>{/if}
         </p>
         {#if stoppingRun}
           <p class="why">Waiting for {app.nodeName(stoppingRun.nodeId) || 'its machine'} to confirm the attempt has stopped.</p>
         {/if}
         {#if stateDetail}
-          <p class="why">{stateDetail}{#if setupLink}{' '}<a href={setupLink.href}>{setupLink.label}</a>{/if}</p>
+          <p class="why">{stateDetail}{#if setupLink}{' '}{@render setupAction()}{/if}</p>
         {:else if setupLink}
-          <p class="why"><a href={setupLink.href}>{setupLink.label}</a></p>
+          <p class="why">{@render setupAction()}</p>
         {/if}
       </div>
       {#if unknownRun}
-        <p class="notice attention">
-          Last heard from {app.nodeName(unknownRun.nodeId) || 'its machine'}
-          {atTime(unknownRun.heartbeatAt ?? unknownRun.lastActivityAt ?? unknownRun.createdAt)}. The run's outcome is not yet confirmed{unknownRun.lastActivity
-            ? ` — last confirmed: ${unknownRun.lastActivity.toLowerCase()}`
-            : ''}. Check before retrying anything that pushes or publishes.
-        </p>
+        <Notice
+          tone="warning"
+          title="Last heard from {app.nodeName(unknownRun.nodeId) || 'its machine'} {atTime(
+            unknownRun.heartbeatAt ?? unknownRun.lastActivityAt ?? unknownRun.createdAt,
+          )}. The run's outcome is not yet confirmed{unknownRun.lastActivity ? ` — last confirmed: ${unknownRun.lastActivity.toLowerCase()}` : ''}."
+          description="Check before retrying anything that pushes or publishes."
+        />
       {/if}
       {#if missing.length}
-        <p class="notice attention">Still needs {missing.join('; ')}.</p>
+        <Notice tone="warning">Still needs {missing.join('; ')}.</Notice>
       {/if}
 
-      <dl class="props">
-        <div>
-          <dt>Owner</dt>
-          <dd>
-            <button class="person" onclick={() => app.openPanel({ kind: 'engineer', id: job!.ownerId })}>
-              <Avatar actor={{ kind: 'engineer', id: job.ownerId }} size={20} />{app.engineerName(job.ownerId)}
-            </button>
-          </dd>
-        </div>
-        {#if job.reviewerIds.length}
-          <div>
-            <dt>Reviewers</dt>
-            <dd class="people">
-              {#each job.reviewerIds as r (r)}<span class="person-static"><Avatar actor={{ kind: 'engineer', id: r }} size={20} />{app.engineerName(r)}</span>{/each}
-            </dd>
-          </div>
-        {/if}
-        {#if project}
-          <div>
-            <dt>Project</dt>
-            <dd>
-              <a href="/projects/{project.id}">{project.name}</a>{#if repo}{' '}<span class="meta"
-                  >· <span class="mono">{repo.forgeRepo || repo.name}</span></span
-                >{/if}
-            </dd>
-          </div>
-        {/if}
-        <div>
-          <dt>Machine</dt>
-          <dd>{job.nodeId ? app.nodeName(job.nodeId) || 'A paired machine' : 'Not assigned yet'}</dd>
-        </div>
-        {#if job.revision?.head || job.revision?.branch}
-          <div>
-            <dt>Revision</dt>
-            <dd><span class="mono">{shortSha(job.revision.head) || '—'}</span>{#if job.revision.branch}{' '}<span class="meta">on {job.revision.branch}</span>{/if}</dd>
-          </div>
-        {/if}
-        <div>
-          <dt>Last confirmed</dt>
-          <dd>
-            {job.lastActivity || 'Nothing yet'}{#if job.lastActivityAt}{' '}<span class="meta" title={fullTime(job.lastActivityAt)}>· {relative(job.lastActivityAt, app.now)}</span>{/if}
-          </dd>
-        </div>
-        {#if job.followsId}
-          <div>
-            <dt>Follows up</dt>
-            <dd>
-              <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: job!.followsId! })}
-                >{app.data.jobs[job.followsId]?.title ?? 'the earlier work'}</button
+      <div class="facts">
+        <MetadataList label={{ position: 'start', width: 110 }}>
+          <MetadataListItem label="Owner">
+            <Link color="primary" onclick={() => app.openPanel({ kind: 'engineer', id: job!.ownerId })}>
+              <span class="person"><Avatar actor={{ kind: 'engineer', id: job.ownerId }} size={20} />{app.engineerName(job.ownerId)}</span>
+            </Link>
+          </MetadataListItem>
+          {#if job.reviewerIds.length}
+            <MetadataListItem label="Reviewers">
+              <span class="people">
+                {#each job.reviewerIds as r (r)}<span class="person"><Avatar actor={{ kind: 'engineer', id: r }} size={20} />{app.engineerName(r)}</span>{/each}
+              </span>
+            </MetadataListItem>
+          {/if}
+          {#if project}
+            <MetadataListItem label="Project">
+              <Link hasUnderline href="/projects/{project.id}">{project.name}</Link>{#if repo}{' '}<Text type="supporting">· <Code size="inherit">{repo.forgeRepo || repo.name}</Code></Text>{/if}
+            </MetadataListItem>
+          {/if}
+          <MetadataListItem label="Machine">
+            {job.nodeId ? app.nodeName(job.nodeId) || 'A paired machine' : 'Not assigned yet'}
+          </MetadataListItem>
+          {#if job.revision?.head || job.revision?.branch}
+            <MetadataListItem label="Revision">
+              <Code>{shortSha(job.revision.head) || '—'}</Code>{#if job.revision.branch}{' '}<Text type="supporting">on {job.revision.branch}</Text>{/if}
+            </MetadataListItem>
+          {/if}
+          <MetadataListItem label="Last confirmed">
+            {job.lastActivity || 'Nothing yet'}{#if job.lastActivityAt}{' '}<Text type="supporting"
+                ><span title={fullTime(job.lastActivityAt)}>· {relative(job.lastActivityAt, app.now)}</span></Text
+              >{/if}
+          </MetadataListItem>
+          {#if job.followsId}
+            <MetadataListItem label="Follows up">
+              <Link onclick={() => app.openPanel({ kind: 'job', id: job!.followsId! })} hasUnderline
+                >{app.data.jobs[job.followsId]?.title ?? 'the earlier work'}</Link
               >
-            </dd>
-          </div>
-        {/if}
-        <div>
-          <dt>Work ID</dt>
-          <dd><span class="mono" title={job.id}>#{workId(job.id)}</span></dd>
-        </div>
-        <div>
-          <dt>From</dt>
-          <dd>
-            <a href="/rooms/{job.source.roomId}?msg={job.source.messageId ?? ''}{job.source.threadId ? `&panel=thread%3A${job.source.threadId}` : ''}"
-              >{room?.name ?? 'the source conversation'}</a
+            </MetadataListItem>
+          {/if}
+          <MetadataListItem label="Work ID">
+            <span title={job.id}><Code>#{workId(job.id)}</Code></span>
+          </MetadataListItem>
+          <MetadataListItem label="From">
+            <Link hasUnderline href="/rooms/{job.source.roomId}?msg={job.source.messageId ?? ''}{job.source.threadId ? `&panel=thread%3A${job.source.threadId}` : ''}"
+              >{room?.name ?? 'the source conversation'}</Link
             >
-            {#if job.requiresHumanReview}{' '}<span class="meta">· needs your review before it completes</span>{/if}
-          </dd>
-        </div>
-      </dl>
+            {#if job.requiresHumanReview}{' '}<Text type="supporting">· needs your review before it completes</Text>{/if}
+          </MetadataListItem>
+        </MetadataList>
+      </div>
 
-      {#if actionError}<p class="form-error" role="alert">{actionError}</p>{/if}
+      {#if actionError}<Notice tone="danger" role="alert">{actionError}</Notice>{/if}
       <div class="actions">
         {#if canAccept}
-          <button class="btn btn-primary btn-sm" disabled={busy === 'accept'} onclick={accept}>
-            <Icon name="check" size={15} />Accept {job.kind === 'code' ? 'revision' : 'document'} {shortSha(resultKey)}
-          </button>
+          <Button
+            variant="primary"
+            size="sm"
+            label="Accept {job.kind === 'code' ? 'revision' : 'document'} {shortSha(resultKey)}"
+            isLoading={busy === 'accept'}
+            onclick={accept}
+          >
+            {#snippet icon()}<Icon icon="check" size="sm" />{/snippet}
+          </Button>
         {/if}
         {#if live}
-          <button class="btn btn-sm" onclick={steer}><Icon name="reply" size={15} />Add to this work</button>
-          <button class="btn btn-sm btn-danger" onclick={() => (confirmStop = true)}><Icon name="stop" size={15} />Stop</button>
+          <Button size="sm" label="Add to this work" onclick={steer}>
+            {#snippet icon()}<Icon icon={MessageSquare} size="sm" />{/snippet}
+          </Button>
+          <Button size="sm" variant="destructive" label="Stop" onclick={() => (confirmStop = true)}>
+            {#snippet icon()}<Icon icon="stop" size="sm" />{/snippet}
+          </Button>
         {/if}
         {#if canRetry}
-          <button class="btn btn-sm" disabled={busy === 'retry'} onclick={retry}><Icon name="refresh" size={15} />{busy === 'retry' ? (job.state === 'cancelled' ? 'Resuming…' : 'Retrying…') : job.state === 'cancelled' ? 'Resume' : 'Retry'}</button>
+          <Button
+            size="sm"
+            label={busy === 'retry' ? (job.state === 'cancelled' ? 'Resuming…' : 'Retrying…') : job.state === 'cancelled' ? 'Resume' : 'Retry'}
+            isDisabled={busy === 'retry'}
+            onclick={retry}
+          >
+            {#snippet icon()}<Icon icon={RefreshCw} size="sm" />{/snippet}
+          </Button>
         {/if}
       </div>
     </div>
 
-    <div class="tabs" role="tablist" aria-label="Work details">
-      {#each TABS as t (t)}
-        <button
-          class="tab"
-          role="tab"
-          id="jobtab-{t}"
-          aria-selected={tab === t}
-          aria-controls="jobpanel-{t}"
-          tabindex={tab === t ? 0 : -1}
-          onclick={() => app.setTab(t)}
-          onkeydown={tabKey}
-        >
-          {tabLabel[t]}{#if counts[t]}<span class="n">{counts[t]}</span>{/if}
-        </button>
-      {/each}
+    <!-- The tab bar keeps its height however long the evidence below it is. -->
+    <div class="tabbar">
+      <TabList role="tablist" aria-label="Work details" value={tab} onChange={(v) => app.setTab(v)} onkeydown={tabKey} hasDivider>
+        {#each TABS as t (t)}
+          {#snippet count()}<span class="n">{counts[t]}</span>{/snippet}
+          <Tab value={t} label={tabLabel[t]} id="jobtab-{t}" panelId="jobpanel-{t}" endContent={counts[t] ? count : undefined} />
+        {/each}
+      </TabList>
     </div>
 
     <div class="pad tabpanel" role="tabpanel" id="jobpanel-{tab}" aria-labelledby="jobtab-{tab}" tabindex="-1">
       {#if !d}
-        <p class="meta">Loading evidence…</p>
+        <Text as="p" type="supporting">Loading evidence…</Text>
       {:else if tab === 'evidence'}
         {#if job.summary}
           <section class="block">
-            <h3>Summary</h3>
+            <Heading level={3}>Summary</Heading>
             <MessageBody message={{ body: job.summary, mentions: [] }} />
           </section>
         {/if}
         {#if job.acceptance.length}
           <section class="block">
-            <h3>Done when</h3>
+            <Heading level={3}>Done when</Heading>
             <ul class="plain">{#each job.acceptance as a (a)}<li>{a}</li>{/each}</ul>
           </section>
         {/if}
 
         <section class="block">
           <div class="block-head">
-            <h3>Changes</h3>
+            <Heading level={3}>Changes</Heading>
             {#if revOptions.length > 1}
-              <label class="rev-pick">
-                <span class="vh">Revision</span>
-                <select class="select" value={rev?.artifactId} onchange={(e) => (chosenRev = (e.target as HTMLSelectElement).value)}>
-                  {#each revOptions as o (o.artifactId)}
-                    <option value={o.artifactId}
-                      >{shortSha(o.head)}{o.head === job.revision?.head ? ' (current)' : ''}{o.stats ? ` · ${o.stats.files} files +${o.stats.ins} −${o.stats.del}` : o.at ? ` · ${clock(o.at)}` : ''}</option
-                    >
-                  {/each}
-                </select>
-              </label>
+              <div class="rev-pick">
+                <Selector label="Revision" isLabelHidden size="sm" value={rev?.artifactId} options={revChoices} onChange={(v: string) => (chosenRev = v)} />
+              </div>
             {/if}
           </div>
           {#if rev?.stats}
             <p class="rev-stats">
-              <span class="mono">{shortSha(rev.head)}</span>
+              <Code size="inherit">{shortSha(rev.head)}</Code>
               · {rev.stats.files} {rev.stats.files === 1 ? 'file' : 'files'} <span class="add">+{rev.stats.ins}</span> <span class="del">−{rev.stats.del}</span>
               {#if rev.stats.summary}· {rev.stats.summary}{/if}
             </p>
           {/if}
           {#if !diff}
-            <p class="meta">No diff recorded{job.kind === 'code' ? ' yet' : ''}.</p>
+            <Text as="p" type="supporting">No diff recorded{job.kind === 'code' ? ' yet' : ''}.</Text>
           {:else if diffError}
-            <p class="notice danger">{diffError}</p>
+            <Notice tone="danger" role="alert">{diffError}</Notice>
           {:else if !diffFiles}
-            <p class="meta">Loading the diff…</p>
+            <Text as="p" type="supporting">Loading the diff…</Text>
           {:else}
             {#if diff.revision !== job.revision?.head && job.revision?.head}
-              <p class="notice attention">This diff is for an earlier revision ({shortSha(diff.revision)}).</p>
+              <Notice tone="warning" title="This diff is for an earlier revision ({shortSha(diff.revision)})." />
             {/if}
             <DiffView files={diffFiles} focus={app.diffFocus?.jobId === jobId ? app.diffFocus : null} />
-            {#if diffTruncated}<p class="meta">The diff is long; <a href="/v1/artifacts/{diff.id}" target="_blank" rel="noopener">open the full file</a>.</p>{/if}
+            {#if diffTruncated}
+              <Text as="p" type="supporting"
+                >The diff is long; <Link href="/v1/artifacts/{diff.id}" target="_blank" rel="noopener" type="inherit" hasUnderline>open the full file</Link>.</Text
+              >
+            {/if}
           {/if}
         </section>
 
         <section class="block">
-          <h3>Checks</h3>
+          <Heading level={3}>Checks</Heading>
           {#if d.checks.length === 0}
-            <p class="meta">No checks recorded.{job.kind === 'code' ? ' A result without checks is unverified.' : ''}</p>
+            <Text as="p" type="supporting">No checks recorded.{job.kind === 'code' ? ' A result without checks is unverified.' : ''}</Text>
           {:else}
             <ul class="checks">
               {#each [...d.checks].reverse() as c (c.id)}
@@ -460,22 +463,26 @@
                   <div class="check-main">
                     <StateIcon shape={c.passed ? 'check-filled' : 'triangle'} tone={c.passed ? 'success' : 'danger'} />
                     <div class="check-text">
-                      <p><code class="mono">{c.command}</code></p>
-                      <p class="meta">
+                      <p><Code>{c.command}</Code></p>
+                      <Text as="p" type="supporting">
                         <span class={c.passed ? 'tone-success' : 'tone-danger'}>{c.passed ? 'Passed' : 'Failed'}</span> · exit {c.exitCode} · on
-                        <span class="mono">{shortSha(c.revision)}</span>{c.revision !== job.revision?.head && job.revision?.head ? ' (earlier revision)' : ''}
+                        <Code size="inherit">{shortSha(c.revision)}</Code>{c.revision !== job.revision?.head && job.revision?.head ? ' (earlier revision)' : ''}
                         · {duration(c.durationMs)} · {app.nodeName(c.nodeId) || 'machine'} · {atTime(c.createdAt)}
-                      </p>
-                      {#if c.summary}<pre class="summary-out">{c.summary}</pre>{/if}
+                      </Text>
+                      {#if c.summary}<CodeBlock code={c.summary} size="sm" width="100%" maxHeight={280} isWrapped />{/if}
                     </div>
                   </div>
                   {#if c.logArtifactId}
-                    <button class="btn btn-sm btn-quiet" aria-expanded={openLog === c.logArtifactId} onclick={() => toggleLog(c.logArtifactId!)}>
-                      {openLog === c.logArtifactId ? 'Hide log' : 'Show log'}
-                    </button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      label={openLog === c.logArtifactId ? 'Hide log' : 'Show log'}
+                      aria-expanded={openLog === c.logArtifactId}
+                      onclick={() => toggleLog(c.logArtifactId!)}
+                    />
                   {/if}
                   {#if openLog === c.logArtifactId && c.logArtifactId}
-                    <pre class="log">{logText[c.logArtifactId] ?? 'Loading…'}</pre>
+                    <div class="log"><CodeBlock code={logText[c.logArtifactId] ?? 'Loading…'} size="sm" width="100%" maxHeight={280} isWrapped /></div>
                   {/if}
                 </li>
               {/each}
@@ -485,14 +492,16 @@
 
         {#if artifactsByKind(d.artifacts).length}
           <section class="block">
-            <h3>Files</h3>
+            <Heading level={3}>Files</Heading>
             <ul class="plain files">
               {#each artifactsByKind(d.artifacts) as a (a.id)}
                 <li>
-                  <Icon name="file" size={15} />
-                  <a href="/v1/artifacts/{a.id}" target="_blank" rel="noopener">{a.name}</a>
-                  <span class="meta">{a.kind} · {bytes(a.size)}{a.revision ? ` · ${shortSha(a.revision)}` : ''}</span>
-                  <a class="meta" href="/v1/artifacts/{a.id}?download=1" download aria-label="Download {a.name}"><Icon name="download" size={14} /></a>
+                  <Icon icon={File} size="sm" color="secondary" />
+                  <Link hasUnderline href="/v1/artifacts/{a.id}" target="_blank" rel="noopener">{a.name}</Link>
+                  <Text type="supporting">{a.kind} · {bytes(a.size)}{a.revision ? ` · ${shortSha(a.revision)}` : ''}</Text>
+                  <Link href="/v1/artifacts/{a.id}?download=1" download label="Download {a.name}" color="secondary">
+                    <Icon icon={Download} size="sm" />
+                  </Link>
                 </li>
               {/each}
             </ul>
@@ -501,10 +510,13 @@
 
         {#if d.decisions.length}
           <section class="block">
-            <h3>Decisions recorded</h3>
+            <Heading level={3}>Decisions recorded</Heading>
             <ul class="plain">
               {#each d.decisions as dc (dc.id)}
-                <li><button class="link-btn" onclick={() => app.openPanel({ kind: 'decision', id: dc.id })}>{dc.title}</button> <span class="meta">· {dc.status}</span></li>
+                <li>
+                  <Link onclick={() => app.openPanel({ kind: 'decision', id: dc.id })} hasUnderline>{dc.title}</Link>
+                  <Text type="supporting">· {dc.status}</Text>
+                </li>
               {/each}
             </ul>
           </section>
@@ -512,13 +524,13 @@
 
         {#if d.inputs.length}
           <section class="block">
-            <h3>Your updates</h3>
+            <Heading level={3}>Your updates</Heading>
             <ul class="plain">
               {#each d.inputs as i (i.id)}
                 {@const cur = app.data.inputs[i.id] ?? i}
                 <li>
                   <p>“{cur.body}”</p>
-                  <p class="meta">{deliveryReceipt(cur.delivery, app.engineerName(job.ownerId))} · {atTime(cur.createdAt)}</p>
+                  <Text as="p" type="supporting">{deliveryReceipt(cur.delivery, app.engineerName(job.ownerId))} · {atTime(cur.createdAt)}</Text>
                 </li>
               {/each}
             </ul>
@@ -527,22 +539,26 @@
 
         {#if d.questions.length || d.approvals.length}
           <section class="block">
-            <h3>Questions and permissions</h3>
+            <Heading level={3}>Questions and permissions</Heading>
             <ul class="plain">
               {#each d.questions as q (q.id)}
                 <li>
                   <p>{q.missingFact}</p>
-                  <p class="meta">
+                  <Text as="p" type="supporting">
                     {q.status === 'open' ? 'Asked' : q.status === 'answered' ? 'Answered' : 'No longer needed'} · {app.engineerName(q.askerId)}
                     {#if q.continuingWith}{' · '}meanwhile: {q.continuingWith}{/if}
-                    · <a href="/rooms/{q.source.roomId}?msg={q.messageId}">open in conversation</a>
-                  </p>
+                    · <Link href="/rooms/{q.source.roomId}?msg={q.messageId}" type="inherit" hasUnderline>open in conversation</Link>
+                  </Text>
                 </li>
               {/each}
               {#each d.approvals as a (a.id)}
                 <li>
                   <p>{a.action.summary}</p>
-                  <p class="meta">{a.status} · <a href="/rooms/{a.source.roomId}{a.source.messageId ? `?msg=${a.source.messageId}` : ''}">open in conversation</a></p>
+                  <Text as="p" type="supporting"
+                    >{a.status} · <Link href="/rooms/{a.source.roomId}{a.source.messageId ? `?msg=${a.source.messageId}` : ''}" type="inherit" hasUnderline
+                      >open in conversation</Link
+                    ></Text
+                  >
                 </li>
               {/each}
             </ul>
@@ -551,12 +567,12 @@
 
         {#if d.followUps?.length}
           <section class="block">
-            <h3>Follow-ups</h3>
+            <Heading level={3}>Follow-ups</Heading>
             <ul class="plain">
               {#each d.followUps as f (f.id)}
                 <li>
-                  <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: f.id })}>{f.title}</button>
-                  <span class="meta">· {jobStateLabel(f)} · {app.engineerName(f.ownerId)}</span>
+                  <Link onclick={() => app.openPanel({ kind: 'job', id: f.id })} hasUnderline>{f.title}</Link>
+                  <Text type="supporting">· {jobStateLabel(f)} · {app.engineerName(f.ownerId)}</Text>
                 </li>
               {/each}
             </ul>
@@ -564,12 +580,12 @@
         {/if}
         {#if d.children.filter((c) => c.kind !== 'review').length}
           <section class="block">
-            <h3>Related work</h3>
+            <Heading level={3}>Related work</Heading>
             <ul class="plain">
               {#each d.children.filter((c) => c.kind !== 'review') as c (c.id)}
                 <li>
-                  <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: c.id })}>{c.title}</button>
-                  <span class="meta">· {jobStateLabel(c)} · {app.engineerName(c.ownerId)}</span>
+                  <Link onclick={() => app.openPanel({ kind: 'job', id: c.id })} hasUnderline>{c.title}</Link>
+                  <Text type="supporting">· {jobStateLabel(c)} · {app.engineerName(c.ownerId)}</Text>
                 </li>
               {/each}
             </ul>
@@ -577,20 +593,22 @@
         {/if}
       {:else if tab === 'review'}
         {#if d.reviews.length === 0 && d.pullRequests.length === 0}
-          <p class="meta">{job.requiresPeerReview ? 'No review has been requested yet. The owner asks a colleague when the work is ready.' : 'No review on this work.'}</p>
+          <Text as="p" type="supporting"
+            >{job.requiresPeerReview ? 'No review has been requested yet. The owner asks a colleague when the work is ready.' : 'No review on this work.'}</Text
+          >
         {/if}
         {#each d.reviews as r (r.id)}
           <section class="block"><ReviewDetail review={app.data.reviews[r.id] ?? r} currentHead={resultKey} /></section>
         {/each}
         {#each d.pullRequests as pr (pr.id)}
           <section class="block">
-            <h3>Pull request</h3>
+            <Heading level={3}>Pull request</Heading>
             <PRFacts pr={app.data.prs[pr.id] ?? pr} reviews={d.reviews} />
           </section>
         {/each}
       {:else if tab === 'activity'}
         {#if d.activity.length === 0}
-          <p class="meta">No activity recorded yet.</p>
+          <Text as="p" type="supporting">No activity recorded yet.</Text>
         {:else}
           <ol class="timeline">
             {#each d.activity as a, i (i)}
@@ -602,35 +620,43 @@
           </ol>
         {/if}
         {#if runs.length}
-          <h3 class="sub-h">Tool logs</h3>
-          {#each runs as r (r.id)}
-            <details class="runlog" ontoggle={(e) => (e.currentTarget as HTMLDetailsElement).open && loadRunLog(r.id)}>
-              <summary>Attempt {r.attempt} · {app.engineerName(r.engineerId)} · {runStateLabel(r.state)}</summary>
-              {#if runLogs[r.id] === 'loading' || !runLogs[r.id]}
-                <p class="meta">Loading…</p>
-              {:else if typeof runLogs[r.id] === 'string'}
-                <p class="notice danger">{runLogs[r.id]}</p>
-              {:else}
-                {@const acts = runLogs[r.id] as RunActivity[]}
-                {#if acts.length === 0}<p class="meta">Nothing recorded.</p>{/if}
-                <ol class="tools">
-                  {#each acts as a (a.seq)}
-                    <li class="k-{a.kind}">
-                      <time datetime={a.at}>{clock(a.at)}</time>
-                      <span class="tool-text">{a.text}</span>
-                      {#if a.tool && !a.tool.startsWith('mcp__')}<span class="meta mono">{a.tool}</span>{/if}
-                    </li>
-                  {/each}
-                </ol>
-              {/if}
-            </details>
-          {/each}
+          <div class="sub-h"><Heading level={3}>Tool logs</Heading></div>
+          <div class="runlogs">
+            {#each runs as r (r.id)}
+              <Card padding={0}>
+                <!-- Each attempt's log loads the first time it is opened. -->
+                <Collapsible
+                  trigger="Attempt {r.attempt} · {app.engineerName(r.engineerId)} · {runStateLabel(r.state)}"
+                  defaultIsOpen={false}
+                  onOpenChange={(open) => open && loadRunLog(r.id)}
+                >
+                  {#if runLogs[r.id] === 'loading' || !runLogs[r.id]}
+                    <Text as="p" type="supporting">Loading…</Text>
+                  {:else if typeof runLogs[r.id] === 'string'}
+                    <Notice tone="danger" role="alert">{runLogs[r.id] as string}</Notice>
+                  {:else}
+                    {@const acts = runLogs[r.id] as RunActivity[]}
+                    {#if acts.length === 0}<Text as="p" type="supporting">Nothing recorded.</Text>{/if}
+                    <ol class="tools">
+                      {#each acts as a (a.seq)}
+                        <li class="k-{a.kind}">
+                          <time datetime={a.at}>{clock(a.at)}</time>
+                          <span class="tool-text">{a.text}</span>
+                          {#if a.tool && !a.tool.startsWith('mcp__')}<Code size="inherit" color="secondary">{a.tool}</Code>{/if}
+                        </li>
+                      {/each}
+                    </ol>
+                  {/if}
+                </Collapsible>
+              </Card>
+            {/each}
+          </div>
         {/if}
       {:else if tab === 'runs'}
         {#if runs.length === 0}
-          <p class="meta">No attempts yet.{job.state === 'queued' || job.state === 'waiting' ? ` ${job.stateDetail ?? ''}` : ''}</p>
+          <Text as="p" type="supporting">No attempts yet.{job.state === 'queued' || job.state === 'waiting' ? ` ${job.stateDetail ?? ''}` : ''}</Text>
         {/if}
-        <ul class="plain runs">
+        <ul class="runs">
           {#each runs as r (r.id)}
             {@const late = (d.quarantined ?? []).filter((q) => q.runId === r.id)}
             <li class="run">
@@ -639,36 +665,51 @@
                 <strong>Attempt {r.attempt}</strong> · {runStateLabel(r.state)}
               </p>
               {#if r.state === 'unknown'}
-                <p class="notice attention">The outcome is not confirmed. The machine stopped reporting before the attempt finished; it may or may not have made changes.</p>
+                <Notice
+                  tone="warning"
+                  title="The outcome is not confirmed."
+                  description="The machine stopped reporting before the attempt finished; it may or may not have made changes."
+                />
               {/if}
-              <dl class="props small">
-                <div><dt>Engineer</dt><dd>{app.engineerName(r.engineerId)}</dd></div>
-                <div><dt>Machine</dt><dd>{app.nodeName(r.nodeId) || 'Not assigned'}</dd></div>
-                <div>
-                  <dt>Provider</dt>
-                  <dd>
+              <div class="facts">
+                <MetadataList label={{ position: 'start', width: 110 }}>
+                  <MetadataListItem label="Engineer">{app.engineerName(r.engineerId)}</MetadataListItem>
+                  <MetadataListItem label="Machine">{app.nodeName(r.nodeId) || 'Not assigned'}</MetadataListItem>
+                  <MetadataListItem label="Provider">
                     {providerLabel(r.provider)}{r.model ? ` · ${r.model}` : ''} · {billingLabel(r.usage?.billing)}
-                    {#if r.usage?.inputTokens != null}{' '}<span class="meta">· {r.usage.inputTokens} in / {r.usage.outputTokens ?? 0} out tokens</span>{/if}
-                  </dd>
-                </div>
-                <div><dt>Mode</dt><dd>{r.mode === 'edit' ? 'Can edit the workspace' : r.mode === 'readonly' ? 'Read-only' : 'Conversation'}</dd></div>
-                {#if r.startedAt}<div><dt>Started</dt><dd>{atTime(r.startedAt)}</dd></div>{/if}
-                {#if r.endedAt}<div><dt>Ended</dt><dd>{atTime(r.endedAt)}{r.terminalReason && r.terminalReason !== r.state ? ` · ${r.terminalReason}` : ''}</dd></div>{/if}
-                {#if r.lastActivity}<div><dt>Last confirmed</dt><dd>{r.lastActivity}{r.lastActivityAt ? ` · ${relative(r.lastActivityAt, app.now)}` : ''}</dd></div>{/if}
-                {#if r.resultRev}<div><dt>Result</dt><dd class="mono">{shortSha(r.resultRev)}{r.branch ? ` on ${r.branch}` : ''}</dd></div>{/if}
-              </dl>
+                    {#if r.usage?.inputTokens != null}{' '}<Text type="supporting">· {r.usage.inputTokens} in / {r.usage.outputTokens ?? 0} out tokens</Text>{/if}
+                  </MetadataListItem>
+                  <MetadataListItem label="Mode">{r.mode === 'edit' ? 'Can edit the workspace' : r.mode === 'readonly' ? 'Read-only' : 'Conversation'}</MetadataListItem>
+                  {#if r.startedAt}<MetadataListItem label="Started">{atTime(r.startedAt)}</MetadataListItem>{/if}
+                  {#if r.endedAt}
+                    <MetadataListItem label="Ended">{atTime(r.endedAt)}{r.terminalReason && r.terminalReason !== r.state ? ` · ${r.terminalReason}` : ''}</MetadataListItem>
+                  {/if}
+                  {#if r.lastActivity}
+                    <MetadataListItem label="Last confirmed">{r.lastActivity}{r.lastActivityAt ? ` · ${relative(r.lastActivityAt, app.now)}` : ''}</MetadataListItem>
+                  {/if}
+                  {#if r.resultRev}
+                    <MetadataListItem label="Result"><Code>{shortSha(r.resultRev)}{r.branch ? ` on ${r.branch}` : ''}</Code></MetadataListItem>
+                  {/if}
+                </MetadataList>
+              </div>
               {#if late.length}
-                <details class="late">
-                  <summary>{late.length} late {late.length === 1 ? 'report' : 'reports'} kept for diagnosis</summary>
-                  <p class="meta">
-                    {app.nodeName(late[0].nodeId) || 'The machine'} sent these after this attempt had lost its lease. They didn't change the work.
-                  </p>
-                  <ul class="plain">
-                    {#each late as q (q.id)}
-                      <li><span class="meta">{clock(q.receivedAt)} · {q.kind === 'tool_call' ? 'tool call' : q.kind === 'terminal' ? 'final report' : 'event'} ·</span> <span class="mono">{q.summary}</span></li>
-                    {/each}
-                  </ul>
-                </details>
+                <Collapsible trigger="{late.length} late {late.length === 1 ? 'report' : 'reports'} kept for diagnosis" defaultIsOpen={false}>
+                  <div class="late">
+                    <Text as="p" type="supporting">
+                      {app.nodeName(late[0].nodeId) || 'The machine'} sent these after this attempt had lost its lease. They didn't change the work.
+                    </Text>
+                    <ul class="plain">
+                      {#each late as q (q.id)}
+                        <li>
+                          <Text type="supporting"
+                            >{clock(q.receivedAt)} · {q.kind === 'tool_call' ? 'tool call' : q.kind === 'terminal' ? 'final report' : 'event'} ·</Text
+                          >
+                          <Code>{q.summary}</Code>
+                        </li>
+                      {/each}
+                    </ul>
+                  </div>
+                </Collapsible>
               {/if}
             </li>
           {/each}
@@ -677,6 +718,10 @@
     </div>
   {/if}
 </RightPanel>
+
+{#snippet setupAction()}
+  {#if setupLink}<Link href={setupLink.href} type="inherit" hasUnderline>{setupLink.label}</Link>{/if}
+{/snippet}
 
 {#if confirmStop && job}
   <ConfirmDialog
@@ -690,263 +735,226 @@
 {/if}
 
 <style>
-  .late {
-    margin-top: 8px;
-    font-size: 13px;
-  }
-  .late summary {
-    cursor: pointer;
-    color: var(--ink-secondary);
-  }
-  .late .mono {
-    overflow-wrap: anywhere;
-  }
   .pad {
-    padding: 14px 18px;
+    padding: var(--spacing-3) var(--spacing-4);
   }
   .head {
     display: grid;
-    gap: 10px;
-    border-bottom: 0;
-  }
-  .status {
-    display: grid;
-    gap: 2px;
+    gap: var(--spacing-3);
   }
   .state {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 15px;
+    gap: var(--spacing-2);
   }
+  .state strong {
+    font-weight: var(--font-weight-semibold);
+  }
+  .reason {
+    color: var(--color-text-secondary);
+  }
+  .status {
+    display: grid;
+    gap: var(--spacing-0-5);
+  }
+  /* The second line starts under the state's words, clear of its shape. */
   .why {
-    padding-left: 24px;
-    font-size: 14px;
+    padding-inline-start: calc(16px + var(--spacing-2));
   }
-  .props {
-    margin: 0;
-    display: grid;
-    gap: 6px;
+  .facts {
+    container-type: inline-size;
   }
-  .props > div {
-    display: grid;
-    grid-template-columns: 110px minmax(0, 1fr);
-    gap: 10px;
-    font-size: 14px;
-  }
-  .props.small > div {
-    grid-template-columns: 100px minmax(0, 1fr);
-    font-size: 13.5px;
-  }
-  dt {
-    color: var(--ink-secondary);
-    font-size: 13px;
-  }
-  dd {
-    margin: 0;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .person,
-  .person-static {
+  .person {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--ink);
-    font: inherit;
-    cursor: pointer;
-  }
-  .person-static {
-    cursor: default;
-  }
-  .person:hover {
-    text-decoration: underline;
+    gap: var(--spacing-1-5);
   }
   .people {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: var(--spacing-1) var(--spacing-3);
   }
   .actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--spacing-2);
   }
-  .tabs {
-    padding: 0 12px;
+  .tabbar {
+    flex: none;
+  }
+  .tabbar :global(.astryx-tab-list) {
+    padding-inline: var(--spacing-3);
+  }
+  .n {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    font-variant-numeric: tabular-nums;
+  }
+  .tabpanel {
+    padding-top: var(--spacing-4);
   }
   .tabpanel:focus-visible {
     outline: none;
   }
   .block {
-    margin-bottom: 20px;
+    display: grid;
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-5);
   }
   .block-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: var(--spacing-2);
   }
-  .block-head h3 {
-    margin: 0;
-  }
-  h3 {
-    font-size: 14px;
-    font-weight: 650;
-    margin-bottom: 8px;
+  /* Section titles in a drawer sit below its 17px title. */
+  .tabpanel :global(h3.astryx-heading) {
+    font-size: var(--text-heading-4-size);
+    line-height: var(--text-heading-4-leading);
   }
   .sub-h {
-    margin-top: 18px;
+    margin: var(--spacing-5) 0 var(--spacing-2);
   }
   .rev-stats {
-    margin: -2px 0 10px;
-    font-size: 13.5px;
-    color: var(--ink-secondary);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
   }
-  .rev-stats .add {
-    color: var(--success);
-    font-weight: 600;
+  .add {
+    color: var(--color-success);
+    font-weight: var(--font-weight-semibold);
   }
-  .rev-stats .del {
-    color: var(--danger);
-    font-weight: 600;
-  }
-  .rev-pick .select {
-    min-height: 32px;
-    padding: 4px 8px;
-    font-size: 13px;
+  .del {
+    color: var(--color-error);
+    font-weight: var(--font-weight-semibold);
   }
   .plain {
-    list-style: none;
-    margin: 0;
-    padding: 0;
     display: grid;
-    gap: 8px;
-    font-size: 14px;
-  }
-  ul.plain:not(.files):not(.runs) li {
-    padding-left: 0;
+    gap: var(--spacing-2);
   }
   .files li {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-2);
     flex-wrap: wrap;
   }
   .checks {
-    list-style: none;
-    margin: 0;
-    padding: 0;
     display: grid;
-    gap: 8px;
+    gap: var(--spacing-2);
   }
   .check-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 6px 10px;
-    padding: 8px 10px;
-    border: 1px solid var(--line);
-    border-radius: var(--r-artifact);
+    align-items: start;
+    gap: var(--spacing-1-5) var(--spacing-3);
+    padding: var(--spacing-2) var(--spacing-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-container);
   }
   .check-row.stale {
-    background: var(--surface-subtle);
+    background: var(--color-background-muted);
   }
   .check-main {
     display: flex;
-    gap: 8px;
+    gap: var(--spacing-2);
     min-width: 0;
   }
-  .check-main :global(svg) {
+  .check-main > :global(svg) {
     margin-top: 3px;
   }
   .check-text {
+    display: grid;
+    gap: var(--spacing-1);
     min-width: 0;
   }
-  .summary-out,
   .log {
     grid-column: 1 / -1;
-    margin: 4px 0 0;
-    padding: 8px 10px;
-    border-radius: 6px;
-    background: var(--surface-subtle);
-    font-size: 12.5px;
-    max-height: 280px;
-    overflow: auto;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    min-width: 0;
   }
   .timeline,
   .tools {
-    list-style: none;
-    margin: 0;
-    padding: 0;
     display: grid;
-    gap: 4px;
-    font-size: 14px;
+    gap: var(--spacing-1);
   }
   .timeline li,
   .tools li {
     display: grid;
     grid-template-columns: 64px minmax(0, 1fr) auto;
-    gap: 8px;
+    align-items: baseline;
+    gap: var(--spacing-2);
   }
   time {
-    color: var(--ink-secondary);
-    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
     font-variant-numeric: tabular-nums;
-    padding-top: 1px;
   }
-  .runlog {
-    border: 1px solid var(--line);
-    border-radius: var(--r-artifact);
-    padding: 6px 10px;
-    margin-bottom: 8px;
+  .runlogs {
+    display: grid;
+    gap: var(--spacing-2);
   }
-  .runlog summary {
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 560;
-    min-height: 28px;
-    display: list-item;
+  /*
+   * The whole card header toggles the attempt's log, set as a row rather than
+   * a heading (it sits under "Tool logs"). The Card clips its edges, so the
+   * keyboard ring is drawn inside the header.
+   */
+  .runlogs :global(.astryx-collapsible-trigger) {
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    outline-offset: calc(-1 * var(--focus-outline-width));
   }
-  .runlog[open] summary {
-    margin-bottom: 6px;
+  /* A diagnostic aside, not a section: quiet like the facts above it. */
+  .run :global(.astryx-collapsible-trigger) {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-normal);
+    color: var(--color-text-secondary);
+  }
+  .runlogs :global(.astryx-collapsible-content) {
+    padding: 0 var(--spacing-3) var(--spacing-3);
   }
   .tools .tool-text {
-    color: var(--ink-secondary);
+    color: var(--color-text-secondary);
+    overflow-wrap: anywhere;
   }
   .tools li.k-error .tool-text,
   .tools li.k-warning .tool-text {
-    color: var(--danger);
-    font-weight: 560;
+    color: var(--color-error);
+    font-weight: var(--font-weight-medium);
   }
   .tools li.k-status .tool-text,
   .tools li.k-started .tool-text {
-    color: var(--ink);
+    color: var(--color-text-primary);
   }
   .runs {
-    gap: 14px;
+    display: grid;
+    gap: var(--spacing-4);
   }
   .run {
     display: grid;
-    gap: 8px;
-    padding-bottom: 14px;
-    border-bottom: 1px solid var(--line-soft);
+    gap: var(--spacing-2);
+    padding-bottom: var(--spacing-4);
+    border-bottom: 1px solid var(--color-border);
   }
   .run-head {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 14px;
+    gap: var(--spacing-1-5);
   }
-  @media (max-width: 480px) {
-    .props > div {
-      grid-template-columns: 1fr;
+  .late {
+    display: grid;
+    gap: var(--spacing-2);
+    padding-top: var(--spacing-1);
+  }
+  .late :global(code) {
+    overflow-wrap: anywhere;
+  }
+  /* On a phone the labels sit above their facts. */
+  @container (max-width: 360px) {
+    .facts :global(dl) {
+      grid-template-columns: minmax(0, 1fr);
       gap: 0;
+    }
+    .facts :global(dd + dt) {
+      margin-top: var(--spacing-2);
     }
   }
 </style>

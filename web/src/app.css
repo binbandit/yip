@@ -1,843 +1,143 @@
-/* yip design tokens and shared primitives. See docs/design/README.md. */
+/*
+ * yip's global CSS. Components come from Astryx (@astryx-svelte/core) and read
+ * its tokens; the theme itself is src/lib/theme.ts. See docs/design/README.md.
+ *
+ * base.css must come first: it declares the cascade layer order
+ * (reset, astryx-base, astryx-theme, product). Most of what yip adds globally
+ * sits in `product`: above Astryx, so it can adjust Astryx components, and below
+ * unlayered CSS, so a component's own scoped styles still win.
+ */
+@import '@astryx-svelte/core/base.css';
+@import '@astryx-svelte/core/astryx.css';
 
 /*
- * A Buzz-like system (ADR 0012): one tinted frame painted across the window,
- * one opaque white work card, a monochrome accent (the ink colour itself),
- * and hue spent only on status. Components use alpha steps of these tokens
- * rather than new colours.
+ * yip's own links and buttons take Astryx's keyboard ring. It sits in the reset
+ * layer, beneath Astryx's, so every component keeps its own focus style.
+ * Focus targets (tabindex=-1: headings, panes) are not controls and get none.
  */
-:root {
-  color-scheme: light;
-  --canvas: #ebe9d8; /* frame gradient, top (warm) */
-  --navigation: #d5dce3; /* frame gradient, bottom (cool) */
-  --surface: #ffffff;
-  --surface-subtle: #f4f4f5;
-  --ink: #1f2328;
-  --ink-secondary: #59636e;
-  --accent: #1f2328; /* monochrome: primary controls are ink */
-  --accent-ink: #ffffff;
-  --line: #e4e5e7;
-  --line-strong: #d3d6da;
-  --attention-fill: #d4a72c;
-  --attention-ink: #7a4f00;
-  --success: #1a7f37;
-  --danger: #cf222e;
-  --info: #0969da;
-
-  --accent-subtle: #eff0f2;
-  --success-subtle: #e6f6ea;
-  --danger-subtle: #fdeeee;
-  --attention-subtle: #fdf6d8;
-  --control-edge: #858d97;
-  --line-soft: color-mix(in srgb, var(--line) 70%, transparent);
-  --hover: rgb(0 0 0 / 0.04);
-  --pressed: rgb(0 0 0 / 0.08);
-  --selected: rgb(0 0 0 / 0.07);
-  --veil: rgb(0 0 0 / 0.12);
-  --frame: linear-gradient(180deg, var(--canvas) 0%, var(--navigation) 100%);
-  --shadow-pop: 0 6px 18px rgb(0 0 0 / 0.04), 0 3px 9px rgb(0 0 0 / 0.05), 0 1px 1px rgb(0 0 0 / 0.05);
-  --shadow-panel: -1px 0 0 0 var(--line), -16px 0 32px -12px rgb(0 0 0 / 0.18);
-  --shadow-card: -1px -1px 0 0 rgb(0 0 0 / 0.06), 0 0 4px 0 rgb(0 0 0 / 0.07);
-  --shadow-dialog: 0 24px 48px -12px rgb(0 0 0 / 0.25);
-  --focus: var(--ink);
-  --hue-l-bg: 91%;
-  --hue-s: 34%;
-  --hue-l-ink: 27%;
-
-  /* Type */
-  --font-ui: 'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-brand: var(--font-ui);
-  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
-  --text-meta: 12px;
-  --text-nav: 14px;
-  --text-body: 14px;
-  --text-title: 16px;
-  --text-display: 24px;
-
-  /* Space (4px base) */
-  --s1: 4px;
-  --s2: 8px;
-  --s3: 12px;
-  --s4: 16px;
-  --s5: 20px;
-  --s6: 24px;
-  --s8: 32px;
-  --group-gap: 12px;
-
-  /* Radii */
-  --r-row: 8px;
-  --r-control: 10px;
-  --r-artifact: 14px;
-  --r-pop: 12px;
-  --r-surface: 16px;
-  --r-pill: 999px;
-
-  /* Layout */
-  --topbar-h: 52px; /* pane headers inside the card */
-  --sidebar-w: 272px;
-  --drawer-w: 380px;
-  --measure: 76ch;
-
-  /* Motion */
-  --t-fast: 120ms;
-  --t-base: 180ms;
-  --t-slow: 240ms;
-  --ease: cubic-bezier(0.25, 1, 0.5, 1);
-  --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='day']) {
-    color-scheme: dark;
-    --canvas: #33311d;
-    --navigation: #0e1621;
-    --surface: #1a1a1b;
-    --surface-subtle: #232325;
-    --ink: #e6e8eb;
-    --ink-secondary: #9ba3ad;
-    --accent: #eef0f2;
-    --accent-ink: #151516;
-    --line: #313235;
-    --line-strong: #3d3f43;
-    --attention-fill: #bb8009;
-    --attention-ink: #e3b341;
-    --success: #3fb950;
-    --danger: #f85149;
-    --info: #4493f8;
-    --accent-subtle: #2a2b2e;
-    --success-subtle: #15291d;
-    --danger-subtle: #2f1719;
-    --attention-subtle: #2b2411;
-    --control-edge: #7a828c;
-    --hover: rgb(255 255 255 / 0.06);
-    --pressed: rgb(255 255 255 / 0.1);
-    --selected: rgb(255 255 255 / 0.13);
-    --veil: rgb(0 0 0 / 0.55);
-    --shadow-pop: 0 1px 1px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
-    --shadow-panel: -1px 0 0 0 var(--line), -16px 0 32px -12px rgb(0 0 0 / 0.6);
-    --shadow-card: -1px -1px 0 0 rgb(255 255 255 / 0.05);
-    --shadow-dialog: 0 24px 48px -12px rgb(0 0 0 / 0.7);
-    --hue-l-bg: 26%;
-    --hue-s: 26%;
-    --hue-l-ink: 88%;
+@layer reset {
+  :where(a[href], button, summary, [tabindex]:not([tabindex='-1'])):focus-visible {
+    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+    outline-offset: var(--focus-outline-offset);
   }
 }
 
-:root[data-theme='night'] {
-  color-scheme: dark;
-  --canvas: #33311d;
-  --navigation: #0e1621;
-  --surface: #1a1a1b;
-  --surface-subtle: #232325;
-  --ink: #e6e8eb;
-  --ink-secondary: #9ba3ad;
-  --accent: #eef0f2;
-  --accent-ink: #151516;
-  --line: #313235;
-  --line-strong: #3d3f43;
-  --attention-fill: #bb8009;
-  --attention-ink: #e3b341;
-  --success: #3fb950;
-  --danger: #f85149;
-  --info: #4493f8;
-  --accent-subtle: #2a2b2e;
-  --success-subtle: #15291d;
-  --danger-subtle: #2f1719;
-  --attention-subtle: #2b2411;
-  --control-edge: #7a828c;
-  --hover: rgb(255 255 255 / 0.06);
-  --pressed: rgb(255 255 255 / 0.1);
-  --selected: rgb(255 255 255 / 0.13);
-  --veil: rgb(0 0 0 / 0.55);
-  --shadow-pop: 0 1px 1px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
-  --shadow-panel: -1px 0 0 0 var(--line), -16px 0 32px -12px rgb(0 0 0 / 0.6);
-  --shadow-card: -1px -1px 0 0 rgb(255 255 255 / 0.05);
-  --shadow-dialog: 0 24px 48px -12px rgb(0 0 0 / 0.7);
-  --hue-l-bg: 26%;
-  --hue-s: 26%;
-  --hue-l-ink: 88%;
-}
-
-:root[data-density='compact'] {
-  --group-gap: 6px;
-}
-
-@media (max-width: 1100px) {
+@layer product {
   :root {
-    --sidebar-w: 240px;
+    /* yip layout measures (not colours: those are theme tokens). */
+    --yip-pane-header-h: 52px;
+    --yip-measure: 76ch;
+    --yip-group-gap: var(--spacing-3);
   }
-}
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  height: 100%;
-}
-
-body {
-  font-family: var(--font-ui);
-  font-size: var(--text-body);
-  line-height: 1.43;
-  font-variant-ligatures: no-contextual;
-  color: var(--ink);
-  background: var(--canvas);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  font-synthesis-weight: none;
-  text-rendering: optimizeLegibility;
-  overflow: hidden;
-}
-
-#app {
-  height: 100%;
-}
-
-h1,
-h2,
-h3,
-h4 {
-  margin: 0;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  line-height: 1.25;
-}
-
-p {
-  margin: 0;
-}
-
-a {
-  color: var(--ink);
-  text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent);
-  text-underline-offset: 2px;
-}
-a:hover {
-  text-decoration-color: currentColor;
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  color: inherit;
-}
-
-code,
-pre,
-kbd {
-  font-family: var(--font-mono);
-  font-size: 0.87em;
-}
-
-kbd {
-  display: inline-block;
-  padding: 0 4px;
-  border-radius: 4px;
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 18px;
-  color: color-mix(in srgb, var(--ink) 45%, transparent);
-  background: none;
-}
-
-:focus {
-  outline: none;
-}
-
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-::selection {
-  background: color-mix(in srgb, var(--info) 22%, transparent);
-}
-
-.vh {
-  position: absolute !important;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.skip-link {
-  position: fixed;
-  left: 12px;
-  top: -60px;
-  z-index: 1000;
-  padding: 8px 14px;
-  background: var(--surface);
-  color: var(--ink);
-  border-radius: var(--r-control);
-  box-shadow: var(--shadow-pop);
-  transition: top var(--t-fast) var(--ease);
-}
-.skip-link:focus {
-  top: 12px;
-}
-
-/* ---- text helpers ---- */
-
-.meta {
-  font-size: var(--text-meta);
-  color: var(--ink-secondary);
-  line-height: 1.45;
-}
-
-.muted {
-  color: var(--ink-secondary);
-}
-
-.mono {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-}
-
-.truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.section-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-secondary);
-}
-
-/* ---- buttons ---- */
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: var(--r-control);
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-  text-decoration: none;
-  transition:
-    background-color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease);
-}
-.btn:hover {
-  background: color-mix(in srgb, var(--surface) 95%, var(--ink));
-}
-.btn:active {
-  background: color-mix(in srgb, var(--surface) 90%, var(--ink));
-}
-.btn[disabled],
-.btn[aria-disabled='true'] {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-}
-.btn-primary:hover {
-  background: color-mix(in srgb, var(--accent) 86%, var(--surface));
-}
-.btn-primary:active {
-  background: color-mix(in srgb, var(--accent) 78%, var(--surface));
-}
-.btn-quiet {
-  border-color: transparent;
-  background: transparent;
-}
-.btn-quiet:hover {
-  background: var(--hover);
-}
-.btn-danger {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--surface));
-}
-.btn-danger:hover {
-  background: var(--danger-subtle);
-}
-.btn-danger-solid {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: var(--surface);
-}
-.btn-sm {
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: var(--r-row);
-  font-size: 13px;
-}
-
-.icon-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  flex: none;
-  padding: 0;
-  border: 0;
-  border-radius: var(--r-row);
-  background: transparent;
-  color: var(--ink-secondary);
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease);
-}
-.icon-btn:hover {
-  background: var(--hover);
-  color: var(--ink);
-}
-.icon-btn[aria-pressed='true'],
-.icon-btn[aria-expanded='true'] {
-  background: var(--selected);
-  color: var(--ink);
-}
-
-.link-btn {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-@media (pointer: coarse) {
-  .btn {
-    min-height: 44px;
+  :root[data-density='compact'] {
+    --yip-group-gap: var(--spacing-1-5);
   }
-  .btn-sm {
-    min-height: 44px;
+
+  html,
+  body,
+  #app {
+    height: 100%;
   }
-  .icon-btn {
-    width: 44px;
-    height: 44px;
+
+  body {
+    font-family: var(--font-family-body);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+    font-variant-ligatures: no-contextual;
+    font-synthesis-weight: none;
+    color: var(--color-text-primary);
+    background: var(--yip-frame-top, var(--color-background-body));
+    overflow: hidden;
   }
-}
 
-/* ---- form controls ---- */
-
-.field {
-  display: grid;
-  gap: 6px;
-}
-.field > .label,
-.label {
-  font-size: 14px;
-  font-weight: 600;
-}
-.field .hint {
-  font-size: var(--text-meta);
-  color: var(--ink-secondary);
-}
-.input,
-.select,
-.textarea {
-  width: 100%;
-  min-height: 36px;
-  padding: 7px 11px;
-  border: 1px solid var(--control-edge);
-  border-radius: var(--r-control);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.4;
-  transition: border-color var(--t-fast) var(--ease);
-}
-.textarea {
-  resize: vertical;
-  min-height: 90px;
-}
-.input:focus-visible,
-.select:focus-visible,
-.textarea:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--ink) 25%, transparent);
-  outline-offset: 0;
-  border-color: var(--ink);
-}
-.input[aria-invalid='true'],
-.textarea[aria-invalid='true'] {
-  border-color: var(--danger);
-}
-.check {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-height: 32px;
-  font-size: 14px;
-  cursor: pointer;
-}
-.check input {
-  width: 18px;
-  height: 18px;
-  margin: 2px 0 0;
-  accent-color: var(--accent);
-  flex: none;
-}
-@media (pointer: coarse) {
-  .input,
-  .select,
-  .textarea {
-    font-size: 16px;
-    min-height: 44px;
+  /*
+   * Astryx's Link template leaves whitespace after its label inside the <a>,
+   * which shows as a gap before punctuation that follows a link ("Overview .").
+   * A flex anchor doesn't render whitespace-only text. The cost: a link wraps
+   * as one box, which suits yip's short in-sentence links (long titles sit in
+   * rows of their own).
+   */
+  .astryx-link {
+    display: inline-flex;
   }
-  .check {
-    min-height: 44px;
-    align-items: center;
+
+  /*
+   * A header-less CodeBlock floats its copy button over the first line; keep
+   * the code (wrapped lines especially) from running underneath it.
+   */
+  .astryx-code-block:has(.astryx-code-block-copy-button) code {
+    padding-inline-end: var(--spacing-11);
   }
-}
 
-/* ---- chips, pills, badges ---- */
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 24px;
-  max-width: 100%;
-  padding: 1px 9px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.3;
-  white-space: nowrap;
-  text-decoration: none;
-}
-a.chip:hover,
-button.chip:hover {
-  background: var(--surface-subtle);
-}
-button.chip {
-  cursor: pointer;
-}
-
-.count-pill {
-  display: inline-grid;
-  place-items: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: var(--r-pill);
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.role-badge {
-  color: color-mix(in srgb, var(--ink-secondary) 90%, transparent);
-  font-size: 12px;
-  font-weight: 400;
-  white-space: nowrap;
-}
-
-.tone-success {
-  color: var(--success);
-}
-.tone-danger {
-  color: var(--danger);
-}
-.tone-accent {
-  color: var(--ink);
-}
-.tone-attention {
-  color: var(--attention-ink);
-}
-.tone-neutral {
-  color: var(--ink-secondary);
-}
-
-.marker {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--attention-fill);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--attention-ink) 35%, transparent);
-  flex: none;
-}
-
-/* ---- surfaces inside the work card ---- */
-
-.hairline {
-  border: 0;
-  border-top: 1px solid var(--line);
-  margin: 0;
-}
-
-.panel-box {
-  border: 1px solid var(--line);
-  border-radius: var(--r-artifact);
-  background: var(--surface);
-}
-
-/*
- * A notice (or a form error) is a sentence led by a status shape, never a
- * tinted box: hue lives in the shape, and in danger text, so it reads as state
- * rather than decoration. The shape is a mask so it takes the tone's colour;
- * its paths match Icon's info, alert and alertCircle.
- */
-.notice,
-.form-error {
-  --notice-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8.5'/%3E%3Cpath d='M12 11v5.5M12 7.5h.01'/%3E%3C/svg%3E");
-  position: relative;
-  padding-left: 24px;
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.5;
-}
-.notice::before,
-.form-error::before {
-  content: '';
-  position: absolute;
-  top: calc((1lh - 16px) / 2);
-  left: 0;
-  width: 16px;
-  height: 16px;
-  background: var(--ink-secondary);
-  mask: var(--notice-shape) center / 16px no-repeat;
-}
-.notice.attention {
-  --notice-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4 21 19.5H3Z'/%3E%3Cpath d='M12 10v4.5M12 17h.01'/%3E%3C/svg%3E");
-}
-.notice.attention::before {
-  background: var(--attention-ink);
-}
-.notice.danger,
-.form-error {
-  --notice-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8.5'/%3E%3Cpath d='M12 7.5V13M12 16.5h.01'/%3E%3C/svg%3E");
-  color: var(--danger);
-}
-.notice.danger::before,
-.form-error::before {
-  background: currentColor;
-}
-
-.empty {
-  display: grid;
-  gap: 12px;
-  justify-items: start;
-  max-width: 520px;
-  padding: 28px 0;
-  color: var(--ink-secondary);
-}
-.empty strong {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.screen {
-  height: 100%;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-.screen-inner {
-  max-width: 1040px;
-  padding: 28px 32px 48px;
-}
-.screen-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 24px;
-}
-.screen-title {
-  font-size: var(--text-display);
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  overflow-wrap: anywhere;
-}
-.screen-sub {
-  color: var(--ink-secondary);
-  margin-top: 4px;
-}
-.section {
-  margin-top: 32px;
-}
-.section-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px 12px;
-  margin-bottom: 10px;
-}
-.section-head > .row {
-  flex-wrap: wrap;
-}
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-@media (max-width: 760px) {
-  .screen-inner {
-    padding: 16px 16px 40px;
+  /*
+   * Astryx's toast stack spans the window and aligns its toasts to the end
+   * edge, but as a popover it is sized to fit its content, which leaves it on
+   * the start edge (over the sidebar's footer). Push it back to the end.
+   */
+  [popover]:has(> [data-toast-id]) {
+    margin-inline-start: auto;
   }
-  .screen-title {
-    font-size: 22px;
+
+  /* The phone drawer clears the notch and home indicator (viewport-fit=cover). */
+  .astryx-mobile-nav > [tabindex='-1'] {
+    padding-block: env(safe-area-inset-top) env(safe-area-inset-bottom);
   }
-}
 
-/* ---- tabs ---- */
-
-.tabs {
-  display: flex;
-  flex: none;
-  gap: 4px;
-  border-bottom: 1px solid var(--line);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.tab {
-  position: relative;
-  padding: 10px 10px 11px;
-  border: 0;
-  background: none;
-  color: var(--ink-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.tab[aria-selected='true'] {
-  color: var(--ink);
-}
-.tab[aria-selected='true']::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: -1px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-}
-.tab:hover {
-  color: var(--ink);
-}
-.tab .n {
-  margin-left: 4px;
-  font-size: 12px;
-  color: var(--ink-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ---- rendered message content ---- */
-
-.prose {
-  overflow-wrap: anywhere;
-}
-.prose p + p,
-.prose p + ul,
-.prose p + ol,
-.prose ul + p,
-.prose ol + p,
-.prose pre + p,
-.prose p + pre,
-.prose blockquote + p,
-.prose p + blockquote {
-  margin-top: 8px;
-}
-.prose ul,
-.prose ol {
-  margin: 4px 0 0;
-  padding-left: 22px;
-}
-.prose li + li {
-  margin-top: 3px;
-}
-.prose code {
-  padding: 1px 5px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--ink) 7%, transparent);
-  font-size: 12px;
-}
-.prose pre {
-  margin: 8px 0 0;
-  padding: 8px 12px;
-  border-radius: var(--r-surface);
-  background: color-mix(in srgb, var(--surface-subtle) 60%, var(--surface));
-  border: 1px solid var(--line);
-  overflow: auto;
-  max-height: 400px;
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-.prose pre code {
-  padding: 0;
-  border: 0;
-  background: none;
-}
-.prose blockquote {
-  margin: 6px 0 0;
-  padding: 0 0 0 12px;
-  border-left: 3px solid var(--line);
-  color: var(--ink-secondary);
-}
-.prose .mention {
-  padding: 0 4px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--ink) 7%, transparent);
-  color: var(--ink);
-  font-weight: 600;
-}
-.prose .mention[data-kind='user'] {
-  background: var(--attention-subtle);
-  color: var(--attention-ink);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
-    scroll-behavior: auto !important;
+  /* 44px targets on touch screens (docs/design). Icon buttons keep their square. */
+  @media (pointer: coarse) {
+    .astryx-button,
+    .astryx-side-nav-item,
+    .astryx-tab,
+    .astryx-selector,
+    .astryx-text-input,
+    .astryx-segmented-control-item,
+    .astryx-radio-list-item,
+    .astryx-list-item:has(input[type='checkbox'], input[type='radio']),
+    .astryx-dropdown-menu-item,
+    .astryx-selector-option-row,
+    .astryx-collapsible-trigger {
+      min-height: 44px;
+    }
   }
-}
 
-/* Squircle engineer avatars where supported (falls back to a 30% radius). */
-@supports (corner-shape: squircle) {
-  :root .avatar.engineer {
-    border-radius: 50%;
-    corner-shape: squircle;
+  /*
+   * State words take their status hue; the shape beside them always does
+   * (StateIcon). Hue is spent only on status (docs/design).
+   */
+  .tone-success {
+    color: var(--color-success);
+  }
+  .tone-danger {
+    color: var(--color-error);
+  }
+  .tone-attention {
+    color: var(--color-warning);
+  }
+  .tone-accent {
+    color: var(--color-text-primary);
+  }
+  .tone-neutral {
+    color: var(--color-text-secondary);
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-icon-blue) 24%, transparent);
+  }
+
+  /* The frame behind the sidebar and the work card (ADR 0012). */
+  .yip-frame {
+    background: linear-gradient(180deg, var(--yip-frame-top) 0%, var(--yip-frame-bottom) 100%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

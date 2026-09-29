@@ -1,5 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { Button, Heading, Icon, Text } from '@astryx-svelte/core';
+  import Notice from '../Notice.svelte';
+  import { File } from '@lucide/svelte';
   import { app } from '../../lib/state/app.svelte';
   import { details } from '../../lib/state/details.svelte';
   import { workResultKey } from '../../lib/util/reviews';
@@ -8,7 +11,6 @@
   import RightPanel, { type PanelMode } from '../RightPanel.svelte';
   import ReviewDetail from '../ReviewDetail.svelte';
   import PRFacts from '../PRFacts.svelte';
-  import Icon from '../Icon.svelte';
 
   interface Props {
     reviewId: string;
@@ -40,20 +42,20 @@
   {#snippet subtitle()}{review ? `${app.engineerName(review.reviewerId)} reviewing ${app.engineerName(review.authorId)}` : ''}{/snippet}
   <div class="pad">
     {#if error && !review}
-      <p class="notice danger" role="alert">{error}</p>
+      <Notice tone="danger" role="alert">{error}</Notice>
     {:else if !review}
-      <p class="meta">Loading the review…</p>
+      <Text as="p" type="supporting">Loading the review…</Text>
     {:else}
       <div class="links">
-        <button class="btn btn-sm" onclick={() => app.openPanel({ kind: 'job', id: review.jobId }, 'evidence')}><Icon name="file" size={15} />View evidence</button>
-        <a class="btn btn-sm btn-quiet" href={conversationHref(review.source)}>
-          Source conversation
-        </a>
+        <Button size="sm" label="View evidence" onclick={() => app.openPanel({ kind: 'job', id: review.jobId }, 'evidence')}>
+          {#snippet icon()}<Icon icon={File} size="sm" />{/snippet}
+        </Button>
+        <Button size="sm" variant="ghost" label="Source conversation" href={conversationHref(review.source)} />
       </div>
       <ReviewDetail {review} currentHead={job ? workResultKey(job, Object.values(app.data.artifacts)) : undefined} />
       {#if pr}
         <section class="pr-block">
-          <h3>Pull request</h3>
+          <Heading level={3}>Pull request</Heading>
           <PRFacts {pr} reviews={[review]} />
         </section>
       {/if}
@@ -63,17 +65,22 @@
 
 <style>
   .pad {
-    padding: 14px 18px 24px;
+    padding: var(--spacing-3) var(--spacing-4) var(--spacing-6);
     display: grid;
-    gap: 14px;
+    gap: var(--spacing-4);
   }
   .links {
     display: flex;
-    gap: 8px;
+    gap: var(--spacing-2);
     flex-wrap: wrap;
   }
-  h3 {
-    font-size: 14px;
-    margin-bottom: 8px;
+  .pr-block {
+    display: grid;
+    gap: var(--spacing-2);
+  }
+  /* Section titles in a drawer sit below its 17px title. */
+  .pr-block :global(h3.astryx-heading) {
+    font-size: var(--text-heading-4-size);
+    line-height: var(--text-heading-4-leading);
   }
 </style>

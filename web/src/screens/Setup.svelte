@@ -1,7 +1,16 @@
 <script lang="ts">
+  import { Button, Card, Center, Heading, Text, TextInput, VStack } from '@astryx-svelte/core';
+  import Notice from '../components/Notice.svelte';
   import { app } from '../lib/state/app.svelte';
   import { errorMessage } from '../lib/api/client';
   import Wordmark from '../components/Wordmark.svelte';
+
+  // TextInput forwards unknown attributes to its <input> but types only the
+  // generic HTML ones, so input-specific hints go in through spreads.
+  const codeHints = { autocomplete: 'one-time-code', spellcheck: false };
+  const nameHints = { autocomplete: 'name' };
+  const handleHints = { autocomplete: 'username', autocapitalize: 'none', spellcheck: false };
+  const passwordHints = { autocomplete: 'new-password' };
 
   let code = $state('');
   let orgName = $state('');
@@ -36,6 +45,7 @@
     return p;
   });
   let submitted = $state(false);
+  const status = (field: string) => (submitted && problems[field] ? { type: 'error' as const, message: problems[field] } : undefined);
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -55,111 +65,86 @@
   }
 </script>
 
-<main class="auth" aria-labelledby="setup-title">
-  <div class="panel">
-    <Wordmark size={30} />
-    <div>
-      <h1 id="setup-title">Set up your workspace</h1>
-      <p class="muted intro">
-        yip keeps your conversations, work records and decisions on this hub. Engineers do their work on machines you pair next. If the hub
-        runs on a laptop, it stops being reachable while the laptop sleeps — an always-on machine is the better home.
-      </p>
-    </div>
-    <form onsubmit={submit} novalidate>
-      <label class="field">
-        <span class="label">One-time setup code</span>
-        <input class="input mono" autocomplete="one-time-code" spellcheck="false" bind:value={code} aria-invalid={submitted && !!problems.code} aria-describedby="code-hint" />
-        <span class="hint" id="code-hint">{submitted && problems.code ? problems.code : 'Printed in the terminal where you started the hub.'}</span>
-      </label>
-      <label class="field">
-        <span class="label">Workspace name</span>
-        <input class="input" bind:value={orgName} placeholder="e.g. Brayden's workspace" aria-invalid={submitted && !!problems.orgName} />
-        {#if submitted && problems.orgName}<span class="hint">{problems.orgName}</span>{/if}
-      </label>
-      <div class="row">
-        <label class="field">
-          <span class="label">Your name</span>
-          <input class="input" autocomplete="name" bind:value={name} aria-invalid={submitted && !!problems.name} />
-          {#if submitted && problems.name}<span class="hint">{problems.name}</span>{/if}
-        </label>
-        <label class="field">
-          <span class="label">Handle</span>
-          <input
-            class="input"
-            autocomplete="username"
-            autocapitalize="none"
-            spellcheck="false"
-            bind:value={handle}
-            oninput={() => (handleTouched = true)}
-            aria-invalid={submitted && !!problems.handle}
-            aria-describedby="handle-hint"
+<main class="auth yip-frame" aria-labelledby="setup-title">
+  <Center minHeight="100%" padding={4}>
+    <Card width="min(560px, 100%)" padding={8} elevation="low">
+      <VStack gap={5}>
+        <Wordmark size={30} />
+        <VStack gap={2}>
+          <Heading level={1} id="setup-title">Set up your workspace</Heading>
+          <Text as="p" display="block" color="secondary">
+            yip keeps your conversations, work records and decisions on this hub. Engineers do their work on machines you pair next. If the hub
+            runs on a laptop, it stops being reachable while the laptop sleeps — an always-on machine is the better home.
+          </Text>
+        </VStack>
+        <form onsubmit={submit} novalidate>
+          <TextInput
+            label="One-time setup code"
+            class="code"
+            {...codeHints}
+            width="100%"
+            bind:value={code}
+            description={status('code') ? undefined : 'Printed in the terminal where you started the hub.'}
+            status={status('code')}
           />
-          <span class="hint" id="handle-hint">{submitted && problems.handle ? problems.handle : 'Engineers mention you as @' + (handle || 'handle') + '.'}</span>
-        </label>
-      </div>
-      <div class="row">
-        <label class="field">
-          <span class="label">Password</span>
-          <input class="input" type="password" autocomplete="new-password" bind:value={password} aria-invalid={submitted && !!problems.password} />
-          {#if submitted && problems.password}<span class="hint">{problems.password}</span>{/if}
-        </label>
-        <label class="field">
-          <span class="label">Confirm password</span>
-          <input class="input" type="password" autocomplete="new-password" bind:value={confirm} aria-invalid={submitted && !!problems.confirm} />
-          {#if submitted && problems.confirm}<span class="hint">{problems.confirm}</span>{/if}
-        </label>
-      </div>
-      {#if error}<p class="form-error" role="alert">{error}</p>{/if}
-      <button class="btn btn-primary submit" type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create workspace'}</button>
-    </form>
-  </div>
+          <TextInput
+            label="Workspace name"
+            width="100%"
+            placeholder="e.g. Brayden's workspace"
+            bind:value={orgName}
+            status={status('orgName')}
+          />
+          <!-- Name and handle stack: the handle's hint sits above its input, which would misalign a pair. -->
+          <TextInput label="Your name" {...nameHints} width="100%" bind:value={name} status={status('name')} />
+          <TextInput
+            label="Handle"
+            {...handleHints}
+            width="100%"
+            bind:value={handle}
+            onChange={() => (handleTouched = true)}
+            description={status('handle') ? undefined : 'Engineers mention you as @' + (handle || 'handle') + '.'}
+            status={status('handle')}
+          />
+          <div class="row">
+            <TextInput label="Password" type="password" {...passwordHints} width="100%" bind:value={password} status={status('password')} />
+            <TextInput label="Confirm password" type="password" {...passwordHints} width="100%" bind:value={confirm} status={status('confirm')} />
+          </div>
+          {#if error}
+            <Notice tone="danger" role="alert">{error}</Notice>
+          {/if}
+          <div>
+            <Button label="Create workspace" variant="primary" type="submit" isLoading={busy} />
+          </div>
+        </form>
+      </VStack>
+    </Card>
+  </Center>
 </main>
 
 <style>
   .auth {
-    min-height: 100%;
     height: 100%;
     overflow: auto;
-    display: grid;
-    place-items: center;
-    padding: 24px 16px;
-    background: var(--frame);
-  }
-  .panel {
-    width: min(560px, 100%);
-    display: grid;
-    gap: 20px;
-    padding: 32px;
-    background: var(--surface);
-    border-radius: var(--r-surface);
-    box-shadow: var(--shadow-card);
-  }
-  h1 {
-    font-family: var(--font-brand);
-    font-size: 26px;
-    font-weight: 600;
-  }
-  .intro {
-    margin-top: 8px;
   }
   form {
     display: grid;
-    gap: 16px;
+    gap: var(--spacing-4);
   }
   .row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    gap: var(--spacing-4);
+    align-items: start;
   }
-  .submit {
-    justify-self: start;
+  form :global(.code input) {
+    font-family: var(--font-family-code);
   }
   @media (max-width: 560px) {
     .row {
       grid-template-columns: 1fr;
     }
-    .panel {
-      padding: 24px 20px;
+    .auth :global(.astryx-card) {
+      padding: var(--spacing-6) var(--spacing-5);
     }
   }
 </style>

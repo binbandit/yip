@@ -112,13 +112,13 @@ describe('app smoke (jsdom, captured fixtures)', () => {
   });
 
   it('shows unread by weight and mention counts in the sidebar', () => {
-    const re = byText('nav a.row', 'Reverse engineering')!;
-    expect(re.classList.contains('unread')).toBe(true);
+    const re = byText('nav.side a', 'Reverse engineering')!;
+    expect(re.closest('.yip-room')!.classList.contains('unread')).toBe(true);
     expect(re.textContent).toContain('1 mention');
-    const eng = byText('nav a.row', 'Engineering')!;
-    expect(eng.classList.contains('unread')).toBe(false);
+    const eng = byText('nav.side a', 'Engineering')!;
+    expect(eng.closest('.yip-room')!.classList.contains('unread')).toBe(false);
     // Working indicator from GET /v1/runs, without replaying history.
-    expect(byText('nav a.row', 'Security')!.textContent).toContain('Mira working');
+    expect(byText('nav.side a', 'Security')!.textContent).toContain('Mira working');
     expect(text()).toMatch(/1 machine connected · work runs on .+, not in this window/);
   });
 
@@ -404,7 +404,7 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     await waitFor(() => byText('dialog.search .group', 'Work'), 'grouped results', 3000);
     expect(byText('dialog.search .group', 'Messages')).toBeTruthy();
     expect(document.querySelector('dialog.search mark')?.textContent).toBe('expiry');
-    const target = [...document.querySelectorAll<HTMLElement>('dialog.search [role=option]')].findIndex((o) => o.querySelector('.title')?.textContent === 'Fix Atlas session expiry');
+    const target = [...document.querySelectorAll<HTMLElement>('dialog.search #search-results [role=option]')].findIndex((o) => o.querySelector('.title')?.textContent === 'Fix Atlas session expiry');
     expect(target).toBeGreaterThanOrEqual(0);
     for (let i = 0; i < target; i++) key(input, 'ArrowDown');
     key(input, 'Enter');

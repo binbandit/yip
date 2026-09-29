@@ -3,6 +3,9 @@
   // action, target, scope and expiry. A stale decision reloads the recorded
   // permission; another tab may already have allowed the action.
   import { untrack } from 'svelte';
+  import { Button, Card, Code, HStack, Icon, MetadataList, MetadataListItem, Text } from '@astryx-svelte/core';
+  import Notice from './Notice.svelte';
+  import { ChevronDown, ChevronRight, FileDiff } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
   import { api } from '../lib/api/endpoints';
@@ -11,7 +14,6 @@
   import { approvalStatusLabel, approvalVerb } from '../lib/util/labels';
   import { atTime, relative, shortSha } from '../lib/util/time';
   import StateIcon from './StateIcon.svelte';
-  import Icon from './Icon.svelte';
 
   interface Props {
     approvalId: string;
@@ -91,115 +93,103 @@
   }
 </script>
 
-<section class="approval panel-box" aria-label="Permission request">
-  {#if !a}
-    <p class="meta">Loading the request…</p>
-  {:else}
-    <p class="kicker">
-      <StateIcon
-        shape={unconfirmed ? 'question' : status === 'pending' ? 'pause' : status === 'approved' || status === 'consumed' ? 'check-filled' : status === 'rejected' ? 'slash' : 'circle'}
-        tone={unconfirmed || status === 'pending' ? 'attention' : status === 'approved' || status === 'consumed' ? 'success' : 'neutral'}
-      />
-      <span>{unconfirmed ? 'Current status not confirmed' : approvalStatusLabel(status)}</span>
-      {#if a.decidedAt && status !== 'pending'}<span class="meta">· {app.actorName(a.decidedBy)} {atTime(a.decidedAt)}</span>{/if}
-    </p>
-    <p class="summary">{a.action.summary}</p>
-    {#if status !== 'pending'}
-      <button class="link-btn disclosure" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
-        <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={14} />
-        {expanded ? 'Hide request and outcome' : 'View request and outcome'}
-      </button>
-    {/if}
-    {#if showDetail}
-    <dl>
-      {#if a.action.command}
-        <div><dt>Exact action</dt><dd><code class="cmd">{a.action.command}</code></dd></div>
+<Card class="approval" role="region" aria-label="Permission request" maxWidth={620}>
+  <div class="body">
+    {#if !a}
+      <Text as="p" type="supporting">Loading the request…</Text>
+    {:else}
+      <p class="kicker">
+        <StateIcon
+          shape={unconfirmed ? 'question' : status === 'pending' ? 'pause' : status === 'approved' || status === 'consumed' ? 'check-filled' : status === 'rejected' ? 'slash' : 'circle'}
+          tone={unconfirmed || status === 'pending' ? 'attention' : status === 'approved' || status === 'consumed' ? 'success' : 'neutral'}
+        />
+        <span>{unconfirmed ? 'Current status not confirmed' : approvalStatusLabel(status)}</span>
+        {#if a.decidedAt && status !== 'pending'}<Text type="supporting">· {app.actorName(a.decidedBy)} {atTime(a.decidedAt)}</Text>{/if}
+      </p>
+      <p class="summary">{a.action.summary}</p>
+      {#if status !== 'pending'}
+        <Button
+          label={expanded ? 'Hide request and outcome' : 'View request and outcome'}
+          variant="ghost"
+          size="sm"
+          aria-expanded={expanded}
+          onclick={() => (expanded = !expanded)}
+        >
+          {#snippet icon()}<Icon icon={expanded ? ChevronDown : ChevronRight} size="sm" />{/snippet}
+        </Button>
       {/if}
-      {#if a.action.target}<div><dt>Target</dt><dd class="mono">{a.action.target}</dd></div>{/if}
-      <div><dt>Scope</dt><dd>{a.scope || 'This one action only'}</dd></div>
-      {#if a.targetRev}<div><dt>Revision</dt><dd class="mono">{shortSha(a.targetRev)}</dd></div>{/if}
-      {#if a.action.detail}<div><dt>Why</dt><dd>{a.action.detail}</dd></div>{/if}
-      <div>
-        <dt>Expires</dt>
-        <dd>{status === 'pending' ? relative(a.expiresAt, app.now) : atTime(a.expiresAt)}</dd>
-      </div>
-    </dl>
-    <div class="actions">
+      {#if showDetail}
+        <MetadataList label={{ position: 'start', width: 100 }}>
+          {#if a.action.command}
+            <MetadataListItem label="Exact action"><Code class="cmd">{a.action.command}</Code></MetadataListItem>
+          {/if}
+          {#if a.action.target}<MetadataListItem label="Target"><Code>{a.action.target}</Code></MetadataListItem>{/if}
+          <MetadataListItem label="Scope">{a.scope || 'This one action only'}</MetadataListItem>
+          {#if a.targetRev}<MetadataListItem label="Revision"><Code>{shortSha(a.targetRev)}</Code></MetadataListItem>{/if}
+          {#if a.action.detail}<MetadataListItem label="Why">{a.action.detail}</MetadataListItem>{/if}
+          <MetadataListItem label="Expires">{status === 'pending' ? relative(a.expiresAt, app.now) : atTime(a.expiresAt)}</MetadataListItem>
+        </MetadataList>
+        <HStack gap={2} wrap="wrap" align="center">
+          {#if status === 'pending'}
+            <Button
+              label={busy === 'approve' ? 'Allowing…' : approvalVerb(a.action.kind)}
+              variant="primary"
+              size="sm"
+              isDisabled={!!busy || refreshing || unconfirmed}
+              onclick={() => decide('approve')}
+            />
+            <Button label={busy === 'reject' ? 'Rejecting…' : 'Reject'} size="sm" isDisabled={!!busy || refreshing || unconfirmed} onclick={() => decide('reject')} />
+          {/if}
+          <Button label="View diff" variant="ghost" size="sm" onclick={() => app.openPanel({ kind: 'job', id: a.jobId }, 'evidence')}>
+            {#snippet icon()}<Icon icon={FileDiff} size="sm" />{/snippet}
+          </Button>
+        </HStack>
+      {/if}
+      {#if feedback}<Notice tone="danger" role="alert">{feedback}</Notice>{/if}
+      {#if unconfirmed}
+        <Button label={refreshing ? 'Checking…' : 'Check current request'} size="sm" isDisabled={refreshing} onclick={reloadApproval} />
+      {/if}
       {#if status === 'pending'}
-        <button class="btn btn-primary btn-sm" disabled={!!busy || refreshing || unconfirmed} onclick={() => decide('approve')}>
-          {busy === 'approve' ? 'Allowing…' : approvalVerb(a.action.kind)}
-        </button>
-        <button class="btn btn-sm" disabled={!!busy || refreshing || unconfirmed} onclick={() => decide('reject')}>{busy === 'reject' ? 'Rejecting…' : 'Reject'}</button>
+        <Text as="p" type="supporting">This allows only the action shown, on the revision shown. A reply in chat does not grant it.</Text>
       {/if}
-      <button class="btn btn-sm btn-quiet" onclick={() => app.openPanel({ kind: 'job', id: a.jobId }, 'evidence')}>
-        <Icon name="file" size={15} />View diff
-      </button>
-    </div>
     {/if}
-    {#if feedback}<p class="form-error" role="alert">{feedback}</p>{/if}
-    {#if unconfirmed}<button class="btn btn-sm" disabled={refreshing} onclick={reloadApproval}>{refreshing ? 'Checking…' : 'Check current request'}</button>{/if}
-    {#if status === 'pending'}
-      <p class="meta">This allows only the action shown, on the revision shown. A reply in chat does not grant it.</p>
-    {/if}
-  {/if}
-</section>
+  </div>
+</Card>
 
 <style>
-  .approval {
-    margin-top: 8px;
-    padding: 12px 14px;
-    max-width: 620px;
-    display: grid;
-    gap: 8px;
+  /* Card renders the root, so its classes are reached globally. */
+  :global(.astryx-card.approval) {
+    margin-top: var(--spacing-2);
   }
-  .disclosure {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+  .body {
+    display: grid;
+    gap: var(--spacing-2);
+  }
+  /* Standalone buttons keep their own width instead of stretching across the card. */
+  .body > :global(.astryx-button) {
     justify-self: start;
-    font-size: 13px;
   }
   .kicker {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--spacing-1-5);
     flex-wrap: wrap;
-    font-size: 13px;
-    font-weight: 650;
+    font-size: var(--text-supporting-size);
+    font-weight: var(--font-weight-semibold);
   }
   .summary {
-    font-weight: 600;
-  }
-  dl {
-    margin: 0;
-    display: grid;
-    gap: 4px;
-  }
-  dl > div {
-    display: grid;
-    grid-template-columns: 100px minmax(0, 1fr);
-    gap: 10px;
-    font-size: 14px;
-  }
-  dt {
-    color: var(--ink-secondary);
-    font-size: 13px;
-  }
-  dd {
-    margin: 0;
+    font-weight: var(--font-weight-semibold);
     overflow-wrap: anywhere;
   }
-  .cmd {
-    display: block;
-    padding: 6px 8px;
-    border-radius: 6px;
-    background: var(--surface-subtle);
-    border: 1px solid var(--line);
-    white-space: pre-wrap;
+  .body :global(dd) {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+  .body :global(.cmd) {
+    display: block;
+    padding: var(--spacing-1-5) var(--spacing-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-inner);
+    white-space: pre-wrap;
   }
 </style>

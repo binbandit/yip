@@ -1,6 +1,8 @@
 <script lang="ts">
   // One factual ledger row: state, objective, owner, project, last confirmed
   // update with its time, machine, blocker text, and the origin conversation.
+  import { Icon, Link } from '@astryx-svelte/core';
+  import { Reply } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import type { Job, Question } from '../lib/api/types.gen';
   import { jobShape, jobStateLabel, jobTone, runStateNote, waitingReasonLabel } from '../lib/util/labels';
@@ -10,7 +12,6 @@
   import { plainText } from '../lib/util/markdown';
   import StateIcon from './StateIcon.svelte';
   import Avatar from './Avatar.svelte';
-  import Icon from './Icon.svelte';
 
   interface Props {
     job: Job;
@@ -50,7 +51,7 @@
     {#if completed && job.summary}<span class="result">{plainText(job.summary)}</span>{/if}
     {#if blockText}<span class="blocker">{blockText}</span>{/if}
     <span class="facts">
-      <span class="owner"><Avatar actor={{ kind: 'engineer', id: job.ownerId }} size={18} />{app.engineerName(job.ownerId)}</span>
+      <span class="owner"><Avatar actor={{ kind: 'engineer', id: job.ownerId }} size={20} />{app.engineerName(job.ownerId)}</span>
       {#if project}<span>· {project.name}</span>{/if}
       {#if confirmed}<span>· {confirmed}{#if confirmedAt}<span title={fullTime(confirmedAt)}>, {relative(confirmedAt, app.now)}</span>{/if}</span>{/if}
       {#if completed && confirmedAt}<span>· <time datetime={confirmedAt} title={fullTime(confirmedAt)}>{relative(confirmedAt, app.now)}</time></span>{/if}
@@ -59,17 +60,19 @@
     </span>
   </button>
   {#if room}
-    <a class="origin" href={conversationHref(job.source)} aria-label="Open the conversation in {room.name}">
+    <Link class="origin" href={conversationHref(job.source)} label="Open the conversation in {room.name}" type="supporting" color="inherit">
       {room.kind === 'dm' ? 'Direct' : room.name}
-    </a>
+    </Link>
   {/if}
   {#if questions.length}
     <div class="questions">
       {#each questions as question (question.id)}
-        <a href={conversationHref({ ...question.source, messageId: question.messageId })}>
-          <Icon name="reply" size={15} />
-          <span>{app.engineerName(question.askerId)} asks: {question.missingFact}<span class="answer">Answer in conversation</span></span>
-        </a>
+        <Link href={conversationHref({ ...question.source, messageId: question.messageId })} color="primary">
+          <span class="question">
+            <span class="shape"><Icon icon={Reply} size="sm" color="warning" /></span>
+            <span>{app.engineerName(question.askerId)} asks: {question.missingFact}<span class="answer">Answer in conversation</span></span>
+          </span>
+        </Link>
       {/each}
     </div>
   {/if}
@@ -80,33 +83,11 @@
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
-    gap: 8px;
-    border-top: 1px solid var(--line-soft);
+    gap: var(--spacing-2);
+    border-top: 1px solid var(--color-border);
   }
   .row:first-child {
     border-top: 0;
-  }
-  .questions {
-    flex-basis: 100%;
-    display: grid;
-    gap: 6px;
-    padding: 0 8px 12px;
-  }
-  .questions a {
-    display: flex;
-    gap: 8px;
-    font-size: 13.5px;
-    text-decoration: none;
-  }
-  .questions a :global(.icon) {
-    margin-top: calc((1lh - 15px) / 2);
-    color: var(--attention-ink);
-  }
-  .answer {
-    margin-left: 8px;
-    color: var(--ink-secondary);
-    text-decoration: underline;
-    text-underline-offset: 3px;
   }
   .main {
     flex: 1;
@@ -118,76 +99,101 @@
       '. result'
       '. blocker'
       '. facts';
-    gap: 2px 12px;
-    padding: 10px 8px;
-    border: 0;
-    border-radius: 10px;
-    background: none;
-    color: var(--ink);
+    gap: var(--spacing-0-5) var(--spacing-3);
+    padding: calc(var(--spacing-2) + var(--spacing-0-5)) var(--spacing-2);
+    border-radius: var(--radius-element);
+    color: var(--color-text-primary);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
     text-align: left;
-    cursor: pointer;
-    font-size: 14px;
+    transition: background-color var(--duration-fast) var(--ease-standard);
   }
   .main:hover {
-    background: var(--hover);
+    background: var(--color-overlay-hover);
+  }
+  .main:focus-visible {
+    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+    outline-offset: -2px;
   }
   .state {
     grid-area: state;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 650;
+    gap: var(--spacing-1-5);
+    font-size: var(--text-supporting-size);
+    font-weight: var(--font-weight-semibold);
   }
   .title {
     grid-area: title;
-    font-weight: 600;
-  }
-  .blocker {
-    grid-area: blocker;
-    color: var(--ink);
-    font-size: 13.5px;
+    font-weight: var(--font-weight-semibold);
   }
   .result {
     grid-area: result;
-    color: var(--ink-secondary);
-    font-size: 13.5px;
+    color: var(--color-text-secondary);
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
     line-clamp: 3;
     overflow: hidden;
   }
+  .blocker {
+    grid-area: blocker;
+  }
   .facts {
     grid-area: facts;
     display: flex;
     flex-wrap: wrap;
-    gap: 2px 6px;
-    font-size: 13px;
-    color: var(--ink-secondary);
+    gap: var(--spacing-0-5) var(--spacing-1-5);
+    font-size: var(--text-supporting-size);
+    color: var(--color-text-secondary);
   }
   .owner {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    color: var(--ink);
+    gap: var(--spacing-1);
+    color: var(--color-text-primary);
   }
-  .origin {
+  /* The origin conversation, as a quiet pill link beside the row. */
+  .row :global(.origin) {
     flex: none;
-    margin-top: 10px;
-    padding: 2px 8px;
-    border-radius: var(--r-pill);
-    border: 1px solid var(--line);
-    font-size: 12.5px;
-    text-decoration: none;
-    color: var(--ink-secondary);
+    margin-top: var(--spacing-2);
+    padding: var(--spacing-0-5) var(--spacing-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    color: var(--color-text-secondary);
     white-space: nowrap;
+    text-decoration: none;
   }
-  .origin:hover {
-    color: var(--ink);
-    border-color: var(--control-edge);
+  .row :global(.origin:hover) {
+    border-color: var(--color-border-emphasized);
+    color: var(--color-text-primary);
   }
-  @media (max-width: 760px) {
+  .questions {
+    flex-basis: 100%;
+    display: grid;
+    gap: var(--spacing-1-5);
+    padding: 0 var(--spacing-2) var(--spacing-3);
+  }
+  .questions :global(a) {
+    text-decoration: none;
+  }
+  /* A question asked of you leads with the reply shape, in the attention hue. */
+  .question {
+    display: flex;
+    gap: var(--spacing-2);
+  }
+  .shape {
+    display: inline-flex;
+    flex: none;
+    margin-top: calc((1lh - 16px) / 2);
+  }
+  .answer {
+    margin-left: var(--spacing-2);
+    color: var(--color-text-secondary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  @media (max-width: 768px) {
     .main {
       grid-template-columns: minmax(0, 1fr);
       grid-template-areas: 'state' 'title' 'result' 'blocker' 'facts';

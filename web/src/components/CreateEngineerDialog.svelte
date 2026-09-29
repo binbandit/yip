@@ -1,6 +1,8 @@
 <script lang="ts">
   // New engineer from an editable role starting point. No invented biography
   // or claimed experience — just a role, what they're for, and instructions.
+  import { Button, FieldLabel, RadioList, RadioListItem, Text, TextArea, TextInput } from '@astryx-svelte/core';
+  import Notice from './Notice.svelte';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
@@ -58,6 +60,8 @@
   let provider = $state(readyProvider?.provider ?? 'claude');
   let busy = $state(false);
   let error = $state('');
+  // Input hints TextInput forwards to its <input> but doesn't type.
+  const handleHints = { autocapitalize: 'none', spellcheck: false };
 
   function pick(i: number) {
     start = i;
@@ -107,89 +111,60 @@
   }
 </script>
 
-<Dialog title="New engineer" description="Start from a role and edit anything. Engineers are identified as AI engineers in their profile." {onclose} width={620}>
-  <form id="new-eng" class="form" onsubmit={create}>
-    <fieldset class="starts">
-      <legend class="label">Starting point</legend>
-      <div class="start-list">
+<Dialog title="New engineer" description="Start from a role and edit anything. Engineers are identified as AI engineers in their profile." {onclose} width={620} purpose="form">
+  <form id="new-eng" class="form" onsubmit={create} novalidate>
+    <div class="starts">
+      <RadioList label="Starting point" orientation="horizontal" value={String(start)} onChange={(v) => pick(Number(v))} htmlName="start">
         {#each STARTS as s, i (i)}
-          <label class="start" class:on={start === i}>
-            <input type="radio" name="start" checked={start === i} onchange={() => pick(i)} />
-            <span>{s.role || 'Blank'}</span>
-          </label>
+          <RadioListItem label={s.role || 'Blank'} value={String(i)} />
         {/each}
-      </div>
-    </fieldset>
-    <div class="two">
-      <label class="field"><span class="label">Name</span><input class="input" bind:value={name} placeholder="e.g. Ada" /></label>
-      <label class="field">
-        <span class="label">Handle</span>
-        <input class="input" bind:value={handle} oninput={() => (handleTouched = true)} autocapitalize="none" spellcheck="false" />
-        <span class="hint">Mention them as @{handle || 'handle'}</span>
-      </label>
+      </RadioList>
     </div>
-    <label class="field"><span class="label">Role</span><input class="input" bind:value={role} placeholder="e.g. Platform engineer" /></label>
-    <label class="field"><span class="label">What they're for</span><input class="input" bind:value={description} /></label>
-    <label class="field"><span class="label">Capabilities</span><input class="input" bind:value={tags} /><span class="hint">Comma-separated; colleagues use these to choose reviewers.</span></label>
-    <label class="field"><span class="label">Standing instructions</span><textarea class="textarea" rows="4" bind:value={instructions}></textarea></label>
-    <div class="field">
-      <label class="label" for="new-eng-provider">Provider preference</label>
+    <div class="two">
+      <TextInput label="Name" bind:value={name} placeholder="e.g. Ada" width="100%" hasAutoFocus />
+      <!-- The mention preview sits under the field, so Name and Handle line up. -->
+      <div class="handle">
+        <TextInput label="Handle" {...handleHints} bind:value={handle} onChange={() => (handleTouched = true)} width="100%" />
+        <Text as="p" type="supporting">Mention them as @{handle || 'handle'}</Text>
+      </div>
+    </div>
+    <TextInput label="Role" bind:value={role} placeholder="e.g. Platform engineer" width="100%" />
+    <TextInput label="What they're for" bind:value={description} width="100%" />
+    <TextInput label="Capabilities" bind:value={tags} description="Comma-separated; colleagues use these to choose reviewers." width="100%" />
+    <TextArea label="Standing instructions" rows={4} bind:value={instructions} width="100%" />
+    <div class="provider">
+      <FieldLabel label="Provider preference" inputID="new-eng-provider" />
       <ProviderSelect id="new-eng-provider" value={provider} onchange={(v) => (provider = v)} />
     </div>
-    {#if error}<p class="form-error" role="alert">{error}</p>{/if}
+    {#if error}<Notice tone="danger" role="alert">{error}</Notice>{/if}
   </form>
   {#snippet footer()}
-    <button class="btn" onclick={onclose}>Cancel</button>
-    <button class="btn btn-primary" type="submit" form="new-eng" disabled={busy}>{busy ? 'Creating…' : 'Create engineer'}</button>
+    <Button label="Cancel" onclick={onclose} />
+    <Button label={busy ? 'Creating…' : 'Create engineer'} variant="primary" type="submit" form="new-eng" isLoading={busy} />
   {/snippet}
 </Dialog>
 
 <style>
   .form {
     display: grid;
-    gap: 14px;
+    gap: var(--spacing-4);
   }
   .two {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: var(--spacing-3);
+    align-items: start;
   }
-  .starts {
-    border: 0;
-    margin: 0;
-    padding: 0;
-  }
-  .start-list {
-    display: flex;
+  /* Six starting points wrap onto a second line rather than overflow. */
+  .starts :global([role='radiogroup']) {
     flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 6px;
+    column-gap: var(--spacing-4);
+    row-gap: var(--spacing-1);
   }
-  .start {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    min-height: 34px;
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--r-pill);
-    font-size: 14px;
-    cursor: pointer;
-  }
-  .start input {
-    position: absolute;
-    opacity: 0;
-    inset: 0;
-    cursor: pointer;
-  }
-  .start.on {
-    border-color: var(--accent);
-    background: var(--accent-subtle);
-    font-weight: 600;
-  }
-  .start:focus-within {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
+  .handle,
+  .provider {
+    display: grid;
+    gap: var(--spacing-1-5);
   }
   @media (max-width: 560px) {
     .two {

@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { Button, EmptyState, Icon, Text, Token } from '@astryx-svelte/core';
+  import { Plus } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { isLiveJob } from '../lib/state/data';
   import { providerLabel } from '../lib/util/labels';
   import Avatar from '../components/Avatar.svelte';
-  import Icon from '../components/Icon.svelte';
+  import Screen from '../components/Screen.svelte';
   import CreateEngineerDialog from '../components/CreateEngineerDialog.svelte';
 
   let creating = $state(false);
@@ -16,101 +18,94 @@
   }
 </script>
 
-<div class="screen">
-  <div class="screen-inner">
-    <header class="screen-head">
-      <div>
-        <h1 class="screen-title" data-screen-title tabindex="-1">Engineers</h1>
-        <p class="screen-sub">The same engineers in every room. Each keeps one identity, role and history.</p>
-      </div>
-      <button class="btn btn-primary" onclick={() => (creating = true)}><Icon name="plus" size={16} />New engineer</button>
-    </header>
+<Screen title="Engineers" subtitle="The same engineers in every room. Each keeps one identity, role and history.">
+  {#snippet actions()}
+    <Button label="New engineer" variant="primary" onclick={() => (creating = true)}>
+      {#snippet icon()}<Icon icon={Plus} size="sm" />{/snippet}
+    </Button>
+  {/snippet}
 
-    {#if engineers.length === 0}
-      <div class="empty">
-        <p><strong>No engineers yet.</strong></p>
-        <p>Create an engineer with a name, a role and standing instructions, then bring them into a room.</p>
-        <button class="btn btn-primary" onclick={() => (creating = true)}>New engineer</button>
-      </div>
-    {:else}
-      <ul class="grid">
-        {#each engineers as e (e.id)}
-          {@const n = activeCount(e.id)}
-          <li class="card-item" class:archived={e.archived}>
-            <a class="card-link" href="/engineers/{e.id}">
-              <div class="top">
-                <Avatar actor={{ kind: 'engineer', id: e.id }} size={44} />
-                <div class="id">
-                  <p class="name">{e.name}{#if e.archived}{' '}<span class="meta">· archived</span>{/if}</p>
-                  <p class="role">{e.role}</p>
-                </div>
+  {#if engineers.length === 0}
+    <EmptyState title="No engineers yet." headingLevel={2} description="Create an engineer with a name, a role and standing instructions, then bring them into a room.">
+      {#snippet actions()}<Button label="New engineer" variant="primary" onclick={() => (creating = true)} />{/snippet}
+    </EmptyState>
+  {:else}
+    <ul class="grid">
+      {#each engineers as e (e.id)}
+        {@const n = activeCount(e.id)}
+        <li class:archived={e.archived}>
+          <a class="card-link" href="/engineers/{e.id}">
+            <div class="top">
+              <Avatar actor={{ kind: 'engineer', id: e.id }} size={48} />
+              <div class="id">
+                <p class="name">{e.name}{#if e.archived}{' '}<Text type="supporting">· archived</Text>{/if}</p>
+                <Text as="p" color="secondary">{e.role}</Text>
               </div>
-              {#if e.description}<p class="desc">{e.description}</p>{/if}
-              {#if e.capabilityTags.length}
-                <ul class="tags">{#each e.capabilityTags.slice(0, 5) as t (t)}<li class="chip">{t}</li>{/each}</ul>
-              {/if}
-              <p class="facts meta">
-                {e.roomIds.length} {e.roomIds.length === 1 ? 'room' : 'rooms'} · {n ? `${n} active` : 'no active work'} ·
-                {providerLabel(e.provider.provider)}{ready(e.provider.provider) ? '' : ' (not ready)'}
-              </p>
-            </a>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
-</div>
+            </div>
+            {#if e.description}<Text as="p">{e.description}</Text>{/if}
+            {#if e.capabilityTags.length}
+              <ul class="tags">{#each e.capabilityTags.slice(0, 5) as t (t)}<li><Token label={t} size="sm" /></li>{/each}</ul>
+            {/if}
+            <Text as="p" type="supporting">
+              {e.roomIds.length} {e.roomIds.length === 1 ? 'room' : 'rooms'} · {n ? `${n} active` : 'no active work'} ·
+              {providerLabel(e.provider.provider)}{ready(e.provider.provider) ? '' : ' (not ready)'}
+            </Text>
+          </a>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+</Screen>
 
 {#if creating}<CreateEngineerDialog onclose={() => (creating = false)} />{/if}
 
 <style>
   .grid {
-    list-style: none;
-    margin: 0;
-    padding: 0;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 12px;
+    gap: var(--spacing-3);
   }
   .card-link {
     display: grid;
-    gap: 10px;
+    align-content: start;
+    gap: var(--spacing-3);
     height: 100%;
-    padding: 16px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    color: var(--ink);
+    padding: var(--spacing-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-container);
+    background: var(--color-background-card);
+    color: var(--color-text-primary);
     text-decoration: none;
-    transition: border-color var(--t-fast) var(--ease);
+    overflow-wrap: anywhere;
+    transition: border-color var(--duration-fast) var(--ease-standard);
   }
   .card-link:hover {
-    border-color: var(--control-edge);
+    border-color: var(--color-border-emphasized);
+  }
+  .card-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
   .archived .card-link {
-    background: var(--surface-subtle);
+    background: var(--color-background-muted);
   }
   .top {
     display: flex;
-    gap: 12px;
+    gap: var(--spacing-3);
     align-items: center;
   }
+  .id {
+    display: grid;
+    gap: var(--spacing-0-5);
+    min-width: 0;
+  }
   .name {
-    font-weight: 680;
-    font-size: 16px;
-  }
-  .role {
-    color: var(--ink-secondary);
-    font-size: 14px;
-  }
-  .desc {
-    font-size: 14px;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
   }
   .tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 5px;
-    list-style: none;
-    margin: 0;
-    padding: 0;
+    gap: var(--spacing-1);
   }
 </style>

@@ -18,3 +18,4 @@ criteria.
 | [0010](0010-tooling.md) | npm for the web build; generated types from Go structs |
 | [0011](0011-delivery-and-completion.md) | Delivery, wakeup, and completion invariants from the backend review |
 | [0012](0012-visual-direction.md) | The web client looks like Buzz, not the spec's concept; the concept was removed |
+| [0013](0013-astryx-design-system.md) | The web client is built on Astryx (astryx-svelte) with a yip theme over neutral |

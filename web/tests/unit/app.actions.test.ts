@@ -7,7 +7,9 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
 import { loadUnsent } from '../../src/lib/state/drafts';
+import { choose } from './controls';
 import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
+import { setViewport } from './setup';
 import type { Approval, Bootstrap, Decision, DecisionRequest, JobDetail, Message } from '../../src/lib/api/types.gen';
 
 let hub: FakeHub;
@@ -181,7 +183,7 @@ describe('action flows', () => {
   it('stops live work only after confirmation', async () => {
     hub.override('POST', new RegExp(`^/v1/jobs/${pipDetail.job.id}/cancel$`), () => ({ body: { ...pipDetail.job, state: 'cancelled', version: 99 } }));
     app.go({ name: 'room', roomId: roomId('Reverse engineering') }, { panel: { kind: 'job', id: pipDetail.job.id } });
-    const stop = await waitFor(() => byText('aside button', /^Stop$/), 'stop');
+    const stop = await waitFor(() => byText('aside button', /^\s*Stop\s*$/), 'stop');
     stop.click();
     const confirm = await waitFor(() => byText('dialog button', 'Stop the work'), 'confirm');
     expect(hub.last('POST', /\/cancel$/)).toBeUndefined();
@@ -201,10 +203,7 @@ describe('action flows', () => {
       body: { ...boot.rooms.find((r) => r.id === sec)!, members: [...boot.rooms.find((r) => r.id === sec)!.members, { kind: 'engineer', id: pip.id }], version: 2 },
     }));
     app.go({ name: 'room', roomId: sec }, { panel: { kind: 'room', id: sec } });
-    const select = await waitFor(() => document.querySelector<HTMLSelectElement>('aside select'), 'member select');
-    select.value = pip.id;
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-    flushSync();
+    choose(await waitFor(() => document.querySelector<HTMLElement>('aside [role=combobox]'), 'member picker'), 'Pip —');
     byText('aside button', 'Review access')!.click();
     await waitFor(() => text().includes('7 messages in this room become visible to them.'), 'preview');
     expect(hub.last('PUT', /\/members\//)).toBeUndefined();
@@ -221,16 +220,13 @@ describe('action flows', () => {
     plus.click();
     await settle();
     const dialog = await waitFor(() => document.querySelector('dialog[open]'), 'dialog');
-    type(dialog.querySelector<HTMLInputElement>('input.input')!, 'Payments');
-    const miraBox = [...dialog.querySelectorAll<HTMLLabelElement>('label.check')].find((l) => l.textContent?.includes('Mira'))!.querySelector('input')!;
+    type(dialog.querySelector<HTMLInputElement>('input')!, 'Payments');
+    const miraBox = [...dialog.querySelectorAll<HTMLElement>('.check')].find((l) => l.textContent?.includes('Mira'))!.querySelector('input')!;
     miraBox.click();
     const steward = [...dialog.querySelectorAll<HTMLInputElement>('input[type=radio]')].find((r) => r.value === 'steward')!;
     steward.click();
     flushSync();
-    const sel = dialog.querySelector<HTMLSelectElement>('select')!;
-    sel.value = engineer('Mira').id;
-    sel.dispatchEvent(new Event('change', { bubbles: true }));
-    flushSync();
+    choose(dialog.querySelector<HTMLElement>('button[role=combobox]')!, 'Mira');
     byText('dialog button', 'Create room')!.click();
     await waitFor(() => hub.last('POST', /^\/v1\/rooms$/), 'create');
     const body = hub.last('POST', /^\/v1\/rooms$/)!.body as Record<string, unknown>;
@@ -400,20 +396,20 @@ describe('action flows', () => {
     app.closePanel();
   });
 
-  it('uses a navigation sheet and full-screen panels on a phone', async () => {
-    app.viewport = 390;
+  it('uses a navigation drawer and full-screen panels on a phone', async () => {
+    setViewport(390);
     await settle();
     const menu = await waitFor(() => document.querySelector<HTMLButtonElement>('button[aria-label="Rooms and navigation"]'), 'rooms button');
     expect(document.querySelector('nav.side')).toBeNull();
     menu.click();
     await settle();
-    const sheet = await waitFor(() => document.querySelector('[role=dialog][aria-label="Rooms and navigation"]'), 'sheet');
-    [...sheet.querySelectorAll<HTMLAnchorElement>('a.row')].find((a) => a.textContent?.includes('Security'))!.click();
-    await waitFor(() => !document.querySelector('[role=dialog][aria-label="Rooms and navigation"]') && location.pathname.endsWith(roomId('Security')), 'sheet closed');
+    const drawer = await waitFor(() => document.querySelector('dialog[open][aria-label="Rooms and navigation"]'), 'drawer');
+    [...drawer.querySelectorAll<HTMLAnchorElement>('a')].find((a) => a.textContent?.includes('Security'))!.click();
+    await waitFor(() => !document.querySelector('dialog[open][aria-label="Rooms and navigation"]') && location.pathname.endsWith(roomId('Security')), 'drawer closed');
     app.openPanel({ kind: 'job', id: codeDetail.job.id });
     await waitFor(() => document.querySelector('aside.panel.full'), 'full-screen panel');
     expect(document.querySelector('aside.panel.full button[aria-label="Back"]')).toBeTruthy();
-    app.viewport = 1440;
+    setViewport(1440);
   });
 
   it("opens a review finding's file and line in the reviewed revision's diff", async () => {
@@ -424,7 +420,7 @@ describe('action flows', () => {
     const line = await waitFor(() => document.querySelector('[data-path="session/refresh.go"] .line.focus'), 'focused line');
     expect(line.getAttribute('data-new')).toBe('13');
     const round1 = codeDetail.reviews[0].rounds[0].target.head!;
-    await waitFor(() => (document.querySelector<HTMLSelectElement>('.rev-pick select')?.selectedOptions[0]?.textContent ?? '').startsWith(round1.slice(0, 7)), 'reviewed revision chosen');
+    await waitFor(() => (document.querySelector('.rev-pick [role=combobox]')?.textContent ?? '').trim().startsWith(round1.slice(0, 7)), 'reviewed revision chosen');
   });
 
   it('keeps the assignment when editing restored unsent work before its job snapshot arrives', async () => {
@@ -445,7 +441,7 @@ describe('action flows', () => {
       decisions: [], activity: [], inputs: [], missing: [], revisions: [], followUps: [], quarantined: [],
     } }));
     const failed = await waitFor(() => byText('.pending.failed', body), 'restored unsent assignment input');
-    [...failed.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Edit')!.click();
+    [...failed.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === 'Edit')!.click();
     const composer = await waitFor(() => document.querySelector<HTMLTextAreaElement>('.room-composer textarea'), 'composer');
     await waitFor(() => composer.value === body, 'restored text');
     await waitFor(() => app.data.jobs[jobId]?.state === 'running', 'selected work loaded');

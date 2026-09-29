@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/store"
@@ -277,7 +278,7 @@ func (h *Hub) catchupWork(ctx context.Context, q store.Q, j store.JobRow, owner 
 	}
 	questions, _ := store.ListQuestions(ctx, q, "job_id = ? AND status = 'open'", j.ID)
 	for _, question := range questions {
-		item.Detail = strings.TrimSpace(item.Detail + " Still open: " + question.MissingFact)
+		item.Detail = appendSentence(item.Detail, "Still open: "+question.MissingFact)
 		item.Refs = append(item.Refs, protocol.Ref{Kind: "question", ID: question.ID})
 	}
 	approvals, _ := store.ListApprovals(ctx, q, "job_id = ? AND status = 'pending'", j.ID)
@@ -285,7 +286,7 @@ func (h *Hub) catchupWork(ctx context.Context, q store.Q, j store.JobRow, owner 
 		if h.now().After(approval.ExpiresAt) {
 			continue
 		}
-		item.Detail = strings.TrimSpace(item.Detail + " Permission needed: " + approval.Action.Summary)
+		item.Detail = appendSentence(item.Detail, "Permission needed: "+approval.Action.Summary)
 		item.Refs = append(item.Refs, protocol.Ref{Kind: "approval", ID: approval.ID})
 	}
 	reviews, _ := store.ListJobReviews(ctx, q, j.ID)
@@ -640,4 +641,17 @@ func describeEvent(ctx context.Context, h *Hub, q store.Q, e store.EventRow) str
 		return "A stale attempt reported late; kept as diagnostic evidence only"
 	}
 	return ""
+}
+
+// appendSentence adds s to detail as a sentence of its own, ending detail with
+// a full stop first if it has no closing punctuation.
+func appendSentence(detail, s string) string {
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		return s
+	}
+	if last, _ := utf8.DecodeLastRuneInString(detail); !strings.ContainsRune(".!?…", last) {
+		detail += "."
+	}
+	return detail + " " + s
 }

@@ -27,7 +27,7 @@ window.__journeys = (() => {
   const fits = (t, root, what) => {
     const bounds = root.getBoundingClientRect();
     t.expect(root.scrollWidth <= root.clientWidth + 1, `${what} has horizontal overflow (${root.scrollWidth} > ${root.clientWidth})`);
-    for (const el of t.qa('button, a.btn, input, select, h1, .name', root)) {
+    for (const el of t.qa('button, a.astryx-button, input, select, h1, .name', root)) {
       if (!el.getClientRects().length || el.closest('.grants, .table-scroll, table, [data-scrolls-x]')) continue;
       const r = el.getBoundingClientRect();
       t.expect(r.left >= bounds.left - 1 && r.right <= bounds.right + 1, `${what} clips ${el.textContent.trim().slice(0, 45)}`);
@@ -45,7 +45,7 @@ window.__journeys = (() => {
         const { project } = await ready();
         await t.goto(view === 'list' ? '/projects' : `/projects/${project.id}`);
         await t.waitFor(() => view === 'list' ? t.byText('.list .name', PROJECT) : t.byText('h1', PROJECT), 'long project name');
-        fits(t, t.q('main .screen'), `project ${view}`);
+        fits(t, t.q('[role=main] .screen'), `project ${view}`);
         t.expect(t.overflowX() <= 0, 'no horizontal page scroll');
       },
     }))),

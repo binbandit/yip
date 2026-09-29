@@ -7,10 +7,10 @@ window.__journeys = (() => {
     height,
     path: '/machines',
     run: async (t) => {
-      document.documentElement.dataset.theme = dark ? 'night' : 'day';
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
       await t.waitFor(() => t.text().includes('No machines yet.'), 'the empty state');
       t.expect(t.qa('li.row').length === 0, 'no rows');
-      const adds = t.qa('main button').filter((b) => b.textContent.includes('Add machine'));
+      const adds = t.qa('[role=main] button').filter((b) => b.textContent.includes('Add machine'));
       t.expect(adds.length === 1, `one way to add a machine, found ${adds.length}`);
       t.expect(t.text().includes('Engineers need a machine to run work on'), 'it says why a machine is needed');
       t.expect(t.overflowX() <= 0, `no sideways scroll at ${innerWidth}px`);

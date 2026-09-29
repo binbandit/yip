@@ -1,5 +1,8 @@
 # 0012 — Visual direction: Buzz-like, not the concept
 
+> The composition below still holds. The components and exact token values
+> are now Astryx's, through a yip theme: see [0013](0013-astryx-design-system.md).
+
 **Decision.** At the owner's direction (25 September 2026), the web client's
 visual system follows **Buzz by Block** rather than the product document's
 concept. The interactive concept (`docs/spec/design-concept.html`) was

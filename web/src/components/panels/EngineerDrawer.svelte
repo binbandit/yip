@@ -1,5 +1,6 @@
 <script lang="ts">
   // A quick look at an engineer from anywhere: the same identity in every room.
+  import { Button, Heading, Link, List, ListItem, Text, Token } from '@astryx-svelte/core';
   import { app } from '../../lib/state/app.svelte';
   import { isLiveJob } from '../../lib/state/data';
   import { jobShape, jobStateLabel, jobTone, providerLabel } from '../../lib/util/labels';
@@ -22,107 +23,95 @@
   {#snippet subtitle()}{e?.role ?? ''}{/snippet}
   <div class="pad">
     {#if !e}
-      <p class="meta">This engineer isn't available.</p>
+      <Text as="p" type="supporting">This engineer isn't available.</Text>
     {:else}
       <div class="id">
-        <Avatar actor={{ kind: 'engineer', id: e.id }} size={56} />
-        <div>
-          <p class="name">{e.name}</p>
-          <p class="meta">{e.role} · AI engineer · @{e.handle}</p>
+        <Avatar actor={{ kind: 'engineer', id: e.id }} size={60} />
+        <div class="id-text">
+          <Text as="p" type="large">{e.name}</Text>
+          <Text as="p" type="supporting">{e.role} · AI engineer · @{e.handle}</Text>
         </div>
       </div>
       {#if e.description}<p>{e.description}</p>{/if}
       {#if e.capabilityTags.length}
-        <ul class="tags">{#each e.capabilityTags as t (t)}<li class="chip">{t}</li>{/each}</ul>
+        <ul class="tags">{#each e.capabilityTags as t (t)}<li><Token label={t} size="sm" /></li>{/each}</ul>
       {/if}
       <section>
-        <h3>Standing instructions <span class="meta">· version {e.versionNo}</span></h3>
+        <Heading level={3}>Standing instructions <Text type="supporting">· version {e.versionNo}</Text></Heading>
         <div class="instr"><MessageBody message={{ body: e.instructions || 'None yet.', mentions: [] }} /></div>
       </section>
       <section>
-        <h3>Rooms</h3>
-        {#if rooms.length === 0}<p class="meta">Not in any of your rooms.</p>{/if}
-        <ul class="plain">{#each rooms as r (r.id)}<li><a href="/rooms/{r.id}">{r.kind === 'dm' ? 'Direct messages' : r.name}</a></li>{/each}</ul>
+        <Heading level={3}>Rooms</Heading>
+        {#if rooms.length === 0}<Text as="p" type="supporting">Not in any of your rooms.</Text>{/if}
+        <ul class="plain">{#each rooms as r (r.id)}<li><Link hasUnderline href="/rooms/{r.id}">{r.kind === 'dm' ? 'Direct messages' : r.name}</Link></li>{/each}</ul>
       </section>
       <section>
-        <h3>Active work</h3>
-        {#if work.length === 0}<p class="meta">Nothing in progress.</p>{/if}
-        <ul class="plain">
-          {#each work as j (j.id)}
-            <li>
-              <button class="work" onclick={() => app.openPanel({ kind: 'job', id: j.id })}>
-                <StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} live={j.state === 'running'} />
-                <span class="truncate">{j.title}</span>{' '}<span class="meta">· {jobStateLabel(j)}</span>
-              </button>
-            </li>
-          {/each}
-        </ul>
+        <Heading level={3}>Active work</Heading>
+        {#if work.length === 0}
+          <Text as="p" type="supporting">Nothing in progress.</Text>
+        {:else}
+          <div class="work">
+            <List density="compact">
+              {#each work as j (j.id)}
+                <ListItem label={j.title} description={jobStateLabel(j)} onclick={() => app.openPanel({ kind: 'job', id: j.id })}>
+                  {#snippet startContent()}<StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} live={j.state === 'running'} />{/snippet}
+                </ListItem>
+              {/each}
+            </List>
+          </div>
+        {/if}
       </section>
-      <p class="meta">Provider preference: {providerLabel(e.provider.provider)}{e.provider.model ? ` · ${e.provider.model}` : ''}</p>
-      <a class="btn btn-sm" href="/engineers/{e.id}">Open full profile</a>
+      <Text as="p" type="supporting">Provider preference: {providerLabel(e.provider.provider)}{e.provider.model ? ` · ${e.provider.model}` : ''}</Text>
+      <div class="profile"><Button size="sm" label="Open full profile" href="/engineers/{e.id}" /></div>
     {/if}
   </div>
 </RightPanel>
 
 <style>
   .pad {
-    padding: 16px 18px 24px;
+    padding: var(--spacing-4) var(--spacing-4) var(--spacing-6);
     display: grid;
-    gap: 14px;
+    gap: var(--spacing-4);
     align-content: start;
   }
   .id {
     display: flex;
-    gap: 12px;
+    gap: var(--spacing-3);
     align-items: center;
   }
-  .name {
-    font-size: 18px;
-    font-weight: 680;
+  .id-text {
+    display: grid;
+    gap: var(--spacing-0-5);
+    min-width: 0;
   }
   .tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    list-style: none;
-    margin: 0;
-    padding: 0;
+    gap: var(--spacing-1-5);
   }
-  h3 {
-    font-size: 14px;
-    margin-bottom: 6px;
+  section {
+    display: grid;
+    gap: var(--spacing-1-5);
+  }
+  /* Section titles in a drawer sit below its 17px title. */
+  section :global(h3.astryx-heading) {
+    font-size: var(--text-heading-4-size);
+    line-height: var(--text-heading-4-leading);
   }
   .instr {
-    padding: 8px 10px;
-    border-radius: var(--r-control);
-    background: var(--surface-subtle);
-    font-size: 14px;
+    padding: var(--spacing-2) var(--spacing-3);
+    border-radius: var(--radius-element);
+    background: var(--color-background-muted);
   }
   .plain {
-    list-style: none;
-    margin: 0;
-    padding: 0;
     display: grid;
-    gap: 4px;
+    gap: var(--spacing-1);
   }
+  /* Rows keep their hover wash but line up with the text above them. */
   .work {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    padding: 4px 0;
-    border: 0;
-    background: none;
-    color: var(--ink);
-    font: inherit;
-    font-size: 14px;
-    text-align: left;
-    cursor: pointer;
+    margin-inline: calc(-1 * var(--spacing-2));
   }
-  .work:hover .truncate {
-    text-decoration: underline;
-  }
-  .btn {
+  .profile {
     justify-self: start;
   }
 </style>

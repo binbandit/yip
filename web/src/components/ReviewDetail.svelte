@@ -2,15 +2,17 @@
   // Review truth: which revision each round judged, the findings with
   // file:line and evidence, the author's replies, and superseded rounds. An
   // earlier "requested changes" stays visible beside the later approval.
+  import { Badge, Card, Code, CodeBlock, Icon, Link, Text } from '@astryx-svelte/core';
+  import { CircleAlert } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { artifactUrl } from '../lib/api/endpoints';
   import type { Review } from '../lib/api/types.gen';
   import { findingStatusLabel, reviewShape, reviewStateLabel, reviewTone, severityLabel, verdictPhrase } from '../lib/util/labels';
   import { atTime, shortSha } from '../lib/util/time';
   import StateIcon from './StateIcon.svelte';
+  import Notice from './Notice.svelte';
   import Avatar from './Avatar.svelte';
   import MessageBody from './MessageBody.svelte';
-  import Icon from './Icon.svelte';
 
   interface Props {
     review: Review;
@@ -26,69 +28,99 @@
   const staleApproval = $derived(
     !!latest && latest.state === 'approved' && !!currentHead && !!(latest.target.head || latest.target.hash) && (latest.target.head || latest.target.hash) !== currentHead,
   );
+
+  // Hue only for a confirmed approval or a review that couldn't happen.
+  // "Changes requested" is an engineering state, so it stays neutral.
+  const verdictBadge = (state: Review['state']): 'green' | 'yellow' | 'neutral' =>
+    state === 'approved' ? 'green' : state === 'unable_to_review' ? 'yellow' : 'neutral';
 </script>
 
 <article class="review" aria-label="Review by {reviewer}">
   <header class="head">
-    <Avatar actor={{ kind: 'engineer', id: review.reviewerId }} size={28} />
-    <div>
-      <p class="who">
+    <Avatar actor={{ kind: 'engineer', id: review.reviewerId }} size={24} />
+    <div class="head-text">
+      <Text as="p">
         <strong>{reviewer}</strong> reviewing {author}'s {review.targetKind === 'pr' ? 'pull request' : review.targetKind || 'work'}
-      </p>
-      <p class="state tone-{reviewTone(review.state)}">
-        <StateIcon shape={reviewShape(review.state)} tone={reviewTone(review.state)} size={13} />
-        {reviewStateLabel(review.state)}{#if (latest?.target.head || latest?.target.hash)}&nbsp;<span class="meta">on <span class="mono">{shortSha(latest.target.head || latest.target.hash)}</span></span>{/if}
+      </Text>
+      <p class="state">
+        <Badge variant={verdictBadge(review.state)} label={reviewStateLabel(review.state)}>
+          {#snippet icon()}<StateIcon shape={reviewShape(review.state)} tone={reviewTone(review.state)} size={12} />{/snippet}
+        </Badge>
+        {#if latest?.target.head || latest?.target.hash}
+          <Text type="supporting">on <Code size="inherit">{shortSha(latest.target.head || latest.target.hash)}</Code></Text>
+        {/if}
       </p>
     </div>
   </header>
-  {#if review.criteria}<p class="criteria"><span class="meta">Asked to check:</span> {review.criteria}</p>{/if}
+  {#if review.criteria}<Text as="p"><Text type="supporting">Asked to check:</Text> {review.criteria}</Text>{/if}
   {#if staleApproval}
-    <p class="notice attention">This approval is for <span class="mono">{shortSha(latest.target.head || latest.target.hash)}</span>. The work has moved to <span class="mono">{shortSha(currentHead)}</span>, so it no longer counts until the new revision is reviewed.</p>
+    <Notice tone="warning">
+      {#snippet title()}This approval is for <Code size="inherit">{shortSha(latest.target.head || latest.target.hash)}</Code>.{/snippet}
+      {#snippet description()}The work has moved to <Code size="inherit">{shortSha(currentHead)}</Code>, so it no longer counts until the new revision is reviewed.{/snippet}
+    </Notice>
   {/if}
 
   <ol class="rounds">
     {#each rounds as r (r.id)}
       <li class="round" class:superseded={!!r.supersededBy}>
-        <p class="round-head">
-          <StateIcon shape={reviewShape(r.state)} tone={r.supersededBy ? 'neutral' : reviewTone(r.state)} size={13} />
-          <span class="round-line">
+        <div class="round-head">
+          <span class="node"><StateIcon shape={reviewShape(r.state)} tone={r.supersededBy ? 'neutral' : reviewTone(r.state)} size={13} /></span>
+          <p class="round-title">
             <span>
               <strong>Round {r.number}:</strong> {reviewer} {verdictPhrase(r.state)}
               {r.number === 1 && rounds.length > 1 ? 'the first revision' : r === latest && rounds.length > 1 ? 'the updated revision' : 'the revision'}
-              {#if r.target.artifactId}<a class="mono" href={artifactUrl(r.target.artifactId)} target="_blank" rel="noreferrer">{shortSha(r.target.hash)} · document</a>{:else if r.target.head}<span class="mono">{shortSha(r.target.head)}</span>{/if}
+              {#if r.target.artifactId}<Link hasUnderline href={artifactUrl(r.target.artifactId)} target="_blank" rel="noreferrer"
+                  ><Code size="inherit" color="inherit">{shortSha(r.target.hash)} · document</Code></Link
+                >{:else if r.target.head}<Code size="inherit">{shortSha(r.target.head)}</Code>{/if}
             </span>
-            {#if r.decidedAt}<span class="meta">{atTime(r.decidedAt)}</span>{/if}
-            {#if r.supersededBy}<span class="tag">Superseded by a newer revision</span>{/if}
-          </span>
-        </p>
+            {#if r.decidedAt}<Text type="supporting">{atTime(r.decidedAt)}</Text>{/if}
+            {#if r.supersededBy}<Badge variant="neutral" label="Superseded by a newer revision" />{/if}
+          </p>
+        </div>
         {#if r.summary}<div class="summary"><MessageBody message={{ body: r.summary, mentions: [] }} /></div>{/if}
         {#if r.findings?.length}
           <ul class="findings">
             {#each r.findings as f (f.id)}
-              <li class="finding sev-{f.severity}">
-                <p class="f-head">
-                  <span class="sev">{#if f.severity === 'blocking'}<Icon name="alertCircle" size={14} />{/if}{severityLabel(f.severity)}</span>
-                  {#if f.file}<button class="link-btn mono loc" onclick={() => app.showInDiff(review.jobId, f.file!, f.line || undefined, r.target.head)} title="Show in the diff"
-                      >{f.file}{f.line ? `:${f.line}` : ''}</button
-                    >{/if}
-                  <span class="f-status">{findingStatusLabel(f.status)}</span>
-                </p>
-                <MessageBody message={{ body: f.body, mentions: [] }} />
-                {#if f.evidence}<pre class="evidence">{f.evidence}</pre>{/if}
-                {#each f.replies ?? [] as rep (rep.id)}
-                  <div class="reply">
-                    <p class="meta">
-                      <strong class="rep-who">{app.actorName(rep.author)}</strong> replied{#if rep.revision}&nbsp;with <span class="mono">{shortSha(rep.revision)}</span>{/if} · {atTime(rep.createdAt)}
+              <li class="finding">
+                <Card padding={3}>
+                  <div class="f-body">
+                    <p class="f-head">
+                      {#if f.severity === 'blocking'}
+                        <!-- Blocking leads with the danger shape, like every other danger notice. -->
+                        <Badge variant="red" label={severityLabel(f.severity)}>
+                          {#snippet icon()}<Icon icon={CircleAlert} size="xsm" color="inherit" />{/snippet}
+                        </Badge>
+                      {:else}
+                        <Badge variant="neutral" label={severityLabel(f.severity)} />
+                      {/if}
+                      {#if f.file}<Link
+                          class="loc"
+                          tooltip="Show in the diff"
+                          hasUnderline
+                          onclick={() => app.showInDiff(review.jobId, f.file!, f.line || undefined, r.target.head)}
+                          ><span class="path">{f.file}{f.line ? `:${f.line}` : ''}</span></Link
+                        >{/if}
+                      <span class="f-status"><Text type="supporting">{findingStatusLabel(f.status)}</Text></span>
                     </p>
-                    <MessageBody message={{ body: rep.body, mentions: [] }} />
-                    {#if rep.evidence}<p class="meta">Evidence: {rep.evidence}</p>{/if}
+                    <MessageBody message={{ body: f.body, mentions: [] }} />
+                    {#if f.evidence}<CodeBlock code={f.evidence} size="sm" width="100%" container="section" isWrapped />{/if}
+                    {#each f.replies ?? [] as rep (rep.id)}
+                      <div class="reply">
+                        <Text as="p" type="supporting">
+                          <strong class="rep-who">{app.actorName(rep.author)}</strong> replied{#if rep.revision}&nbsp;with <Code size="inherit">{shortSha(rep.revision)}</Code>{/if}
+                          · {atTime(rep.createdAt)}
+                        </Text>
+                        <MessageBody message={{ body: rep.body, mentions: [] }} />
+                        {#if rep.evidence}<Text as="p" type="supporting">Evidence: {rep.evidence}</Text>{/if}
+                      </div>
+                    {/each}
                   </div>
-                {/each}
+                </Card>
               </li>
             {/each}
           </ul>
         {:else if r.state === 'approved'}
-          <p class="meta">No findings.</p>
+          <Text as="p" type="supporting">No findings.</Text>
         {/if}
       </li>
     {/each}
@@ -98,129 +130,100 @@
 <style>
   .review {
     display: grid;
-    gap: 10px;
+    gap: var(--spacing-3);
   }
   .head {
     display: flex;
-    gap: 10px;
+    gap: var(--spacing-3);
     align-items: flex-start;
   }
-  .who {
-    font-size: 14px;
+  .head-text {
+    display: grid;
+    gap: var(--spacing-1);
+    min-width: 0;
   }
   .state {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 13.5px;
-    font-weight: 650;
-  }
-  .criteria {
-    font-size: 14px;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
   }
   .rounds {
-    list-style: none;
     margin: 0;
-    padding: 0 0 0 14px;
-    border-left: 2px solid var(--line);
+    padding: 0 0 0 var(--spacing-3);
+    border-left: 2px solid var(--color-border);
     display: grid;
-    gap: 14px;
+    gap: var(--spacing-4);
   }
   .round {
     display: grid;
-    gap: 6px;
+    gap: var(--spacing-2);
+    min-width: 0;
   }
   .round-head {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    font-size: 14px;
-    margin-left: -22px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: var(--spacing-2);
+    /* The state shape sits on the rail; the text wraps beside it. */
+    margin-left: calc(-1 * var(--spacing-3) - 10px);
   }
-  /* The shape sits on the rail, centred on the first line; wrapped text stays right of it. */
-  .round-head > :global(svg) {
-    margin-top: calc((1lh - 15px) / 2);
-    background: var(--surface);
-    border-radius: 50%;
-    padding: 1px;
-    box-sizing: content-box;
-  }
-  .round-line {
+  .round-title {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 2px 8px;
-    min-width: 0;
+    gap: var(--spacing-1) var(--spacing-2);
+  }
+  .node {
+    display: inline-flex;
+    margin-top: 1px;
+    padding: 2px;
+    border-radius: var(--radius-full);
+    background: var(--color-background-surface);
   }
   .superseded .summary,
   .superseded .findings {
     opacity: 0.85;
   }
-  .tag {
-    font-size: 12px;
-    padding: 0 7px;
-    border-radius: var(--r-pill);
-    border: 1px solid var(--line);
-    color: var(--ink-secondary);
-  }
   .summary {
-    font-size: 14px;
+    min-width: 0;
   }
   .findings {
-    list-style: none;
-    margin: 0;
-    padding: 0;
     display: grid;
-    gap: 8px;
+    gap: var(--spacing-2);
   }
-  .finding {
-    padding: 8px 10px;
-    border: 1px solid var(--line);
-    border-radius: var(--r-artifact);
-    font-size: 14px;
+  /* Severity is the badge's job; the evidence is an inset well, not a card within the card. */
+  .finding :global(.astryx-code-block) {
+    border-radius: var(--radius-inner);
+    background: var(--color-background-muted);
+  }
+  .f-body {
     display: grid;
-    gap: 4px;
+    gap: var(--spacing-1-5);
+    min-width: 0;
   }
   .f-head {
     display: flex;
-    gap: 8px;
+    gap: var(--spacing-2);
     flex-wrap: wrap;
-    align-items: baseline;
-    font-size: 13px;
+    align-items: center;
   }
-  .sev {
-    font-weight: 700;
-  }
-  .sev :global(.icon) {
-    display: inline-block;
-    margin-right: 4px;
-    vertical-align: -2px;
-  }
-  .sev-blocking .sev {
-    color: var(--danger);
-  }
-  .loc {
-    color: var(--ink);
+  .path {
+    font-family: var(--font-family-code);
+    font-size: var(--font-size-sm);
+    overflow-wrap: anywhere;
   }
   .f-status {
     margin-left: auto;
-    color: var(--ink-secondary);
-  }
-  .evidence {
-    margin: 2px 0 0;
-    padding: 6px 8px;
-    border-radius: 6px;
-    background: var(--surface-subtle);
-    font-size: 12.5px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
   }
   .reply {
-    margin-top: 4px;
-    padding-top: 8px;
-    border-top: 1px solid var(--line-soft);
+    display: grid;
+    gap: var(--spacing-1);
+    margin-top: var(--spacing-1);
+    padding-top: var(--spacing-2);
+    border-top: 1px solid var(--color-border);
   }
   .rep-who {
-    color: var(--ink);
+    color: var(--color-text-primary);
   }
 </style>

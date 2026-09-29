@@ -5,6 +5,8 @@
   // check, earlier verdicts, the PR's separate facts, the machine) is one
   // click away under Details, and anything missing is always shown.
   import { untrack } from 'svelte';
+  import { Button, Code, HStack, Icon, Link, MetadataList, MetadataListItem, Text, Tooltip } from '@astryx-svelte/core';
+  import { ChevronDown, ChevronRight, Eye } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
   import { jobShape, jobStateLabel, jobTone, reviewShape, reviewTone, verdictPhrase } from '../lib/util/labels';
@@ -12,7 +14,7 @@
   import { shortSha } from '../lib/util/time';
   import type { Review } from '../lib/api/types.gen';
   import StateIcon from './StateIcon.svelte';
-  import Icon from './Icon.svelte';
+  import Notice from './Notice.svelte';
   import PRFacts from './PRFacts.svelte';
 
   interface Props {
@@ -74,7 +76,7 @@
 
 <section class="result" aria-label="Result: {job?.title ?? 'work'}">
   {#if !job}
-    <p class="meta">{entry?.missing ? 'This work is no longer available to you.' : 'Loading the result…'}</p>
+    <Text as="p" type="supporting">{entry?.missing ? 'This work is no longer available to you.' : 'Loading the result…'}</Text>
   {:else}
     <header class="head">
       <StateIcon shape={jobShape(job.state)} tone={jobTone(job.state)} />
@@ -83,91 +85,97 @@
     </header>
 
     {#if d}
-      <p class="summary">
+      <div class="summary">
         <!-- Each claim opens its evidence (§8: evidence adjacent to the claim). -->
         {#if revision}
-          <button class="item claim" title="View the diff" onclick={() => inspect('evidence')}
-            >{revision.filesChanged} {revision.filesChanged === 1 ? 'file' : 'files'} <span class="add">+{revision.insertions}</span> <span class="del">−{revision.deletions}</span></button
-          >
+          <Tooltip content="View the diff">
+            <button class="claim" onclick={() => inspect('evidence')}
+              >{revision.filesChanged} {revision.filesChanged === 1 ? 'file' : 'files'} <span class="add">+{revision.insertions}</span> <span class="del">−{revision.deletions}</span></button
+            >
+          </Tooltip>
         {/if}
         {#if checks.length === 1}
-          <button class="item claim" title="View the command, exit status and log" onclick={() => inspect('evidence')}
-            ><span class="mono">{checks[0].command}</span> <span class={checks[0].passed ? 'tone-success' : 'tone-danger'}>{checks[0].passed ? 'passed' : 'failed'}</span></button
-          >
+          <Tooltip content="View the command, exit status and log">
+            <button class="claim" onclick={() => inspect('evidence')}
+              ><span class="command">{checks[0].command}</span> <span class={checks[0].passed ? 'tone-success' : 'tone-danger'}>{checks[0].passed ? 'passed' : 'failed'}</span></button
+            >
+          </Tooltip>
         {:else if checks.length}
-          <button class="item claim {failed.length ? 'tone-danger' : 'tone-success'}" title="View the checks and their logs" onclick={() => inspect('evidence')}
-            >{failed.length ? `${failed.length} of ${checks.length} checks failed` : `${checks.length} checks passed`}</button
-          >
+          <Tooltip content="View the checks and their logs">
+            <button class="claim {failed.length ? 'tone-danger' : 'tone-success'}" onclick={() => inspect('evidence')}
+              >{failed.length ? `${failed.length} of ${checks.length} checks failed` : `${checks.length} checks passed`}</button
+            >
+          </Tooltip>
         {/if}
         {#each verdicts as v (v.id)}
-          <button class="item claim tone-{v.tone}" title="View the review" onclick={() => app.openPanel({ kind: 'review', id: v.id })}>{v.text}</button>
+          <Tooltip content="View the review">
+            <button class="claim tone-{v.tone}" onclick={() => app.openPanel({ kind: 'review', id: v.id })}>{v.text}</button>
+          </Tooltip>
         {/each}
         {#if docs.length}
-          <button class="item claim" title="View the files" onclick={() => inspect('evidence')}>{docs.length} {docs.length === 1 ? 'document' : 'documents'}</button>
+          <Tooltip content="View the files">
+            <button class="claim" onclick={() => inspect('evidence')}>{docs.length} {docs.length === 1 ? 'document' : 'documents'}</button>
+          </Tooltip>
         {/if}
         {#if d.pullRequests.length}
-          <button class="item claim" title="View the pull request's facts" onclick={() => app.openPanel({ kind: 'pr', id: d.pullRequests[0].id })}>PR #{d.pullRequests[0].number}</button>
+          <Tooltip content="View the pull request's facts">
+            <button class="claim" onclick={() => app.openPanel({ kind: 'pr', id: d.pullRequests[0].id })}>PR #{d.pullRequests[0].number}</button>
+          </Tooltip>
         {/if}
-      </p>
+      </div>
     {/if}
 
     {#if d?.missing.length}
-      <p class="notice attention">Still needs {d.missing.join('; ')}.</p>
+      <Notice tone="warning">Still needs {d.missing.join('; ')}.</Notice>
     {/if}
     {#if job.requiresHumanReview && job.state === 'review_ready'}
       <p class="needs">Your review is required before this completes.</p>
     {/if}
 
-    <footer class="foot">
-      <button class="btn btn-sm" onclick={() => inspect('evidence')}><Icon name="eye" size={15} />Inspect the work</button>
+    <HStack as="footer" gap={1} wrap="wrap" align="center">
+      <Button label="Inspect the work" size="sm" onclick={() => inspect('evidence')}>
+        {#snippet icon()}<Icon icon={Eye} size="sm" />{/snippet}
+      </Button>
       {#if d?.reviews.length}
-        <button class="btn btn-sm btn-quiet" onclick={() => inspect('review')}>View review</button>
+        <Button label="View review" variant="ghost" size="sm" onclick={() => inspect('review')} />
       {/if}
-      <button class="btn btn-sm btn-quiet more" aria-expanded={open} aria-controls={uid} onclick={() => (open = !open)}>
-        Details<Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
-      </button>
-    </footer>
+      <Button class="more" label="Details" variant="ghost" size="sm" aria-expanded={open} aria-controls={uid} onclick={() => (open = !open)}>
+        {#snippet endContent()}<Icon icon={open ? ChevronDown : ChevronRight} size="sm" />{/snippet}
+      </Button>
+    </HStack>
 
-    <div id={uid} hidden={!open}>
-    <dl class="facts">
-      {#if revision}
-        <div class="fact">
-          <dt>Changed</dt>
-          <dd>
+    <div id={uid} class="details" hidden={!open}>
+      <MetadataList label={{ position: 'start', width: 88 }}>
+        {#if revision}
+          <MetadataListItem label="Changed">
             <span>{revision.filesChanged} {revision.filesChanged === 1 ? 'file' : 'files'}</span>
             <span class="add">+{revision.insertions}</span> <span class="del">−{revision.deletions}</span>
             {#if revision.summary}<p class="rev-summary">{revision.summary}</p>{/if}
-            {#if earlierRevisions}<span class="meta">after {earlierRevisions} earlier {earlierRevisions === 1 ? 'revision' : 'revisions'}</span>{/if}
-          </dd>
-        </div>
-      {/if}
-      {#if d && (checks.length || head)}
-        <div class="fact">
-          <dt>Checks</dt>
-          <dd>
+            {#if earlierRevisions}<Text type="supporting">after {earlierRevisions} earlier {earlierRevisions === 1 ? 'revision' : 'revisions'}</Text>{/if}
+          </MetadataListItem>
+        {/if}
+        {#if d && (checks.length || head)}
+          <MetadataListItem label="Checks">
             {#if checks.length === 0}
-              <span class="meta">No checks recorded on this revision.</span>
+              <Text type="supporting">No checks recorded on this revision.</Text>
             {:else}
               <ul class="checks">
                 {#each checks as c (c.id)}
                   <li>
                     <button class="linkish" onclick={() => inspect('evidence')}>
                       <StateIcon shape={c.passed ? 'check-filled' : 'triangle'} tone={c.passed ? 'success' : 'danger'} size={13} />
-                      <span class="mono">{c.command}</span>
+                      <Code>{c.command}</Code>
                       <span class={c.passed ? 'tone-success' : 'tone-danger'}>{c.passed ? 'passed' : `failed (exit ${c.exitCode})`}</span>
                     </button>
                   </li>
                 {/each}
               </ul>
-              {#if earlierChecks}<span class="meta">{earlierChecks} earlier {earlierChecks === 1 ? 'run' : 'runs'} on previous revisions</span>{/if}
+              {#if earlierChecks}<Text type="supporting">{earlierChecks} earlier {earlierChecks === 1 ? 'run' : 'runs'} on previous revisions</Text>{/if}
             {/if}
-          </dd>
-        </div>
-      {/if}
-      {#if d?.reviews.length}
-        <div class="fact">
-          <dt>Review</dt>
-          <dd>
+          </MetadataListItem>
+        {/if}
+        {#if d?.reviews.length}
+          <MetadataListItem label="Review">
             <ul class="reviews">
               {#each d.reviews as r (r.id)}
                 {@const rr = roundFor(r)}
@@ -176,10 +184,10 @@
                     <StateIcon shape={reviewShape(rr.current.state)} tone={reviewTone(rr.current.state)} size={13} />
                     <span
                       >{app.engineerName(r.reviewerId)} {verdictPhrase(rr.current.state)}
-                      <span class="mono">{shortSha(rr.current.target.head || rr.current.target.hash) || 'the work'}</span></span
+                      <Code>{shortSha(rr.current.target.head || rr.current.target.hash) || 'the work'}</Code></span
                     >
                     {#each rr.earlier as e (e.id)}
-                      <span class="meta">· {verdictPhrase(e.state)} <span class="mono">{shortSha(e.target.head || e.target.hash)}</span> first</span>
+                      <Text type="supporting">· {verdictPhrase(e.state)} <Code>{shortSha(e.target.head || e.target.hash)}</Code> first</Text>
                     {/each}
                   {:else}
                     <span>{app.engineerName(r.reviewerId)} was asked to review</span>
@@ -187,40 +195,29 @@
                 </li>
               {/each}
             </ul>
-          </dd>
-        </div>
-      {/if}
-      {#if job.revision?.head}
-        <div class="fact">
-          <dt>Revision</dt>
-          <dd><span class="mono">{shortSha(job.revision.head)}</span>{#if job.revision.branch}{' '}<span class="meta">on {job.revision.branch}</span>{/if}</dd>
-        </div>
-      {/if}
-      {#if docs.length}
-        <div class="fact">
-          <dt>Documents</dt>
-          <dd>
+          </MetadataListItem>
+        {/if}
+        {#if job.revision?.head}
+          <MetadataListItem label="Revision">
+            <Code>{shortSha(job.revision.head)}</Code>{#if job.revision.branch}{' '}<Text type="supporting">on {job.revision.branch}</Text>{/if}
+          </MetadataListItem>
+        {/if}
+        {#if docs.length}
+          <MetadataListItem label="Documents">
             <ul class="files">
-              {#each docs as a (a.id)}<li><a href="/v1/artifacts/{a.id}" target="_blank" rel="noopener">{a.name}</a></li>{/each}
+              {#each docs as a (a.id)}<li><Link hasUnderline href="/v1/artifacts/{a.id}" target="_blank" rel="noopener">{a.name}</Link></li>{/each}
             </ul>
-          </dd>
-        </div>
-      {/if}
-      {#if d?.pullRequests.length}
-        <div class="fact">
-          <dt>Pull request</dt>
-          <dd>
+          </MetadataListItem>
+        {/if}
+        {#if d?.pullRequests.length}
+          <MetadataListItem label="Pull request">
             {#each d.pullRequests as pr (pr.id)}<PRFacts {pr} compact />{/each}
-          </dd>
-        </div>
-      {/if}
-      {#if job.nodeId}
-        <div class="fact">
-          <dt>Ran on</dt>
-          <dd>{app.nodeName(job.nodeId) || 'a paired machine'}</dd>
-        </div>
-      {/if}
-        </dl>
+          </MetadataListItem>
+        {/if}
+        {#if job.nodeId}
+          <MetadataListItem label="Ran on">{app.nodeName(job.nodeId) || 'a paired machine'}</MetadataListItem>
+        {/if}
+      </MetadataList>
     </div>
   {/if}
 </section>
@@ -228,44 +225,53 @@
 <style>
   .result {
     display: grid;
-    gap: 6px;
-    margin-top: 6px;
+    gap: var(--spacing-1-5);
+    margin-top: var(--spacing-1-5);
     max-width: 560px;
-    padding: 10px 12px;
-    border: 1px solid var(--line-strong);
-    border-radius: var(--r-artifact);
-    background: var(--surface);
+    padding: var(--spacing-3);
+    border: 1px solid var(--color-border-emphasized);
+    border-radius: var(--radius-container);
+    background: var(--color-background-card);
+  }
+  .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
   .head {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-2);
     min-width: 0;
   }
   .title {
     flex: 1;
-    font-weight: 600;
-    font-size: 14px;
+    font-size: var(--text-body-size);
+    font-weight: var(--font-weight-semibold);
   }
   .state {
     flex: none;
-    font-size: 12px;
-    font-weight: 500;
+    font-size: var(--text-supporting-size);
+    font-weight: var(--font-weight-medium);
   }
+
   .summary {
     display: flex;
     flex-wrap: wrap;
-    gap: 2px 0;
-    font-size: 13px;
-    color: var(--ink-secondary);
+    gap: var(--spacing-0-5) 0;
+    font-size: var(--text-supporting-size);
+    line-height: var(--text-supporting-leading);
+    color: var(--color-text-secondary);
   }
-  .summary .item::before {
+  /* Claims read as one line joined by middots; each Tooltip wraps its claim in a display: contents box. */
+  .claim::before {
     display: inline-block;
     content: '·';
-    margin: 0 7px;
-    color: color-mix(in srgb, var(--ink) 35%, transparent);
+    margin: 0 var(--spacing-2);
+    color: color-mix(in srgb, var(--color-text-primary) 35%, transparent);
   }
-  .summary > :first-child::before {
+  .summary > :global(:first-child > .claim::before) {
     content: none;
   }
   .claim {
@@ -273,89 +279,80 @@
     border: 0;
     background: none;
     font: inherit;
-    color: inherit;
     text-align: left;
     cursor: pointer;
     text-decoration: underline;
     text-decoration-color: transparent;
     text-underline-offset: 3px;
-    transition: text-decoration-color var(--t-fast) var(--ease);
+    transition: text-decoration-color var(--duration-fast) var(--ease-standard);
   }
   .claim:hover,
   .claim:focus-visible {
     text-decoration-color: currentColor;
   }
+  .claim:focus-visible,
+  .linkish:focus-visible {
+    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+    outline-offset: 2px;
+    border-radius: var(--radius-inner);
+  }
+  .command {
+    font-family: var(--font-family-code);
+  }
+
   .needs {
-    font-size: 13px;
-    color: var(--attention-ink);
+    font-size: var(--text-supporting-size);
+    color: var(--color-warning);
   }
-  .foot {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-wrap: wrap;
-    margin: 2px -4px 0;
+
+  .result :global(.more) {
+    margin-inline-start: auto;
+    color: var(--color-text-secondary);
   }
-  .more {
-    margin-left: auto;
-    color: var(--ink-secondary);
+  .details {
+    margin-top: var(--spacing-1);
+    padding-top: var(--spacing-2);
+    border-top: 1px solid var(--color-border);
   }
-  .facts {
-    margin: 4px 0 0;
-    padding: 4px 0 0;
-    border-top: 1px solid var(--line);
-  }
-  .fact {
-    display: grid;
-    grid-template-columns: 88px minmax(0, 1fr);
-    gap: 12px;
-    padding: 6px 0;
-    font-size: 13px;
-  }
-  .fact + .fact {
-    border-top: 1px solid var(--line-soft);
-  }
-  dt {
-    color: var(--ink-secondary);
-    font-size: 12px;
-    padding-top: 1px;
-  }
-  dd {
-    margin: 0;
+  .details :global(dd) {
     min-width: 0;
+  }
+  /* On a phone the facts stack under their labels. */
+  @media (max-width: 480px) {
+    .details :global(dl) {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
   .files,
   .checks,
   .reviews {
-    list-style: none;
-    margin: 2px 0 0;
-    padding: 0;
     display: grid;
-    gap: 3px;
+    gap: var(--spacing-1);
+    margin: var(--spacing-0-5) 0 0;
   }
   .reviews li,
   .checks li {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--spacing-1-5);
   }
   .rev-summary {
-    margin-top: 2px;
+    margin-top: var(--spacing-0-5);
   }
   .add {
-    color: var(--success);
-    font-weight: 600;
+    color: var(--color-success);
+    font-weight: var(--font-weight-semibold);
   }
   .del {
-    color: var(--danger);
-    font-weight: 600;
+    color: var(--color-error);
+    font-weight: var(--font-weight-semibold);
   }
   .linkish {
     display: inline-flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--spacing-1-5);
     padding: 0;
     border: 0;
     background: none;
@@ -363,13 +360,7 @@
     cursor: pointer;
     color: inherit;
   }
-  .linkish:hover .mono {
+  .linkish:hover :global(code) {
     text-decoration: underline;
-  }
-  @media (max-width: 480px) {
-    .fact {
-      grid-template-columns: 1fr;
-      gap: 2px;
-    }
   }
 </style>

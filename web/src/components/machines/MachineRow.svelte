@@ -2,12 +2,14 @@
   // One machine in the Machines list: its name, connection, current work,
   // each provider's availability and what limits its work, and a way into
   // its details. Four separate facts, so "Connected" never reads as "ready".
+  import { Button, Heading, Icon, Text, Tooltip, VisuallyHidden } from '@astryx-svelte/core';
+  import { ChevronRight, Monitor } from '@lucide/svelte';
   import type { Node } from '../../lib/api/types.gen';
   import { app } from '../../lib/state/app.svelte';
   import { providerProfiles } from '../../lib/state/profiles.svelte';
   import { connectionSummary, currentWork, machineFacts, osLabel, providerStatuses, workSummary } from '../../lib/util/machines';
+  import { FACT_ICONS } from '../../lib/util/machineIcons';
   import StateIcon from '../StateIcon.svelte';
-  import Icon from '../Icon.svelte';
 
   interface Props {
     node: Node;
@@ -23,8 +25,6 @@
   const platform = $derived([osLabel(n.os), n.arch].filter(Boolean).join(' · '));
   const nameId = $derived(`machine-${n.id}-name`);
 
-  let detailsBtn: HTMLButtonElement | undefined = $state();
-
   function openDetails() {
     app.openPanel({ kind: 'machine', id: n.id });
   }
@@ -38,7 +38,7 @@
   function onRowClick(e: MouseEvent) {
     if ((e.target as HTMLElement).closest('button, a, select, input')) return;
     if (window.getSelection()?.toString()) return;
-    detailsBtn?.focus();
+    (e.currentTarget as HTMLElement).querySelector<HTMLButtonElement>('.action button')?.focus();
     openDetails();
   }
 </script>
@@ -46,37 +46,39 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <li class="row" class:selected class:revoked={n.status === 'revoked'} aria-labelledby={nameId} onclick={onRowClick}>
   <div class="cell name">
-    <span class="device" aria-hidden="true"><Icon name="machine" size={18} /></span>
+    <span class="device" aria-hidden="true"><Icon icon={Monitor} size="sm" /></span>
     <div class="name-text">
-      <h2 id={nameId}>{n.name}</h2>
-      {#if platform}<p class="meta">{platform}</p>{/if}
+      <Heading level={2} id={nameId}>{n.name}</Heading>
+      {#if platform}<Text as="p" type="supporting" class="meta">{platform}</Text>{/if}
     </div>
   </div>
 
   <div class="cell conn">
-    <span class="vh">Connection: </span>
-    <p class="state tone-{conn.tone}"><StateIcon shape={conn.shape} tone={conn.tone} /><span class="word">{conn.label}</span></p>
-    {#if conn.meta}<p class="meta" title={conn.metaTitle}>{conn.meta}</p>{/if}
+    <VisuallyHidden>Connection: </VisuallyHidden>
+    <p class="state"><StateIcon shape={conn.shape} tone={conn.tone} /><span class="word">{conn.label}</span></p>
+    {#if conn.meta}
+      <Tooltip content={conn.metaTitle ?? ''} isEnabled={!!conn.metaTitle} hasHoverIndication={false}><Text as="p" type="supporting" class="meta">{conn.meta}</Text></Tooltip>
+    {/if}
   </div>
 
   <div class="cell work">
-    <span class="vh">Current work: </span>
+    <VisuallyHidden>Current work: </VisuallyHidden>
     {#if n.activeRunIds.length}
-      <button class="state work-link tone-{work.tone}" onclick={openWork}>
+      <button class="state work-link" onclick={openWork}>
         <StateIcon shape={work.shape} tone={work.tone} /><span class="word">{work.label}</span>
       </button>
     {:else}
-      <p class="state tone-{work.tone}"><StateIcon shape={work.shape} tone={work.tone} /><span class="word">{work.label}</span></p>
+      <p class="state"><StateIcon shape={work.shape} tone={work.tone} /><span class="word">{work.label}</span></p>
     {/if}
     {#if work.meta}
-      <p class="meta" class:paused={n.draining}>{#if n.draining}<StateIcon shape="pause" size={12} />{/if}{work.meta}</p>
+      <Text as="p" type="supporting" class={n.draining ? 'meta paused' : 'meta'}>{#if n.draining}<StateIcon shape="pause" size={12} />{/if}{work.meta}</Text>
     {/if}
   </div>
 
   <div class="cell limits">
-    <span class="vh">Providers and limits: </span>
+    <VisuallyHidden>Providers and limits: </VisuallyHidden>
     {#if n.status === 'revoked'}
-      <p class="meta">Can’t run work</p>
+      <Text as="p" type="supporting" class="meta">Can’t run work</Text>
     {:else}
       <ul class="facts">
         {#each providers as p (p.provider)}
@@ -86,44 +88,44 @@
           </li>
         {/each}
         {#each facts as f (f.id)}
-          <li class="fact tone-{f.tone}"><Icon name={f.icon} size={13} /><span>{f.text}</span></li>
+          <li class="fact tone-{f.tone}"><Icon icon={FACT_ICONS[f.icon]} size="xsm" /><span>{f.text}</span></li>
         {/each}
       </ul>
     {/if}
   </div>
 
   <div class="cell action">
-    <button bind:this={detailsBtn} class="btn btn-sm details" aria-current={selected ? 'true' : undefined} aria-label="Details for {n.name}" onclick={openDetails}>
-      Details<Icon name="chevronRight" size={15} />
-    </button>
+    <Button label="Details for {n.name}" size="sm" variant={selected ? 'primary' : 'secondary'} aria-current={selected ? 'true' : undefined} onclick={openDetails}>
+      Details
+      {#snippet endContent()}<Icon icon={ChevronRight} size="xsm" />{/snippet}
+    </Button>
   </div>
 </li>
 
 <style>
   .row {
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.95fr) minmax(0, 0.85fr) minmax(0, 1.9fr) 88px;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.95fr) minmax(0, 0.85fr) minmax(0, 1.65fr) 88px;
     grid-template-areas: 'name conn work limits action';
-    gap: 8px 20px;
+    gap: var(--spacing-2) var(--spacing-5);
     align-items: start;
-    padding: 14px 12px;
-    border-top: 1px solid var(--line);
-    border-radius: 0;
+    padding: var(--spacing-4) var(--spacing-3);
+    border-top: 1px solid var(--color-border);
     cursor: default;
-    transition: background-color var(--t-fast) var(--ease);
+    transition: background-color var(--duration-fast) var(--ease-standard);
   }
   .row:first-child {
     border-top: 0;
   }
   .row:hover {
-    background: var(--hover);
+    background: var(--color-overlay-hover);
   }
   .row.selected {
-    background: var(--selected);
+    background: var(--color-overlay-pressed);
   }
-  .row.revoked .name h2,
-  .row.revoked .state {
-    color: var(--ink-secondary);
+  .row.revoked .name :global(h2),
+  .row.revoked .state .word {
+    color: var(--color-text-secondary);
   }
   .cell {
     min-width: 0;
@@ -131,7 +133,7 @@
   .name {
     grid-area: name;
     display: flex;
-    gap: 10px;
+    gap: var(--spacing-3);
     align-items: flex-start;
   }
   .device {
@@ -140,18 +142,17 @@
     width: 32px;
     height: 32px;
     flex: none;
-    margin-top: -4px;
-    border-radius: var(--r-row);
-    background: var(--surface-subtle);
-    color: var(--ink-secondary);
+    margin-top: calc(-1 * var(--spacing-1));
+    border-radius: var(--radius-element);
+    background: var(--color-background-muted);
+    color: var(--color-icon-secondary);
   }
   .name-text {
     min-width: 0;
   }
-  h2 {
-    font-size: var(--text-title);
-    font-weight: 600;
-    letter-spacing: -0.015em;
+  .name :global(h2) {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
     line-height: 1.3;
     overflow-wrap: anywhere;
   }
@@ -167,65 +168,73 @@
   .action {
     grid-area: action;
     justify-self: end;
-    margin-top: -4px;
+    margin-top: calc(-1 * var(--spacing-1));
   }
   .state {
     display: flex;
     width: fit-content;
     max-width: 100%;
     align-items: center;
-    gap: 6px;
-    font-size: var(--text-body);
-    font-weight: 500;
+    gap: var(--spacing-1-5);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
     line-height: 20px;
   }
   .state .word {
-    color: var(--ink);
+    color: var(--color-text-primary);
   }
   .work-link {
     padding: 0;
     border: 0;
     background: none;
+    font: inherit;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     text-align: left;
+    border-radius: var(--radius-inner);
   }
   .work-link .word {
     text-decoration: underline;
-    text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent);
+    text-decoration-color: color-mix(in srgb, var(--color-text-primary) 35%, transparent);
     text-underline-offset: 3px;
   }
   .work-link:hover .word {
     text-decoration-color: currentColor;
   }
-  .meta {
-    margin-top: 2px;
+  .work-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
-  .meta.paused {
+  .cell :global(.meta) {
+    margin-top: var(--spacing-0-5);
+  }
+  .cell :global(.meta.paused) {
     display: flex;
     align-items: center;
-    gap: 5px;
-    color: var(--ink);
-    font-weight: 500;
+    gap: var(--spacing-1);
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-medium);
   }
   .facts {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
-    gap: 4px;
-    font-size: var(--text-body);
+    gap: var(--spacing-1);
+    font-size: var(--font-size-base);
     line-height: 20px;
   }
   .prov,
   .fact {
     display: flex;
-    gap: 7px;
+    gap: var(--spacing-1-5);
     align-items: flex-start;
     min-width: 0;
   }
-  .prov :global(svg),
-  .fact :global(svg) {
-    margin-top: 3.5px;
+  /* Centre the 12–13px marks on the first 20px line. */
+  .prov > :global(svg),
+  .fact > :global(.astryx-icon) {
+    margin-top: 4px;
     flex: none;
   }
   .prov-text {
@@ -233,28 +242,16 @@
     overflow-wrap: anywhere;
   }
   .prov strong {
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
   }
   .limit {
-    color: var(--attention-ink);
-  }
-  .fact.tone-neutral {
-    color: var(--ink-secondary);
+    color: var(--color-warning);
   }
   .fact.tone-attention {
-    color: var(--ink);
+    color: var(--color-text-primary);
   }
-  .fact.tone-attention :global(svg) {
-    color: var(--attention-ink);
-  }
-  .details {
-    gap: 2px;
-    padding-right: 6px;
-  }
-  .details[aria-current='true'] {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--accent-ink);
+  .fact.tone-attention > :global(.astryx-icon) {
+    color: var(--color-warning);
   }
 
   /* The list sits in a container: the details panel (inline beside it at
@@ -266,7 +263,7 @@
         'name name action'
         'conn work work'
         'limits limits limits';
-      gap: 10px 16px;
+      gap: var(--spacing-3) var(--spacing-4);
     }
   }
   @container machines (max-width: 340px) {

@@ -3,17 +3,24 @@
   // they keep, where each note can be used, where it came from, and when it's
   // due for review. Suggestions wait here quietly; nothing asks for them.
   import { onMount } from 'svelte';
+  import { Button, Card, Link, Selector, Text, TextArea } from '@astryx-svelte/core';
+  import Notice from './Notice.svelte';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { ApiError, errorMessage } from '../lib/api/client';
   import type { EngineerNote } from '../lib/api/types.gen';
   import { atTime } from '../lib/util/time';
+  import ScreenSection from './ScreenSection.svelte';
 
   interface Props {
     engineerId: string;
     name: string;
   }
   let { engineerId, name }: Props = $props();
+
+  const NOTE_LIMIT = 400;
+  // TextArea's maxLength only counts; the native attribute also stops typing at the limit.
+  const noteHints = { maxlength: NOTE_LIMIT };
 
   let error = $state('');
   onMount(() => {
@@ -91,124 +98,122 @@
   }
 </script>
 
-<section class="section" aria-labelledby="eng-notes">
-  <div class="head">
-    <h2 class="section-title" id="eng-notes">Notes {name} keeps</h2>
-    {#if !draft}<button class="btn btn-sm btn-quiet" onclick={() => startNote()}>Write a note</button>{/if}
-  </div>
-  <p class="meta lead">
-    Short conclusions from earlier work. {name} sees a note only in conversations where its sources are visible, and not once it's due for review.
-  </p>
-  {#if error}<p class="form-error" role="alert">{error}</p>{/if}
+<ScreenSection title="Notes {name} keeps" id="eng-notes">
+  {#snippet end()}
+    {#if !draft}<Button label="Write a note" size="sm" variant="ghost" onclick={() => startNote()} />{/if}
+  {/snippet}
+  <div class="body">
+    <Text as="p" type="supporting">
+      Short conclusions from earlier work. {name} sees a note only in conversations where its sources are visible, and not once it's due for review.
+    </Text>
+    {#if error}<Notice tone="danger" role="alert">{error}</Notice>{/if}
 
-  {#if draft}
-    <form class="panel-box form" onsubmit={saveNote}>
-      <label class="field">
-        <span class="label">{draft.supersedes ? 'Corrected note' : 'Note'}</span>
-        <textarea class="input" rows="3" maxlength="400" bind:value={draft.body}></textarea>
-      </label>
-      {#if !draft.supersedes}
-        <label class="field">
-          <span class="label">Where it applies</span>
-          <select class="select" bind:value={draft.scope}>
-            {#each scopes as s (s.value)}<option value={s.value}>{s.label}</option>{/each}
-          </select>
-        </label>
-      {/if}
-      <div class="row">
-        <button class="btn btn-primary btn-sm" type="submit" disabled={busy === 'new' || !draft.body.trim()}>{draft.supersedes ? 'Save correction' : 'Keep note'}</button>
-        <button class="btn btn-sm" type="button" onclick={() => (draft = null)}>Cancel</button>
+    {#if draft}
+      <Card>
+        <form class="form" onsubmit={saveNote}>
+          <TextArea label={draft.supersedes ? 'Corrected note' : 'Note'} rows={3} maxLength={NOTE_LIMIT} {...noteHints} bind:value={draft.body} />
+          {#if !draft.supersedes}
+            <Selector
+              label="Where it applies"
+              options={scopes}
+              value={draft.scope}
+              onChange={(v: string) => {
+                if (draft) draft.scope = v;
+              }}
+            />
+          {/if}
+          <div class="row">
+            <Button
+              label={draft.supersedes ? 'Save correction' : 'Keep note'}
+              variant="primary"
+              size="sm"
+              type="submit"
+              isLoading={busy === 'new'}
+              isDisabled={!draft.body.trim()}
+            />
+            <Button label="Cancel" size="sm" onclick={() => (draft = null)} />
+          </div>
+        </form>
+      </Card>
+    {/if}
+
+    {#if kept.length === 0 && suggested.length === 0 && !draft}
+      <Text as="p" type="supporting">None yet. {name} keeps notes from finished work; you can write one too.</Text>
+    {/if}
+
+    {#if kept.length}
+      <ul class="notes">
+        {#each kept as n (n.id)}
+          {@const src = sourceHref(n)}
+          <li class:due={due(n)}>
+            {#if n.kind === 'record'}<Text as="p" type="supporting">Work record · written by yip when the work finished</Text>{/if}
+            <p class="note">{n.body}</p>
+            <Text as="p" type="supporting">
+              {scopeLabel(n)}{#if src}{' · from '}<Link hasUnderline type="inherit" href={src.href}>{src.label}</Link>{:else}{' · written by you'}{/if}
+              {' · '}{due(n) ? 'due for review — not used until renewed' : `review ${atTime(n.reviewAfter)}`}
+            </Text>
+            <div class="row">
+              {#if due(n)}<Button label="Still true" size="sm" isDisabled={busy === n.id} onclick={() => act(n, 'renew')} />{/if}
+              <Button label="Correct" size="sm" variant="ghost" onclick={() => startNote(n)} />
+              <Button label="Remove" size="sm" variant="ghost" isDisabled={busy === n.id} onclick={() => act(n, 'remove')} />
+            </div>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
+    {#if suggested.length}
+      <div>
+        <h3 class="sub">Suggested by {name}</h3>
+        <ul class="notes">
+          {#each suggested as n (n.id)}
+            {@const src = sourceHref(n)}
+            <li>
+              <p class="note">{n.body}</p>
+              <Text as="p" type="supporting">{scopeLabel(n)}{#if src}{' · from '}<Link hasUnderline type="inherit" href={src.href}>{src.label}</Link>{/if}</Text>
+              <div class="row">
+                <Button label="Keep" size="sm" isDisabled={busy === n.id} onclick={() => act(n, 'accept')} />
+                <Button label="Discard" size="sm" variant="ghost" isDisabled={busy === n.id} onclick={() => act(n, 'reject')} />
+              </div>
+            </li>
+          {/each}
+        </ul>
       </div>
-    </form>
-  {/if}
-
-  {#if kept.length === 0 && suggested.length === 0 && !draft}
-    <p class="meta">None yet. {name} keeps notes from finished work; you can write one too.</p>
-  {/if}
-
-  {#if kept.length}
-    <ul class="notes">
-      {#each kept as n (n.id)}
-        {@const src = sourceHref(n)}
-        <li class:due={due(n)}>
-          {#if n.kind === 'record'}<p class="tag meta">Work record · written by yip when the work finished</p>{/if}
-          <p class="body">{n.body}</p>
-          <p class="meta">
-            {scopeLabel(n)}{#if src}{' · from '}<a href={src.href}>{src.label}</a>{:else}{' · written by you'}{/if}
-            {' · '}{due(n) ? 'due for review — not used until renewed' : `review ${atTime(n.reviewAfter)}`}
-          </p>
-          <div class="acts">
-            {#if due(n)}<button class="btn btn-sm" disabled={busy === n.id} onclick={() => act(n, 'renew')}>Still true</button>{/if}
-            <button class="btn btn-sm btn-quiet" onclick={() => startNote(n)}>Correct</button>
-            <button class="btn btn-sm btn-quiet" disabled={busy === n.id} onclick={() => act(n, 'remove')}>Remove</button>
-          </div>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-
-  {#if suggested.length}
-    <h3 class="sub">Suggested by {name}</h3>
-    <ul class="notes">
-      {#each suggested as n (n.id)}
-        {@const src = sourceHref(n)}
-        <li>
-          <p class="body">{n.body}</p>
-          <p class="meta">{scopeLabel(n)}{#if src}{' · from '}<a href={src.href}>{src.label}</a>{/if}</p>
-          <div class="acts">
-            <button class="btn btn-sm" disabled={busy === n.id} onclick={() => act(n, 'accept')}>Keep</button>
-            <button class="btn btn-sm btn-quiet" disabled={busy === n.id} onclick={() => act(n, 'reject')}>Discard</button>
-          </div>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</section>
+    {/if}
+  </div>
+</ScreenSection>
 
 <style>
-  .head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
+  .body {
+    display: grid;
+    gap: var(--spacing-3);
   }
-  .lead {
-    margin: 2px 0 10px;
+  .form {
+    display: grid;
+    gap: var(--spacing-3);
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-1-5);
   }
   .sub {
-    margin: 14px 0 4px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink-secondary);
-  }
-  .notes {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
+    margin-bottom: var(--spacing-1);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-secondary);
   }
   .notes li {
-    padding: 10px 0;
-    border-top: 1px solid var(--line-soft);
     display: grid;
-    gap: 4px;
+    gap: var(--spacing-1);
+    padding: var(--spacing-3) 0;
+    border-top: 1px solid var(--color-border);
   }
   .notes li:first-child {
     border-top: 0;
+    padding-top: 0;
   }
-  .notes li.due .body {
-    color: var(--ink-secondary);
-  }
-  .body {
-    margin: 0;
-  }
-  .tag {
-    margin: 0;
-    font-size: 12px;
-  }
-  .acts {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
+  .notes li.due .note {
+    color: var(--color-text-secondary);
   }
 </style>

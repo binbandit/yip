@@ -2,6 +2,7 @@
   // An engineer's profile: role and instructions (versioned), capabilities,
   // provider preference with readiness, rooms, active work, and decisions.
   import { onMount } from 'svelte';
+  import { Button, Card, Collapsible, Link, List, ListItem, Selector, Switch, Text, TextArea, TextInput, Token } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { ApiError, errorMessage } from '../lib/api/client';
@@ -11,11 +12,14 @@
   import { atTime, relative } from '../lib/util/time';
   import { roomSettings } from '../lib/util/setup';
   import Avatar from '../components/Avatar.svelte';
+  import Notice from '../components/Notice.svelte';
   import StateIcon from '../components/StateIcon.svelte';
   import MessageBody from '../components/MessageBody.svelte';
   import ProviderSelect from '../components/ProviderSelect.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import EngineerNotes from '../components/EngineerNotes.svelte';
+  import Screen from '../components/Screen.svelte';
+  import ScreenSection from '../components/ScreenSection.svelte';
 
   interface Props {
     id: string;
@@ -70,6 +74,19 @@
     return [...seen].map(([id, label]) => ({ id, label }));
   });
   const accounts = $derived(profiles.filter((p) => p.provider === e?.provider.provider));
+  // The model and account choices, with "" standing for the provider's default
+  // and any signed-in account. A model no machine reports any more stays listed
+  // so the current choice is never shown as something else.
+  const modelOptions = $derived.by(() => {
+    const model = e?.provider.model;
+    const reported = providerModels.map((m) => ({ value: m.id, label: m.label }));
+    const stale = model && !providerModels.some((m) => m.id === model) ? [{ value: model, label: model }] : [];
+    return [{ value: '', label: "The provider's default" }, ...reported, ...stale];
+  });
+  const accountOptions = $derived([
+    { value: '', label: 'Any signed-in account' },
+    ...accounts.map((p) => ({ value: p.id, label: `${p.label} · ${billingLabel(p.billing)}` })),
+  ]);
   // Projects this engineer is permitted to work in, from the projects' grants.
   const ACTION_LABELS: Record<string, string> = { push: 'push', open_pr: 'open PRs', publish_review: 'publish reviews', merge: 'merge' };
   const permitted = $derived(
@@ -143,226 +160,248 @@
   }
 </script>
 
-<div class="screen">
-  <div class="screen-inner">
-    {#if !e}
-      <h1 class="screen-title" data-screen-title tabindex="-1">{loadError ? 'Engineer not found' : 'Loading…'}</h1>
-      {#if loadError}<p class="screen-sub">{loadError} <a href="/engineers">All engineers</a></p>{/if}
-    {:else}
-      <p class="crumb"><a href="/engineers">Engineers</a></p>
-      <header class="head">
-        <Avatar actor={{ kind: 'engineer', id: e.id }} size={64} />
-        <div class="id">
-          <h1 class="screen-title" data-screen-title tabindex="-1">{e.name}</h1>
-          <p class="screen-sub">{e.role} · AI engineer · @{e.handle}{#if e.archived}{' · '}archived{/if}</p>
-        </div>
-        {#if !editingProfile}<button class="btn" onclick={startProfile}>Edit profile</button>{/if}
-      </header>
-      {#if error}<p class="form-error" role="alert">{error}</p>{/if}
+{#if !e}
+  {#snippet notFound()}{loadError} <Link hasUnderline href="/engineers">All engineers</Link>{/snippet}
+  <Screen title={loadError ? 'Engineer not found' : 'Loading…'} subtitle={loadError ? notFound : undefined} />
+{:else}
+  {#snippet editProfile()}<Button label="Edit profile" onclick={startProfile} />{/snippet}
+  <Screen title={e.name} subtitle="{e.role} · AI engineer · @{e.handle}{e.archived ? ' · archived' : ''}" actions={editingProfile ? undefined : editProfile}>
+    {#snippet crumb()}<Link href="/engineers">Engineers</Link>{/snippet}
+    {#snippet leading()}<Avatar actor={{ kind: 'engineer', id: e.id }} size={64} />{/snippet}
+    {#if error}<div class="alert"><Notice tone="danger" role="alert">{error}</Notice></div>{/if}
 
-      {#if editingProfile}
-        <form class="panel-box form" onsubmit={saveProfile}>
-          <div class="two">
-            <label class="field"><span class="label">Name</span><input class="input" bind:value={name} /><span class="hint">Renaming keeps the same engineer and their message history.</span></label>
-            <label class="field"><span class="label">Role</span><input class="input" bind:value={role} /></label>
-          </div>
-          <label class="field"><span class="label">What they're for</span><input class="input" bind:value={description} /></label>
-          <label class="field"><span class="label">Capabilities</span><input class="input" bind:value={tags} /><span class="hint">Comma-separated.</span></label>
-          <div class="row">
-            <button class="btn btn-primary btn-sm" type="submit" disabled={saving}>Save</button>
-            <button class="btn btn-sm" type="button" onclick={() => (editingProfile = false)}>Cancel</button>
-          </div>
-        </form>
-      {:else}
-        {#if e.description}<p class="desc">{e.description}</p>{/if}
-        {#if e.capabilityTags.length}
-          <ul class="tags" aria-label="Capabilities">{#each e.capabilityTags as t (t)}<li class="chip">{t}</li>{/each}</ul>
-        {/if}
-      {/if}
-
-      <div class="cols">
-        <div class="col">
-          <section class="section" aria-labelledby="eng-instr">
-            <div class="section-head">
-              <h2 class="section-title" id="eng-instr">Standing instructions <span class="meta">· version {e.versionNo}</span></h2>
-              {#if !editingInstructions}
-                <button
-                  class="btn btn-sm"
-                  onclick={() => {
-                    instructions = e.instructions;
-                    editingInstructions = true;
-                  }}>Edit</button
-                >
-              {/if}
+    {#if editingProfile}
+      <div class="block">
+        <Card>
+          <form class="form" onsubmit={saveProfile}>
+            <div class="two">
+              <TextInput label="Name" bind:value={name} description="Renaming keeps the same engineer and their message history." />
+              <TextInput label="Role" bind:value={role} />
             </div>
-            {#if editingInstructions}
-              <form class="form" onsubmit={saveInstructions}>
-                <label class="field">
-                  <span class="vh">Standing instructions</span>
-                  <textarea class="textarea" rows="7" bind:value={instructions}></textarea>
-                </label>
-                <p class="notice">Saving creates version {e.versionNo + 1}. Work already running keeps the instructions it started with; new work uses the new version.</p>
-                <div class="row">
-                  <button class="btn btn-primary btn-sm" type="submit" disabled={saving || instructions.trim() === e.instructions}>Save as version {e.versionNo + 1}</button>
-                  <button class="btn btn-sm" type="button" onclick={() => (editingInstructions = false)}>Cancel</button>
-                </div>
-              </form>
-            {:else}
-              <div class="instr"><MessageBody message={{ body: e.instructions || 'No standing instructions.', mentions: [] }} /></div>
+            <TextInput label="What they're for" bind:value={description} />
+            <TextInput label="Capabilities" bind:value={tags} description="Comma-separated." />
+            <div class="row">
+              <Button label="Save" variant="primary" size="sm" type="submit" isLoading={saving} />
+              <Button label="Cancel" size="sm" onclick={() => (editingProfile = false)} />
+            </div>
+          </form>
+        </Card>
+      </div>
+    {:else}
+      {#if e.description}<p class="desc">{e.description}</p>{/if}
+      {#if e.capabilityTags.length}
+        <ul class="tags" aria-label="Capabilities">{#each e.capabilityTags as t (t)}<li><Token label={t} size="sm" /></li>{/each}</ul>
+      {/if}
+    {/if}
+
+    <div class="cols">
+      <div class="col">
+        <ScreenSection title="Standing instructions" id="eng-instr">
+          {#snippet end()}
+            <Text type="supporting">version {e.versionNo}</Text>
+            {#if !editingInstructions}
+              <Button
+                label="Edit"
+                size="sm"
+                onclick={() => {
+                  instructions = e.instructions;
+                  editingInstructions = true;
+                }}
+              />
             {/if}
-            {#if versions.length > 1}
-              <details class="history">
-                <summary>Version history ({versions.length})</summary>
-                <ol>
+          {/snippet}
+          {#if editingInstructions}
+            <form class="form" onsubmit={saveInstructions}>
+              <TextArea label="Standing instructions" isLabelHidden rows={7} bind:value={instructions} />
+              <Notice
+                title="Saving creates version {e.versionNo + 1}."
+                description="Work already running keeps the instructions it started with; new work uses the new version."
+              />
+              <div class="row">
+                <Button
+                  label="Save as version {e.versionNo + 1}"
+                  variant="primary"
+                  size="sm"
+                  type="submit"
+                  isLoading={saving}
+                  isDisabled={instructions.trim() === e.instructions}
+                />
+                <Button label="Cancel" size="sm" onclick={() => (editingInstructions = false)} />
+              </div>
+            </form>
+          {:else}
+            <div class="instr"><MessageBody message={{ body: e.instructions || 'No standing instructions.', mentions: [] }} /></div>
+          {/if}
+          {#if versions.length > 1}
+            <div class="history">
+              <Collapsible trigger="Version history ({versions.length})" defaultIsOpen={false}>
+                <ol class="versions">
                   {#each versions as v (v.id)}
                     <li>
-                      <p><strong>Version {v.versionNo}</strong> <span class="meta">· {atTime(v.createdAt)}{v.versionNo === e.versionNo ? ' · current' : ''}</span></p>
-                      <p class="meta">{v.role}{v.name !== e.name ? ` · named ${v.name}` : ''}</p>
+                      <p>
+                        <Text weight="semibold">Version {v.versionNo}</Text>
+                        <Text type="supporting">· {atTime(v.createdAt)}{v.versionNo === e.versionNo ? ' · current' : ''}</Text>
+                      </p>
+                      <Text as="p" type="supporting">{v.role}{v.name !== e.name ? ` · named ${v.name}` : ''}</Text>
                       <div class="instr small"><MessageBody message={{ body: v.instructions || '—', mentions: [] }} /></div>
                     </li>
                   {/each}
                 </ol>
-              </details>
-            {/if}
-          </section>
+              </Collapsible>
+            </div>
+          {/if}
+        </ScreenSection>
 
-          <section class="section" aria-labelledby="eng-work">
-            <h2 class="section-title" id="eng-work">Active and queued work</h2>
-            {#if liveJobs.length === 0}
-              <p class="meta">Nothing in progress.</p>
-            {:else}
-              <ul class="list">
-                {#each liveJobs as j (j.id)}
-                  <li>
-                    <button class="work" onclick={() => app.openPanel({ kind: 'job', id: j.id })}>
-                      <StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} live={j.state === 'running'} />
-                      <span class="w-title">{j.title}</span>
-                      <span class="meta">{jobStateLabel(j)} · {app.data.rooms[j.source.roomId]?.name ?? ''}</span>
-                    </button>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-            {#if recent.length}
-              <h3 class="sub">Recently</h3>
-              <ul class="list">
-                {#each recent as j (j.id)}
-                  <li>
-                    <button class="work" onclick={() => app.openPanel({ kind: 'job', id: j.id })}>
-                      <StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} />
-                      <span class="w-title">{j.title}</span>
-                      <span class="meta">{jobStateLabel(j)} · {relative(j.completedAt ?? j.updatedAt, app.now)}</span>
-                    </button>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-          </section>
+        <ScreenSection title="Active and queued work" id="eng-work">
+          {#if liveJobs.length === 0}
+            <Text as="p" type="supporting">Nothing in progress.</Text>
+          {:else}
+            <List density="compact">
+              {#each liveJobs as j (j.id)}
+                <ListItem description="{jobStateLabel(j)} · {app.data.rooms[j.source.roomId]?.name ?? ''}" onclick={() => app.openPanel({ kind: 'job', id: j.id })}>
+                  {#snippet label()}{j.title}{/snippet}
+                  {#snippet startContent()}<StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} live={j.state === 'running'} />{/snippet}
+                </ListItem>
+              {/each}
+            </List>
+          {/if}
+          {#if recent.length}
+            <h3 class="sub">Recently</h3>
+            <List density="compact">
+              {#each recent as j (j.id)}
+                <ListItem description="{jobStateLabel(j)} · {relative(j.completedAt ?? j.updatedAt, app.now)}" onclick={() => app.openPanel({ kind: 'job', id: j.id })}>
+                  {#snippet label()}{j.title}{/snippet}
+                  {#snippet startContent()}<StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} />{/snippet}
+                </ListItem>
+              {/each}
+            </List>
+          {/if}
+        </ScreenSection>
 
-          <EngineerNotes engineerId={id} name={e.name} />
+        <EngineerNotes engineerId={id} name={e.name} />
 
-          <section class="section" aria-labelledby="eng-dec">
-            <h2 class="section-title" id="eng-dec">Decisions they recorded</h2>
-            {#if decisions.length === 0}
-              <p class="meta">None yet.</p>
-            {:else}
-              <ul class="list">
-                {#each decisions as d (d.id)}
-                  <li>
-                    <button class="link-btn" onclick={() => app.openPanel({ kind: 'decision', id: d.id })}>{d.title}</button>
-                    <span class="meta">· {d.status} · {d.sources.length} {d.sources.length === 1 ? 'source' : 'sources'}</span>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-          </section>
-        </div>
+        <ScreenSection title="Decisions they recorded" id="eng-dec">
+          {#if decisions.length === 0}
+            <Text as="p" type="supporting">None yet.</Text>
+          {:else}
+            <List density="compact">
+              {#each decisions as d (d.id)}
+                <ListItem
+                  description="{d.status} · {d.sources.length} {d.sources.length === 1 ? 'source' : 'sources'}"
+                  onclick={() => app.openPanel({ kind: 'decision', id: d.id })}
+                >
+                  {#snippet label()}{d.title}{/snippet}
+                </ListItem>
+              {/each}
+            </List>
+          {/if}
+        </ScreenSection>
+      </div>
 
-        <div class="col side">
-          <section class="section" aria-labelledby="eng-rooms">
-            <h2 class="section-title" id="eng-rooms">Rooms</h2>
-            {#if rooms.length === 0}
-              <p class="meta">Invite {e.name} into a conversation. Choose them in the room's settings.</p>
+      <div class="col side">
+        <ScreenSection title="Rooms" id="eng-rooms">
+          {#if rooms.length === 0}
+            <div class="setup">
+              <Text as="p" type="supporting">Invite {e.name} into a conversation. Choose them in the room's settings.</Text>
               {#if availableRooms.length === 1}
-                <a href={roomSettings(availableRooms[0])}>Set up {availableRooms[0].name}</a>
+                <p><Link hasUnderline href={roomSettings(availableRooms[0])}>Set up {availableRooms[0].name}</Link></p>
               {:else if availableRooms.length > 1}
-                <details><summary>Choose a room</summary><ul class="list">{#each availableRooms as r (r.id)}<li><a href={roomSettings(r)}>{r.name}</a></li>{/each}</ul></details>
+                <Collapsible trigger="Choose a room" defaultIsOpen={false}>
+                  <ul class="links">{#each availableRooms as r (r.id)}<li><Link hasUnderline href={roomSettings(r)}>{r.name}</Link></li>{/each}</ul>
+                </Collapsible>
               {/if}
-              <div class="setup-action"><button class="btn btn-sm" onclick={() => (app.createRoom = { kind: 'room' })}>Create a room</button></div>
-            {/if}
-            <ul class="list">{#each rooms as r (r.id)}<li><a href="/rooms/{r.id}">{r.kind === 'dm' ? 'Direct messages' : r.name}</a>{#if r.private}{' '}<span class="meta">· private</span>{/if}</li>{/each}</ul>
-          </section>
-          <section class="section" aria-labelledby="eng-proj">
-            <h2 class="section-title" id="eng-proj">Projects they can work on</h2>
-            {#if permitted.length === 0}
-              <p class="meta">You can talk now. For repository work, choose what {e.name} can access.</p>
+              <div><Button label="Create a room" size="sm" onclick={() => (app.createRoom = { kind: 'room' })} /></div>
+            </div>
+          {:else}
+            <ul class="links">
+              {#each rooms as r (r.id)}
+                <li><Link hasUnderline href="/rooms/{r.id}">{r.kind === 'dm' ? 'Direct messages' : r.name}</Link>{#if r.private}{' '}<Text type="supporting">· private</Text>{/if}</li>
+              {/each}
+            </ul>
+          {/if}
+        </ScreenSection>
+        <ScreenSection title="Projects they can work on" id="eng-proj">
+          {#if permitted.length === 0}
+            <div class="setup">
+              <Text as="p" type="supporting">You can talk now. For repository work, choose what {e.name} can access.</Text>
               {#if availableProjects.length === 1}
-                <a href="/projects/{availableProjects[0].id}#p-access">Choose access to {availableProjects[0].name}</a>
+                <p><Link hasUnderline href="/projects/{availableProjects[0].id}#p-access">Choose access to {availableProjects[0].name}</Link></p>
               {:else if availableProjects.length > 1}
-                <details><summary>Choose a project</summary><ul class="list">{#each availableProjects as p (p.id)}<li><a href="/projects/{p.id}#p-access">Choose access to {p.name}</a></li>{/each}</ul></details>
+                <Collapsible trigger="Choose a project" defaultIsOpen={false}>
+                  <ul class="links">{#each availableProjects as p (p.id)}<li><Link hasUnderline href="/projects/{p.id}#p-access">Choose access to {p.name}</Link></li>{/each}</ul>
+                </Collapsible>
               {:else}
-                <a class="btn btn-sm" href="/projects">Connect a project</a>
+                <div><Button label="Connect a project" size="sm" href="/projects" /></div>
               {/if}
-            {/if}
-            <ul class="list">
+            </div>
+          {:else}
+            <ul class="links">
               {#each permitted as x (x.project.id)}
                 <li>
-                  <a href="/projects/{x.project.id}">{x.project.name}</a>{' '}<span class="meta"
+                  <Link hasUnderline href="/projects/{x.project.id}">{x.project.name}</Link>{' '}<Text type="supporting"
                     >· {x.grant?.access === 'write' ? 'can change code' : 'read only'}{x.grant?.actions.length
                       ? ` · can ${x.grant.actions.map((a) => ACTION_LABELS[a] ?? a).join(', ')}`
-                      : ''}</span
+                      : ''}</Text
                   >
                 </li>
               {/each}
             </ul>
-          </section>
-          <section class="section" aria-labelledby="eng-prov">
-            <h2 class="section-title" id="eng-prov">Provider preference</h2>
-            <label class="vh" for="eng-provider">Provider</label>
+          {/if}
+        </ScreenSection>
+        <ScreenSection title="Provider preference" id="eng-prov">
+          <div class="prov">
             <ProviderSelect
-              id="eng-provider"
               value={e.provider.provider}
               profileId={e.provider.profileId}
               allowApiBilling={e.provider.allowApiBilling}
-              onchange={(v) => patch({ provider: { ...e.provider, provider: v, model: '', profileId: '' } }, () => {})}
+              onchange={(v) => {
+                // Selectors report re-picking the current option too; only real changes are
+                // saved here and below (a provider re-pick would otherwise reset model and account).
+                if (v !== e.provider.provider) void patch({ provider: { ...e.provider, provider: v, model: '', profileId: '' } }, () => {});
+              }}
             />
             {#if e.provider.provider !== 'fake'}
               <div class="prov-grid">
-                <label class="field">
-                  <span class="label">Model</span>
-                  <select class="select" value={e.provider.model ?? ''} onchange={(ev) => patch({ provider: { ...e.provider, model: (ev.target as HTMLSelectElement).value } }, () => {})}>
-                    <option value="">The provider's default</option>
-                    {#each providerModels as m (m.id)}<option value={m.id}>{m.label}</option>{/each}
-                    {#if e.provider.model && !providerModels.some((m) => m.id === e.provider.model)}<option value={e.provider.model}>{e.provider.model}</option>{/if}
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="label">Account</span>
-                  <select class="select" value={e.provider.profileId ?? ''} onchange={(ev) => patch({ provider: { ...e.provider, profileId: (ev.target as HTMLSelectElement).value } }, () => {})}>
-                    <option value="">Any signed-in account</option>
-                    {#each accounts as p (p.id)}<option value={p.id}>{p.label} · {billingLabel(p.billing)}</option>{/each}
-                  </select>
-                </label>
+                <Selector
+                  label="Model"
+                  width="100%"
+                  options={modelOptions}
+                  value={e.provider.model ?? ''}
+                  onChange={(v: string) => {
+                    if (v !== (e.provider.model ?? '')) void patch({ provider: { ...e.provider, model: v } }, () => {});
+                  }}
+                />
+                <Selector
+                  label="Account"
+                  width="100%"
+                  options={accountOptions}
+                  value={e.provider.profileId ?? ''}
+                  onChange={(v: string) => {
+                    if (v !== (e.provider.profileId ?? '')) void patch({ provider: { ...e.provider, profileId: v } }, () => {});
+                  }}
+                />
               </div>
-              <label class="check">
-                <input type="checkbox" checked={!!e.provider.allowApiBilling} onchange={(ev) => patch({ provider: { ...e.provider, allowApiBilling: (ev.target as HTMLInputElement).checked } }, () => {})} />
-                <span>Allow runs billed to an API key<span class="meta block">Off: this engineer only uses subscription sign-ins and waits rather than falling back to paid API usage.</span></span>
-              </label>
+              <Switch
+                label="Allow runs billed to an API key"
+                description="Off: this engineer only uses subscription sign-ins and waits rather than falling back to paid API usage."
+                value={!!e.provider.allowApiBilling}
+                onChange={(on) => patch({ provider: { ...e.provider, allowApiBilling: on } }, () => {})}
+              />
             {/if}
-            <p class="meta note">Which model ran a job is shown in the job's run details, not in conversation.</p>
-          </section>
-          <section class="section">
-            {#if e.archived}
-              <button class="btn btn-sm" onclick={() => patch({ archived: false }, () => {})}>Restore engineer</button>
-            {:else}
-              <button class="btn btn-sm btn-danger" onclick={() => (confirmArchive = true)}>Archive engineer</button>
-            {/if}
-          </section>
+            <Text as="p" type="supporting">Which model ran a job is shown in the job's run details, not in conversation.</Text>
+          </div>
+        </ScreenSection>
+        <div class="lifecycle">
+          {#if e.archived}
+            <Button label="Restore engineer" size="sm" onclick={() => patch({ archived: false }, () => {})} />
+          {:else}
+            <Button label="Archive engineer" size="sm" variant="destructive" onclick={() => (confirmArchive = true)} />
+          {/if}
         </div>
       </div>
-    {/if}
-  </div>
-</div>
+    </div>
+  </Screen>
+{/if}
 
 {#if confirmArchive && e}
   <ConfirmDialog
@@ -376,133 +415,89 @@
 {/if}
 
 <style>
-  .setup-action {
-    margin-top: 8px;
-  }
-  .prov-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 10px;
-  }
-  .check {
-    margin-top: 8px;
-  }
+  .alert,
   .block {
-    display: block;
-  }
-  .crumb {
-    font-size: 13px;
-    margin-bottom: 10px;
-  }
-  .head {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-    margin-bottom: 12px;
-  }
-  .id {
-    flex: 1;
-    min-width: 200px;
+    margin-bottom: var(--spacing-3);
   }
   .desc {
     max-width: 70ch;
-    margin-bottom: 10px;
+    margin-bottom: var(--spacing-3);
   }
   .tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    list-style: none;
-    margin: 0;
-    padding: 0;
+    gap: var(--spacing-1-5);
   }
   .form {
     display: grid;
-    gap: 12px;
-    margin-bottom: 12px;
+    gap: var(--spacing-3);
   }
   .two {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    align-items: end;
+    gap: var(--spacing-3);
   }
   .row {
     display: flex;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
   }
   .cols {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 300px;
-    gap: 32px;
+    gap: var(--spacing-8);
+  }
+  .col {
+    min-width: 0;
   }
   .instr {
-    padding: 12px 14px;
-    border-radius: var(--r-artifact);
-    background: var(--surface-subtle);
-    font-size: 14.5px;
+    padding: var(--spacing-3) var(--spacing-4);
+    border-radius: var(--radius-container);
+    background: var(--color-background-muted);
   }
   .instr.small {
-    padding: 8px 10px;
-    font-size: 13.5px;
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: var(--font-size-sm);
   }
   .history {
-    margin-top: 10px;
+    margin-top: var(--spacing-2);
   }
-  .history summary {
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 560;
-    min-height: 32px;
-    display: list-item;
-  }
-  .history ol {
-    list-style: none;
-    padding: 0;
-    margin: 8px 0 0;
+  .versions {
     display: grid;
-    gap: 12px;
+    gap: var(--spacing-3);
+    padding-top: var(--spacing-2);
   }
-  .list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
+  .versions li {
     display: grid;
-    gap: 4px;
-    font-size: 14px;
-  }
-  .work {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    column-gap: 8px;
-    align-items: center;
-    width: 100%;
-    padding: 6px 8px;
-    border: 0;
-    border-radius: 8px;
-    background: none;
-    color: var(--ink);
-    text-align: left;
-    cursor: pointer;
-    font: inherit;
-  }
-  .work:hover {
-    background: var(--hover);
-  }
-  .work .meta {
-    grid-column: 2;
-  }
-  .w-title {
-    font-weight: 600;
+    gap: var(--spacing-1);
   }
   .sub {
-    font-size: 13px;
-    color: var(--ink-secondary);
-    margin: 14px 0 4px;
+    margin: var(--spacing-4) 0 var(--spacing-1);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-secondary);
   }
-  .note {
-    margin-top: 8px;
+  .setup {
+    display: grid;
+    justify-items: start;
+    gap: var(--spacing-3);
+  }
+  .prov {
+    display: grid;
+    gap: var(--spacing-3);
+  }
+  .links {
+    display: grid;
+    gap: var(--spacing-1);
+  }
+  .prov-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-3);
+  }
+  .lifecycle {
+    margin-top: var(--spacing-8);
   }
   @media (max-width: 1000px) {
     .cols {

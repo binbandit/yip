@@ -1,4 +1,7 @@
 <script lang="ts">
+  import type { Attachment } from 'svelte/attachments';
+  import { Button, CheckboxInput, CheckboxList, CheckboxListItem, Link, RadioList, RadioListItem, Selector, Text, TextInput } from '@astryx-svelte/core';
+  import Notice from './Notice.svelte';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
@@ -25,8 +28,15 @@
   let busy = $state(false);
   let error = $state('');
 
-  function toggle(list: string[], id: string): string[] {
-    return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+  // The first choice takes focus when the dialog opens (Dialog focuses `[data-autofocus]`).
+  const focusFirstChoice: Attachment<HTMLElement> = (el) => {
+    el.querySelector('input')?.setAttribute('data-autofocus', '');
+  };
+
+  function setEngineers(ids: string[]) {
+    engineerIds = ids;
+    // The steward is one of the room's engineers: unticking them clears it.
+    if (!ids.includes(stewardId)) stewardId = '';
   }
 
   async function create(e: SubmitEvent) {
@@ -79,73 +89,86 @@
   }
 </script>
 
-<Dialog title={kind === 'dm' ? 'Message an engineer' : 'Create a room'} {onclose} width={560} initialFocus="input, select">
-  <form id="create-room" class="form" onsubmit={create}>
+<Dialog title={kind === 'dm' ? 'Message an engineer' : 'Create a room'} {onclose} width={560} purpose="form">
+  <form id="create-room" class="form" onsubmit={create} novalidate>
     {#if kind === 'dm'}
-      <fieldset class="fs">
-        <legend class="label">Who</legend>
-        {#if engineers.length === 0}<p class="meta">No engineers yet. <a href="/engineers">Create one first.</a></p>{/if}
-        {#each engineers as e (e.id)}
-          <label class="check person"><input type="radio" name="dm" value={e.id} bind:group={dmWith} /><Avatar actor={{ kind: 'engineer', id: e.id }} size={24} /><span><strong>{e.name}</strong> <span class="meta">{e.role}</span></span></label>
-        {/each}
-      </fieldset>
-      <p class="meta">A direct message is private to you and that engineer; they answer everything you write there.</p>
-    {:else}
-      <label class="field"><span class="label">Name</span><input class="input" bind:value={name} placeholder="e.g. Payments" /></label>
-      <label class="field"><span class="label">Purpose <span class="meta">(optional)</span></span><input class="input" bind:value={purpose} placeholder="What this group works on" /></label>
-      <fieldset class="fs">
-        <legend class="label">Engineers</legend>
-        {#if engineers.length === 0}<p class="meta">No engineers yet — you can add them later.</p>{/if}
-        {#each engineers as e (e.id)}
-          <label class="check person">
-            <input type="checkbox" checked={engineerIds.includes(e.id)} onchange={() => (engineerIds = toggle(engineerIds, e.id))} />
-            <Avatar actor={{ kind: 'engineer', id: e.id }} size={24} />
-            <span><strong>{e.name}</strong> <span class="meta">{e.role}</span></span>
-          </label>
-        {/each}
-      </fieldset>
-      {#if projects.length}
-        <fieldset class="fs">
-          <legend class="label">Projects <span class="meta">(optional — rooms can range across projects)</span></legend>
-          {#each projects as p (p.id)}
-            <label class="check"><input type="checkbox" checked={projectIds.includes(p.id)} onchange={() => (projectIds = toggle(projectIds, p.id))} />{p.name}</label>
-          {/each}
-        </fieldset>
+      {#if engineers.length === 0}
+        <Text as="p" type="supporting">No engineers yet. <Link hasUnderline href="/engineers">Create one first.</Link></Text>
+      {:else}
+        <div {@attach focusFirstChoice}>
+          <RadioList label="Who" value={dmWith} onChange={(v) => (dmWith = v)} htmlName="dm">
+            {#each engineers as e (e.id)}
+              <RadioListItem label={e.name} description={e.role} value={e.id} class="check">
+                {#snippet startContent()}<span class="avatar"><Avatar actor={{ kind: 'engineer', id: e.id }} size={24} /></span>{/snippet}
+              </RadioListItem>
+            {/each}
+          </RadioList>
+        </div>
       {/if}
-      <fieldset class="fs">
-        <legend class="label">Who replies to unaddressed messages</legend>
-        <label class="check"><input type="radio" name="mode" value="quiet" bind:group={replyMode} /><span>Nobody — only engineers you mention reply</span></label>
-        <label class="check"><input type="radio" name="mode" value="steward" bind:group={replyMode} /><span>A steward answers</span></label>
+      <Text as="p" type="supporting">A direct message is private to you and that engineer; they answer everything you write there.</Text>
+    {:else}
+      <TextInput label="Name" bind:value={name} placeholder="e.g. Payments" width="100%" hasAutoFocus />
+      <TextInput label="Purpose" isOptional bind:value={purpose} placeholder="What this group works on" width="100%" />
+      <CheckboxList label="Engineers" density="compact" description={engineers.length ? undefined : 'No engineers yet — you can add them later.'} value={engineerIds} onChange={setEngineers}>
+        {#each engineers as e (e.id)}
+          <CheckboxListItem value={e.id} aria-label={e.name} description={e.role} class="check">
+            {#snippet label()}<span class="who"><Avatar actor={{ kind: 'engineer', id: e.id }} size={24} /><strong>{e.name}</strong></span>{/snippet}
+          </CheckboxListItem>
+        {/each}
+      </CheckboxList>
+      {#if projects.length}
+        <CheckboxList label="Projects" density="compact" description="Optional — rooms can range across projects" value={projectIds} onChange={(v) => (projectIds = v)}>
+          {#each projects as p (p.id)}
+            <CheckboxListItem value={p.id} label={p.name} class="check" />
+          {/each}
+        </CheckboxList>
+      {/if}
+      <div class="reply">
+        <RadioList label="Who replies to unaddressed messages" value={replyMode} onChange={(v) => (replyMode = v === 'steward' ? 'steward' : 'quiet')} htmlName="mode">
+          <RadioListItem label="Nobody — only engineers you mention reply" value="quiet" class="check" />
+          <RadioListItem label="A steward answers" value="steward" class="check" />
+        </RadioList>
         {#if replyMode === 'steward'}
-          <select class="select" bind:value={stewardId} aria-label="Steward">
-            <option value="">Choose an engineer from this room…</option>
-            {#each engineers.filter((e) => engineerIds.includes(e.id)) as e (e.id)}<option value={e.id}>{e.name}</option>{/each}
-          </select>
+          <Selector
+            label="Steward"
+            isLabelHidden
+            placeholder="Choose an engineer from this room…"
+            options={engineers.filter((e) => engineerIds.includes(e.id)).map((e) => ({ value: e.id, label: e.name }))}
+            value={stewardId || undefined}
+            onChange={(v: string) => (stewardId = v)}
+            width="100%"
+          />
         {/if}
-      </fieldset>
-      <label class="check"><input type="checkbox" bind:checked={isPrivate} /><span>Private<br /><span class="meta">History here isn't carried into other rooms.</span></span></label>
+      </div>
+      <CheckboxInput label="Private" description="History here isn't carried into other rooms." value={isPrivate} onChange={(v) => (isPrivate = v)} class="check" />
     {/if}
-    {#if error}<p class="form-error" role="alert">{error}</p>{/if}
+    {#if error}<Notice tone="danger" role="alert">{error}</Notice>{/if}
   </form>
   {#snippet footer()}
-    <button class="btn" onclick={onclose}>Cancel</button>
-    <button class="btn btn-primary" type="submit" form="create-room" disabled={busy}>{busy ? 'Creating…' : kind === 'dm' ? 'Open conversation' : 'Create room'}</button>
+    <Button label="Cancel" onclick={onclose} />
+    <Button label={busy ? 'Creating…' : kind === 'dm' ? 'Open conversation' : 'Create room'} variant="primary" type="submit" form="create-room" isLoading={busy} />
   {/snippet}
 </Dialog>
 
 <style>
   .form {
     display: grid;
-    gap: 16px;
+    gap: var(--spacing-4);
   }
-  .fs {
-    border: 0;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 4px;
-  }
-  .person {
+  .who {
+    display: inline-flex;
     align-items: center;
+    gap: var(--spacing-2);
+  }
+  .who strong {
+    font-weight: var(--font-weight-semibold);
+  }
+  .avatar {
+    display: inline-flex;
+    margin-inline-start: var(--spacing-1);
+  }
+  .reply {
+    display: grid;
+    gap: var(--spacing-2);
   }
 </style>

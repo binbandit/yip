@@ -1,8 +1,9 @@
 <script lang="ts">
   // A unified diff with per-file headers and +/− lines. Additions and
-  // deletions are marked by symbol and colour, never colour alone.
+  // deletions are marked by symbol and colour, never colour alone. This is a
+  // domain renderer, so it keeps its own markup and reads Astryx tokens.
+  import { Icon, Text } from '@astryx-svelte/core';
   import { filePath, type DiffFile } from '../lib/util/diff';
-  import Icon from './Icon.svelte';
 
   interface Props {
     files: DiffFile[];
@@ -30,28 +31,28 @@
 </script>
 
 {#if files.length === 0}
-  <p class="meta">The diff is empty.</p>
+  <Text as="p" type="supporting">The diff is empty.</Text>
 {:else}
-  {#if focus && !focusPath}<p class="meta">{focus.file} isn't part of this diff.</p>{/if}
+  {#if focus && !focusPath}<Text as="p" type="supporting">{focus.file} isn't part of this diff.</Text>{/if}
   <div class="diff" bind:this={root}>
     {#each files as f (filePath(f))}
       {@const path = filePath(f)}
       <section class="file" aria-label="Changes in {path}" data-path={path}>
         <header>
           <button class="toggle" aria-expanded={!collapsed[path]} onclick={() => (collapsed[path] = !collapsed[path])}>
-            <Icon name={collapsed[path] ? 'chevronRight' : 'chevronDown'} size={15} />
-            <span class="path mono">{path}</span>
+            <Icon icon={collapsed[path] ? 'chevronRight' : 'chevronDown'} size="sm" color="secondary" />
+            <span class="path">{path}</span>
           </button>
           <span class="status">{f.status === 'modified' ? '' : f.status}</span>
           <span class="stats"><span class="add">+{f.additions}</span> <span class="del">−{f.deletions}</span></span>
         </header>
         {#if !collapsed[path]}
           {#if f.status === 'binary'}
-            <p class="meta pad">Binary file — not shown.</p>
+            <p class="binary">Binary file — not shown.</p>
           {:else}
             <div class="code" role="table" aria-label="Diff of {path}">
               {#each f.hunks as h, hi (hi)}
-                <div class="hunk" role="row"><span role="cell" class="mono">{h.header}</span></div>
+                <div class="hunk" role="row"><span role="cell">{h.header}</span></div>
                 {#each h.lines as l, li (li)}
                   <div
                     class="line {l.kind}"
@@ -77,77 +78,83 @@
 {/if}
 
 <style>
-  .line.focus {
-    outline: 2px solid var(--accent);
-    outline-offset: -2px;
-  }
   .diff {
     display: grid;
-    gap: 10px;
+    gap: var(--spacing-2);
   }
   .file {
-    border: 1px solid var(--line);
-    border-radius: var(--r-artifact);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-container);
+    background: var(--color-background-card);
     overflow: hidden;
   }
   header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 10px 4px 4px;
-    background: var(--surface-subtle);
-    border-bottom: 1px solid var(--line);
+    gap: var(--spacing-2);
+    padding: var(--spacing-1) var(--spacing-3) var(--spacing-1) var(--spacing-1);
+    background: var(--color-background-muted);
+    border-bottom: 1px solid var(--color-border);
   }
   .toggle {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--spacing-1-5);
     flex: 1;
     min-width: 0;
-    min-height: 30px;
-    padding: 0 6px;
-    border: 0;
-    background: none;
-    color: var(--ink);
-    cursor: pointer;
+    min-height: var(--size-element-sm);
+    padding: 0 var(--spacing-1-5);
+    border-radius: var(--radius-element);
+    color: var(--color-text-primary);
     text-align: left;
+  }
+  .toggle:hover {
+    background: var(--color-overlay-hover);
+  }
+  .toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
   }
   .path {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 600;
+    font-family: var(--font-family-code);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
   }
   .status {
-    font-size: 12px;
-    color: var(--ink-secondary);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
   }
   .stats {
-    font-size: 12.5px;
+    font-size: var(--font-size-sm);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
   .add {
-    color: var(--success);
-    font-weight: 600;
+    color: var(--color-success);
+    font-weight: var(--font-weight-semibold);
   }
   .del {
-    color: var(--danger);
-    font-weight: 600;
+    color: var(--color-error);
+    font-weight: var(--font-weight-semibold);
   }
-  .pad {
-    padding: 10px;
+  .binary {
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
   }
   .code {
     overflow-x: auto;
-    font-family: var(--font-mono);
-    font-size: 12.5px;
-    line-height: 1.55;
+    font-family: var(--font-family-code);
+    font-size: var(--font-size-sm);
+    line-height: 1.6;
   }
   .hunk {
-    padding: 2px 10px;
-    background: var(--accent-subtle);
-    color: var(--ink-secondary);
+    padding: var(--spacing-0-5) var(--spacing-3);
+    background: var(--color-background-muted);
+    color: var(--color-text-secondary);
     white-space: pre;
   }
   .line {
@@ -155,13 +162,17 @@
     grid-template-columns: 40px 40px 18px auto;
     min-width: max-content;
   }
+  .line.focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
   .no {
-    padding: 0 6px;
+    padding: 0 var(--spacing-1-5);
     text-align: right;
-    color: var(--ink-secondary);
+    color: var(--color-text-secondary);
     user-select: none;
     font-variant-numeric: tabular-nums;
-    border-right: 1px solid var(--line-soft);
+    border-right: 1px solid var(--color-border);
   }
   .sign {
     text-align: center;
@@ -169,24 +180,24 @@
   }
   .text {
     white-space: pre;
-    padding-right: 16px;
+    padding-right: var(--spacing-4);
   }
   .line.add {
-    background: var(--success-subtle);
+    background: var(--color-success-muted);
   }
   .line.add .sign {
-    color: var(--success);
-    font-weight: 700;
+    color: var(--color-success);
+    font-weight: var(--font-weight-bold);
   }
   .line.del {
-    background: var(--danger-subtle);
+    background: var(--color-error-muted);
   }
   .line.del .sign {
-    color: var(--danger);
-    font-weight: 700;
+    color: var(--color-error);
+    font-weight: var(--font-weight-bold);
   }
   .line.meta {
-    color: var(--ink-secondary);
+    color: var(--color-text-secondary);
     font-style: italic;
   }
 </style>

@@ -1,6 +1,8 @@
 <script lang="ts">
   // Pair a machine: a one-time enrollment command, the hub fingerprint to
   // verify, and when the token expires. The token is shown only once.
+  import { Button, Code, CodeBlock, Icon, MetadataList, MetadataListItem, Text, TextInput } from '@astryx-svelte/core';
+  import { Copy } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
@@ -9,7 +11,7 @@
   import { authStateLabel, billingLabel, providerLabel } from '../lib/util/labels';
   import { SIGN_IN_COMMANDS } from '../lib/util/machines';
   import Dialog from './Dialog.svelte';
-  import Icon from './Icon.svelte';
+  import Notice from './Notice.svelte';
   import StateIcon from './StateIcon.svelte';
 
   interface Props {
@@ -61,38 +63,46 @@
   }
 </script>
 
-<Dialog title={enrollment ? `Pair ${enrollment.name}` : 'Add a machine'} {onclose} width={620} dismissOnBackdrop={!enrollment}>
+<!-- The pairing command is shown only once, so a stray backdrop click must not discard it. -->
+<Dialog title={enrollment ? `Pair ${enrollment.name}` : 'Add a machine'} {onclose} width={620} purpose="form">
   {#if !enrollment}
-    <form id="add-machine" class="form" onsubmit={create}>
+    <form id="add-machine" class="form" onsubmit={create} novalidate>
       <p>An always-on machine keeps work running when this laptop is closed. It runs engineers with the providers signed in on it.</p>
-      <label class="field">
-        <span class="label">Machine name</span>
-        <input class="input" bind:value={name} placeholder="e.g. Studio mini" />
-      </label>
-      {#if error}<p class="form-error" role="alert">{error}</p>{/if}
+      <TextInput label="Machine name" bind:value={name} placeholder="e.g. Studio mini" width="100%" hasAutoFocus />
+      {#if error}<Notice tone="danger" role="alert">{error}</Notice>{/if}
     </form>
   {:else}
     <div class="steps">
       <p>Run this on <strong>{enrollment.name}</strong>. It installs nothing else and pairs over a verified connection.</p>
       <div class="copy-block">
-        <pre class="cmd" aria-label="Pairing command">{enrollment.command}</pre>
-        <button class="btn btn-sm" onclick={() => copy(enrollment!.command, 'Command')}><Icon name="copy" size={15} />{copied === 'Command' ? 'Copied' : 'Copy command'}</button>
+        <CodeBlock code={enrollment.command} hasCopyButton={false} size="sm" width="100%" isWrapped aria-label="Pairing command" />
+        <Button label={copied === 'Command' ? 'Copied' : 'Copy command'} size="sm" onclick={() => copy(enrollment!.command, 'Command')}>
+          {#snippet icon()}<Icon icon={Copy} size="sm" />{/snippet}
+        </Button>
       </div>
-      <dl class="facts">
-        <div>
-          <dt>Hub fingerprint</dt>
-          <dd>
-            <code class="fp">{enrollment.hubFingerprint}</code>
-            <button class="btn btn-sm btn-quiet" onclick={() => copy(enrollment!.hubFingerprint, 'Fingerprint')}>{copied === 'Fingerprint' ? 'Copied' : 'Copy'}</button>
-          </dd>
-        </div>
-        <div><dt>Hub address</dt><dd class="mono">{enrollment.hubUrl}</dd></div>
-        <div><dt>Expires</dt><dd>{relative(enrollment.expiresAt, app.now)} ({atTime(enrollment.expiresAt)})</dd></div>
-      </dl>
-      <p class="notice attention">Check that the fingerprint the machine prints matches this one before confirming. This command is shown only once; if it expires, add the machine again.</p>
-      <p class="then">
-        Then start it with <code>yip runner</code>. Started from a terminal, it stops when that terminal closes; to keep it running, install it as a
-        background service with <code>yip service install runner</code> and check it comes back after a restart.
+      <div class="facts">
+        <MetadataList>
+          <MetadataListItem label="Hub fingerprint">
+            <span class="fp">
+              <Code>{enrollment.hubFingerprint}</Code>
+              <Button label="Copy fingerprint" size="sm" variant="ghost" onclick={() => copy(enrollment!.hubFingerprint, 'Fingerprint')}>
+                {#snippet icon()}<Icon icon={Copy} size="sm" />{/snippet}
+                {copied === 'Fingerprint' ? 'Copied' : 'Copy'}
+              </Button>
+            </span>
+          </MetadataListItem>
+          <MetadataListItem label="Hub address"><Code>{enrollment.hubUrl}</Code></MetadataListItem>
+          <MetadataListItem label="Expires">{relative(enrollment.expiresAt, app.now)} ({atTime(enrollment.expiresAt)})</MetadataListItem>
+        </MetadataList>
+      </div>
+      <Notice
+        tone="warning"
+        title="Check that the fingerprint the machine prints matches this one before confirming."
+        description="This command is shown only once; if it expires, add the machine again."
+      />
+      <p>
+        Then start it with <Code size="inherit">yip runner</Code>. Started from a terminal, it stops when that terminal closes; to keep it running, install it as a background service with
+        <Code size="inherit">yip service install runner</Code> and check it comes back after a restart.
       </p>
       <div class="watch" role="status">
         {#if !paired}
@@ -103,13 +113,13 @@
           <div class="paired">
             <strong>{paired.name} is paired{paired.status === 'online' ? ' and connected' : ''}.</strong>
             {#if realProviders.length === 0}
-              <span class="meta">No Codex, Claude Code or Cursor found on it yet. Install one and sign in with its own tool; yip picks it up on the next check.</span>
+              <Text type="supporting">No Codex, Claude Code or Cursor found on it yet. Install one and sign in with its own tool; yip picks it up on the next check.</Text>
             {:else}
               <ul>
                 {#each realProviders as p (p.provider)}
                   <li>
                     {providerLabel(p.provider)} · {authStateLabel(p.authState, p.authDetail)}{#if p.authState === 'ready'}{' · '}{billingLabel(p.billing)}{#if p.account}{' · '}{p.account}{/if}
-                    {:else if SIGN_IN[p.provider]}{' · run '}<code>{SIGN_IN[p.provider]}</code>{' on it'}{/if}
+                    {:else if SIGN_IN[p.provider]}{' · run '}<Code size="inherit">{SIGN_IN[p.provider]}</Code>{' on it'}{/if}
                   </li>
                 {/each}
               </ul>
@@ -121,10 +131,10 @@
   {/if}
   {#snippet footer()}
     {#if enrollment}
-      <button class="btn btn-primary" onclick={onclose}>{paired ? 'Done' : 'Close'}</button>
+      <Button label={paired ? 'Done' : 'Close'} variant="primary" onclick={onclose} />
     {:else}
-      <button class="btn" onclick={onclose}>Cancel</button>
-      <button class="btn btn-primary" type="submit" form="add-machine" disabled={busy}>{busy ? 'Creating…' : 'Create pairing command'}</button>
+      <Button label="Cancel" onclick={onclose} />
+      <Button label={busy ? 'Creating…' : 'Create pairing command'} variant="primary" type="submit" form="add-machine" isLoading={busy} />
     {/if}
   {/snippet}
 </Dialog>
@@ -133,77 +143,69 @@
   .form,
   .steps {
     display: grid;
-    gap: 14px;
+    gap: var(--spacing-4);
   }
   .copy-block {
     display: grid;
-    gap: 8px;
+    gap: var(--spacing-2);
     justify-items: start;
   }
-  .cmd {
-    width: 100%;
-    margin: 0;
-    padding: 12px;
-    border-radius: var(--r-control);
-    background: var(--surface-subtle);
-    border: 1px solid var(--line);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    font-size: 13px;
+  /* One click selects the whole command, for when copying to the clipboard fails. */
+  .copy-block :global(code) {
     user-select: all;
   }
-  .facts {
-    margin: 0;
-    display: grid;
-    gap: 6px;
-  }
-  .facts > div {
-    display: grid;
+  .facts :global(dl) {
     grid-template-columns: 130px minmax(0, 1fr);
-    gap: 10px;
-    font-size: 14px;
+    row-gap: var(--spacing-1-5);
   }
-  dt {
-    color: var(--ink-secondary);
+  .facts :global(dt) {
+    font-weight: var(--font-weight-normal);
   }
-  dd {
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+  .facts :global(dd) {
     min-width: 0;
+  }
+  /* A long fingerprint wraps beside its Copy button rather than pushing it to a line of its own. */
+  .fp {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--spacing-2);
+    min-width: 0;
+  }
+  .fp :global(code) {
+    justify-self: start;
+    margin-top: var(--spacing-0-5);
+  }
+  .fp :global(code),
+  .facts :global(code) {
+    overflow-wrap: anywhere;
   }
   .watch {
     display: flex;
-    gap: 10px;
+    gap: var(--spacing-2);
     align-items: flex-start;
-    padding: 10px 12px;
-    border-radius: var(--r-control);
-    background: var(--surface-subtle);
+    padding: var(--spacing-2) var(--spacing-3);
+    border-radius: var(--radius-element);
+    background: var(--color-background-muted);
+  }
+  .watch > :global(svg) {
+    margin-top: 2px;
   }
   .paired {
     display: grid;
-    gap: 4px;
+    gap: var(--spacing-1);
   }
   .paired ul {
     margin: 0;
-    padding-left: 18px;
-  }
-  .fp {
-    overflow-wrap: anywhere;
-    font-size: 12.5px;
-  }
-  .then {
-    font-size: 14px;
-  }
-  .then code {
-    overflow-wrap: anywhere;
+    padding-left: var(--spacing-4);
   }
   @media (max-width: 560px) {
-    .facts > div {
-      grid-template-columns: 1fr;
-      gap: 0;
+    .facts :global(dl) {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: 0;
+    }
+    .facts :global(dd:not(:last-child)) {
+      margin-bottom: var(--spacing-1-5);
     }
   }
 </style>

@@ -1,13 +1,15 @@
 <script lang="ts">
   // Compact, clickable references attached to a message: work, reviews,
   // pull requests, decisions and files. Each opens its actual source.
-  import { untrack } from 'svelte';
+  // They open a panel, so they are pill-shaped buttons rather than tokens.
+  import { untrack, type Snippet } from 'svelte';
+  import { BookOpen, Eye, File, GitPullRequest } from '@lucide/svelte';
+  import { Button, Icon } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
   import type { Ref } from '../lib/api/types.gen';
   import { jobShape, jobStateLabel, jobTone, reviewShape, reviewStateLabel, reviewTone } from '../lib/util/labels';
   import StateIcon from './StateIcon.svelte';
-  import Icon from './Icon.svelte';
 
   interface Props {
     refs: Ref[];
@@ -46,6 +48,13 @@
   });
 </script>
 
+<!-- One chip. `label` is its accessible name; the title truncates while the
+     trailing state stays visible. -->
+{#snippet chip(label: string, title: string, meta: string | null, onclick: () => void, icon: Snippet)}
+  {#snippet state()}<span class="meta">· {meta}</span>{/snippet}
+  <Button class="chip ref" variant="secondary" size="sm" {label} {onclick} {icon} endContent={meta ? state : undefined}>{title}</Button>
+{/snippet}
+
 {#if shown.length}
   <div class="refs">
     {#each shown as r (r.kind + r.id)}
@@ -53,40 +62,32 @@
         {@const j = app.data.jobs[r.id]}
         {#if j && j.kind !== 'reply'}
           {@const input = inputFor(r.id)}
-          <button class="chip ref" onclick={() => app.openPanel({ kind: 'job', id: r.id })}>
-            <StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} size={13} live={j.state === 'running'} />
-            {#if input}
-              <span class="truncate">Added to {app.engineerName(j.ownerId)}'s {j.title}</span>
-              <span class="meta">· {deliveryWord(input.delivery)}</span>
-            {:else}
-              <span class="truncate">{j.title}</span>
-              <span class="meta">· {jobStateLabel(j)}</span>
-            {/if}
-          </button>
+          {@const title = input ? `Added to ${app.engineerName(j.ownerId)}'s ${j.title}` : j.title}
+          {@const meta = input ? deliveryWord(input.delivery) : jobStateLabel(j)}
+          {#snippet jobIcon()}<StateIcon shape={jobShape(j.state)} tone={jobTone(j.state)} size={13} live={j.state === 'running'} />{/snippet}
+          {@render chip(`${title} · ${meta}`, title, meta, () => app.openPanel({ kind: 'job', id: r.id }), jobIcon)}
         {/if}
       {:else if r.kind === 'review'}
         {@const rv = app.data.reviews[r.id]}
-        <button class="chip ref" onclick={() => app.openPanel({ kind: 'review', id: r.id })}>
-          {#if rv}
-            <StateIcon shape={reviewShape(rv.state)} tone={reviewTone(rv.state)} size={13} />
-            <span>View review</span>
-            <span class="meta">· {app.engineerName(rv.reviewerId)} · {reviewStateLabel(rv.state)}</span>
-          {:else}
-            <Icon name="eye" size={14} /><span>View review</span>
-          {/if}
-        </button>
+        {@const meta = rv ? `${app.engineerName(rv.reviewerId)} · ${reviewStateLabel(rv.state)}` : null}
+        {#snippet reviewIcon()}
+          {#if rv}<StateIcon shape={reviewShape(rv.state)} tone={reviewTone(rv.state)} size={13} />{:else}<Icon icon={Eye} size="sm" />{/if}
+        {/snippet}
+        {@render chip(meta ? `View review · ${meta}` : 'View review', 'View review', meta, () => app.openPanel({ kind: 'review', id: r.id }), reviewIcon)}
       {:else if r.kind === 'pr'}
         {@const pr = app.data.prs[r.id]}
-        <button class="chip ref" onclick={() => app.openPanel({ kind: 'pr', id: r.id })}>
-          <Icon name="pr" size={14} /><span>{pr ? `PR #${pr.number}` : 'Pull request'}</span>
-        </button>
+        {@const title = pr ? `PR #${pr.number}` : 'Pull request'}
+        {#snippet prIcon()}<Icon icon={GitPullRequest} size="sm" />{/snippet}
+        {@render chip(title, title, null, () => app.openPanel({ kind: 'pr', id: r.id }), prIcon)}
       {:else if r.kind === 'decision'}
         {@const dcs = app.data.decisions[r.id]}
-        <button class="chip ref" onclick={() => app.openPanel({ kind: 'decision', id: r.id })}>
-          <Icon name="book" size={14} /><span class="truncate">{dcs ? dcs.title : 'Decision'}</span>
-        </button>
+        {@const title = dcs ? dcs.title : 'Decision'}
+        {#snippet decisionIcon()}<Icon icon={BookOpen} size="sm" />{/snippet}
+        {@render chip(title, title, null, () => app.openPanel({ kind: 'decision', id: r.id }), decisionIcon)}
       {:else if r.kind === 'artifact'}
-        <a class="chip ref" href="/v1/artifacts/{r.id}" target="_blank" rel="noopener"><Icon name="file" size={14} />File</a>
+        <Button class="chip ref" variant="secondary" size="sm" label="File" href="/v1/artifacts/{r.id}" target="_blank" rel="noopener">
+          {#snippet icon()}<Icon icon={File} size="sm" />{/snippet}
+        </Button>
       {/if}
     {/each}
   </div>
@@ -96,16 +97,16 @@
   .refs {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 6px;
+    gap: var(--spacing-1-5);
+    margin-top: var(--spacing-1-5);
   }
-  .ref {
+  .refs :global(.chip.ref) {
     max-width: min(100%, 460px);
-    min-height: 28px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-sm);
   }
-  @media (pointer: coarse) {
-    .ref {
-      min-height: 40px;
-    }
+  .meta {
+    color: var(--color-text-secondary);
+    white-space: nowrap;
   }
 </style>

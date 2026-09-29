@@ -216,11 +216,13 @@ export function providerStatuses(n: Node, profiles: ProviderProfile[], now = Dat
 // ---- what limits its work ----
 
 export type FactTab = 'overview' | 'connections' | 'storage' | 'diagnostics';
+/** The glyph a fact or limit shows (drawn by lib/util/machineIcons). */
+export type FactIcon = 'alert' | 'info' | 'terminal' | 'key' | 'eye';
 
 export interface Fact {
   id: string;
   text: string;
-  icon: string;
+  icon: FactIcon;
   tone: 'attention' | 'neutral';
   tab: FactTab;
 }
