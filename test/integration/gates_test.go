@@ -523,9 +523,12 @@ func TestRegressionHeredocEditNeedsNoApproval(t *testing.T) {
 	}
 }
 
-// A11, A12: commands redelivered after a hub restart (as if the hub crashed
-// after commit but before the runner's ack was recorded) execute once: the
-// runner answers a repeated command from its journal.
+// A11, A12: the hub side of redelivery. After a hub restart (as if it crashed
+// after commit but before the runner's ack was recorded) the outbox resends
+// the offer and start, a duplicate acknowledgement settles them, and the
+// attempt stays one run with one reply. The test node plays the runner here;
+// that the real runner starts its provider once for a redelivered command is
+// TestRedeliveredStartRunsTheProviderOnce in internal/runner.
 func TestOutboxRedeliveryExecutesOnce(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
