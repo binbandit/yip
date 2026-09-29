@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -83,6 +84,8 @@ type env struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	opts      envOptions
+
+	runnerPartitioned atomic.Bool
 }
 
 func quietLogger() *slog.Logger {
@@ -148,7 +151,14 @@ func (e *env) startHub(lim domain.Limits) {
 		}
 		e.runnerLn = ln
 	}
-	e.runnerSrv = &http.Server{Handler: httpapi.NewRunnerServer(h, nil)}
+	runnerHandler := httpapi.NewRunnerServer(h, nil)
+	e.runnerSrv = &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if e.runnerPartitioned.Load() {
+			http.Error(w, "runner network partitioned", http.StatusServiceUnavailable)
+			return
+		}
+		runnerHandler.ServeHTTP(w, r)
+	})}
 	go e.runnerSrv.Serve(tls.NewListener(e.runnerLn, tlsConf))
 }
 

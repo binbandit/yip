@@ -1,41 +1,32 @@
 package integration
 
 import (
-	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"net"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	manifest "github.com/binbandit/yip/internal/context"
 	"github.com/binbandit/yip/internal/domain"
-	"github.com/binbandit/yip/internal/httpapi"
 	"github.com/binbandit/yip/internal/providers/fake"
 	"github.com/binbandit/yip/internal/store"
 	"github.com/binbandit/yip/protocol"
 )
 
-// partition cuts the runner off: the listener closes and the live connection drops.
+// partition blocks reconnects and drops the live connection while reserving the port.
 func (e *env) partition() {
-	e.runnerSrv.Close()
+	e.runnerPartitioned.Store(true)
 	nodes, _ := e.hub.ListNodes(e.ctx)
 	for _, n := range nodes {
 		e.hub.DropRunnerConnection(n.ID)
 	}
 }
 
-// heal restores the runner listener on the same address.
+// heal allows the runner to reconnect to the existing listener.
 func (e *env) heal() {
-	ln, err := net.Listen("tcp", strings.TrimPrefix(e.runnerURL, "https://"))
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	tlsConf, _ := e.hub.CA().ServerTLS([]string{"127.0.0.1"})
-	e.runnerSrv = &http.Server{Handler: httpapi.NewRunnerServer(e.hub, nil)}
-	go e.runnerSrv.Serve(tls.NewListener(ln, tlsConf))
+	e.runnerPartitioned.Store(false)
 }
 
 func (e *env) roomMessage(room, prefix string) (protocol.Message, bool) {
@@ -245,6 +236,11 @@ func TestPartitionProducesUnknownThenReconciles(t *testing.T) {
 		return len(d.Runs) == 1 && d.Runs[0].State == protocol.RunRunning
 	})
 	e.partition()
+	// A parallel environment must not be able to take this runner's address.
+	if ln, err := net.Listen("tcp", strings.TrimPrefix(e.runnerURL, "https://")); err == nil {
+		ln.Close()
+		t.Fatal("partition released the runner port to other tests")
+	}
 	j = e.waitJob("Long trace", protocol.JobWaiting)
 	if j.WaitingReason != protocol.WaitRecovery || !strings.Contains(j.StateDetail, "not yet confirmed") {
 		t.Fatalf("lost runner must be shown as unconfirmed: %s / %s", j.WaitingReason, j.StateDetail)
