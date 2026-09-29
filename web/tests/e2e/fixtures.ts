@@ -81,11 +81,16 @@ async function startHub(kind: HubKind, fakeDelay: string): Promise<Started> {
     rmSync(work, { recursive: true, force: true });
   };
 
+  // Each value must end its line: output arrives in chunks, on two pipes.
+  const handleRe = /handle:[ \t]*(\S+)\r?\n/;
+  const passwordRe = /password:[ \t]*(\S+)\r?\n/;
   // "One-time setup code (expires 15:04): <code>"
-  const codeRe = /setup code \(expires [^)]*\): *(\S+)/;
-  const ready = kind === 'demo' ? /runner connected/ : codeRe;
+  const codeRe = /setup code \(expires [^)]*\):[ \t]*(\S+)\r?\n/;
+  // The demo starts its runner before printing the owner's credentials.
+  const ready = () =>
+    kind === 'demo' ? /runner connected/.test(output) && handleRe.test(output) && passwordRe.test(output) : codeRe.test(output);
   const deadline = Date.now() + 30_000;
-  while (!ready.test(output)) {
+  while (!ready()) {
     if (exited || Date.now() > deadline) {
       await stop();
       throw new Error(`The ${kind} hub did not start:\n${output}`);
@@ -97,8 +102,8 @@ async function startHub(kind: HubKind, fakeDelay: string): Promise<Started> {
     url,
     runnerPort,
     dataDir,
-    handle: /handle:\s*(\S+)/.exec(output)?.[1] ?? '',
-    password: /password:\s*(\S+)/.exec(output)?.[1] ?? '',
+    handle: handleRe.exec(output)?.[1] ?? '',
+    password: passwordRe.exec(output)?.[1] ?? '',
     setupCode: codeRe.exec(output)?.[1] ?? '',
     log: () => output,
   };
