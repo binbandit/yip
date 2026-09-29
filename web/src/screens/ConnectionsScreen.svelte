@@ -219,7 +219,6 @@
       <Heading level={2}>Which tool do you use?</Heading>
       <p>yip runs the tool on a paired machine using its existing sign-in. You do not connect a subscription to the browser or upload credentials.</p>
       {#if provider}<Notice>No setup guide exists for “{provider}”. Choose a supported connection below.</Notice>{/if}
-      {#if app.data.demo}<Notice title="The demo is not a subscription connection" description="Demo engineers use a scripted provider and do not call a model. Connect a real tool here, then change an engineer’s provider preference." />{/if}
     </div>
     <ul class="catalog" aria-label="Supported connections">
       {#each connections as p (p.id)}
