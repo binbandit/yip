@@ -184,8 +184,9 @@ export class HubApi {
     return this.req('GET', '/v1/jobs');
   }
 
+  /** The work whose title contains `titlePart`; reviews of it ("Review Mira's …") don't count. */
   async job(titlePart: string): Promise<any | undefined> {
-    return (await this.jobs()).find((j) => j.title.includes(titlePart));
+    return (await this.jobs()).find((j) => j.kind !== 'review' && j.title.includes(titlePart));
   }
 
   async nodes(): Promise<any[]> {
