@@ -8,6 +8,7 @@ test('create separate work and personal spaces, switch back to the draft, and ke
   await signIn(page);
   const initial = await (await page.request.get('/v1/bootstrap')).json();
   const workName = initial.org.name as string;
+  await page.locator('.start').getByRole('button', { name: 'Hide', exact: true }).click();
   await openRoom(page, 'Security');
   const workRoomURL = page.url();
   const composer = page.getByRole('combobox', { name: /^Message / });
@@ -21,6 +22,7 @@ test('create separate work and personal spaces, switch back to the draft, and ke
   await expect(page).toHaveURL(/\/w\/[^/]+\/overview$/);
   const personalBase = new URL(page.url()).pathname.replace(/\/overview$/, '');
   await expect(page.getByRole('button', { name: 'Workspace: Personal', exact: true })).toBeVisible();
+  await expect(page.locator('#gs-steps')).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Workspace', exact: true }).getByRole('link', { name: /^Security/ })).toHaveCount(0);
   const personal = await (await page.request.get(`${personalBase}/v1/bootstrap`)).json();
   expect(personal.engineers).toHaveLength(0);

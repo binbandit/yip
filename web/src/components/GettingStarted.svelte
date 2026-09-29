@@ -1,12 +1,12 @@
 <script lang="ts">
   import { Button, Heading, Link, Text } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
-  import { workspaceUrl } from '../lib/workspace';
+  import { workspaceStoragePrefix, workspaceUrl } from '../lib/workspace';
   import { providerLabel } from '../lib/util/labels';
   import { roomSettings, setupReadiness } from '../lib/util/setup';
   import StateIcon from './StateIcon.svelte';
 
-  const KEY = 'yip.gettingStarted.dismissed';
+  const KEY = workspaceStoragePrefix('gettingStarted') + 'dismissed';
   let dismissed = $state(false);
   let expanded = $state(false);
   const hasRecordedWork = $derived(Object.values(app.data.jobs).some((j) => j.kind !== 'reply' && j.kind !== 'review' && !j.parentId));
