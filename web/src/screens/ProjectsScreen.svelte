@@ -3,6 +3,7 @@
   import Notice from '../components/Notice.svelte';
   import { ChevronRight, Folder, Plus } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
   import { isLiveJob } from '../lib/state/data';
@@ -74,7 +75,7 @@
       {#each projects as p (p.id)}
         {@const n = openCount(p.id)}
         <li>
-          <a class="row" href="/projects/{p.id}">
+          <a class="row" href={workspaceUrl(`/projects/${p.id}`)}>
             <span class="ic"><Icon icon={Folder} size="md" /></span>
             <span class="main">
               <span class="name">{p.name}</span>

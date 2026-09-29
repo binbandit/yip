@@ -4,6 +4,7 @@
   import { untrack } from 'svelte';
   import { Button, Heading, Link, Text, TextArea, TextInput } from '@astryx-svelte/core';
   import { app } from '../../lib/state/app.svelte';
+  import { workspaceUrl } from '../../lib/workspace';
   import { details } from '../../lib/state/details.svelte';
   import { api } from '../../lib/api/endpoints';
   import { ApiError, errorMessage } from '../../lib/api/client';
@@ -35,7 +36,7 @@
   );
 
   function sourceHref(s: { kind: string; id: string; roomId?: string }): string | null {
-    if (s.kind === 'message' && s.roomId) return `/rooms/${s.roomId}?msg=${s.id}`;
+    if (s.kind === 'message' && s.roomId) return workspaceUrl(`/rooms/${s.roomId}?msg=${s.id}`);
     if (s.kind === 'job') return `${location.pathname}?panel=job%3A${s.id}`;
     if (s.kind === 'review') return `${location.pathname}?panel=review%3A${s.id}`;
     if (s.kind === 'decision') return `${location.pathname}?panel=decision%3A${s.id}`;

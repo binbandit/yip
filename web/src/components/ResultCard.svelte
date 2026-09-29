@@ -9,6 +9,7 @@
   import { ChevronDown, ChevronRight, Eye } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
+  import { artifactUrl } from '../lib/api/endpoints';
   import { jobShape, jobStateLabel, jobTone, reviewShape, reviewTone, verdictPhrase } from '../lib/util/labels';
   import { currentReviewRound } from '../lib/util/reviews';
   import { shortSha } from '../lib/util/time';
@@ -205,7 +206,7 @@
         {#if docs.length}
           <MetadataListItem label="Documents">
             <ul class="files">
-              {#each docs as a (a.id)}<li><Link hasUnderline href="/v1/artifacts/{a.id}" target="_blank" rel="noopener">{a.name}</Link></li>{/each}
+              {#each docs as a (a.id)}<li><Link hasUnderline href={artifactUrl(a.id)} target="_blank" rel="noopener">{a.name}</Link></li>{/each}
             </ul>
           </MetadataListItem>
         {/if}

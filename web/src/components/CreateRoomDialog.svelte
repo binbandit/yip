@@ -3,6 +3,7 @@
   import { Button, CheckboxInput, CheckboxList, CheckboxListItem, Link, RadioList, RadioListItem, Selector, Text, TextInput } from '@astryx-svelte/core';
   import Notice from './Notice.svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
   import Dialog from './Dialog.svelte';
@@ -93,7 +94,7 @@
   <form id="create-room" class="form" onsubmit={create} novalidate>
     {#if kind === 'dm'}
       {#if engineers.length === 0}
-        <Text as="p" type="supporting">No engineers yet. <Link hasUnderline href="/engineers">Create one first.</Link></Text>
+        <Text as="p" type="supporting">No engineers yet. <Link hasUnderline href={workspaceUrl('/engineers')}>Create one first.</Link></Text>
       {:else}
         <div {@attach focusFirstChoice}>
           <RadioList label="Who" value={dmWith} onChange={(v) => (dmWith = v)} htmlName="dm">

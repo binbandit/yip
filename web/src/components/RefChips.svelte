@@ -7,6 +7,7 @@
   import { Button, Icon } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
+  import { artifactUrl } from '../lib/api/endpoints';
   import type { Ref } from '../lib/api/types.gen';
   import { jobShape, jobStateLabel, jobTone, reviewShape, reviewStateLabel, reviewTone } from '../lib/util/labels';
   import StateIcon from './StateIcon.svelte';
@@ -85,7 +86,7 @@
         {#snippet decisionIcon()}<Icon icon={BookOpen} size="sm" />{/snippet}
         {@render chip(title, title, null, () => app.openPanel({ kind: 'decision', id: r.id }), decisionIcon)}
       {:else if r.kind === 'artifact'}
-        <Button class="chip ref" variant="secondary" size="sm" label="File" href="/v1/artifacts/{r.id}" target="_blank" rel="noopener">
+        <Button class="chip ref" variant="secondary" size="sm" label="File" href={artifactUrl(r.id)} target="_blank" rel="noopener">
           {#snippet icon()}<Icon icon={File} size="sm" />{/snippet}
         </Button>
       {/if}

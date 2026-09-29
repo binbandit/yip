@@ -101,8 +101,14 @@
         description="This command is shown only once; if it expires, add the machine again."
       />
       <p>
-        Then start it with <Code size="inherit">yip runner</Code>. Started from a terminal, it stops when that terminal closes; to keep it running, install it as a background service with
-        <Code size="inherit">yip service install runner</Code> and check it comes back after a restart.
+        Then start it with <Code size="inherit">{enrollment.runCommand || 'yip runner'}</Code>.
+        {#if enrollment.runCommand && enrollment.runCommand !== 'yip runner'}
+          Keep this separate runner process running in its own terminal for this workspace. It stops when that terminal closes.
+          The default runner service does not run this workspace's separate state directory.
+        {:else}
+          Started from a terminal, it stops when that terminal closes; to keep it running, install it as a background service with
+          <Code size="inherit">yip service install runner</Code> and check it comes back after a restart.
+        {/if}
       </p>
       <div class="watch" role="status">
         {#if !paired}

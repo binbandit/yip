@@ -103,6 +103,7 @@ afterEach(async () => {
   component = undefined;
   document.body.innerHTML = '';
   localStorage.clear();
+  history.replaceState(null, '', '/overview');
 });
 
 describe('setup next actions', () => {
@@ -179,6 +180,37 @@ describe('setup next actions', () => {
     flushSync();
     expect(document.querySelector('#gs-steps')?.hasAttribute('hidden')).toBe(false);
     expect(localStorage.getItem('yip.gettingStarted.dismissed')).toBeNull();
+  });
+
+  it('keeps guide dismissal workspace-local while preserving the original root preference', async () => {
+    app.data = emptyState();
+    localStorage.setItem('yip.gettingStarted.dismissed', '1');
+    async function open(path: string) {
+      if (component) await unmount(component);
+      history.replaceState(null, '', path);
+      component = mount(GettingStarted, { target: document.body });
+      flushSync();
+    }
+    await open('/overview');
+    expect(document.querySelector('#gs-steps')).toBeNull();
+
+    await open('/w/personal/overview');
+    expect(document.querySelector('#gs-steps')).not.toBeNull();
+    [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Hide')!.click();
+    flushSync();
+    expect(localStorage.getItem('yip.workspace.personal.gettingStarted.dismissed')).toBe('1');
+
+    await open('/w/another/overview');
+    expect(document.querySelector('#gs-steps')).not.toBeNull();
+    await open('/w/personal/overview');
+    expect(document.querySelector('#gs-steps')).toBeNull();
+    document.querySelector('button')!.click();
+    flushSync();
+    expect(localStorage.getItem('yip.workspace.personal.gettingStarted.dismissed')).toBeNull();
+    expect(localStorage.getItem('yip.gettingStarted.dismissed')).toBe('1');
+
+    await open('/overview');
+    expect(document.querySelector('#gs-steps')).toBeNull();
   });
 
   it('points missing access to the actual project and review membership to the actual room', () => {

@@ -1,11 +1,12 @@
 <script lang="ts">
   import { Button, Heading, Link, Text } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceStoragePrefix, workspaceUrl } from '../lib/workspace';
   import { providerLabel } from '../lib/util/labels';
   import { roomSettings, setupReadiness } from '../lib/util/setup';
   import StateIcon from './StateIcon.svelte';
 
-  const KEY = 'yip.gettingStarted.dismissed';
+  const KEY = workspaceStoragePrefix('gettingStarted') + 'dismissed';
   let dismissed = $state(false);
   let expanded = $state(false);
   const hasRecordedWork = $derived(Object.values(app.data.jobs).some((j) => j.kind !== 'reply' && j.kind !== 'review' && !j.parentId));
@@ -124,7 +125,7 @@
       <div class="availability">
         {#each setup.unavailable as issue (issue.engineer.id)}
           <Text as="p" display="block" type="supporting">
-            <strong>{issue.engineer.name}:</strong> {issue.reason} <Link href={issue.href} type="inherit" hasUnderline>{issue.action}</Link>
+            <strong>{issue.engineer.name}:</strong> {issue.reason} <Link href={workspaceUrl(issue.href)} type="inherit" hasUnderline>{issue.action}</Link>
           </Text>
         {/each}
         <Text as="p" display="block" type="supporting">Your completed setup stays in place.</Text>
@@ -141,7 +142,7 @@
           </div>
           {#if !s.done && s.action}
             {#if s.href}
-              <Button label={s.action} href={s.href} size="sm" variant={next ? 'primary' : 'secondary'} />
+              <Button label={s.action} href={workspaceUrl(s.href)} size="sm" variant={next ? 'primary' : 'secondary'} />
             {:else}
               <Button label={s.action} size="sm" variant={next ? 'primary' : 'secondary'} onclick={() => (app.createRoom = { kind: 'room' })} />
             {/if}

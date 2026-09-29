@@ -2,6 +2,7 @@
 // so every screen has a real, shareable URL. The right-hand panel (thread or
 // detail drawer) lives in the query string so Back closes it and links can
 // open a specific job, review, or message.
+import { workspaceBase, workspaceLocalPath, workspaceUrl } from './workspace';
 
 export type Route =
   | { name: 'setup' }
@@ -45,7 +46,7 @@ function seg(s: string): string {
 }
 
 export function parseRoute(pathname: string): Route {
-  const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean).map(seg);
+  const parts = workspaceLocalPath(pathname).replace(/\/+$/, '').split('/').filter(Boolean).map(seg);
   const [a, b, ...rest] = parts;
   if (rest.length) return { name: 'notfound', path: pathname };
   switch (a) {
@@ -93,6 +94,10 @@ export function parseLocation(pathname: string, search: string): Location {
 }
 
 export function routePath(r: Route): string {
+  return workspaceUrl(localRoutePath(r));
+}
+
+function localRoutePath(r: Route): string {
   const e = encodeURIComponent;
   switch (r.name) {
     case 'setup':
@@ -144,8 +149,13 @@ export function withPanel(loc: Location, panel: Panel | null, tab: string | null
 
 /** Only same-origin, in-app paths are acceptable "next" targets after sign-in. */
 export function safeNext(next: string | null): string | null {
-  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/v1/')) return null;
-  const r = parseRoute(next.split('?')[0]);
+  if (!next || !next.startsWith('/') || next.startsWith('//') || /[\\\u0000-\u0020]/.test(next)) return null;
+  const base = workspaceBase(next);
+  if (base && base !== workspaceBase()) return null;
+  const origin = typeof window === 'undefined' ? 'http://yip.invalid' : window.location.origin;
+  const url = new URL(workspaceUrl(next), origin);
+  if (url.origin !== origin || workspaceBase(url.pathname) !== workspaceBase()) return null;
+  const r = parseRoute(url.pathname);
   if (r.name === 'signin' || r.name === 'setup' || r.name === 'notfound') return null;
-  return next;
+  return url.pathname + url.search + url.hash;
 }

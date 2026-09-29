@@ -185,6 +185,10 @@ export interface CreateRoomRequest {
   projectIds: string[];
 }
 
+export interface CreateWorkspaceRequest {
+  name: string;
+}
+
 export interface Decision {
   id: string;
   scope: DecisionScope;
@@ -345,6 +349,7 @@ export interface Enrollment {
   hubUrl: string;
   hubFingerprint: string;
   command: string;
+  runCommand?: string;
 }
 
 export interface Event {
@@ -1089,6 +1094,12 @@ export interface WorkRow {
   blocker?: string;
   questions?: Question[];
   runState?: RunState;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  path: string;
 }
 
 export interface WorkspaceInfo {

@@ -2,6 +2,7 @@
   // A quick look at an engineer from anywhere: the same identity in every room.
   import { Button, Heading, Link, List, ListItem, Text, Token } from '@astryx-svelte/core';
   import { app } from '../../lib/state/app.svelte';
+  import { workspaceUrl } from '../../lib/workspace';
   import { isLiveJob } from '../../lib/state/data';
   import { jobShape, jobStateLabel, jobTone, providerLabel } from '../../lib/util/labels';
   import RightPanel, { type PanelMode } from '../RightPanel.svelte';
@@ -43,7 +44,7 @@
       <section>
         <Heading level={3}>Rooms</Heading>
         {#if rooms.length === 0}<Text as="p" type="supporting">Not in any of your rooms.</Text>{/if}
-        <ul class="plain">{#each rooms as r (r.id)}<li><Link hasUnderline href="/rooms/{r.id}">{r.kind === 'dm' ? 'Direct messages' : r.name}</Link></li>{/each}</ul>
+        <ul class="plain">{#each rooms as r (r.id)}<li><Link hasUnderline href={workspaceUrl(`/rooms/${r.id}`)}>{r.kind === 'dm' ? 'Direct messages' : r.name}</Link></li>{/each}</ul>
       </section>
       <section>
         <Heading level={3}>Active work</Heading>
@@ -62,7 +63,7 @@
         {/if}
       </section>
       <Text as="p" type="supporting">Provider preference: {providerLabel(e.provider.provider)}{e.provider.model ? ` · ${e.provider.model}` : ''}</Text>
-      <div class="profile"><Button size="sm" label="Open full profile" href="/engineers/{e.id}" /></div>
+      <div class="profile"><Button size="sm" label="Open full profile" href={workspaceUrl(`/engineers/${e.id}`)} /></div>
     {/if}
   </div>
 </RightPanel>

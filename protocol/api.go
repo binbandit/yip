@@ -698,6 +698,7 @@ type Enrollment struct {
 	HubURL         string    `json:"hubUrl"`
 	HubFingerprint string    `json:"hubFingerprint"`
 	Command        string    `json:"command"`
+	RunCommand     string    `json:"runCommand,omitempty"`
 }
 
 type ProjectPolicy struct {

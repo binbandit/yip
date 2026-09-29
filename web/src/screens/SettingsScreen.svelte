@@ -242,7 +242,7 @@
 
     <ScreenSection title="Session" id="set-session" class="group">
       <div class="body">
-        <Text as="p" display="block" type="supporting">Signing out ends this browser's session. Engineers' work keeps running on your machines.</Text>
+        <Text as="p" display="block" type="supporting">Signing out ends this browser's session in all your workspaces. Engineers' work keeps running on your machines.</Text>
         <Button label="Sign out" size="sm" onclick={() => app.signOut()}>
           {#snippet icon()}<Icon icon={LogOut} size="sm" />{/snippet}
         </Button>

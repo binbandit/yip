@@ -50,7 +50,14 @@ func (h *Hub) CreateEnrollment(ctx context.Context, userID string, req protocol.
 	token := "yipe_" + domain.RandomToken(32)
 	en := protocol.Enrollment{ID: domain.NewID(), Token: token, Name: name, ExpiresAt: h.now().Add(enrollmentTTL),
 		HubURL: h.cfg.RunnerURL, HubFingerprint: h.ca.Fingerprint()}
-	en.Command = "yip runner pair --hub " + h.cfg.RunnerURL + " --fingerprint " + en.HubFingerprint + " --name " + shellQuote(name) + " --token " + token
+	// Each workspace needs its own runner identity and process. Keep the root
+	// on the default state directory for existing installations.
+	stateArg := ""
+	if h.cfg.SessionHub != nil {
+		stateArg = " --state ~/.yip/runners/" + shellQuote(h.Org().ID)
+	}
+	en.Command = "yip runner pair" + stateArg + " --hub " + h.cfg.RunnerURL + " --fingerprint " + en.HubFingerprint + " --name " + shellQuote(name) + " --token " + token
+	en.RunCommand = "yip runner" + stateArg
 	err := h.do(ctx, func(t *txn) error {
 		if err := store.InsertEnrollment(ctx, t.tx, h.Org().ID, en.ID, name, domain.HashToken(token), en.ExpiresAt); err != nil {
 			return err

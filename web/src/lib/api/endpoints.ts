@@ -1,5 +1,6 @@
 // Typed wrappers for every /v1 endpoint the client uses (see docs/api.md).
 import { del, get, patch, post, put, upload } from './client';
+import { workspaceUrl, type WorkspaceSummary } from '../workspace';
 import type {
   AcceptJobRequest,
   Approval,
@@ -65,6 +66,8 @@ export const api = {
   signIn: (handle: string, password: string) => post<{ ok: boolean }>('/v1/session', { handle, password }, { quiet401: true }),
   signOut: () => del<{ ok: boolean }>('/v1/session', { quiet401: true }),
   bootstrap: (opts?: { quiet401?: boolean }) => get<Bootstrap>('/v1/bootstrap', opts),
+  workspaces: () => get<WorkspaceSummary[]>('/v1/workspaces'),
+  createWorkspace: (name: string) => post<WorkspaceSummary>('/v1/workspaces', { name }),
   putPreferences: (preferences: Preferences) => put<Preferences>('/v1/preferences', { preferences }),
   updateProfile: (req: ProfileRequest) => patch<User>('/v1/profile', req),
   setProfileAvatar: (picture: Blob) => upload<User>('/v1/profile/avatar', picture, 'PUT'),
@@ -171,9 +174,9 @@ export const api = {
 };
 
 /** A profile picture; its content never changes under an ID. */
-export const avatarUrl = (id: string) => `/v1/avatars/${q(id)}`;
-export const artifactUrl = (id: string, download = false) => `/v1/artifacts/${q(id)}${download ? '?download=1' : ''}`;
-export const exportUrl = '/v1/export';
+export const avatarUrl = (id: string) => workspaceUrl(`/v1/avatars/${q(id)}`);
+export const artifactUrl = (id: string, download = false) => workspaceUrl(`/v1/artifacts/${q(id)}${download ? '?download=1' : ''}`);
+export const exportUrl = workspaceUrl('/v1/export');
 
 export async function fetchArtifactText(id: string, maxBytes = 2_000_000): Promise<{ text: string; truncated: boolean }> {
   const res = await fetch(artifactUrl(id), { credentials: 'same-origin' });

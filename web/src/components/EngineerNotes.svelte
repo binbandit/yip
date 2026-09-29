@@ -6,6 +6,7 @@
   import { Button, Card, Link, Selector, Text, TextArea } from '@astryx-svelte/core';
   import Notice from './Notice.svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
   import { ApiError, errorMessage } from '../lib/api/client';
   import type { EngineerNote } from '../lib/api/types.gen';
@@ -50,7 +51,7 @@
     const s = n.sources[0];
     if (!s) return null;
     if (s.kind === 'job') return { href: app.panelHref({ kind: 'job', id: s.id }), label: app.data.jobs[s.id]?.title ?? 'the work' };
-    if (s.kind === 'message' && s.roomId) return { href: `/rooms/${s.roomId}?msg=${s.id}`, label: `a message in ${app.data.rooms[s.roomId]?.name ?? 'a room'}` };
+    if (s.kind === 'message' && s.roomId) return { href: workspaceUrl(`/rooms/${s.roomId}?msg=${s.id}`), label: `a message in ${app.data.rooms[s.roomId]?.name ?? 'a room'}` };
     return null;
   }
 

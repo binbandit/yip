@@ -7,6 +7,7 @@
   import Setup from './screens/Setup.svelte';
   import Toasts from './components/Toasts.svelte';
   import Wordmark from './components/Wordmark.svelte';
+  import { workspaceBase } from './lib/workspace';
 
   // yip's wording where Astryx's generic strings would be vaguer.
   const copy = {
@@ -35,6 +36,9 @@
               <Heading level={1} id="boot-title">Can't reach your workspace.</Heading>
               <Text color="secondary">{app.bootError || 'The hub did not respond.'} Drafts you were writing are saved on this device.</Text>
               <Button label="Try again" variant="primary" onclick={() => app.boot()} />
+              {#if workspaceBase()}
+                <Button label="Open main workspace" onclick={() => window.location.assign('/overview')} />
+              {/if}
             </VStack>
           </Center>
         </main>
