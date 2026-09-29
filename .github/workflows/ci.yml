@@ -14,11 +14,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Every merge sends the other open pull requests back through CI. A check is
-  # skipped when this pull request changes none of the files it reads (main
-  # already passed with them), or when an earlier run of this pull request
-  # passed with exactly those files, so rebasing onto changes a check doesn't
-  # read costs nothing. "Re-run all jobs" runs every check.
+  # A check is skipped when this pull request changes none of the files it
+  # reads (main, which takes only code that passed every check in the merge
+  # queue, already passed with them), or when an earlier run of this pull
+  # request passed with exactly those files, so rebasing onto changes a check
+  # doesn't read costs nothing. Mergify's integration pull requests and
+  # "Re-run all jobs" run every check.
   plan:
     name: Plan
     if: github.event_name == 'pull_request'
@@ -52,7 +53,7 @@ jobs:
             // Everything counts unless excluded, so new files are never missed.
             const unread = [
               // No check reads these.
-              ':!.github', ':!docs', ':!packaging', ':!.dockerignore', ':!.gitignore', ':!README.md', ':!agents.md', ':!CLAUDE.md',
+              ':!.github', ':!.mergify.yml', ':!docs', ':!packaging', ':!.dockerignore', ':!.gitignore', ':!README.md', ':!agents.md', ':!CLAUDE.md',
               // Local tooling: WebKit journeys, screenshots, simulations, LAN serving.
               ':!scripts/e2e', ':!scripts/screenshots', ':!scripts/simulation', ':!scripts/lan-dev.sh', ':!web/tests/webkit',
             ];
@@ -104,9 +105,12 @@ jobs:
               owner, repo, ref: `refs/pull/${context.issue.number}/merge`, key: 'ci-pass-', per_page: 100,
             })).map(cache => cache.key);
 
-            const rerun = process.env.GITHUB_RUN_ATTEMPT !== '1';
-            // Only main is known to have passed every check.
             const { pull_request: pr, repository } = context.payload;
+            // Run every check on a re-run, and on Mergify's integration pull
+            // requests: the queue needs each check to succeed there, and a
+            // skipped one doesn't count.
+            const runAll = process.env.GITHUB_RUN_ATTEMPT !== '1' || pr.head.ref.startsWith('mergify/merge-queue/');
+            // Only main is known to have passed every check.
             const intoMain = pr.base.ref === repository.default_branch;
             const rows = [[{ data: 'Check', header: true }, { data: 'Plan', header: true }]];
             for (const check of checks) {
@@ -116,7 +120,7 @@ jobs:
               // A check that passes saves `${key}-${run_id}-${run_attempt}`.
               const pass = markers.find(marker => marker.startsWith(`${key}-`));
               let skip = '';
-              if (rerun) {
+              if (runAll) {
                 // Run everything.
               } else if (intoMain && fingerprint(check, base) === current) {
                 skip = 'this pull request changes none of the files it reads';
