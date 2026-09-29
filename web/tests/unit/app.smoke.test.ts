@@ -1,5 +1,5 @@
-// Mounts the real App in jsdom against fixtures captured from a hub and walks
-// the main journeys. It catches runtime errors svelte-check cannot.
+// Mounts the real App in jsdom against recorded hub payloads and walks the
+// main journeys. It catches runtime errors svelte-check cannot.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
@@ -67,7 +67,7 @@ afterAll(() => {
   unmount(component);
 });
 
-describe('app smoke (jsdom, captured fixtures)', () => {
+describe('app smoke (jsdom, recorded fixtures)', () => {
   it('opens in a room rather than a dashboard', async () => {
     await waitFor(() => location.pathname.startsWith('/rooms/') && document.querySelector('#room-title'), 'a room');
     expect(location.pathname).toBe(`/rooms/${roomId('Engineering')}`);

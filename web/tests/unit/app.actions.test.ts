@@ -1,4 +1,4 @@
-// Action flows in the mounted App against captured fixtures plus targeted
+// Action flows in the mounted App against recorded fixtures plus targeted
 // overrides: answering a question in its thread, exact-action approvals
 // (including a stale version), accepting an exact revision, stopping work,
 // creating a room, previewing a member, pairing a machine, and the phone sheet.

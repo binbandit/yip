@@ -1,6 +1,7 @@
-// Replays a real event stream captured from a hub (the Security flow:
-// request → code job → review round with changes requested → revision →
-// approval → result) through the reducer, including a reconnect replay.
+// Replays an event stream recorded from a hub with scripted engineers (the
+// Security flow: request → code job → review round with changes requested →
+// revision → approval → result) through the reducer, including a reconnect
+// replay. See fixtures/README.md.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,7 +24,7 @@ function fresh(): DataState {
   return s;
 }
 
-describe('reducer with a captured hub stream', () => {
+describe('reducer with a recorded hub stream', () => {
   it('ends with the completed job, all messages in order, and no duplicates', () => {
     const s = fresh();
     for (const e of events) applyEvent(s, e);

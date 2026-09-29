@@ -1,6 +1,7 @@
-// A tiny in-process stand-in for the hub: routes fetch() to fixtures captured
-// from a real hub (tests/unit/fixtures) and replaces EventSource with a
-// controllable fake, so the real App can be mounted and exercised in jsdom.
+// A tiny in-process stand-in for the hub: routes fetch() to recorded hub
+// payloads (tests/unit/fixtures, see its README) and replaces EventSource
+// with a controllable fake, so the real App can be mounted and exercised in
+// jsdom.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
