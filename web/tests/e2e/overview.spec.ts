@@ -92,12 +92,22 @@ test('an open question needs a look and links to where to answer it', async ({ a
   await expect(page).toHaveURL(/msg=/);
 });
 
-test('work under way is listed as active while it runs', async ({ app: page, api }) => {
-  await api.post('Reverse engineering', '@Pip how does Beacon retry requests?', { mentions: ['Pip'] });
-  const row = page.locator('li.row').filter({ hasText: "Document Beacon's request flow" });
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  await expect(row.locator('.facts')).toContainText('Pip');
-  await expect(row.locator('.facts')).toContainText('Beacon');
+test.describe('with a slower provider', () => {
+  // Paced steps keep the investigation running for a few seconds before it waits.
+  test.use({ fakeDelay: '3s' });
+
+  test('work under way is listed as active while it runs, then moves when it waits', async ({ app: page, api }) => {
+    await api.post('Reverse engineering', '@Pip how does Beacon retry requests?', { mentions: ['Pip'] });
+    const title = "Document Beacon's request flow";
+    const active = section(page, 'Active').locator('li.row').filter({ hasText: title });
+    await expect(active).toBeVisible({ timeout: 30_000 });
+    await expect(active.locator('.facts')).toContainText('Pip');
+    await expect(active.locator('.facts')).toContainText('Beacon');
+    await expect(section(page, 'Active')).not.toContainText('No work in progress.');
+    // Waiting on your answer, it needs a look instead.
+    await expect(section(page, 'Needs a look').locator('li.row').filter({ hasText: title })).toBeVisible({ timeout: 60_000 });
+    await expect(active).toHaveCount(0);
+  });
 });
 
 test('since you were here lists what changed, with links to the conversation and the work', async ({ app: page, api }) => {
