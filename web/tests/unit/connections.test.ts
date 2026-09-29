@@ -94,9 +94,10 @@ describe('guided connection setup in the app', () => {
     await visit();
     expect(text()).toContain('Which tool do you use?');
     expect(text()).toContain('Experimental');
-    expect(text()).toContain('Set up OpenCode');
-    expect(text()).toContain('Set up Pi Agent Harness');
-    expect(document.querySelectorAll('.catalog a')).toHaveLength(5);
+    const setupLinks = [...document.querySelectorAll('.catalog a')];
+    expect(setupLinks).toHaveLength(5);
+    expect(setupLinks.map((link) => link.textContent?.trim())).toEqual(connections.map(() => 'Set up'));
+    expect(setupLinks.map((link) => link.getAttribute('aria-label'))).toEqual(connections.map((p) => `Set up ${p.label}`));
     expect(document.querySelector('.catalog')?.textContent).not.toContain('Demo provider');
   });
 

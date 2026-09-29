@@ -230,7 +230,7 @@
             {#if p.id === 'cursor'}<Text as="p" type="supporting">Experimental · real-account use not verified</Text>{/if}
             <Text as="p" type="supporting">{connectionSummary(nodes, p.id)}</Text>
           </div>
-          <Button label={`Set up ${p.label}`} href="/connections/{p.id}" />
+          <Button label={`Set up ${p.label}`} href="/connections/{p.id}">Set up</Button>
         </li>
       {/each}
     </ul>

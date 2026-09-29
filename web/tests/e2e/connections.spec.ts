@@ -6,6 +6,10 @@ test('find and follow a subscription connection guide', async ({ page }) => {
   await page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name: 'Connections', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Connections', exact: true })).toBeVisible();
   await expect(page.getByText('The demo is not a subscription connection')).toBeVisible();
+  const setupLinks = page.getByRole('list', { name: 'Supported connections' }).getByRole('link');
+  await expect(setupLinks).toHaveText(Array(5).fill('Set up'));
+  const widths = await setupLinks.evaluateAll((links) => links.map((link) => link.getBoundingClientRect().width));
+  expect(new Set(widths).size).toBe(1);
   await page.getByRole('link', { name: 'Set up Codex', exact: true }).click();
   await expect(page).toHaveURL(/\/connections\/codex$/);
   await expect(page.getByRole('heading', { name: 'Connect Codex', exact: true })).toBeFocused();
