@@ -100,11 +100,15 @@
 
   // Focus goes back to the control that asked. When that control is gone
   // (a deleted workspace's row) or now disabled, it goes to a stable place
-  // in the panel instead of being lost.
+  // in the panel instead of being lost. A panel closed in the meantime has
+  // nothing to return focus to.
+  let refocus: ReturnType<typeof setTimeout> | undefined;
+  onMount(() => () => clearTimeout(refocus));
   function closeConfirm() {
     const c = confirm;
     confirm = null;
-    setTimeout(() => {
+    clearTimeout(refocus);
+    refocus = setTimeout(() => {
       const panel = document.getElementById('machinepanel');
       const active = document.activeElement;
       if (active && active !== document.body && panel?.contains(active)) return;

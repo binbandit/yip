@@ -167,6 +167,12 @@ hold ⌘C / Ctrl+C (or use its toolbar toggle), then click any element to copy
 it with its `.svelte` file, line and column, and component stack, ready to
 paste into a coding agent. It is dev-only; built clients never include it.
 
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same
+checks on every pull request and push to `main`: `just lint`, a check that
+`just schema` output is committed, `go test ./...`, `go test -race
+./internal/...`, the client's `npm run check`, unit tests, build and contrast
+check, and the browser journeys (`npm run e2e`) in Chromium.
+
 To try it on a phone or another computer while developing, `just lan` serves
 the demo on your local network (built app on :7721, live-reload client on
 :5173; plain HTTP, demo data only).

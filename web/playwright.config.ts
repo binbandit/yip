@@ -5,7 +5,7 @@
 // directory. It uses a browser only if one is available — a Playwright-managed
 // browser (PLAYWRIGHT_BROWSERS_PATH / `npx playwright install chromium`) or a
 // system Chrome/Edge. It never downloads browsers itself. With no browser it
-// runs nothing and says why.
+// runs nothing and says why (and fails under CI).
 import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -40,6 +40,8 @@ function systemChannel(): 'chrome' | 'msedge' | null {
 const channel = playwrightBrowserInstalled() ? undefined : systemChannel();
 const haveBrowser = playwrightBrowserInstalled() || channel !== null;
 if (!haveBrowser) {
+  // In CI a missing browser is a setup failure, not a reason to pass silently.
+  if (process.env.CI) throw new Error('[yip e2e] No browser found. Install one with `npx playwright install --with-deps chromium`.');
   console.warn('[yip e2e] No browser found (no Playwright chromium, Chrome or Edge). Skipping browser journeys.');
 }
 
