@@ -8,7 +8,7 @@ means it is not done or not verified; it blocks declaring the MVP complete.
 Performance (28 September, §9 fixture, `TestLargeHistoryReadLatency`: 10,100
 messages across ten rooms and 100 jobs, this build machine): p95 bootstrap
 37.354 ms, room page 1.422 ms, older page 1.339 ms, search 23.545 ms,
-jobs 0.392 ms, overview 17.236 ms,
+jobs 0.392 ms,
 within the 200 ms target. Measured, not an advertised capacity.
 
 Automated evidence: `go test ./...` (unit tests; `test/integration` runs the
@@ -163,10 +163,10 @@ The race detector passed three repetitions of the provider regression and
 both clarification paths; the idle path then passed ten repetitions.
 
 [Room capture checks](../scripts/e2e/shots/room.js) cover 390, 900, 1280 and
-1440px in both themes. [Overview capture checks](../scripts/e2e/shots/overview.js)
-cover the summary and review evidence at each width and theme. Regenerate
-either set with `scripts/e2e/run-webkit.sh OUT scripts/e2e/shots/room.js`
-(or `overview.js`), using a temporary output directory. Historical captures
+1440px in both themes. The Overview capture checks were removed with the
+Overview (ADR 0016). Regenerate the room set with
+`scripts/e2e/run-webkit.sh OUT scripts/e2e/shots/room.js`, using a temporary
+output directory. Historical captures
 are available in Git history, not the current checkout. Architecture and
 design docs describe the resulting behaviour.
 
