@@ -227,6 +227,19 @@ and review pass; Mergify handles integration checks and the squash merge.
 Use **Actions → CI → Run workflow** for an explicit full-suite run on `main`
 when needed.
 
+On a pull request, a `Plan` job first fingerprints the tracked files each
+check reads. A check is skipped, which GitHub accepts as passing, when the PR
+changes none of those files (`main` already passed with them), or when an
+earlier run of the same PR passed with exactly those files, as after rebasing
+onto changes the check doesn't read. No check reads the docs, other workflows,
+the Mergify config or local-only tooling (screenshots, simulations, WebKit
+journeys), and of `ci.yml` each reads only its own job, the Plan job and the
+workflow-wide settings, so a PR changing only the rest runs no checks.
+Mergify's integration PRs run every check, since the queue requires each to
+succeed, and so does **Re-run all jobs**. The Plan job's summary says why each
+check ran or was skipped. If a check starts reading files outside its listed
+inputs, update the lists in the Plan job.
+
 To try it on a phone or another computer while developing, `just lan` serves
 the demo on your local network (built app on :7721, live-reload client on
 :5173; plain HTTP, demo data only).
