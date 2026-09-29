@@ -160,10 +160,12 @@ and synchronized the idle-engineer test with the end of its actual attempt.
 The race detector passed three repetitions of the provider regression and
 both clarification paths; the idle path then passed ten repetitions.
 
-[Before/after room captures](screenshots/team-conversation/README.md) cover
-390, 900, 1280 and 1440px in both themes, with the existing supplied baseline
-preserved. The same gallery includes 16 corrected Overview captures, covering
-the summary and review evidence at each width and theme. Architecture and
+[Room capture checks](../scripts/e2e/shots/room.js) cover 390, 900, 1280 and
+1440px in both themes. [Overview capture checks](../scripts/e2e/shots/overview.js)
+cover the summary and review evidence at each width and theme. Regenerate
+either set with `scripts/e2e/run-webkit.sh OUT scripts/e2e/shots/room.js`
+(or `overview.js`), using a temporary output directory. Historical captures
+are available in Git history, not the current checkout. Architecture and
 design docs describe the resulting behaviour.
 
 Final verification results:

@@ -140,7 +140,7 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
 - **Engineer profile:** role and versioned standing instructions, active and queued work, decisions they recorded, rooms, **projects they can work on** (from the projects' grants, in plain words: "Atlas · can change code · can push"), and provider preference. Empty room and access sections link to the relevant setup choices. Provider availability follows live machine reports, the selected account, allowed billing and required read-only capability; a previously signed-in provider on an offline or drained machine is not described as ready for new work.
 - **Review states:** "Changes requested" is an engineering state, not an alert: it uses the pause shape in neutral ink, like any other waiting state, and never red.
 - **Notices and form errors:** a sentence led by a 16px status shape (a circled i for information, a triangle for attention, a circled ! for danger), with no box, tint or edge stripe (yip's `Notice`, used in place of Astryx's `Banner`). The shape carries the hue, and danger text is red as well. Toasts and blocking review findings use the same shapes. Why work is in its state (why it failed, what it waits on) is the state's second line, not a separate notice, and missing evidence it already names is not repeated.
-- **Machines:** a compact list, then details on demand (see `docs/screenshots/machines-redesign/`).
+- **Machines:** a compact list, then details on demand.
     - **List:** the 24px title, one purpose sentence and one primary **Add machine**, then aligned rows on the main surface (no nested cards). Each row has a device icon and the machine name (17px), its OS and architecture (12px), and three separate facts: **connection** in words and a shape with the last-confirmed time ("Offline · Last heard 3h ago", "Not responding"), **work** ("Idle", "2 running", linking to the work, or "New work paused"), and **providers and limits**: one line per provider ("Claude Code · Needs sign-in") plus only the limitations that change what the machine can do: low disk, sign-in required, an allowance pause, read-only reviews unavailable, an untested version, a missing execution profile, and a temporary session. A trailing **Details** button (in one aligned column) opens the machine. When the list is wider than 780px the row is a four-column grid under a quiet header; narrower, the facts stack under the name. Rows use 12–16px padding and restrained dividers.
     - **Details** open in the right panel (inline beside the list when there's room, overlaid otherwise), titled with the machine and its connection, and are organized by purpose in four tabs; a tab with something needing attention carries a small dot. Arrow keys move between tabs.
         - **Overview:** "What limits its work" (each limitation links to the tab that explains it), connection with its effect on work (an offline machine is never called asleep; yip says it can't tell why), current work, new work (**Pause new work** / **Resume new work**; the confirmation says current work finishes), capacity (machine slots, kept distinct from the per-account limit under Connections), free disk, and whether it runs as a background service or a temporary session that stops when its terminal closes (with the supported `yip service install runner` command), then the consequential actions: **Stop current work** and **Revoke access**, each its own confirmed action with its loss explained.
@@ -212,7 +212,7 @@ The scripted browser journey covers assignment, clarification, a genuine
 question, owner answer, peer requested changes, author correction, re-review,
 completion and recall from another permitted room, followed by Overview
 review evidence opened with Enter. It needs no owner relay or mandatory
-acceptance. [Room comparisons](../screenshots/team-conversation/README.md)
+acceptance. [Room capture checks](../../scripts/e2e/shots/room.js)
 cover 390, 900, 1280 and 1440px in both themes. See the
 [release checklist](../release-checklist.md) for current counts and the
 [adversarial campaign](../simulations/2026-09-28.md) for the separately
@@ -224,7 +224,7 @@ The follow-up [UX campaign](../simulations/2026-09-28-ux.md) compares the
 implementation with the owner's original conversation and the product spec.
 It covers live Overview updates during one visit, threaded source navigation,
 drafted follow-ups after work ends, connected setup, drawer navigation and
-stale permission decisions. [Browser captures](../screenshots/ux-2026-09-28/README.md)
-keep the before/after evidence separate from the real Claude recall check.
+stale permission decisions. The report records UI checks separately from the
+real-provider recall check.
 The explicit workspace summary is the current implementation boundary for
 spec journey F; arbitrary questions are handled in conversations with engineers.
