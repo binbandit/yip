@@ -6,7 +6,7 @@ import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
 import { api } from '../../src/lib/api/endpoints';
 import type { Approval, ApprovalDecisionRequest, Bootstrap, JobDetail, Message } from '../../src/lib/api/types.gen';
-import { demoHub, FakeEventSource, fixture } from './fakehub';
+import { fixtureHub, FakeEventSource, fixture } from './fakehub';
 
 const boot = fixture<Bootstrap>('bootstrap.json');
 const job = fixture<JobDetail>('job-code.json').job;
@@ -19,7 +19,7 @@ const requests = new Map(names.map((id): [string, Approval] => [id, {
   source: { roomId: room.id }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600_000).toISOString(),
 }]));
 const unavailable = new Set<string>();
-const hub = demoHub();
+const hub = fixtureHub();
 let component: ReturnType<typeof mount>;
 
 async function settle() {

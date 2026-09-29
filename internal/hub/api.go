@@ -18,7 +18,7 @@ func (h *Hub) AllowSetupAttempt(client string) bool { return h.logins.Allow("set
 func (h *Hub) Bootstrap(ctx context.Context, u store.UserRow, s store.Session) (protocol.Bootstrap, error) {
 	q := h.st.R()
 	b := protocol.Bootstrap{User: u.User, Org: h.Org(), CSRFToken: s.CSRFToken, Preferences: u.Preferences, ServerTime: h.now(),
-		Version: h.cfg.Version, Demo: h.cfg.Demo}
+		Version: h.cfg.Version}
 	var err error
 	// The cursor is read first so no event committed after the snapshot is missed.
 	if b.Cursor, err = store.MaxEventSeq(ctx, q); err != nil {
@@ -47,10 +47,10 @@ func (h *Hub) Bootstrap(ctx context.Context, u store.UserRow, s store.Session) (
 }
 
 func (h *Hub) providerSummary(nodes []protocol.Node) []protocol.ProviderSummary {
-	order := []string{"codex", "claude", "cursor", "opencode", "pi", "fake"}
+	order := []string{"codex", "claude", "cursor", "opencode", "pi"}
 	by := map[string]*protocol.ProviderSummary{}
 	for _, p := range order {
-		by[p] = &protocol.ProviderSummary{Provider: p, Label: ProviderLabel(p), ReadyNodes: []string{}, Billing: protocol.BillingUnknown, Fake: p == "fake"}
+		by[p] = &protocol.ProviderSummary{Provider: p, Label: ProviderLabel(p), ReadyNodes: []string{}, Billing: protocol.BillingUnknown}
 	}
 	for _, n := range nodes {
 		for _, inst := range n.Providers {
@@ -68,9 +68,6 @@ func (h *Hub) providerSummary(nodes []protocol.Node) []protocol.ProviderSummary 
 	}
 	var out []protocol.ProviderSummary
 	for _, p := range order {
-		if p == "fake" && len(by[p].ReadyNodes) == 0 && !h.cfg.Demo {
-			continue
-		}
 		out = append(out, *by[p])
 	}
 	return out

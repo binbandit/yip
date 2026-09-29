@@ -12,7 +12,7 @@ import (
 
 func TestExportIncludesArchivedRooms(t *testing.T) {
 	t.Parallel()
-	e := newEnv(t, envOptions{noRunner: true})
+	e := newEnv(t, envOptions{})
 	sent := e.post("Engineering", "Keep this after the room is archived.", nil, nil)
 
 	var rooms []protocol.Room

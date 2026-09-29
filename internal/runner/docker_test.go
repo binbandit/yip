@@ -2,7 +2,6 @@ package runner
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,9 +10,8 @@ import (
 	"time"
 
 	"github.com/binbandit/yip/internal/agentconfig"
-	"github.com/binbandit/yip/internal/bridge"
 	"github.com/binbandit/yip/internal/providers"
-	"github.com/binbandit/yip/internal/providers/fake"
+	"github.com/binbandit/yip/internal/providers/codex"
 	"github.com/binbandit/yip/internal/providers/worker"
 	"github.com/binbandit/yip/protocol"
 )
@@ -118,10 +116,10 @@ func TestDockerProbeDoesNotFallBackToHost(t *testing.T) {
 	fakeDockerCLI(t, "exit 1")
 	r := dockerTestRunner()
 	r.paths = Paths{Dir: t.TempDir()}
-	r.opts.Adapters = map[string]providers.Adapter{"fake": fake.New(0)}
+	r.opts.Adapters = map[string]providers.Adapter{"codex": codex.New()}
 	caps := r.Probe(context.Background())
 	if len(caps.Providers) != 1 || caps.Providers[0].AuthState != protocol.AuthError {
-		t.Fatalf("must not report native fake provider ready: %+v", caps.Providers)
+		t.Fatalf("must not report the host's provider: %+v", caps.Providers)
 	}
 	if len(caps.Toolchains) != 0 {
 		t.Fatalf("must not advertise host toolchains: %v", caps.Toolchains)
@@ -175,8 +173,8 @@ func TestDockerRestartReapsStagedImports(t *testing.T) {
 	}
 }
 
-// TestDockerImage is deliberately opt-in: it never imports real credentials or
-// downloads an image, and only exercises the built-in deterministic provider.
+// TestDockerImage is deliberately opt-in: it never imports real credentials,
+// downloads an image or starts a provider session.
 func TestDockerImage(t *testing.T) {
 	if os.Getenv("YIP_DOCKER_TESTS") != "1" {
 		t.Skip("set YIP_DOCKER_TESTS=1 after building packaging/container/Dockerfile.agent")
@@ -198,42 +196,27 @@ func TestDockerImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, err := r.createDocker(ctx, ws, false, agentconfig.Snapshot{Dir: imports},
-		[]string{"/usr/local/bin/yip", "agent-worker", "--provider", "fake"})
+		[]string{"/bin/sh", "-c", `test "$(id -u)" -ne 0 && test ! -e /var/run/docker.sock && test -f "$HOME/synthetic-skill" && ! touch /.yip-escape && ! touch .git/escape && printf isolated > isolation.txt`})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { c.remove() })
-	script, _ := json.Marshal(fake.Script{Steps: []fake.Step{
-		{Shell: `test "$(id -u)" -ne 0 && test ! -e /var/run/docker.sock && test -f "$HOME/synthetic-skill" && ! touch /.yip-escape && ! touch .git/escape && printf isolated > isolation.txt`},
-		{Tool: "work_status", Args: json.RawMessage(`{}`)},
-		{Final: "container complete"},
-	}})
-	called := make(chan struct{}, 1)
-	sess, err := worker.Start(ctx, c.attach(ctx), providers.StartSpec{RunID: "smoke", Workdir: "/workspace", Mode: protocol.ModeEdit, FakeScript: script,
-		MCP: providers.MCPServer{Env: map[string]string{bridge.EnvToken: "synthetic-token"}}},
-		func(req bridge.LocalRequest) bridge.LocalResponse {
-			if req.Token != "synthetic-token" {
-				t.Errorf("bridge token was not preserved")
-			}
-			called <- struct{}{}
-			return bridge.LocalResponse{Result: json.RawMessage(`{"status":"ok"}`)}
-		})
+	if out, err := c.attach(ctx).CombinedOutput(); err != nil {
+		t.Fatalf("isolation checks failed: %v: %s", err, out)
+	}
+	if b, err := os.ReadFile(filepath.Join(ws, "isolation.txt")); err != nil || string(b) != "isolated" {
+		t.Fatalf("workspace write did not reach the host: %q %v", b, err)
+	}
+	w, err := r.createDocker(ctx, "", true, agentconfig.Snapshot{}, []string{"/usr/local/bin/yip", "agent-worker", "--provider", "codex"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for range sess.Events() {
+	t.Cleanup(func() { w.remove() })
+	if inst, err := worker.Probe(ctx, w.attach(ctx)); err != nil || inst.Version == "" || inst.AuthState == protocol.AuthReady {
+		t.Fatalf("worker probe through the container: %+v %v", inst, err)
 	}
-	res := sess.Wait()
-	if res.Outcome != protocol.OutcomeSucceeded || !c.remove() {
-		t.Fatalf("container did not finish cleanly: %+v", res)
-	}
-	if b, err := os.ReadFile(filepath.Join(ws, "isolation.txt")); err != nil || string(b) != "isolated" {
-		t.Fatalf("isolation checks failed: %q %v", b, err)
-	}
-	select {
-	case <-called:
-	default:
-		t.Fatal("container MCP bridge did not reach host handler")
+	if tools := r.dockerToolchains(ctx); tools["git"] == "" {
+		t.Fatalf("image toolchains: %v", tools)
 	}
 	// A separate check container must enforce a readonly workspace and have
 	// neither the imported home nor the previous attempt's temporary state.

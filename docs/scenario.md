@@ -34,9 +34,7 @@ yip hub --data ~/.yip/hub --local-runner
 ```
 
 Open the address it prints, enter the one-time setup code, and create the
-owner. To try things first with scripted engineers next to your real ones,
-use `yip demo --with-providers claude,codex` instead. The banner then says
-which engineers use your account.
+owner.
 
 Other machines pair from **Machines → Add machine** ([operations](operations.md#add-machines)).
 The dialog watches for the machine and, once it connects, shows each provider

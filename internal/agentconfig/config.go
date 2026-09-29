@@ -71,7 +71,7 @@ func StageIn(parent, provider, workspace string, extraEnv []string) (snap Snapsh
 		workspace = filepath.Clean(workspace)
 	}
 	switch provider {
-	case "claude", "codex", "cursor", "opencode", "pi", "fake":
+	case "claude", "codex", "cursor", "opencode", "pi":
 	default:
 		return snap, errors.New("agent config: unsupported provider")
 	}
@@ -106,9 +106,6 @@ func StageIn(parent, provider, workspace string, extraEnv []string) (snap Snapsh
 			snap = Snapshot{}
 		}
 	}()
-	if provider == "fake" {
-		return
-	}
 	b := &builder{dir: snap.Dir}
 	// These adapters deliberately isolate all non-authentication user config.
 	switch provider {

@@ -108,7 +108,7 @@
                 {p.compat}.
                 {#if !i?.tested}yip hasn’t been tested with this version, so runs may misbehave; the adapter notes in Diagnostics say what’s known.{/if}
               </MetadataListItem>
-              {#if prof && p.provider !== 'fake' && i?.authState === 'ready'}
+              {#if prof && i?.authState === 'ready'}
                 <MetadataListItem label="Runs at once">
                   <div class="conc">
                     <Selector

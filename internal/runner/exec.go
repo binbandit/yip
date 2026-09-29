@@ -105,7 +105,7 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	r.mu.Unlock()
 	spec := providers.StartSpec{
 		RunID: m.RunID, Workdir: ws.Dir, Mode: m.Mode, Model: m.Model, Instructions: m.Instructions, Prompt: m.Prompt,
-		ResumeSessionID: m.ResumeSessionID, PermissionTool: bridge.PermissionPrompt, FakeScript: m.FakeScript,
+		ResumeSessionID: m.ResumeSessionID, PermissionTool: bridge.PermissionPrompt,
 		MCP: providers.MCPServer{Name: "yip", Command: r.opts.BridgeExe, Args: []string{"bridge", "--mode", m.Mode},
 			Env: map[string]string{bridge.EnvSocket: r.paths.socketPath(), bridge.EnvToken: token}},
 		// Left empty so each adapter builds its own allowlisted environment,

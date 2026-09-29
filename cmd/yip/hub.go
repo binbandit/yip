@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/binbandit/yip/internal/buildinfo"
-	"github.com/binbandit/yip/internal/demo"
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/forge"
 	"github.com/binbandit/yip/internal/forge/github"
@@ -124,7 +123,7 @@ func githubRepo(ctx context.Context, h *hub.Hub, owner, name string) (github.Rep
 }
 
 // startHub opens the hub and its listeners. It returns a stop function.
-func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*hub.Hub, func(), error) {
+func startHub(ctx context.Context, f hubFlags, log *slog.Logger) (*hub.Hub, func(), error) {
 	// Remote access is HTTPS through an explicit setup step (brief §7); plain
 	// HTTP beyond this machine needs an explicit, loudly logged opt-in.
 	if f.tlsCert == "" && !isLoopbackAddr(f.listen) {
@@ -145,7 +144,7 @@ func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*
 		}
 		f.runnerURL = "https://" + net.JoinHostPort(host, rport)
 	}
-	h, err := hub.Open(ctx, hub.Config{DataDir: f.data, Version: buildinfo.Version, Logger: log, RunnerURL: f.runnerURL, Demo: isDemo,
+	h, err := hub.Open(ctx, hub.Config{DataDir: f.data, Version: buildinfo.Version, Logger: log, RunnerURL: f.runnerURL,
 		ForgeFactory: githubFactory, GitHubRepo: githubRepo, WebhookVerifier: github.New(github.Options{}).VerifyWebhook})
 	if err != nil {
 		return nil, nil, err
@@ -258,12 +257,16 @@ func runHub(args []string) error {
 	log := logger()
 	ctx, cancel := signalContext()
 	defer cancel()
-	h, stop, err := startHub(ctx, f, false, log)
+	h, stop, err := startHub(ctx, f, log)
 	if err != nil {
 		return err
 	}
 	defer stop()
-	if need, _ := h.NeedsSetup(ctx); need {
+	need, err := h.NeedsSetup(ctx)
+	if err != nil {
+		return err
+	}
+	if need {
 		secret, exp, err := h.IssueBootstrapSecret(ctx)
 		if err != nil {
 			return err
@@ -271,6 +274,9 @@ func runHub(args []string) error {
 		fmt.Printf("\nNo owner exists yet. Finish setup in your browser:\n\n  http://%s/setup\n\nOne-time setup code (expires %s): %s\n\n", displayAddr(f.listen), exp.Local().Format("15:04"), secret)
 	}
 	if f.localRunner {
+		if !waitForOwner(ctx, h.NeedsSetup, time.Second, log) {
+			return nil
+		}
 		stopRunner, err := startLocalRunner(ctx, h, f, log)
 		if err != nil {
 			return err
@@ -280,6 +286,28 @@ func runHub(args []string) error {
 	<-ctx.Done()
 	log.Info("shutting down")
 	return nil
+}
+
+// waitForOwner blocks until owner setup has created the organisation that
+// pairing needs, checking every interval. A failed check is retried, never
+// taken as finished. It returns false if ctx ends first.
+func waitForOwner(ctx context.Context, needsSetup func(context.Context) (bool, error), every time.Duration, log *slog.Logger) bool {
+	lastErr := ""
+	for {
+		need, err := needsSetup(ctx)
+		switch {
+		case err != nil && err.Error() != lastErr:
+			lastErr = err.Error()
+			log.Warn("could not check whether owner setup is finished; retrying", "err", err)
+		case err == nil && !need:
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(every):
+		}
+	}
 }
 
 func runSetupCode(args []string) error {
@@ -292,7 +320,11 @@ func runSetupCode(args []string) error {
 		return err
 	}
 	defer h.Close()
-	if need, _ := h.NeedsSetup(ctx); !need {
+	need, err := h.NeedsSetup(ctx)
+	if err != nil {
+		return err
+	}
+	if !need {
 		return errors.New("this hub already has an owner; use `yip owner reset-password` to recover access")
 	}
 	secret, exp, err := h.IssueBootstrapSecret(ctx)
@@ -300,67 +332,5 @@ func runSetupCode(args []string) error {
 		return err
 	}
 	fmt.Printf("One-time setup code (expires %s): %s\n", exp.Local().Format("15:04"), secret)
-	return nil
-}
-
-func runDemo(args []string) error {
-	fs := flag.NewFlagSet("demo", flag.ExitOnError)
-	var f hubFlags
-	home, _ := os.UserHomeDir()
-	f.register(fs, filepath.Join(home, ".yip", "demo"))
-	reset := fs.Bool("reset", false, "delete the demo data directory first")
-	withProviders := fs.String("with-providers", "", "also let the demo's local runner use these installed providers ("+defaultProviders+") with the sign-in they already have; engineers you switch to them run on your own account")
-	_ = fs.Parse(args)
-	if *reset {
-		if !strings.Contains(f.data, "demo") {
-			return fmt.Errorf("refusing to delete %s: --reset only removes directories named for the demo", f.data)
-		}
-		if err := os.RemoveAll(f.data); err != nil {
-			return err
-		}
-	}
-	f.localRunner = true
-	// The scripted demo engineers use the fake provider. Real providers are
-	// an explicit opt-in: they reuse each CLI's existing sign-in on this
-	// machine, and any engineer switched to them runs on the owner's account.
-	f.localProviders = "fake"
-	for _, p := range strings.Split(*withProviders, ",") {
-		switch p = strings.TrimSpace(p); p {
-		case "":
-		case "codex", "claude", "cursor", "opencode", "pi":
-			f.localProviders += "," + p
-		default:
-			return fmt.Errorf("--with-providers: unknown provider %q (choose from %s)", p, defaultProviders)
-		}
-	}
-	log := logger()
-	ctx, cancel := signalContext()
-	defer cancel()
-	h, stop, err := startHub(ctx, f, true, log)
-	if err != nil {
-		return err
-	}
-	defer stop()
-	credFile := filepath.Join(f.data, "demo-credentials.txt")
-	if need, _ := h.NeedsSetup(ctx); need {
-		repos, err := demo.MaterializeRepos(filepath.Join(f.data, "fixtures"))
-		if err != nil {
-			return fmt.Errorf("fixture repositories: %w", err)
-		}
-		password := "demo-" + domain.RandomToken(9)
-		if _, err := demo.Seed(ctx, h, repos, "Brayden", "brayden", password); err != nil {
-			return fmt.Errorf("seed demo: %w", err)
-		}
-		_ = os.WriteFile(credFile, []byte("handle: brayden\npassword: "+password+"\n"), 0o600)
-	}
-	creds, _ := os.ReadFile(credFile)
-	stopRunner, err := startLocalRunner(ctx, h, f, log)
-	if err != nil {
-		return err
-	}
-	defer stopRunner()
-	fmt.Printf("\nyip demo workspace (engineers use the deterministic fake provider — no models are called)\n\n  Open http://%s and sign in with:\n  %s\n  Data: %s\n\n",
-		displayAddr(f.listen), strings.ReplaceAll(strings.TrimSpace(string(creds)), "\n", "\n  "), f.data)
-	<-ctx.Done()
 	return nil
 }

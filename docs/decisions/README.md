@@ -9,7 +9,7 @@ criteria.
 | [0001](0001-hub-package.md) | Orchestration lives in `internal/hub`; `internal/domain` stays pure |
 | [0002](0002-review-mutations-via-tools.md) | Review, finding, and revision mutations are agent-tool operations, not browser endpoints |
 | [0003](0003-container-profile.md) | The container profile supports a whole-runner container or opt-in ephemeral agent containers |
-| [0004](0004-fake-provider-director.md) | The fake provider runs hub-selected scripts; it never stands in for real-provider gates |
+| [0004](0004-no-fake-provider.md) | No fake provider or demo mode; provider runs are tested against adapter doubles and real providers |
 | [0005](0005-evidence-from-the-runner.md) | Checks and revisions count only when the runner produced them; checks run policed and without credentials |
 | [0006](0006-approval-policy.md) | Deterministic, parsed mapping of permission requests and checks onto grants |
 | [0007](0007-replicas-not-mirrors.md) | Runner replicas are bare clones with a remote-tracking namespace |

@@ -145,7 +145,7 @@
         {#if service.kind === 'session'}
           <p class="explain">To keep it running after the terminal closes, install the runner as a background service on that machine, then check it comes back after a restart:</p>
           <CodeBlock code="yip service install runner" size="sm" width="100%" isWrapped />
-          <Text as="p" type="supporting">If this runner is part of the hub (<Code size="inherit">yip hub --local-runner</Code> or <Code size="inherit">yip demo</Code>), install the hub instead: <Code size="inherit">yip service install hub</Code>.</Text>
+          <Text as="p" type="supporting">If this runner is part of the hub (<Code size="inherit">yip hub --local-runner</Code>), install the hub instead: <Code size="inherit">yip service install hub</Code>.</Text>
         {/if}
       </MetadataListItem>
     {/if}

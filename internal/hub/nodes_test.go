@@ -10,7 +10,7 @@ import (
 
 func TestEnrollmentRunnerCommands(t *testing.T) {
 	ctx := context.Background()
-	root, err := Open(ctx, Config{DataDir: t.TempDir(), RunnerURL: "https://localhost:7443", Demo: true})
+	root, err := Open(ctx, Config{DataDir: t.TempDir(), RunnerURL: "https://localhost:7443"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestEnrollmentRunnerCommands(t *testing.T) {
 	}
 	seen := map[string]bool{rootEnrollment.RunCommand: true}
 	for _, name := range []string{"Second", "Third"} {
-		child, err := Open(ctx, Config{DataDir: t.TempDir(), RunnerURL: "https://localhost:7443/w/" + name, SessionHub: root, Demo: true})
+		child, err := Open(ctx, Config{DataDir: t.TempDir(), RunnerURL: "https://localhost:7443/w/" + name, SessionHub: root})
 		if err != nil {
 			t.Fatal(err)
 		}

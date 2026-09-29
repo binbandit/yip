@@ -1,7 +1,7 @@
-// Replays a real SSE stream (captured from a demo hub) into the mounted App
-// while the owner watches the Security room, checking that live updates
-// render: messages arrive in order, the work strip moves through its states,
-// the result card appears, and unread counts behave.
+// Replays an SSE stream recorded from a hub with scripted engineers into the
+// mounted App while the owner watches the Security room, checking that live
+// updates render: messages arrive in order, the work strip moves through its
+// states, the result card appears, and unread counts behave.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { readFileSync } from 'node:fs';
@@ -61,7 +61,7 @@ beforeAll(async () => {
 
 afterAll(() => unmount(component));
 
-describe('live updates from a captured stream', () => {
+describe('live updates from a recorded stream', () => {
   it('renders the whole Security flow as it streams in', async () => {
     const es = FakeEventSource.latest();
     es.emit('ready', { cursor: boot.cursor });

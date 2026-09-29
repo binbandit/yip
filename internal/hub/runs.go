@@ -383,9 +383,9 @@ func (h *Hub) resumeSignInWaits(ctx context.Context, t *txn, nodeID string, read
 	return nil
 }
 
-// ensureProfile records an account pool for a provider profile. Fake and
-// unknown profiles default to one concurrent run, as the spec requires for
-// shared accounts, except the fake provider which has no real allowance.
+// ensureProfile records an account pool for a provider profile. New
+// profiles default to one concurrent run, as the spec requires for shared
+// accounts.
 func (h *Hub) ensureProfile(ctx context.Context, t *txn, p protocol.ProviderInstallation) error {
 	var n int
 	if err := t.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM provider_profiles WHERE id = ?`, p.ProfileID).Scan(&n); err != nil {
@@ -394,12 +394,8 @@ func (h *Hub) ensureProfile(ctx context.Context, t *txn, p protocol.ProviderInst
 	if n > 0 {
 		return nil
 	}
-	max := 1
-	if p.Provider == "fake" {
-		max = h.lim.ActiveRunsPerOrg
-	}
 	_, err := t.tx.ExecContext(ctx, `INSERT INTO provider_profiles(id, org_id, provider, label, billing, max_concurrency, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		p.ProfileID, h.Org().ID, p.Provider, firstNonEmpty(p.Account, ProviderLabel(p.Provider)), p.Billing, max, store.TS(h.now()))
+		p.ProfileID, h.Org().ID, p.Provider, firstNonEmpty(p.Account, ProviderLabel(p.Provider)), p.Billing, 1, store.TS(h.now()))
 	return err
 }
 

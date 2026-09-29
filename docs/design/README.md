@@ -200,17 +200,19 @@ Where yip differs, and why:
 
 - `cd web && npm ci`, then `npm run dev`. This starts Vite on :5173 and proxies `/v1`, including the SSE stream, to `YIP_HUB` (default `http://127.0.0.1:7521`). Start the hub with `--allowed-origin http://localhost:5173` so state-changing requests from the dev origin pass the Origin check.
 - `npm run check` runs svelte-check over the app and the tests, and fails on warnings. `npm run build` writes `web/dist` (keeping `dist/.gitkeep`) for the hub to embed.
-- `npm test` runs the unit tests (reducer, mentions, message rendering and escaping, drafts, router, diff parsing) and the jsdom smoke suites. The smoke suites mount the real `App` against payloads captured from a demo hub (`tests/unit/fixtures`), including a full captured SSE stream.
-- `npm run e2e` runs the Playwright journeys in `tests/e2e` against `bin/yip demo` (build it first with `just all`). They run only if a Playwright Chromium or a system Chrome or Edge is installed; the command never downloads a browser.
+- `npm test` runs the unit tests (reducer, mentions, message rendering and escaping, drafts, router, diff parsing) and the jsdom smoke suites. The smoke suites mount the real `App` against recorded hub payloads (`tests/unit/fixtures`), including a full SSE stream. The engineers in those recordings followed a script, not a real provider; see the [fixtures README](../../web/tests/unit/fixtures/README.md).
+- `just e2e` (or `npm run e2e` after `just all`) starts a real hub on a new, empty data directory and runs the browser smoke journeys in Chromium or an installed Chrome: owner setup with the printed code, sign-in, keyboard use of dialogs, mentions and search, machine pairing, creating and switching workspaces, and layouts at 390, 1024 and 1440px. No machine is paired and no provider runs.
 - `node scripts/contrast.mjs` recomputes the contrast table.
 
 ### Conversation verification (26 September 2026)
 
 The scripted browser journey covers assignment, clarification, a genuine
 question, owner answer, peer requested changes, author correction, re-review,
-completion and recall from another permitted room. It needs no owner relay
-or mandatory acceptance. [Room capture checks](../../scripts/e2e/shots/room.js)
-cover 390, 900, 1280 and 1440px in both themes. See the
+completion and recall from another permitted room, followed by Overview
+review evidence opened with Enter. It needs no owner relay or mandatory
+acceptance. Room captures covered 390, 900, 1280 and 1440px in both themes;
+the journey and capture scripts ran against the removed demo (ADR 0004). See
+the
 [release checklist](../release-checklist.md) for current counts and the
 [adversarial campaign](../simulations/2026-09-28.md) for the separately
 authorized real-provider and GitHub checks.

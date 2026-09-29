@@ -5,21 +5,112 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	manifest "github.com/binbandit/yip/internal/context"
 	"github.com/binbandit/yip/internal/forge"
 	"github.com/binbandit/yip/internal/forge/github"
 	"github.com/binbandit/yip/internal/hub"
-	"github.com/binbandit/yip/internal/providers/fake"
 	"github.com/binbandit/yip/internal/store"
 	"github.com/binbandit/yip/protocol"
 )
+
+// prHead is the head commit every simulated pull request reports.
+var prHead = strings.Repeat("c", 40)
+
+// linkForge points the Atlas repository at acme/atlas on GitHub and lets
+// Oren, who only reads it, publish reviews.
+func (e *env) linkForge() {
+	e.t.Helper()
+	a := e.project("Atlas")
+	e.c.must("PUT", "/v1/projects/"+a.ID+"/repos/"+a.Repos[0].ID, protocol.PutRepoRequest{Name: "atlas", RemoteURL: a.Repos[0].RemoteURL,
+		DefaultBranch: "main", Forge: "github", ForgeRepo: "acme/atlas"}, nil)
+	e.c.must("PUT", "/v1/projects/"+a.ID+"/grants/"+e.engineerID("oren"), protocol.PutGrantRequest{Access: "read", Actions: []string{"publish_review"}}, nil)
+}
+
+// requestPRReview has Mira create the job, link PR 42 and ask Oren to review
+// it, then starts Oren's review and returns that attempt with its manifest.
+func (n *testNode) requestPRReview(e *env, title string) (protocol.Frame, protocol.Frame) {
+	e.t.Helper()
+	n.createWork(e, "Security", "Mira", "get PR 42 reviewed", codeWork(title))
+	job := n.startJob(e, title)
+	n.mustCall(e, job, "forge_link_pr", map[string]any{"number": 42})
+	n.mustCall(e, job, "work_request_review", map[string]any{"reviewer": "oren", "pullRequest": 42, "message": "@oren can you review PR #42?"})
+	n.mustCall(e, job, "work_wait", map[string]any{"reason": "review"})
+	n.finish(e, job, protocol.OutcomeSucceeded, "")
+	oren := e.engineerID("oren")
+	review := n.start(e, "Oren's review", func(r store.RunRow) bool { return r.EngineerID == oren })
+	return job, review
+}
+
+func githubJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func githubForge(url string, token func(context.Context) (string, error)) func(context.Context, *hub.Hub, protocol.Repo) (forge.Connector, forge.RepoRef, error) {
+	return func(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error) {
+		return github.New(github.Options{APIBase: url, Token: token}), forge.RepoRef{Host: "github.com", Owner: "acme", Name: "atlas"}, nil
+	}
+}
+
+// A40, A44: engineers sharing the PR author's GitHub credential record an
+// internal review, but no remote approval is fabricated; peer approval,
+// remote reviews, checks, and merge state stay separate facts.
+func TestSharedCredentialCannotFabricateApproval(t *testing.T) {
+	t.Parallel()
+	var posted atomic.Int32
+	user := map[string]any{"login": "shared-bot", "type": "User"}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /user", func(w http.ResponseWriter, r *http.Request) { githubJSON(w, user) })
+	mux.HandleFunc("GET /repos/acme/atlas/pulls/42", func(w http.ResponseWriter, r *http.Request) {
+		githubJSON(w, map[string]any{"number": 42, "html_url": "https://github.com/acme/atlas/pull/42", "title": "Fix session expiry", "state": "open",
+			"merged": false, "draft": false, "mergeable": true, "mergeable_state": "blocked", "user": user, "updated_at": time.Now().UTC(),
+			"head": map[string]any{"ref": "fix", "sha": prHead}, "base": map[string]any{"ref": "main", "sha": strings.Repeat("b", 40)}})
+	})
+	mux.HandleFunc("GET /repos/acme/atlas/pulls/42/reviews", func(w http.ResponseWriter, r *http.Request) { githubJSON(w, []any{}) })
+	mux.HandleFunc("POST /repos/acme/atlas/pulls/42/reviews", func(w http.ResponseWriter, r *http.Request) {
+		posted.Add(1)
+		w.WriteHeader(422)
+		githubJSON(w, map[string]any{"message": "Unprocessable Entity", "errors": []string{"Can not approve your own pull request"}})
+	})
+	mux.HandleFunc("GET /repos/acme/atlas/commits/{sha}/check-runs", func(w http.ResponseWriter, r *http.Request) {
+		githubJSON(w, map[string]any{"total_count": 1, "check_runs": []any{map[string]any{"name": "ci", "status": "completed", "conclusion": "failure"}}})
+	})
+	mux.HandleFunc("GET /repos/acme/atlas/commits/{sha}/status", func(w http.ResponseWriter, r *http.Request) {
+		githubJSON(w, map[string]any{"state": "success", "total_count": 0, "statuses": []any{}})
+	})
+	gh := httptest.NewServer(mux)
+	t.Cleanup(gh.Close)
+	e := newEnv(t, envOptions{forge: githubForge(gh.URL, func(context.Context) (string, error) { return "t", nil })})
+	e.linkForge()
+	n := e.connectNode("test-runner")
+	_, r := n.requestPRReview(e, "Review PR 42")
+	n.mustCall(e, r, "work_review", map[string]any{"verdict": "approved", "expectedHead": e.manifestOf(r.RunID).Review.Head,
+		"summary": "Checked the PR head.", "message": "Approved."})
+	res := n.call(e, r, "forge_publish_review", map[string]any{})
+	if res.OK || res.Error == nil || !strings.Contains(res.Error.Message, "eligible") {
+		t.Fatalf("publishing an approval as the PR author must be refused: %+v", res)
+	}
+	if posted.Load() != 0 {
+		t.Fatalf("an ineligible approval must not be posted to the forge (%d posts)", posted.Load())
+	}
+	j, _ := e.job("Review PR 42")
+	d := e.jobDetail(j.ID)
+	if len(d.PullRequests) != 1 {
+		t.Fatalf("PR not linked: %+v", d.PullRequests)
+	}
+	pr := d.PullRequests[0]
+	if len(pr.RemoteReviews) != 0 || pr.Checks.State != "failure" || pr.Merge.Merged || pr.Merge.Mergeable != "blocked" {
+		t.Fatalf("remote facts must stay as the forge reports them: %+v", pr)
+	}
+	if len(d.Reviews) != 1 || d.Reviews[0].State != protocol.ReviewApproved || d.Reviews[0].Rounds[0].Target.Head != prHead {
+		t.Fatalf("the internal approval should be recorded against the PR head: %+v", d.Reviews)
+	}
+}
 
 type publicationFixture struct {
 	actor   atomic.Value
@@ -28,38 +119,34 @@ type publicationFixture struct {
 	reviews []map[string]any
 }
 
-// The real runner records a verdict and keeps its lease alive while the tests
-// call the same authenticated hub tool that the bridge uses. Only GitHub's
-// HTTP responses are simulated, including delayed review-list visibility.
+// publicationEnv leaves Oren's review attempt running with an approved
+// verdict, so tests can call forge_publish_review as the bridge would while
+// the attempt holds its lease. GitHub's responses are simulated, including
+// delayed review-list visibility.
 func publicationEnv(t *testing.T, postStatus func(int) int, visible func() bool, beforeResponse ...func()) (*env, *publicationFixture, protocol.Run, string) {
 	t.Helper()
 	f := &publicationFixture{}
 	f.actor.Store("reviewer-before")
-	var head string
-	write := func(w http.ResponseWriter, v any) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(v)
-	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /user", func(w http.ResponseWriter, r *http.Request) {
-		write(w, map[string]any{"login": strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), "type": "User"})
+		githubJSON(w, map[string]any{"login": strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), "type": "User"})
 	})
 	mux.HandleFunc("GET /repos/acme/atlas/pulls/42", func(w http.ResponseWriter, r *http.Request) {
-		write(w, map[string]any{"number": 42, "title": "Review retry", "html_url": "https://github.com/acme/atlas/pull/42", "state": "open",
-			"user": map[string]any{"login": "author"}, "head": map[string]any{"ref": "main", "sha": head},
-			"base": map[string]any{"ref": "main", "sha": head}, "updated_at": time.Now().UTC()})
+		githubJSON(w, map[string]any{"number": 42, "title": "Review retry", "html_url": "https://github.com/acme/atlas/pull/42", "state": "open",
+			"mergeable": true, "mergeable_state": "clean", "user": map[string]any{"login": "author"}, "head": map[string]any{"ref": "main", "sha": prHead},
+			"base": map[string]any{"ref": "main", "sha": prHead}, "updated_at": time.Now().UTC()})
 	})
 	mux.HandleFunc("GET /repos/acme/atlas/pulls/42/reviews", func(w http.ResponseWriter, r *http.Request) {
 		if visible != nil && !visible() {
-			write(w, []any{})
+			githubJSON(w, []any{})
 			return
 		}
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		if f.reviews == nil {
-			write(w, []any{})
+			githubJSON(w, []any{})
 		} else {
-			write(w, f.reviews)
+			githubJSON(w, f.reviews)
 		}
 	})
 	mux.HandleFunc("POST /repos/acme/atlas/pulls/42/reviews", func(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +160,7 @@ func publicationEnv(t *testing.T, postStatus func(int) int, visible func() bool,
 		if postStatus != nil {
 			status = postStatus(n)
 		}
-		review := map[string]any{"id": 100 + n, "body": body.Body, "state": "APPROVED", "commit_id": head,
+		review := map[string]any{"id": 100 + n, "body": body.Body, "state": "APPROVED", "commit_id": prHead,
 			"user": map[string]any{"login": strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")}}
 		if status < 400 || status >= 500 {
 			f.mu.Lock()
@@ -85,66 +172,44 @@ func publicationEnv(t *testing.T, postStatus func(int) int, visible func() bool,
 		}
 		w.WriteHeader(status)
 		if status >= 400 {
-			write(w, map[string]any{"message": "simulated publication failure"})
+			githubJSON(w, map[string]any{"message": "simulated publication failure"})
 		} else {
-			write(w, review)
+			githubJSON(w, review)
 		}
 	})
 	mux.HandleFunc("GET /repos/acme/atlas/commits/{sha}/check-runs", func(w http.ResponseWriter, r *http.Request) {
-		write(w, map[string]any{"total_count": 0, "check_runs": []any{}})
+		githubJSON(w, map[string]any{"total_count": 0, "check_runs": []any{}})
 	})
 	mux.HandleFunc("GET /repos/acme/atlas/commits/{sha}/status", func(w http.ResponseWriter, r *http.Request) {
-		write(w, map[string]any{"state": "success", "total_count": 0, "statuses": []any{}})
+		githubJSON(w, map[string]any{"state": "success", "total_count": 0, "statuses": []any{}})
 	})
 	gh := httptest.NewServer(mux)
 	t.Cleanup(gh.Close)
-	e := newEnv(t, envOptions{
-		forge: func(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error) {
-			return github.New(github.Options{APIBase: gh.URL, Token: func(context.Context) (string, error) { return f.actor.Load().(string), nil }}),
-				forge.RepoRef{Host: "github.com", Owner: "acme", Name: "atlas"}, nil
-		},
-		director: func(m *manifest.Manifest) json.RawMessage {
-			switch {
-			case replyTo(m, "Security", "publication audit"):
-				return script(toolStep("work_create", map[string]any{"title": "Publication audit", "objective": "Review retry", "kind": "code", "project": "Atlas", "repo": "atlas"}, ""))
-			case m.Review != nil:
-				return script(toolStep("work_review", map[string]any{"verdict": "approved", "expectedHead": m.Review.Head, "summary": "Verified head", "message": "Approved"}, ""), fake.Step{Fault: "hang"})
-			case m.Job.Title == "Publication audit" && m.Purpose == "start":
-				return script(toolStep("forge_link_pr", map[string]any{"number": 42}, ""),
-					toolStep("work_request_review", map[string]any{"reviewer": "oren", "pullRequest": 42, "message": "Please review PR"}, ""),
-					toolStep("work_wait", map[string]any{"reason": "review"}, ""))
-			case m.Job.Title == "Publication audit":
-				return script(fake.Step{Status: "Audit complete"})
-			}
-			return nil
-		},
-	})
-	head = gitOut(t, filepath.Join(e.dir, "fixtures", "atlas.git"), "rev-parse", "main")
-	a := e.project("Atlas")
-	e.c.must("PUT", "/v1/projects/"+a.ID+"/repos/"+a.Repos[0].ID, protocol.PutRepoRequest{Name: "atlas", RemoteURL: a.Repos[0].RemoteURL, DefaultBranch: "main", Forge: "github", ForgeRepo: "acme/atlas"}, nil)
-	e.c.must("PUT", "/v1/projects/"+a.ID+"/grants/"+e.engineerID("oren"), protocol.PutGrantRequest{Access: "read", Actions: []string{"publish_review"}}, nil)
-	e.post("Security", "@Mira publication audit", []string{"mira"}, nil)
+	e := newEnv(t, envOptions{forge: githubForge(gh.URL, func(context.Context) (string, error) { return f.actor.Load().(string), nil })})
+	e.linkForge()
+	n := e.connectNode("test-runner")
+	_, r := n.requestPRReview(e, "Publication audit")
+	n.mustCall(e, r, "work_review", map[string]any{"verdict": "approved", "expectedHead": e.manifestOf(r.RunID).Review.Head,
+		"summary": "Verified head", "message": "Approved"})
 	var run protocol.Run
 	var roundID string
-	e.waitFor("an approved PR review with a live reviewer lease", 30*time.Second, func() bool {
+	e.waitFor("an approved PR review with a live reviewer lease", 15*time.Second, func() bool {
 		job, ok := e.job("Publication audit")
 		if !ok {
 			return false
 		}
 		d := e.jobDetail(job.ID)
-		if len(d.Reviews) != 1 || len(d.Reviews[0].Rounds) != 1 {
+		if len(d.Reviews) != 1 || len(d.Reviews[0].Rounds) != 1 || d.Reviews[0].Rounds[0].State != protocol.ReviewApproved {
 			return false
 		}
 		round := d.Reviews[0].Rounds[0]
-		if round.State != protocol.ReviewApproved {
-			return false
+		for _, x := range e.jobDetail(round.ReviewJobID).Runs {
+			if x.ID == r.RunID && x.State == protocol.RunRunning {
+				run, roundID = x, round.ID
+				return true
+			}
 		}
-		runs := e.jobDetail(round.ReviewJobID).Runs
-		if len(runs) == 0 || runs[len(runs)-1].State != protocol.RunRunning {
-			return false
-		}
-		run, roundID = runs[len(runs)-1], round.ID
-		return true
+		return false
 	})
 	return e, f, run, roundID
 }
@@ -162,7 +227,7 @@ func publicationDelivery(t *testing.T, e *env, roundID string) store.ForgeDelive
 	return d
 }
 
-func TestSimulationPublicationFailedThenSuccessfulRetryIsDurable(t *testing.T) {
+func TestPublicationFailedThenSuccessfulRetryIsDurable(t *testing.T) {
 	t.Parallel()
 	e, f, run, round := publicationEnv(t, func(n int) int {
 		if n == 1 {
@@ -190,7 +255,7 @@ func TestSimulationPublicationFailedThenSuccessfulRetryIsDurable(t *testing.T) {
 	}
 }
 
-func TestSimulationPublicationAmbiguousRetryWaitsForVisibleReview(t *testing.T) {
+func TestPublicationAmbiguousRetryWaitsForVisibleReview(t *testing.T) {
 	t.Parallel()
 	var visible atomic.Bool
 	e, f, run, round := publicationEnv(t, func(int) int { return http.StatusServiceUnavailable }, visible.Load)
@@ -213,7 +278,7 @@ func TestSimulationPublicationAmbiguousRetryWaitsForVisibleReview(t *testing.T) 
 	}
 }
 
-func TestSimulationPublicationConcurrentCallsSendOnce(t *testing.T) {
+func TestPublicationConcurrentCallsSendOnce(t *testing.T) {
 	t.Parallel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
@@ -247,7 +312,7 @@ func TestSimulationPublicationConcurrentCallsSendOnce(t *testing.T) {
 	}
 }
 
-func TestSimulationPublicationPersistenceFailureDoesNotReportSuccess(t *testing.T) {
+func TestPublicationPersistenceFailureDoesNotReportSuccess(t *testing.T) {
 	t.Parallel()
 	e, f, run, round := publicationEnv(t, nil, nil)
 	_, err := e.hub.Store().R().ExecContext(e.ctx, `CREATE TRIGGER fail_publication_save BEFORE UPDATE ON forge_deliveries WHEN NEW.status = 'published' BEGIN SELECT RAISE(FAIL, 'simulated disk write failure'); END`)
@@ -270,7 +335,7 @@ func TestSimulationPublicationPersistenceFailureDoesNotReportSuccess(t *testing.
 	}
 }
 
-func TestSimulationPublicationConcurrentReconciliationSurvivesLateError(t *testing.T) {
+func TestPublicationConcurrentReconciliationSurvivesLateError(t *testing.T) {
 	t.Parallel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
@@ -302,7 +367,7 @@ func TestSimulationPublicationConcurrentReconciliationSurvivesLateError(t *testi
 	}
 }
 
-func TestSimulationPublicationAdoptsLegacyRetryJournal(t *testing.T) {
+func TestPublicationAdoptsLegacyRetryJournal(t *testing.T) {
 	t.Parallel()
 	for _, status := range []string{"published", "unknown"} {
 		t.Run(status, func(t *testing.T) {

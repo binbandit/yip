@@ -18,7 +18,7 @@ import (
 
 func TestWorkspaces(t *testing.T) {
 	ctx := context.Background()
-	cfg := hub.Config{DataDir: t.TempDir(), RunnerURL: "https://localhost:7443", Demo: true}
+	cfg := hub.Config{DataDir: t.TempDir(), RunnerURL: "https://localhost:7443"}
 	root, err := hub.Open(ctx, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -138,11 +138,11 @@ func TestWorkspaces(t *testing.T) {
 		return b
 	}
 	b := readBootstrap(workspace.Path)
-	if len(b.Rooms) != 0 || len(b.Engineers)+len(b.Projects)+len(b.Nodes) != 0 || b.Demo || b.User.ID != owner.ID {
+	if len(b.Rooms) != 0 || len(b.Engineers)+len(b.Projects)+len(b.Nodes) != 0 || b.User.ID != owner.ID {
 		t.Fatalf("fresh bootstrap: %+v", b)
 	}
 	childChanged := child.Bus().Changed()
-	check(request("POST", "/v1/engineers", `{"name":"Root Engineer","role":"Developer","provider":{"provider":"fake"}}`, "", true, true), 201)
+	check(request("POST", "/v1/engineers", `{"name":"Root Engineer","role":"Developer","provider":{"provider":"codex"}}`, "", true, true), 201)
 	check(request("POST", "/v1/projects", `{"name":"Root Project"}`, "", true, true), 201)
 	created := request("POST", "/v1/rooms", `{"name":"Root room"}`, "", true, true)
 	check(created, 201)

@@ -100,7 +100,6 @@ export interface Bootstrap {
   preferences: Preferences;
   serverTime: string;
   version: string;
-  demo: boolean;
   providers: ProviderSummary[];
 }
 
@@ -739,7 +738,6 @@ export interface ProviderSummary {
   label: string;
   readyNodes: string[];
   billing: string;
-  fake: boolean;
 }
 
 export interface PullRequest {

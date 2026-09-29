@@ -78,8 +78,6 @@ Without just, run `docker compose -f packaging/container/compose.hub.yml up --bu
   followed by `just docker cp hub:/var/lib/yip/backup.yipenc .` to copy it out.
 - To upgrade, take a backup, update the checkout, and run
   `just docker up --build -d`; migrations run on start.
-- To try the demo workspace without Go or Node, stop the hub and run
-  `just docker run --rm --service-ports hub demo --listen :7420 --insecure-http --data /var/lib/yip/demo`.
 
 ## Add machines
 
@@ -261,18 +259,6 @@ and session cookie cross it unencrypted) and is logged as a warning.
 yip never opens ports or sets up port forwarding by itself. Runners need to
 reach the runner listener (default 7443) on the hub.
 
-**Trying the demo on your phone.** `just lan` serves the demo workspace on
-your local network over plain HTTP: the built app on port 7721 and the
-live-reload development client on 5173. Open `http://<this machine's IP>:7721`
-on the phone and sign in with the details in the demo's
-`demo-credentials.txt`. The demo engineers are scripted; set
-`YIP_LAN_PROVIDERS=codex,claude` (or run `yip demo --with-providers codex,claude`)
-to also offer the Codex and Claude Code CLIs already signed in on this
-machine — switch an engineer's provider preference to use them, and those
-runs bill your own account. It is still plain HTTP; for a
-real workspace use one of the options above, which keep the password and
-session cookie off the network in clear text.
-
 ## Backups and restores
 
 ```sh
@@ -309,6 +295,13 @@ yip restore --from /Volumes/Backups/yip-2026-09-25.yipenc --data ~/.yip/hub-rest
    hub and runners together.
 4. Never upgrade a provider CLI under an active session. Pin the versions
    listed in [compatibility.md](compatibility.md).
+
+Upgrading from a build that had `yip demo`: the demo and its scripted
+provider are gone (ADR 0004). Demo data in `~/.yip/demo` is no longer used and
+can be deleted. On a real hub, engineers still set to the scripted provider
+keep that setting, and their work waits with "… is set to a provider this hub
+doesn't support" until you choose Codex, Claude Code or Cursor on their
+profile. Queued work then runs on the new choice.
 
 ## Diagnostics
 

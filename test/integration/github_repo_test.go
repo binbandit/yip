@@ -16,7 +16,7 @@ import (
 // no half-created project behind.
 func TestProjectFromGitHubOwnerName(t *testing.T) {
 	t.Parallel()
-	e := newEnv(t, envOptions{noRunner: true, githubRepo: func(ctx context.Context, h *hub.Hub, owner, name string) (github.RepoInfo, error) {
+	e := newEnv(t, envOptions{githubRepo: func(ctx context.Context, h *hub.Hub, owner, name string) (github.RepoInfo, error) {
 		switch owner + "/" + name {
 		case "acme/widgets":
 			return github.RepoInfo{Owner: "acme", Name: "widgets", DefaultBranch: "develop", Private: true}, nil

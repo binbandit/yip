@@ -7,16 +7,14 @@ restarts again to check durability. No remote publication or account changes.
 """
 import argparse
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
 import time
 import uuid
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts" / "e2e"))
-from machines_fixture import Hub, Procs, log_has, size
+import hubtools
+from hubtools import Hub, Procs, read_credentials
 from real_team import capture, completed_evidence, save
 
 
@@ -30,16 +28,12 @@ def until(label, condition, deadline):
 
 
 def start_hub(directory, output, procs, deadline):
-    log = output / "hub.log"
-    mark = size(str(log))
-    procs.start("hub", [str(ROOT / "bin" / "yip"), "demo", "--data", str(directory / "demo"),
-        "--listen", "127.0.0.1:7961", "--runner-listen", "127.0.0.1:7984",
-        "--with-providers", "codex,claude"], str(log),
-        env={"PATH": str(ROOT / "bin") + os.pathsep + os.environ["PATH"]})
-    until("restarted hub connection", lambda: log_has(str(log), "runner connected", mark), deadline)
-    creds = dict(line.split(": ", 1) for line in
-                 (directory / "demo" / "demo-credentials.txt").read_text().splitlines())
-    hub = Hub("http://127.0.0.1:7961", creds["handle"], creds["password"])
+    credentials = directory / "credentials.txt"
+    if not credentials.exists():
+        raise RuntimeError("The team campaign's credentials.txt is missing")
+    base = hubtools.start_hub(procs, directory / "hub", output / "hub.log", 7961, 7984, "codex,claude", credentials)
+    creds = read_credentials(credentials)
+    hub = Hub(base, creds["handle"], creds["password"])
     def ready():
         hub.boot = hub.req("GET", "/v1/bootstrap")
         return {"codex", "claude"}.issubset(

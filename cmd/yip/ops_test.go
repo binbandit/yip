@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/binbandit/yip/internal/demo"
 	"github.com/binbandit/yip/internal/hub"
 	"github.com/binbandit/yip/internal/store"
+	"github.com/binbandit/yip/protocol"
 )
 
 // An encrypted backup restores to the same verified state; the file holds no
@@ -22,16 +22,16 @@ func TestEncryptedBackupRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	data := filepath.Join(dir, "hub")
-	h, err := hub.Open(ctx, hub.Config{DataDir: data, Version: "test", RunnerURL: "https://127.0.0.1:1", Demo: true,
+	h, err := hub.Open(ctx, hub.Config{DataDir: data, Version: "test", RunnerURL: "https://127.0.0.1:1",
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
 	}
-	repos, err := demo.MaterializeRepos(filepath.Join(dir, "fixtures"))
+	secret, _, err := h.IssueBootstrapSecret(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := demo.Seed(ctx, h, repos, "Owner", "owner", "correct-horse-battery"); err != nil {
+	if _, err := h.Setup(ctx, protocol.SetupRequest{BootstrapSecret: secret, OrgName: "Owner's workspace", Name: "Owner", Handle: "owner", Password: "correct-horse-battery"}); err != nil {
 		t.Fatal(err)
 	}
 	h.Close()

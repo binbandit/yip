@@ -16,6 +16,9 @@ projects, and machines independently.
 
 ![Workspace switcher with three custom-named workspaces and the option to create another](screenshots/workspaces.png)
 
+The room behind the menu is from the scripted sample workspace, which has
+since been removed ([ADR 0004](decisions/0004-no-fake-provider.md)).
+
 Choose another name from the same menu to switch. The browser remembers the
 page you left in each workspace and preserves composer drafts and failed
 sends separately. Existing drafts in the original workspace survive the
@@ -38,8 +41,8 @@ incomplete creations are not routed or discovered.
 
 All workspace hubs remain running when the browser switches workspaces; work
 continues in their independent scheduler loops. Installation shutdown closes
-every hub. The automatic local runner and demo seeding remain exclusive to the
-original root workspace. Other workspaces require explicit runner pairing.
+every hub. The automatic local runner remains exclusive to the original root
+workspace. Other workspaces require explicit runner pairing.
 
 To use the same machine in several workspaces, follow **Machines → Add
 machine** in each. The displayed pair and run commands use a separate runner

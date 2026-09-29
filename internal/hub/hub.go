@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/binbandit/yip/internal/auth"
-	manifest "github.com/binbandit/yip/internal/context"
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/events"
 	"github.com/binbandit/yip/internal/forge"
@@ -41,8 +40,6 @@ type Config struct {
 	// RunnerURL is the address runners use to reach the hub's runner
 	// listener (https://host:port). Shown in enrollment commands.
 	RunnerURL string
-	// Demo marks a hub seeded with fixture data and the fake provider.
-	Demo bool
 	// ForgeFactory builds a forge connector for a repository.
 	ForgeFactory func(ctx context.Context, h *Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error)
 	// GitHubRepo asks GitHub about a repository being added (its canonical
@@ -54,9 +51,6 @@ type Config struct {
 	WebhookVerifier func(secret []byte, headers map[string]string, body []byte) (forge.Webhook, error)
 	// Now overrides the clock in tests.
 	Now func() time.Time
-	// FakeScripter overrides the package-level FakeScripter for this hub, so
-	// hubs in one process (parallel tests) can direct the fake differently.
-	FakeScripter func(m *manifest.Manifest) json.RawMessage
 }
 
 // Hub is the running coordinator.

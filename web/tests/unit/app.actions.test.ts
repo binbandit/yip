@@ -1,4 +1,4 @@
-// Action flows in the mounted App against captured fixtures plus targeted
+// Action flows in the mounted App against recorded fixtures plus targeted
 // overrides: answering a question in its thread, exact-action approvals
 // (including a stale version), accepting an exact revision, stopping work,
 // creating a room, previewing a member, pairing a machine, and the phone sheet.
@@ -8,7 +8,7 @@ import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
 import { loadUnsent } from '../../src/lib/state/drafts';
 import { choose } from './controls';
-import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
+import { fixtureHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
 import { setViewport } from './setup';
 import type { Approval, Bootstrap, Decision, DecisionRequest, JobDetail, Message } from '../../src/lib/api/types.gen';
 
@@ -85,7 +85,7 @@ const approval: Approval = {
 };
 
 beforeAll(async () => {
-  hub = demoHub();
+  hub = fixtureHub();
   const engRoom = roomId('Engineering');
   hub.override('GET', new RegExp(`^/v1/rooms/${engRoom}/messages`), () => ({
     body: {
