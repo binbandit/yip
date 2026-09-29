@@ -145,6 +145,7 @@ func codeWork(title string) map[string]any {
 // A23: work for a provider no connected machine has waits with the reason,
 // and nothing is launched on the ineligible machine.
 func TestIncompatibleMachineExplains(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNodeWith("Test mini", protocol.ProviderInstallation{Provider: "claude", AuthState: protocol.AuthReady, ProfileID: "claude:local",
 		Capabilities: protocol.ProviderCapabilities{ReadOnly: true}})
@@ -168,6 +169,7 @@ func TestIncompatibleMachineExplains(t *testing.T) {
 // waits with a reason that says what to change, and their queued work runs
 // once the owner picks a real provider.
 func TestUnsupportedProviderExplainsAndFollowsTheNewChoice(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	pip := e.engineerID("pip")
@@ -217,6 +219,7 @@ func TestUnsupportedProviderExplainsAndFollowsTheNewChoice(t *testing.T) {
 // and by nothing outside it: not a broader room's tools, run context, or the
 // owner's room-scoped search.
 func TestPrivateCanaryIsolation(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	var incident protocol.Room
@@ -280,6 +283,7 @@ func TestPrivateCanaryIsolation(t *testing.T) {
 // A17: an engineer removed from a room is neither woken by replies in their
 // old thread nor given the room's later messages.
 func TestRegressionRemovedMemberNotRoutedOrLeaked(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	mira, oren := e.engineerID("mira"), e.engineerID("oren")
@@ -331,6 +335,7 @@ func mustJSON(v any) string {
 // A17: deleting a message leaves no copy in events, jobs, run context or
 // search.
 func TestRegressionRedactionIsComplete(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	sent := e.post("Engineering", "@Mira REDACT-CANARY is the staging password", []string{"mira"}, nil)
@@ -366,6 +371,7 @@ func TestRegressionRedactionIsComplete(t *testing.T) {
 // A18: removing an engineer's write access mid-job refuses further tool
 // calls and permission requests in that attempt.
 func TestAccessRevokedMidJob(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	n.createWork(e, "Security", "Mira", "revoke test", codeWork("Revoke test"))
@@ -391,6 +397,7 @@ func TestAccessRevokedMidJob(t *testing.T) {
 // A20: "done" without the expected evidence leaves the work incomplete with
 // the missing evidence named, and creates no human task.
 func TestDoneWithoutEvidence(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	n.createWork(e, "Security", "Mira", "claim it's done", codeWork("Claim test"))
@@ -438,6 +445,7 @@ func (e *env) pendingApproval(title string) protocol.Approval {
 // clicks conflict; undecided requests expire and deny; existing grants
 // proceed without asking.
 func TestExactActionApprovals(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{limits: func(l *domain.Limits) { l.ApprovalTTL = 4 * time.Second }})
 	n := e.connectNode("test-runner")
 	n.createWork(e, "Security", "Mira", "push it", codeWork("Push test"))
@@ -497,6 +505,7 @@ func TestExactActionApprovals(t *testing.T) {
 // A routine file edit is allowed without an owner prompt, while the
 // consequential check after it still waits for its own exact approval.
 func TestRegressionHeredocEditNeedsNoApproval(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	n.createWork(e, "Security", "Mira", "test the heredoc edit", codeWork("Heredoc edit"))
@@ -530,6 +539,7 @@ func TestRegressionHeredocEditNeedsNoApproval(t *testing.T) {
 // that the real runner starts its provider once for a redelivered command is
 // TestRedeliveredStartRunsTheProviderOnce in internal/runner.
 func TestOutboxRedeliveryExecutesOnce(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	e.post("Security", "@Mira run this once", []string{"mira"}, nil)
@@ -585,6 +595,7 @@ func TestOutboxRedeliveryExecutesOnce(t *testing.T) {
 
 // A20: an engineer can't complete their own job by answering it.
 func TestRegressionWorkRespondCannotSelfComplete(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	n.createWork(e, "Engineering", "Mira", "fix Y", codeWork("Fix Y"))

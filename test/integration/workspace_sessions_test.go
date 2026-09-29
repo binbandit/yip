@@ -9,6 +9,7 @@ import (
 )
 
 func TestWorkspacesOnSameHostKeepIndependentSessions(t *testing.T) {
+	t.Parallel()
 	work := newEnv(t, envOptions{})
 	home := newEnv(t, envOptions{})
 	// Browsers share cookies across ports on the same hostname.
@@ -27,6 +28,7 @@ func TestWorkspacesOnSameHostKeepIndependentSessions(t *testing.T) {
 }
 
 func TestWorkspaceSessionMigratesLegacyCookie(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	u, _ := url.Parse(e.c.base)
 	cookies := e.c.hc.Jar.Cookies(u)

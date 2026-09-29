@@ -61,6 +61,7 @@ func githubForge(url string, token func(context.Context) (string, error)) func(c
 // internal review, but no remote approval is fabricated; peer approval,
 // remote reviews, checks, and merge state stay separate facts.
 func TestSharedCredentialCannotFabricateApproval(t *testing.T) {
+	t.Parallel()
 	var posted atomic.Int32
 	user := map[string]any{"login": "shared-bot", "type": "User"}
 	mux := http.NewServeMux()
@@ -227,6 +228,7 @@ func publicationDelivery(t *testing.T, e *env, roundID string) store.ForgeDelive
 }
 
 func TestPublicationFailedThenSuccessfulRetryIsDurable(t *testing.T) {
+	t.Parallel()
 	e, f, run, round := publicationEnv(t, func(n int) int {
 		if n == 1 {
 			return http.StatusForbidden
@@ -254,6 +256,7 @@ func TestPublicationFailedThenSuccessfulRetryIsDurable(t *testing.T) {
 }
 
 func TestPublicationAmbiguousRetryWaitsForVisibleReview(t *testing.T) {
+	t.Parallel()
 	var visible atomic.Bool
 	e, f, run, round := publicationEnv(t, func(int) int { return http.StatusServiceUnavailable }, visible.Load)
 	if result := publishReviewCall(e, run, "ambiguous"); result.OK {
@@ -276,6 +279,7 @@ func TestPublicationAmbiguousRetryWaitsForVisibleReview(t *testing.T) {
 }
 
 func TestPublicationConcurrentCallsSendOnce(t *testing.T) {
+	t.Parallel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
@@ -309,6 +313,7 @@ func TestPublicationConcurrentCallsSendOnce(t *testing.T) {
 }
 
 func TestPublicationPersistenceFailureDoesNotReportSuccess(t *testing.T) {
+	t.Parallel()
 	e, f, run, round := publicationEnv(t, nil, nil)
 	_, err := e.hub.Store().R().ExecContext(e.ctx, `CREATE TRIGGER fail_publication_save BEFORE UPDATE ON forge_deliveries WHEN NEW.status = 'published' BEGIN SELECT RAISE(FAIL, 'simulated disk write failure'); END`)
 	if err != nil {
@@ -331,6 +336,7 @@ func TestPublicationPersistenceFailureDoesNotReportSuccess(t *testing.T) {
 }
 
 func TestPublicationConcurrentReconciliationSurvivesLateError(t *testing.T) {
+	t.Parallel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
@@ -362,8 +368,10 @@ func TestPublicationConcurrentReconciliationSurvivesLateError(t *testing.T) {
 }
 
 func TestPublicationAdoptsLegacyRetryJournal(t *testing.T) {
+	t.Parallel()
 	for _, status := range []string{"published", "unknown"} {
 		t.Run(status, func(t *testing.T) {
+			t.Parallel()
 			e, f, run, roundID := publicationEnv(t, nil, nil)
 			_, round, err := store.ReviewByReviewJob(e.ctx, e.hub.Store().R(), run.JobID)
 			if err != nil {

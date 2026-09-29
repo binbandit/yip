@@ -1,6 +1,9 @@
 // Package integration runs the hub in-process against a real temporary SQLite
 // database and drives it through the browser API. Tests that need a machine
 // connect one in-process and play the runner's side of the protocol.
+//
+// Each test builds its own environment and calls t.Parallel(), unless it sets
+// the environment or asserts a wall-clock bound.
 package integration
 
 import (

@@ -121,6 +121,7 @@ func (n *testNode) waitFrame(e *env, what string, match func(protocol.Frame) boo
 // engineer: the run is cancelled (not stuck stopping), the runner is told
 // to drop the attempt, and the next request is offered normally.
 func TestRegressionCancelOfferedRunIsFreed(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	e.post("Engineering", "@Mira hello", []string{"mira"}, nil)
@@ -145,6 +146,7 @@ func TestRegressionCancelOfferedRunIsFreed(t *testing.T) {
 // A tool call re-sent after a reconnect returns the recorded result instead
 // of running its mutation twice.
 func TestRegressionToolCallRetryRunsOnce(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	e.post("Engineering", "@Mira hello", []string{"mira"}, nil)
@@ -180,6 +182,7 @@ func TestRegressionToolCallRetryRunsOnce(t *testing.T) {
 // The hub acknowledges a terminal report explicitly, including one for a
 // run it doesn't know, so the runner stops re-sending it.
 func TestRegressionTerminalAckIsExplicit(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	n.send(e, protocol.EvRunTerminal, "no-such-run", 3, protocol.RunTerminal{Outcome: protocol.OutcomeSucceeded, LastSeq: 4, ExitConfirmed: true})
@@ -196,6 +199,7 @@ func TestRegressionTerminalAckIsExplicit(t *testing.T) {
 
 // Runner artifact access follows the current credential and assignment.
 func TestRegressionRunnerArtifactAccess(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("test-runner")
 	art := protocol.Artifact{ID: domain.NewID(), Kind: "bundle", Name: "x.bundle", Hash: strings.Repeat("a", 64), Size: 1, CreatedAt: time.Now()}
@@ -229,6 +233,7 @@ func TestRegressionRunnerArtifactAccess(t *testing.T) {
 // parks on the question again, the job resumes with the answer instead of
 // waiting forever. The machine is played by hand to hold that window open.
 func TestRegressionAnswerWhileStartingResumes(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("slow-box")
 	seen := map[string]bool{}
@@ -342,6 +347,7 @@ func TestRegressionAnswerWhileStartingResumes(t *testing.T) {
 // A forge refresh doesn't hold the single writer while it waits on the
 // network.
 func TestRegressionForgeRefreshOutsideWriter(t *testing.T) {
+	// Not parallel: it bounds how long a write waits.
 	e := newEnv(t, envOptions{forge: func(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error) {
 		return slowForge{d: 700 * time.Millisecond}, forge.RepoRef{Host: "github.com", Owner: "acme", Name: "atlas"}, nil
 	}})
@@ -374,6 +380,7 @@ func TestRegressionForgeRefreshOutsideWriter(t *testing.T) {
 // Sign-in attempts are bounded per client, and oversized input is refused
 // before any password hashing.
 func TestRegressionSignInIsBounded(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	if _, _, err := e.hub.SignIn(e.ctx, "brayden", strings.Repeat("x", 5000), "client-a", "test"); err == nil {
 		t.Fatalf("an oversized password was accepted")
@@ -429,6 +436,7 @@ func (s slowForge) VerifyWebhook(secret []byte, headers map[string]string, body 
 // No silent fallback to API billing, and a pinned account is respected:
 // work waits (with the reason) instead of running on the wrong terms.
 func TestRegressionBillingGateAndAccountPin(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNodeWith("api-box", protocol.ProviderInstallation{Provider: "codex", AuthState: protocol.AuthReady, ProfileID: "codex:api-key",
 		Billing: protocol.BillingAPI, Capabilities: protocol.ProviderCapabilities{ReadOnly: true}})
@@ -490,6 +498,7 @@ func (e *env) jobsWithReplies() []protocol.Job {
 // Search finds work by its short ID, and a project filter narrows results
 // to that project before ranking.
 func TestRegressionSearchByWorkIDAndProject(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	e.post("Engineering", "@Mira look at the quartzite cache", []string{"mira"}, nil)
 	var job protocol.Job
@@ -529,6 +538,7 @@ func TestRegressionSearchByWorkIDAndProject(t *testing.T) {
 // Output a machine sends under an old lease epoch never changes the work;
 // it is kept, once, as quarantined diagnostic evidence.
 func TestRegressionStaleOutputIsQuarantined(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	n := e.connectNode("old-box")
 	e.post("Engineering", "@Mira hello", []string{"mira"}, nil)
@@ -581,6 +591,7 @@ func TestRegressionStaleOutputIsQuarantined(t *testing.T) {
 // A change sent twice with the same Idempotency-Key acts once and replays its
 // first result; the key can't be reused for a different request.
 func TestRegressionIdempotencyKeys(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	var replayed bool
 	c := e.c.withKey("create-project-once-123")

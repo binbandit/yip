@@ -67,6 +67,7 @@ func (e *env) sseEvents(cursor string, n int, timeout time.Duration) (ids []int6
 // A10: a client that disconnects resumes from its cursor without gaps; a
 // cursor that no longer exists gets an explicit reset, never silent loss.
 func TestEventReplayAfterDisconnect(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	ids, _, control := e.sseEvents("", 3, 3*time.Second)
 	if len(control) == 0 || control[0] != "ready" || len(ids) < 3 {
@@ -101,6 +102,7 @@ func TestEventReplayAfterDisconnect(t *testing.T) {
 // §9 performance fixture: 10,000 messages across ten rooms and 100 jobs.
 // Measures (and bounds) ordinary read latency; not an advertised capacity.
 func TestLargeHistoryReadLatency(t *testing.T) {
+	// Not parallel: it measures latency.
 	if testing.Short() {
 		t.Skip("large fixture")
 	}

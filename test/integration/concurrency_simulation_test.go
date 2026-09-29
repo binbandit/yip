@@ -27,6 +27,7 @@ func simulationBrowserBurst(n int, request func(int) error) []error {
 // These clients share the owner's session, as multiple tabs or devices do.
 // This tests concurrent delivery, not multi-human tenancy or RBAC.
 func TestSimulationConcurrentDuplicateMessagesSurviveRestart(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	path := "/v1/rooms/" + e.roomID("Security") + "/messages"
 	req := protocol.PostMessageRequest{Body: "@Mira check this once", ClientKey: "concurrent-owner-message",
