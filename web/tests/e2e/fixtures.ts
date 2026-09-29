@@ -1,8 +1,5 @@
-// Test fixtures: every test gets its own disposable hub, so tests are
-// independent and can run in parallel. A demo hub (the seeded workspace with
-// a local runner and the deterministic fake provider) starts in about a
-// second; `test.use({ hubKind: 'fresh' })` gives an unconfigured hub waiting
-// for setup instead.
+// Each test gets a disposable hub. Scripted hubs use the separate test-only
+// executable; fresh hubs use the shipped CLI and wait for owner setup.
 import { test as base, expect, request as newRequest, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
@@ -14,14 +11,16 @@ import type { Bootstrap } from '../../src/lib/api/types.gen';
 
 export const YIP_BIN = process.env.YIP_E2E_BIN ?? fileURLToPath(new URL('../../../bin/yip', import.meta.url));
 
-export type HubKind = 'demo' | 'fresh';
+const HARNESS_BIN = process.env.YIP_E2E_HARNESS_BIN ?? fileURLToPath(new URL('../../../bin/yip-browser-harness', import.meta.url));
+
+export type HubKind = 'scripted' | 'fresh';
 
 export interface Hub {
   kind: HubKind;
   url: string;
   runnerPort: number;
   dataDir: string;
-  /** The owner's credentials (demo hubs). */
+  /** The owner's credentials (scripted test hubs). */
   handle: string;
   password: string;
   /** The one-time setup code (fresh hubs). */
@@ -48,29 +47,32 @@ interface Started {
   stop(): Promise<void>;
 }
 
-async function startHub(kind: HubKind, fakeDelay: string): Promise<Started> {
+async function startHub(kind: HubKind, scriptDelay: string): Promise<Started> {
   if (!existsSync(YIP_BIN)) throw new Error(`${YIP_BIN} is missing. Build it with \`just all\` first.`);
+  if (kind === 'scripted' && !existsSync(HARNESS_BIN)) throw new Error(`${HARNESS_BIN} is missing. Run ` + "`just browser-harness` first.");
   const work = mkdtempSync(join(tmpdir(), 'yip-e2e-'));
-  // The demo refuses --reset on a directory not named for the demo.
-  const dataDir = join(work, 'demo');
+  const dataDir = join(work, 'hub');
   const port = await freePort();
   const runnerPort = await freePort();
   const url = `http://127.0.0.1:${port}`;
   const args =
-    kind === 'demo'
-      ? ['demo', '--reset', '--data', dataDir, '--listen', `127.0.0.1:${port}`, '--runner-listen', `127.0.0.1:${runnerPort}`]
+    kind === 'scripted'
+      ? ['--bridge', YIP_BIN, '--delay', scriptDelay, '--data', dataDir, '--listen', `127.0.0.1:${port}`, '--runner-listen', `127.0.0.1:${runnerPort}`]
       : ['hub', '--data', dataDir, '--listen', `127.0.0.1:${port}`, '--runner-listen', `127.0.0.1:${runnerPort}`];
-  const child: ChildProcess = spawn(YIP_BIN, args, {
+  const child: ChildProcess = spawn(kind === 'scripted' ? HARNESS_BIN : YIP_BIN, args, {
     // The hub runs git for its fixture repositories and work; a personal git
     // config (commit signing, fsmonitor) would slow it and vary between hosts.
-    env: { ...process.env, YIP_FAKE_DELAY: fakeDelay, GIT_CONFIG_GLOBAL: '/dev/null' },
+    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
   child.stdout?.on('data', (d) => (output += String(d)));
   child.stderr?.on('data', (d) => (output += String(d)));
   let exited = false;
-  const exit = new Promise<void>((resolve) => child.on('exit', () => ((exited = true), resolve())));
+  const exit = new Promise<void>((resolve) => {
+    child.on('exit', () => { exited = true; resolve(); });
+    child.on('error', (error) => { output += String(error); exited = true; resolve(); });
+  });
 
   const stop = async () => {
     if (!exited) {
@@ -87,9 +89,9 @@ async function startHub(kind: HubKind, fakeDelay: string): Promise<Started> {
   const passwordRe = /password:[ \t]*(\S+)\r?\n/;
   // "One-time setup code (expires 15:04): <code>"
   const codeRe = /setup code \(expires [^)]*\):[ \t]*(\S+)\r?\n/;
-  // The demo starts its runner before printing the owner's credentials.
+  // The scripted test starts its runner before printing the owner's credentials.
   const ready = () =>
-    kind === 'demo' ? /runner connected/.test(output) && handleRe.test(output) && passwordRe.test(output) : codeRe.test(output);
+    kind === 'scripted' ? /runner connected/.test(output) && handleRe.test(output) && passwordRe.test(output) : codeRe.test(output);
   const deadline = Date.now() + 30_000;
   while (!ready()) {
     if (exited || Date.now() > deadline) {
@@ -124,9 +126,14 @@ export class HubApi {
   static async connect(hub: Hub): Promise<HubApi> {
     const ctx = await newRequest.newContext({ baseURL: hub.url, extraHTTPHeaders: { Origin: hub.url } });
     const api = new HubApi(hub, ctx);
-    await api.req('POST', '/v1/session', { handle: hub.handle, password: hub.password });
-    await api.refresh();
-    return api;
+    try {
+      await api.req('POST', '/v1/session', { handle: hub.handle, password: hub.password });
+      await api.refresh();
+      return api;
+    } catch (error) {
+      await ctx.dispose();
+      throw error;
+    }
   }
 
   async refresh(): Promise<any> {
@@ -257,7 +264,7 @@ export class HubApi {
   }
 }
 
-type Options = { hubKind: HubKind; fakeDelay: string };
+type Options = { hubKind: HubKind; scriptDelay: string };
 type Fixtures = { hub: Hub; api: HubApi; app: Page };
 
 async function attachLog(testInfo: TestInfo, hub: Hub) {
@@ -265,25 +272,31 @@ async function attachLog(testInfo: TestInfo, hub: Hub) {
 }
 
 export const test = base.extend<Options & Fixtures>({
-  hubKind: ['demo', { option: true }],
-  fakeDelay: ['250ms', { option: true }],
+  hubKind: ['scripted', { option: true }],
+  scriptDelay: ['250ms', { option: true }],
 
-  hub: async ({ hubKind, fakeDelay }, use, testInfo) => {
-    const started = await startHub(hubKind, fakeDelay);
-    if (hubKind === 'demo') {
-      const api = await HubApi.connect(started.hub);
+  hub: async ({ hubKind, scriptDelay }, use, testInfo) => {
+    const started = await startHub(hubKind, scriptDelay);
+    try {
+      if (hubKind === 'scripted') {
+        const api = await HubApi.connect(started.hub);
+        try {
+          await expect.poll(async () => {
+            const boot: Bootstrap = await api.refresh();
+            return boot.nodes.some((node) => node.status === 'online' && node.providers.some((provider) => provider.provider === 'codex' && provider.authState === 'ready'));
+          }, { timeout: 30_000, message: 'The scripted test runner has reported its ready provider' }).toBe(true);
+        } finally {
+          await api.dispose();
+        }
+      }
+      await use(started.hub);
+    } finally {
       try {
-        await expect.poll(async () => {
-          const boot: Bootstrap = await api.refresh();
-          return boot.nodes.some((node) => node.status === 'online' && node.providers.some((provider) => provider.provider === 'fake' && provider.authState === 'ready'));
-        }, { timeout: 30_000, message: 'The demo runner has reported its ready provider' }).toBe(true);
+        await attachLog(testInfo, started.hub);
       } finally {
-        await api.dispose();
+        await started.stop();
       }
     }
-    await use(started.hub);
-    await attachLog(testInfo, started.hub);
-    await started.stop();
   },
 
   baseURL: async ({ hub }, use) => {
@@ -292,8 +305,11 @@ export const test = base.extend<Options & Fixtures>({
 
   api: async ({ hub }, use) => {
     const api = await HubApi.connect(hub);
-    await use(api);
-    await api.dispose();
+    try {
+      await use(api);
+    } finally {
+      await api.dispose();
+    }
   },
 
   /** A page signed in as the owner, showing the first room. */

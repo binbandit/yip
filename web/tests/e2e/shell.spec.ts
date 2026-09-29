@@ -27,7 +27,7 @@ test('the sidebar reaches every page, marks the current one and titles the tab',
   await expect(page).toHaveURL(/\/rooms\/[^/]+$/);
 });
 
-test('rooms are listed alphabetically with the demo’s engineers in them', async ({ app: page }) => {
+test('rooms are listed alphabetically with the fixture engineers in them', async ({ app: page }) => {
   const rooms = sidebar(page).locator('.yip-room a');
   await expect(rooms).toHaveText(['Engineering', 'Reverse engineering', 'Security']);
   await expect(sidebar(page).getByText('Talk one-to-one with an engineer.')).toBeVisible();

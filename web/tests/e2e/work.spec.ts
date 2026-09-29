@@ -22,7 +22,7 @@ async function openJob(page: Page, jobId: string, tabName?: string) {
 
 test.describe('while work runs', () => {
   // Paced steps keep the Beacon investigation running for a few seconds.
-  test.use({ fakeDelay: '3s' });
+  test.use({ scriptDelay: '3s' });
 
   test('the work strip shows it, opens it and scopes the composer to it', async ({ app: page, api }) => {
     await openRoom(page, 'Reverse engineering');

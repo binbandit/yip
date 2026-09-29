@@ -13,7 +13,7 @@ test('setup counts completed steps', async ({ app: page }) => {
   for (const step of ['Pair a machine', 'Connect your AI subscription', 'Choose your first engineer', 'Bring them into a room', 'Ask for a small, real piece of work']) {
     await expect(steps.getByText(step, { exact: true })).toBeVisible();
   }
-  await expect(steps).toContainText('Demo provider (fake) sign-in is connected for the scripted demo.');
+  await expect(steps).toContainText('Codex sign-in is connected.');
 });
 
 test('setup can be skipped and reopened from the profile menu', async ({ app: page }) => {

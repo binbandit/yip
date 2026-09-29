@@ -50,8 +50,12 @@ test-race:
 test-dev: _dev-tools
     node --test scripts/dev.test.mjs scripts/dev-air.test.mjs
 
-# browser smoke journeys against a new real hub (needs Chromium or Chrome)
-e2e: all
+# separate test executable, excluded from release builds
+browser-harness: all
+    go build -o bin/yip-browser-harness ./test/browserharness
+
+# browser journeys (needs Chromium or Chrome)
+e2e: browser-harness
     cd web && npm run e2e
 
 # type-check and test the web client

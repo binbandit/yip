@@ -1,4 +1,4 @@
-// End-to-end journeys through the demo workspace. Each test has its own hub.
+// End-to-end journeys through the scripted test workspace. Each test has its own hub.
 import { expect, test } from './fixtures';
 import { MOD, composer, horizontalOverflow, mention, openRoom, signIn } from './helpers';
 
@@ -17,13 +17,13 @@ test('post with a structured mention chosen by keyboard', async ({ app: page }) 
   await box.press('Enter');
   // The sent message highlights the structured mention.
   await expect(page.locator('.msg .mention', { hasText: '@Mira' }).last()).toBeVisible();
-  // Mira (fake provider) acknowledges and later posts a result with evidence.
+  // Mira (scripted test adapter) acknowledges and later posts a result with evidence.
   await expect(page.getByText('On it.').first()).toBeVisible();
   await expect(page.getByRole('region', { name: /^Result:/ }).first()).toBeVisible({ timeout: 60_000 });
 });
 
 test.describe('with a slower provider', () => {
-  test.use({ fakeDelay: '800ms' });
+  test.use({ scriptDelay: '800ms' });
 
   test('steering open work shows the actual delivery receipt', async ({ app: page }) => {
     // Pip's Beacon investigation waits on a question, so it stays open long

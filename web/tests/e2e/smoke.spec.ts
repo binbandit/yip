@@ -2,7 +2,7 @@
 // playwright.config.ts. The journeys build on each other: setup creates the
 // owner, and later journeys reuse the engineer and room made earlier.
 import { expect, test } from '@playwright/test';
-import { expectFocusTrapped, horizontalOverflow, openRoom, owner, setupCode, signIn, workspaceNav } from './helpers';
+import { expectFocusTrapped, horizontalOverflow, openRoom, owner, setupCode, signIn, workspaceNav } from './smoke-helpers';
 
 test.describe.configure({ mode: 'serial' });
 

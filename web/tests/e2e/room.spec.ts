@@ -5,7 +5,7 @@ import type { Page, Route } from '@playwright/test';
 import { expect, test, type HubApi } from './fixtures';
 import { composer, draftSaved, message, openRoom, panel, panelTitle, send } from './helpers';
 
-const replyFromMira = /deterministic fake provider/;
+const replyFromMira = /deterministic scripted test adapter/;
 
 /** Posts `n` numbered messages as the owner; three lines each, so a few fill the screen. */
 async function seed(api: HubApi, room: string, n: number): Promise<void> {
@@ -461,7 +461,7 @@ test.describe('history', () => {
 });
 
 test.describe('with a slower provider', () => {
-  test.use({ fakeDelay: '2s' });
+  test.use({ scriptDelay: '2s' });
 
   test('new messages while you read earlier ones show a count, not a jump', async ({ app: page, api }) => {
     await seed(api, 'Security', 25);

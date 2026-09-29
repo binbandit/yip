@@ -1,6 +1,18 @@
 import { expect, test } from './fixtures';
 import { signIn } from './helpers';
 
+test.use({ hubKind: 'fresh' });
+test.beforeEach(async ({ page, hub }) => {
+  hub.handle = 'connection-owner';
+  hub.password = 'browser-test-password';
+  const response = await page.request.post(`${hub.url}/v1/setup`, {
+    headers: { Origin: hub.url },
+    data: { bootstrapSecret: hub.setupCode, orgName: 'Connection tests', name: 'Connection owner', handle: hub.handle, password: hub.password },
+  });
+  expect(response.ok()).toBe(true);
+  await page.context().clearCookies();
+});
+
 test('find and follow a subscription connection guide', async ({ page, hub }) => {
   await signIn(page, hub);
   await page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name: 'Connections', exact: true }).click();

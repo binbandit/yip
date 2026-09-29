@@ -1,16 +1,17 @@
-// Browser tests against real hubs (deterministic fake provider).
-//
-// Prerequisites: `just all` (builds web/dist and embeds it in bin/yip). Each
-// test starts its own `bin/yip demo --reset` (or an unconfigured `bin/yip
-// hub`) on free loopback ports with a temporary data directory; see
-// tests/e2e/fixtures.ts. It uses a browser only if one is available — a
-// Playwright-managed browser (PLAYWRIGHT_BROWSERS_PATH / `npx playwright
-// install chromium`) or a system Chrome/Edge. It never downloads browsers
-// itself. With no browser it runs nothing and says why (and fails under CI).
+// Run `just e2e` to build the production binary and separate browser harness.
+// The smoke project exercises owner setup against an empty real hub. Other
+// tests use disposable hubs with either no runner or the scripted test adapter.
+// No installed AI provider is invoked. Browser discovery never downloads one.
 import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test';
-import { existsSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+const PORT = Number(process.env.YIP_E2E_PORT ?? 7599);
+const RUNNER_PORT = PORT + 1;
+// Set once in the runner process so its workers read the same directory.
+process.env.YIP_E2E_DATA ??= mkdtempSync(join(tmpdir(), 'yip-e2e-'));
+const DATA = process.env.YIP_E2E_DATA;
 
 function playwrightBrowserInstalled(): boolean {
   const base = process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), process.platform === 'darwin' ? 'Library/Caches/ms-playwright' : '.cache/ms-playwright');
@@ -24,6 +25,7 @@ function playwrightBrowserInstalled(): boolean {
 function systemChannel(): 'chrome' | 'msedge' | null {
   const chrome = [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/opt/google/chrome/chrome',
     '/usr/bin/google-chrome',
     '/usr/bin/google-chrome-stable',
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -42,21 +44,43 @@ if (!haveBrowser) {
   console.warn('[yip e2e] No browser found (no Playwright chromium, Chrome or Edge). Skipping browser journeys.');
 }
 
+const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 960 }, ...(channel ? { channel } : {}) };
+
 const config: PlaywrightTestConfig = {
   testDir: 'tests/e2e',
-  timeout: 90_000,
+  timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: true,
-  workers: process.env.YIP_E2E_WORKERS ? Number(process.env.YIP_E2E_WORKERS) : process.env.CI ? 3 : '50%',
-  retries: process.env.CI ? 1 : 0,
+  workers: process.env.YIP_E2E_WORKERS ? Number(process.env.YIP_E2E_WORKERS) : 3,
+  // The journeys share one hub whose owner setup happens once; a retry would
+  // meet a hub that is already set up.
+  retries: 0,
   reporter: [['list']],
   use: {
+    baseURL: `http://127.0.0.1:${PORT}`,
     launchOptions: { chromiumSandbox: true },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     ...(channel ? { channel } : {}),
   },
-  projects: haveBrowser ? [{ name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 960 }, ...(channel ? { channel } : {}) } }] : [],
+  // Smoke tests share a fresh hub; all other tests use isolated per-test fixtures.
+  projects: haveBrowser
+    ? [
+        { name: 'smoke', testMatch: 'smoke.spec.ts', use: desktop },
+        { name: 'desktop', testIgnore: 'smoke.spec.ts', use: desktop },
+      ]
+    : [],
+  webServer: haveBrowser
+    ? {
+        // The setup code is printed on stdout; the first journey reads it from hub.out.
+        command: `../bin/yip hub --data ${JSON.stringify(DATA)} --listen 127.0.0.1:${PORT} --runner-listen 127.0.0.1:${RUNNER_PORT} > ${JSON.stringify(join(DATA, 'hub.out'))}`,
+        url: `http://127.0.0.1:${PORT}/healthz`,
+        reuseExistingServer: false,
+        timeout: 60_000,
+        stdout: 'ignore',
+        stderr: 'pipe',
+      }
+    : undefined,
 };
 
 export default defineConfig(config);
