@@ -94,6 +94,14 @@ jobs:
       - name: Install Chromium
         working-directory: web
         run: npx playwright install --with-deps chromium
+      # playwright.config.ts keeps Chromium's sandbox on. Ubuntu 24.04 lets
+      # AppArmor deny the unprivileged user namespaces it needs, and Chromium
+      # then refuses to start ("No usable sandbox!").
+      - name: Allow Chromium's sandbox
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
       - name: Run journeys against a demo hub
         working-directory: web
         run: npm run e2e
