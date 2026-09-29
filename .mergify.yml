@@ -1,0 +1,34 @@
+merge_queue:
+  mode: serial
+  max_parallel_checks: 2
+
+queue_rules:
+  - name: main
+    queue_conditions:
+      - base = main
+      - -draft
+    # Re-run CI on the integration PR; review approval stays on the original PR.
+    merge_conditions:
+      - check-success = @github-actions/Go
+      - check-success = @github-actions/Go (race detector)
+      - check-success = @github-actions/Web client
+      - check-success = @github-actions/Browser journeys
+    merge_method: squash
+    update_method: rebase
+    batch_size: 1
+
+merge_protections_settings:
+  post_comment: false
+  auto_merge_conditions:
+    - base = main
+    - -draft
+
+merge_protections:
+  - name: Pullfrog review
+    if:
+      - base = main
+      - -head ~= ^mergify/merge-queue/
+    success_conditions:
+      - github-review-decision = APPROVED
+      - check-success = @pullfrog/pullfrog
+      - check-success = @pullfrog/pullfrog-approval
