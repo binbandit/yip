@@ -220,12 +220,12 @@ checks on every pull request and on manual dispatch: `just lint`, a check that
 client's `npm run check`, unit tests, build and contrast check, and the
 browser journeys (`npm run e2e`) in Chromium.
 
-GitHub branch protection requires passing checks on an up-to-date PR before
-merging into `main`, so CI does not repeat the suite on pushes to `main`.
-Keep **Require branches to be up to date before merging** enabled alongside
-the required checks; without it, independently passing PRs could introduce an
-untested combination when merged. Use **Actions → CI → Run workflow** for an
-explicit full-suite run on `main` when needed.
+The [merge queue](docs/merge-queue.md) tests each pull request together with
+the latest `main` before merging, so CI does not repeat the suite on pushes
+to `main`. Ready pull requests enter the queue automatically after their checks
+and review pass; Mergify handles integration checks and the squash merge.
+Use **Actions → CI → Run workflow** for an explicit full-suite run on `main`
+when needed.
 
 To try it on a phone or another computer while developing, `just lan` serves
 the demo on your local network (built app on :7721, live-reload client on

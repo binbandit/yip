@@ -1,6 +1,6 @@
 name: CI
 
-# main requires up-to-date PR checks; don't repeat the suite after merging.
+# Mergify reruns this suite on integration PRs before merging into main.
 on:
   pull_request:
   workflow_dispatch:
