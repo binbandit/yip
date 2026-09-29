@@ -1,0 +1,27 @@
+# Ephemeral agent image. Build locally; credentials are imported at runtime,
+# never supplied as build arguments or copied into this image.
+FROM golang:1.26-bookworm AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/yip ./cmd/yip
+
+FROM node:22-bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates python3 \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /workspace /home/yip \
+ && chmod 1777 /workspace /home/yip
+# Override versions deliberately when validating a newer harness.
+ARG CODEX_VERSION=0.157.1
+ARG CLAUDE_VERSION=2.1.283
+RUN npm install --global @openai/codex@${CODEX_VERSION} @anthropic-ai/claude-code@${CLAUDE_VERSION} \
+ && npm cache clean --force
+COPY --from=build /usr/local/go /usr/local/go
+COPY --from=build /out/yip /usr/local/bin/yip
+ENV PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin \
+    HOME=/home/yip
+# The runner supplies its non-root uid/gid and the hardened create arguments.
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/yip", "agent-worker"]

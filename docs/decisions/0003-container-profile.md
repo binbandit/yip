@@ -1,5 +1,14 @@
 # 0003 — Container profile as a containerised runner
 
+**Updated:** the original whole-runner mode remains available. The container
+profile can now also be provided by `yip runner --profile docker`: a native
+supervisor creates a fresh restricted container for each attempt and a
+credential-free container for each check. The owner explicitly opts into
+allowlisted file-backed authentication/configuration import; OS-keychain
+extraction, whole-home mounts and credential proxying remain prohibited.
+See [Ephemeral Docker agents](../ephemeral-agents.md) for the current contract.
+The rationale below records the original, more restrictive decision.
+
 **Decision.** The "container" execution profile is provided by running a yip
 runner inside a restricted Linux container (`packaging/container/`: non-root,
 read-only root filesystem, one workspace volume, no host Docker socket or home,

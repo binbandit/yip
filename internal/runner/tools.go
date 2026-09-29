@@ -15,8 +15,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
+	"github.com/binbandit/yip/internal/agentconfig"
 	"github.com/binbandit/yip/internal/bridge"
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/providers"
@@ -217,14 +220,37 @@ func (r *Runner) toolRunCheck(ctx context.Context, ar *activeRun, raw json.RawMe
 	if d.Decision != "allow" {
 		return nil, apiErr("forbidden", "Not permitted to run this check: %s", firstNonEmpty(d.Reason, "the request was declined"))
 	}
-	env, err := r.checkEnv(ar.m.RunID)
-	if err != nil {
-		return nil, apiErr("internal", "Could not prepare the check environment: %s", err.Error())
+	cmd := exec.Command("/bin/sh", "-c", a.Command)
+	var checkContainer *dockerContainer
+	if r.opts.ExecutionProfile == "docker" {
+		var err error
+		// Checks get the workspace, not the agent's imported credentials,
+		// skills, MCP configuration, bridge token, or home directory.
+		checkContainer, err = r.createDocker(ctx, ar.ws.Dir, ar.ws.ReadOnly || ar.m.Mode != protocol.ModeEdit,
+			agentconfig.Snapshot{}, []string{"/bin/sh", "-c", a.Command})
+		if err != nil {
+			return nil, apiErr("internal", "Could not prepare the check container: %s", err.Error())
+		}
+		defer checkContainer.remove()
+		ar.mu.Lock()
+		if !ar.admit.Load() {
+			ar.mu.Unlock()
+			return nil, apiErr("forbidden", "The run is stopping.")
+		}
+		if ar.checks == nil {
+			ar.checks = map[string]*dockerContainer{}
+		}
+		ar.checks[checkContainer.name] = checkContainer
+		ar.mu.Unlock()
+		cmd = checkContainer.attach(ctx)
+	} else {
+		env, err := r.checkEnv(ar.m.RunID)
+		if err != nil {
+			return nil, apiErr("internal", "Could not prepare the check environment: %s", err.Error())
+		}
+		cmd.Dir, cmd.Env = ar.ws.Dir, env
 	}
 	r.emit(ar.m.RunID, ar.epoch, protocol.RunEvent{Kind: protocol.RunEvToolStarted, Tool: bridge.WorkRunCheck, Text: "Running " + truncate(a.Command, 120)})
-	cmd := exec.Command("/bin/sh", "-c", a.Command)
-	cmd.Dir = ar.ws.Dir
-	cmd.Env = env
 	var out bytes.Buffer
 	lw := &limitWriter{w: &out, n: 4 << 20}
 	cmd.Stdout, cmd.Stderr = lw, lw
@@ -232,6 +258,15 @@ func (r *Runner) toolRunCheck(ctx context.Context, ar *activeRun, raw json.RawMe
 	proc, err := providers.StartProcess(cmd)
 	if err != nil {
 		return nil, apiErr("internal", "Could not start the check: %s", err.Error())
+	}
+	var stopOnce sync.Once
+	stop := func() {
+		stopOnce.Do(func() {
+			if checkContainer != nil {
+				checkContainer.remove()
+			}
+			proc.Terminate(5 * time.Second)
+		})
 	}
 	// The check runs in its own process group. It is stopped as a group on
 	// timeout, when the call's context ends, or as soon as the run stops
@@ -241,6 +276,7 @@ func (r *Runner) toolRunCheck(ctx context.Context, ar *activeRun, raw json.RawMe
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	timedOut, stopped := false, ""
+	callDone := ctx.Done()
 wait:
 	for {
 		select {
@@ -248,16 +284,21 @@ wait:
 			break wait
 		case <-timer.C:
 			timedOut = true
-			go proc.Terminate(5 * time.Second)
-		case <-ctx.Done():
+			go stop()
+		case <-callDone:
+			callDone = nil
 			stopped = "the call ended"
-			go proc.Terminate(5 * time.Second)
+			go stop()
 		case <-tick.C:
 			if !ar.admit.Load() && stopped == "" {
 				stopped = "the run stopped"
-				go proc.Terminate(5 * time.Second)
+				go stop()
 			}
 		}
+	}
+	if checkContainer != nil && !checkContainer.remove() {
+		r.dockerUncertain()
+		return nil, apiErr("internal", "Could not confirm check container removal; runner drained: %s", checkContainer.name)
 	}
 	runErr := proc.Err()
 	dur := time.Since(start)
@@ -363,58 +404,78 @@ func (r *Runner) toolArtifactPublish(ctx context.Context, ar *activeRun, raw jso
 	if e != nil {
 		return nil, e
 	}
-	path, err := containedPath(ar.ws.Dir, a.Path)
+	path, err := snapshotArtifact(ar.ws.Dir, a.Path)
 	if err != nil {
 		return nil, apiErr("forbidden", "%s", err.Error())
 	}
-	st, err := os.Stat(path)
-	if err != nil || !st.Mode().IsRegular() {
-		return nil, apiErr("invalid", "%s is not a regular file in the workspace.", a.Path)
-	}
-	if st.Size() > 50<<20 {
-		return nil, apiErr("invalid", "Artifacts are limited to 50 MB.")
-	}
+	defer os.Remove(path)
 	kind := firstNonEmpty(a.Kind, "document")
 	if kind != "document" && kind != "file" {
 		// Bundles, checkpoints, diffs and logs are produced by the runner
 		// itself; an agent can't publish evidence under those kinds.
 		return nil, apiErr("invalid", "kind must be document or file.")
 	}
-	ct := mime.TypeByExtension(filepath.Ext(path))
+	ct := mime.TypeByExtension(filepath.Ext(a.Path))
 	if ct == "" || strings.HasPrefix(ct, "text/html") {
 		ct = "text/plain; charset=utf-8"
 	}
-	if filepath.Ext(path) == ".md" {
+	if filepath.Ext(a.Path) == ".md" {
 		ct = "text/markdown; charset=utf-8"
 	}
 	head, _, _, _ := ar.ws.Head(ctx)
-	art, err := r.uploadAndRecord(ctx, ar, path, kind, firstNonEmpty(a.Name, filepath.Base(path)), ct, head)
+	art, err := r.uploadAndRecord(ctx, ar, path, kind, firstNonEmpty(a.Name, filepath.Base(a.Path)), ct, head)
 	if err != nil {
 		return nil, apiErr("unavailable", "Publishing failed: %s", err.Error())
 	}
 	return map[string]any{"artifactId": art.ID, "hash": art.Hash, "size": art.Size, "name": art.Name}, nil
 }
 
-func containedPath(root, rel string) (string, error) {
-	if rel == "" || filepath.IsAbs(rel) {
+// snapshotArtifact opens through a rooted descriptor, not a checked pathname
+// that an agent can replace between validation and upload. The private copy
+// also makes the declared hash and uploaded bytes one consistent snapshot.
+func snapshotArtifact(workspace, rel string) (path string, err error) {
+	if rel == "" || filepath.IsAbs(rel) || !filepath.IsLocal(rel) {
 		return "", errors.New("give a path relative to the workspace root")
 	}
-	clean := filepath.Clean(rel)
-	if clean == ".." || strings.HasPrefix(clean, "../") {
-		return "", errors.New("the path must stay inside the workspace")
+	root, err := os.OpenRoot(workspace)
+	if err != nil {
+		return "", errors.New("cannot open workspace")
 	}
-	rootReal, err := filepath.EvalSymlinks(root)
+	defer root.Close()
+	f, err := root.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return "", errors.New("cannot open artifact inside the workspace")
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return "", errors.New("artifact must be a regular file")
+	}
+	const max = 50 << 20
+	if info.Size() > max {
+		return "", errors.New("artifacts are limited to 50 MB")
+	}
+	out, err := os.CreateTemp("", "yip-artifact-snapshot-")
 	if err != nil {
 		return "", err
 	}
-	full, err := filepath.EvalSymlinks(filepath.Join(root, clean))
+	defer func() {
+		_ = out.Close()
+		if err != nil {
+			_ = os.Remove(out.Name())
+		}
+	}()
+	n, err := io.Copy(out, io.LimitReader(f, max+1))
 	if err != nil {
-		return "", errors.New("no such file in the workspace")
+		return "", err
 	}
-	if full != rootReal && !strings.HasPrefix(full, rootReal+string(os.PathSeparator)) {
-		return "", errors.New("the path resolves outside the workspace (symlink escape)")
+	if n > max {
+		return "", errors.New("artifacts are limited to 50 MB")
 	}
-	return full, nil
+	if err := out.Close(); err != nil {
+		return "", err
+	}
+	return out.Name(), nil
 }
 
 // toolPermissionPrompt answers Claude Code's permission prompts through the
@@ -425,7 +486,11 @@ func (r *Runner) toolPermissionPrompt(ar *activeRun, raw json.RawMessage) (any, 
 	if err := json.Unmarshal(raw, &a); err != nil {
 		return nil, apiErr("invalid", "bad permission request")
 	}
-	action := classifyClaudeTool(a.ToolName, a.Input, ar.ws.Dir)
+	workdir := ar.ws.Dir
+	if r.opts.ExecutionProfile == "docker" {
+		workdir = "/workspace"
+	}
+	action := classifyClaudeTool(a.ToolName, a.Input, workdir)
 	reqID := "pp-" + firstNonEmpty(a.ToolUseID, domain.NewID())
 	d := r.requestApproval(ar, reqID, action, raw)
 	var reply map[string]any

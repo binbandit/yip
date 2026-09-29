@@ -184,6 +184,14 @@ projects you don't trust.
 
 ### Container execution profile
 
+For a fresh agent container per attempt, build
+`packaging/container/Dockerfile.agent` and start the host runner with
+`--profile docker`. It imports allowlisted file-backed harness authentication,
+skills and MCP configuration into a disposable home, mounts only the job
+workspace, and runs checks in credential-free containers. See
+[Ephemeral Docker agents](ephemeral-agents.md) for setup, supported imports,
+keychain limitations, cancellation and the security boundary.
+
 `packaging/container/` builds a runner image and a compose file that runs it
 non-root with a read-only root filesystem, one workspace volume, no host
 Docker socket or home directory, no new privileges, and resource limits. A
@@ -283,7 +291,7 @@ existing session.
 | Forge credentials (e.g. a GitHub token) | Hub database, sealed with the hub key |
 | Code and worktrees | Each runner: `<state>/replicas/`, `<state>/work/` — never deleted automatically; `yip runner workspaces` / `yip runner cleanup` |
 | Runner journal | Each runner: `<state>/journal.db` |
-| Provider credentials | Wherever each provider keeps them on each runner (its own login). yip never reads them. |
+| Provider credentials | Managed by the provider on each runner. Opt-in `--profile docker` copies allowlisted file-backed credentials into a disposable container home; it never extracts OS-keychain credentials or writes refreshed credentials back. |
 | Model requests | Sent by the provider CLI on the runner to that provider. The selected context (conversation excerpts, code) leaves your network when a cloud model is used. |
 
 yip is not end-to-end encrypted against the hub owner; the hub must read

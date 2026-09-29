@@ -17,15 +17,17 @@ import (
 
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/protocol"
+	"golang.org/x/sys/unix"
 )
 
 // Workspaces manages repository replicas and per-job worktrees. Git worktrees
 // isolate working files, not processes or secrets; the provider's own
 // sandbox and the execution profile provide the process boundary.
 type Workspaces struct {
-	paths Paths
-	mu    sync.Mutex
-	locks map[string]*sync.Mutex
+	paths    Paths
+	mu       sync.Mutex
+	locks    map[string]*sync.Mutex
+	isolated bool
 }
 
 func newWorkspaces(p Paths) *Workspaces {
@@ -69,11 +71,34 @@ func gitArgs(args []string) []string { return append(append([]string{}, gitSafe.
 
 // git runs a git command and returns trimmed stdout.
 func git(ctx context.Context, dir string, args ...string) (string, error) {
+	return gitWithEnv(ctx, dir, gitEnv(), args...)
+}
+
+// isolatedGitEnv excludes the owner's global configuration: even an immutable
+// local config is not enough when agent-written .gitattributes can select a
+// global clean/process filter that would execute during host-side checkpointing.
+func isolatedGitEnv() []string {
+	return append(gitEnv(), "GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_CONFIG_COUNT=4",
+		"GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
+		// A nested repository's writable config is outside the protected .git
+		// mount. Even status can execute its clean filters while checking a
+		// tracked gitlink, so host git must never inspect submodule dirtiness.
+		"GIT_CONFIG_KEY_1=diff.ignoreSubmodules", "GIT_CONFIG_VALUE_1=all",
+		"GIT_CONFIG_KEY_2=submodule.recurse", "GIT_CONFIG_VALUE_2=false",
+		"GIT_CONFIG_KEY_3=status.submoduleSummary", "GIT_CONFIG_VALUE_3=false")
+}
+
+func isolatedGit(ctx context.Context, dir string, args ...string) (string, error) {
+	return gitWithEnv(ctx, dir, isolatedGitEnv(), args...)
+}
+
+func gitWithEnv(ctx context.Context, dir string, env []string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", gitArgs(args)...)
 	cmd.Dir = dir
-	cmd.Env = gitEnv()
+	cmd.Env = env
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
@@ -224,12 +249,14 @@ func importBundle(ctx context.Context, repoDir, bundlePath, head string) error {
 
 // Workspace is a prepared working directory for one run.
 type Workspace struct {
-	Dir      string
-	Replica  string
-	Branch   string
-	Base     string
-	ReadOnly bool
-	Scratch  bool
+	mutationMu sync.Mutex
+	Dir        string
+	Replica    string
+	Branch     string
+	Base       string
+	ReadOnly   bool
+	Scratch    bool
+	Isolated   bool
 }
 
 // bundleFetcher downloads and verifies an artifact to a temporary file.
@@ -247,6 +274,15 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		}
 		defer os.Remove(source)
 		dir := filepath.Join(w.paths.work(), "review-"+domain.Short(m.RunID))
+		if w.isolated {
+			dir = filepath.Join(w.paths.work(), "docker-review-"+domain.Short(m.RunID))
+			if err := isolatedPath(dir); err != nil {
+				return nil, err
+			}
+			if err := isolatedPath(filepath.Join(dir, "review-artifact")); err != nil {
+				return nil, err
+			}
+		}
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, err
 		}
@@ -270,15 +306,21 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		if err := makeReadOnly(dir); err != nil {
 			return nil, err
 		}
-		return &Workspace{Dir: dir, ReadOnly: true, Scratch: true}, nil
+		return &Workspace{Dir: dir, ReadOnly: true, Scratch: true, Isolated: w.isolated}, nil
 	}
 
 	if m.Repo == nil {
 		dir := filepath.Join(w.paths.work(), "scratch-"+domain.Short(m.RunID))
+		if w.isolated {
+			dir = filepath.Join(w.paths.work(), "docker-scratch-"+domain.Short(m.RunID))
+			if err := isolatedPath(dir); err != nil {
+				return nil, err
+			}
+		}
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, err
 		}
-		return &Workspace{Dir: dir, Scratch: true}, nil
+		return &Workspace{Dir: dir, Scratch: true, Isolated: w.isolated}, nil
 	}
 	rep, err := w.replica(ctx, *m.Repo, fetch)
 	if err != nil {
@@ -306,6 +348,9 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		}
 		defer os.Remove(bundle)
 		return importBundle(ctx, rep, bundle, rev)
+	}
+	if w.isolated {
+		return w.prepareIsolated(ctx, m, rep, ensure)
 	}
 	if m.Repo.SnapshotRev != "" {
 		// Reviewer: a read-only, detached snapshot of exactly this revision.
@@ -363,11 +408,185 @@ func (w *Workspaces) Release(ctx context.Context, ws *Workspace) {
 	if ws == nil || !ws.ReadOnly {
 		return
 	}
+	if ws.Isolated {
+		if err := isolatedPath(ws.Dir); err != nil {
+			return
+		}
+	}
 	_ = makeWritable(ws.Dir)
-	if ws.Replica != "" {
+	if ws.Replica != "" && !ws.Isolated {
 		_, _ = git(ctx, ws.Replica, "worktree", "remove", "--force", ws.Dir)
 	}
 	_ = os.RemoveAll(ws.Dir)
+}
+
+// isolatedPath checks every existing path component without following symlinks.
+// In particular a migrated linked worktree must never become a container mount.
+func isolatedPath(path string) error {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	for p := path; ; p = filepath.Dir(p) {
+		info, err := os.Lstat(p)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("isolated workspace path contains a symlink: %s", p)
+		}
+		if filepath.Dir(p) == p {
+			return nil
+		}
+	}
+}
+
+func standaloneWorkspace(ctx context.Context, dir string) error {
+	if err := isolatedPath(dir); err != nil {
+		return err
+	}
+	meta := filepath.Join(dir, ".git")
+	info, err := os.Lstat(meta)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("isolated workspace requires a standalone .git directory: %s", dir)
+	}
+	if err := filepath.WalkDir(meta, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("isolated git metadata contains a symlink: %s", path)
+		}
+		switch strings.TrimPrefix(path, meta+string(filepath.Separator)) {
+		case "commondir", "gitdir", "objects/info/alternates", "objects/info/http-alternates":
+			return fmt.Errorf("isolated git metadata references external storage: %s", path)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	// Read the config directly before letting git discover a repository. Includes
+	// and core.worktree can redirect otherwise standalone-looking metadata.
+	config, err := isolatedGit(ctx, filepath.Dir(dir), "config", "--no-includes", "--file", filepath.Join(meta, "config"), "--list")
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(config, "\n") {
+		key, _, _ := strings.Cut(line, "=")
+		key = strings.ToLower(key)
+		// Only clone-created storage settings are needed. A workspace from a
+		// previous, writable-metadata runtime must not smuggle in commands,
+		// includes, credential helpers, remotes, or external file paths.
+		switch key {
+		case "core.repositoryformatversion", "core.filemode", "core.bare",
+			"core.logallrefupdates", "core.ignorecase", "core.precomposeunicode",
+			"extensions.objectformat":
+		default:
+			return fmt.Errorf("unsupported isolated git config: %s", key)
+		}
+	}
+	_, err = isolatedGit(ctx, dir, "rev-parse", "--verify", "HEAD")
+	return err
+}
+
+func (w *Workspaces) prepareIsolated(ctx context.Context, m protocol.ExecutionManifest, rep string, ensure func(string) error) (*Workspace, error) {
+	review := m.Repo.SnapshotRev != ""
+	name := "docker-job-" + domain.Short(m.JobID)
+	if review {
+		name = "docker-review-" + domain.Short(m.RunID)
+	}
+	dir := filepath.Join(w.paths.work(), name)
+	unlock := w.lock(name)
+	defer unlock()
+	if err := isolatedPath(dir); err != nil {
+		return nil, err
+	}
+	base := m.Repo.BaseRev
+	if base == "" && !review {
+		var err error
+		base, err = defaultHead(ctx, rep, m.Repo.DefaultBranch)
+		if err != nil {
+			return nil, err
+		}
+	}
+	branch := firstNonEmpty(m.Repo.Branch, "yip/"+domain.Short(m.JobID))
+	ws := &Workspace{Dir: dir, Replica: rep, Branch: branch, Base: base, ReadOnly: review, Isolated: true}
+	if review {
+		ws.Branch = ""
+	}
+	if _, err := os.Lstat(dir); err == nil {
+		if err := standaloneWorkspace(ctx, dir); err != nil {
+			return nil, err
+		}
+		if !review {
+			return ws, nil // Never reset dirty work from an earlier attempt.
+		}
+		if err := makeWritable(dir); err != nil {
+			return nil, err
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			return nil, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	start := base
+	if review {
+		start = m.Repo.SnapshotRev
+	} else if m.Repo.CheckpointArtifact != nil && m.Repo.CheckpointArtifact.Revision != "" {
+		start = m.Repo.CheckpointArtifact.Revision
+	}
+	for _, rev := range []string{base, start} {
+		if err := ensure(rev); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := isolatedGit(ctx, w.paths.work(), "clone", "--quiet", "--no-local", "--no-hardlinks", "--no-checkout", "--template=", rep, dir); err != nil {
+		return nil, err
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			_ = os.RemoveAll(dir)
+		}
+	}()
+	// Recorded revisions can live outside refs/heads (bundle imports and
+	// checkpoints), so explicitly transfer them, including their full history.
+	for _, rev := range []string{base, start} {
+		if rev != "" {
+			if _, err := isolatedGit(ctx, dir, "fetch", "--quiet", "--no-write-fetch-head", rep, rev); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if base != "" {
+		if _, err := isolatedGit(ctx, dir, "update-ref", "refs/yip/base", base); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := isolatedGit(ctx, dir, "remote", "remove", "origin"); err != nil {
+		return nil, err
+	}
+	args := []string{"checkout", "--quiet", "-B", branch, start}
+	if review {
+		args = []string{"checkout", "--quiet", "--detach", start}
+	}
+	if _, err := isolatedGit(ctx, dir, args...); err != nil {
+		return nil, err
+	}
+	if err := standaloneWorkspace(ctx, dir); err != nil {
+		return nil, err
+	}
+	if review {
+		if err := makeReadOnly(dir); err != nil {
+			return nil, err
+		}
+	}
+	ok = true
+	return ws, nil
 }
 
 func makeReadOnly(dir string) error {
@@ -405,16 +624,29 @@ func makeWritable(dir string) error {
 	})
 }
 
+// gitEnv keeps credentialed replica/native operations separate from isolated
+// job operations. The runtime must mount the isolated .git directory read-only.
+func (ws *Workspace) gitEnv() []string {
+	if ws.Isolated {
+		return isolatedGitEnv()
+	}
+	return gitEnv()
+}
+
+func (ws *Workspace) git(ctx context.Context, args ...string) (string, error) {
+	return gitWithEnv(ctx, ws.Dir, ws.gitEnv(), args...)
+}
+
 // Head returns the workspace HEAD and whether the tree has uncommitted changes.
 func (ws *Workspace) Head(ctx context.Context) (head string, dirty bool, untracked int, err error) {
 	if ws.Scratch {
 		return "", false, 0, nil
 	}
-	head, err = git(ctx, ws.Dir, "rev-parse", "HEAD")
+	head, err = ws.git(ctx, "rev-parse", "HEAD")
 	if err != nil {
 		return "", false, 0, err
 	}
-	st, err := git(ctx, ws.Dir, "status", "--porcelain", "--untracked-files=all")
+	st, err := ws.status(ctx)
 	if err != nil {
 		return head, false, 0, err
 	}
@@ -430,25 +662,225 @@ func (ws *Workspace) Head(ctx context.Context) (head string, dirty bool, untrack
 	return head, dirty, untracked, nil
 }
 
-// Commit records all outstanding changes as the engineer.
-func (ws *Workspace) Commit(ctx context.Context, name, email, message string) (string, error) {
-	if _, err := git(ctx, ws.Dir, "add", "-A"); err != nil {
+// status must not let Git discover repositories in the live isolated worktree.
+func (ws *Workspace) status(ctx context.Context) (result string, err error) {
+	env, cleanup, err := ws.snapshotEnv(ctx, ws.gitEnv())
+	if err != nil {
 		return "", err
 	}
-	if _, err := git(ctx, ws.Dir, "-c", "user.name="+name, "-c", "user.email="+email, "-c", "commit.gpgsign=false",
+	defer func() { err = errors.Join(err, cleanup()) }()
+	args := []string{"status", "--porcelain", "--untracked-files=all"}
+	if ws.Isolated {
+		args = append(args, "--ignore-submodules=all")
+	}
+	return gitWithEnv(ctx, ws.Dir, env, args...)
+}
+
+// Commit records all outstanding changes as the engineer.
+func (ws *Workspace) Commit(ctx context.Context, name, email, message string) (revision string, err error) {
+	ws.mutationMu.Lock()
+	defer ws.mutationMu.Unlock()
+	env, cleanup, err := ws.snapshotEnv(ctx, ws.gitEnv())
+	if err != nil {
+		return "", err
+	}
+	defer func() { err = errors.Join(err, cleanup()) }()
+	if err := ws.addSnapshot(ctx, env); err != nil {
+		return "", err
+	}
+	if _, err := gitWithEnv(ctx, ws.Dir, env, "-c", "user.name="+name, "-c", "user.email="+email, "-c", "commit.gpgsign=false",
 		"commit", "--quiet", "--no-verify", "-m", message); err != nil {
 		return "", err
 	}
-	return git(ctx, ws.Dir, "rev-parse", "HEAD")
+	return ws.git(ctx, "rev-parse", "HEAD")
+}
+
+// snapshotEnv gives Git a private, metadata-free working tree. Never run Git's
+// discovery on agent-writable directories: even an initial status/add can resolve
+// a nested .git file or symlink and load configuration outside the sandbox.
+// Nested working files are ordinary parent-repository files, never gitlinks.
+// Existing gitlinks remain frozen and their working directories are not read.
+func (ws *Workspace) snapshotEnv(ctx context.Context, env []string) ([]string, func() error, error) {
+	if !ws.Isolated {
+		return env, func() error { return nil }, nil
+	}
+	index, err := gitWithEnv(ctx, ws.Dir, env, "ls-files", "--stage", "-z")
+	if err != nil {
+		return nil, nil, err
+	}
+	gitlinks := make(map[string]bool)
+	for _, entry := range strings.Split(index, "\x00") {
+		if strings.HasPrefix(entry, "160000 ") {
+			_, path, ok := strings.Cut(entry, "\t")
+			if !ok {
+				return nil, nil, errors.New("invalid gitlink index entry")
+			}
+			gitlinks[path] = true
+		}
+	}
+	dir, err := os.MkdirTemp("", "yip-stage-*")
+	if err != nil {
+		return nil, nil, err
+	}
+	cleanup := func() error { return os.RemoveAll(dir) }
+	root, err := os.Open(ws.Dir)
+	if err == nil {
+		budget := stagingBudget{entries: 100000, bytes: 1 << 30}
+		err = copyStagingFiles(ctx, root, dir, "", gitlinks, &budget)
+		root.Close()
+	}
+	if err != nil {
+		return nil, nil, errors.Join(err, cleanup())
+	}
+	// The metadata path is host-owned and mounted read-only in the agent.
+	return append(append([]string{}, env...), "GIT_DIR="+filepath.Join(ws.Dir, ".git"),
+		"GIT_WORK_TREE="+dir), cleanup, nil
+}
+
+type stagingBudget struct {
+	entries int
+	bytes   int64
+}
+
+// copyStagingFiles opens children relative to pinned directory descriptors, never
+// following symlinks. A scan followed by path-based copies is not sufficient:
+// the live agent can replace a scanned directory/file with an external symlink.
+// Concurrent replacements may fail a snapshot (the caller can retry), but cannot
+// make it follow a link or pass nested metadata to Git.
+// Bounds apply before Git evaluates ignore files, including ignored content.
+// Exceeding a bound fails closed rather than recording incomplete evidence.
+func copyStagingFiles(ctx context.Context, source *os.File, dest, prefix string, gitlinks map[string]bool, budget *stagingBudget) error {
+	if strings.Count(prefix, "/") > 128 {
+		return errors.New("snapshot exceeds 128 directory levels")
+	}
+	entries, err := source.ReadDir(budget.entries + 1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	budget.entries -= len(entries)
+	if budget.entries < 0 {
+		return errors.New("snapshot exceeds 100000 entries (including ignored files)")
+	}
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		name := entry.Name()
+		path := prefix + name
+		if strings.EqualFold(name, ".git") || gitlinks[path] {
+			continue
+		}
+		target := filepath.Join(dest, name)
+		if entry.Type()&os.ModeSymlink != 0 {
+			// readlinkat reads only the link text, even if its target is outside.
+			buf := make([]byte, 65536)
+			n, err := unix.Readlinkat(int(source.Fd()), name, buf)
+			if err != nil {
+				return err
+			}
+			if n == len(buf) {
+				return fmt.Errorf("symlink target too long: %s", path)
+			}
+			budget.bytes -= int64(n)
+			if budget.bytes < 0 {
+				return fmt.Errorf("snapshot size limit exceeded at symlink %s", path)
+			}
+			if err := os.Symlink(string(buf[:n]), target); err != nil {
+				return err
+			}
+			continue
+		}
+		fd, err := unix.Openat(int(source.Fd()), name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
+		if err != nil {
+			return fmt.Errorf("snapshot %s: %w", path, err)
+		}
+		file := os.NewFile(uintptr(fd), path)
+		err = func() error {
+			defer file.Close()
+			info, err := file.Stat()
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				if err := os.Mkdir(target, 0o700); err != nil {
+					return err
+				}
+				return copyStagingFiles(ctx, file, target, path+"/", gitlinks, budget)
+			}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("unsupported snapshot file: %s", path)
+			}
+			limit := min(int64(256<<20), budget.bytes)
+			if info.Size() > limit {
+				return fmt.Errorf("snapshot size limit exceeded at %s (256 MiB/file, 1 GiB total, including ignored files)", path)
+			}
+			out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm()|0o600)
+			if err != nil {
+				return err
+			}
+			n, copyErr := io.Copy(out, io.LimitReader(file, limit+1))
+			closeErr := out.Close()
+			if n > limit {
+				return fmt.Errorf("snapshot size limit exceeded while reading %s", path)
+			}
+			budget.bytes -= n
+			return errors.Join(copyErr, closeErr)
+		}()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addSnapshot requires the environment returned by snapshotEnv. Exclude indexed
+// gitlinks explicitly: Git add otherwise refreshes even ignored submodules.
+func (ws *Workspace) addSnapshot(ctx context.Context, env []string) error {
+	if !ws.Isolated {
+		_, err := gitWithEnv(ctx, ws.Dir, env, "add", "-A")
+		return err
+	}
+	index, err := gitWithEnv(ctx, ws.Dir, env, "ls-files", "--stage", "-z")
+	if err != nil {
+		return err
+	}
+	var paths strings.Builder
+	paths.WriteString(".\x00")
+	for _, entry := range strings.Split(index, "\x00") {
+		if !strings.HasPrefix(entry, "160000 ") {
+			continue
+		}
+		_, path, ok := strings.Cut(entry, "\t")
+		if !ok {
+			return errors.New("invalid gitlink index entry")
+		}
+		paths.WriteString(":(exclude,literal)")
+		paths.WriteString(path)
+		paths.WriteByte(0)
+	}
+	cmd := exec.CommandContext(ctx, "git", gitArgs([]string{"add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"})...)
+	cmd.Dir, cmd.Env, cmd.Stdin = ws.Dir, env, strings.NewReader(paths.String())
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git add: %w: %s", err, output)
+	}
+	return nil
 }
 
 // Diff returns the unified diff and stats between base and head.
 func (ws *Workspace) Diff(ctx context.Context, base, head string) (diff string, files, ins, del int, err error) {
-	diff, err = git(ctx, ws.Dir, "diff", "--no-color", "--no-ext-diff", base, head)
+	args := []string{"diff", "--no-color", "--no-ext-diff"}
+	if ws.Isolated {
+		args = append(args, "--ignore-submodules=all")
+	}
+	diff, err = ws.git(ctx, append(args, base, head)...)
 	if err != nil {
 		return "", 0, 0, 0, err
 	}
-	stat, err := git(ctx, ws.Dir, "diff", "--numstat", base, head)
+	args = []string{"diff", "--numstat"}
+	if ws.Isolated {
+		args = append(args, "--ignore-submodules=all")
+	}
+	stat, err := ws.git(ctx, append(args, base, head)...)
 	if err != nil {
 		return diff, 0, 0, 0, err
 	}
@@ -475,15 +907,15 @@ func (ws *Workspace) Bundle(ctx context.Context, base, head string) (string, err
 	}
 	f.Close()
 	tmpRef := "refs/yip/bundle/" + domain.Short(head)
-	if _, err := git(ctx, ws.Dir, "update-ref", tmpRef, head); err != nil {
+	if _, err := ws.git(ctx, "update-ref", tmpRef, head); err != nil {
 		return "", err
 	}
-	defer git(ctx, ws.Dir, "update-ref", "-d", tmpRef)
+	defer ws.git(ctx, "update-ref", "-d", tmpRef)
 	args := []string{"bundle", "create", f.Name(), tmpRef}
 	if base != "" && base != head {
 		args = append(args, "^"+base)
 	}
-	if _, err := git(ctx, ws.Dir, args...); err != nil {
+	if _, err := ws.git(ctx, args...); err != nil {
 		return "", err
 	}
 	return f.Name(), nil
@@ -492,6 +924,8 @@ func (ws *Workspace) Bundle(ctx context.Context, base, head string) (string, err
 // Checkpoint snapshots uncommitted work (including untracked files, subject
 // to .gitignore) without moving the branch.
 func (ws *Workspace) Checkpoint(ctx context.Context, runID string) (commit string, untracked int, err error) {
+	ws.mutationMu.Lock()
+	defer ws.mutationMu.Unlock()
 	head, dirty, untracked, err := ws.Head(ctx)
 	if err != nil || !dirty {
 		return head, untracked, err
@@ -502,17 +936,23 @@ func (ws *Workspace) Checkpoint(ctx context.Context, runID string) (commit strin
 	}
 	idx.Close()
 	defer os.Remove(idx.Name())
+	env, cleanup, err := ws.snapshotEnv(ctx, ws.gitEnv())
+	if err != nil {
+		return "", 0, err
+	}
+	defer func() { err = errors.Join(err, cleanup()) }()
+	env = append(env, "GIT_INDEX_FILE="+idx.Name())
 	run := func(args ...string) (string, error) {
 		cmd := exec.CommandContext(ctx, "git", gitArgs(args)...)
 		cmd.Dir = ws.Dir
-		cmd.Env = append(gitEnv(), "GIT_INDEX_FILE="+idx.Name())
+		cmd.Env = env
 		out, err := cmd.Output()
 		return strings.TrimSpace(string(out)), err
 	}
 	if _, err := run("read-tree", "HEAD"); err != nil {
 		return "", 0, err
 	}
-	if _, err := run("add", "-A"); err != nil {
+	if err := ws.addSnapshot(ctx, env); err != nil {
 		return "", 0, err
 	}
 	tree, err := run("write-tree")
@@ -523,7 +963,7 @@ func (ws *Workspace) Checkpoint(ctx context.Context, runID string) (commit strin
 	if err != nil {
 		return "", 0, err
 	}
-	_, err = git(ctx, ws.Dir, "update-ref", "refs/yip/checkpoints/"+domain.Short(runID), commit)
+	_, err = ws.git(ctx, "update-ref", "refs/yip/checkpoints/"+domain.Short(runID), commit)
 	return commit, untracked, err
 }
 

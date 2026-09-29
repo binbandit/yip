@@ -461,7 +461,7 @@ func threadConfig(spec providers.StartSpec, disableMCP, trust []string) map[stri
 	// server keeps its definition but does not start.
 	servers := map[string]any{name: server}
 	for _, n := range disableMCP {
-		if n != name {
+		if n != name && !(spec.InheritUserConfig && spec.Mode == protocol.ModeEdit) {
 			servers[n] = map[string]any{"enabled": false}
 		}
 	}

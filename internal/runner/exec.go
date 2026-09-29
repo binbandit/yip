@@ -28,6 +28,31 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	defer cancel()
 
 	finish := func(t protocol.RunTerminal) {
+		ar.admit.Store(false)
+		ar.mu.Lock()
+		container := ar.container
+		checks := make([]*dockerContainer, 0, len(ar.checks))
+		for _, c := range ar.checks {
+			checks = append(checks, c)
+		}
+		ar.mu.Unlock()
+		if container != nil {
+			t.ExitConfirmed = container.remove()
+			if !t.ExitConfirmed {
+				t.Outcome = protocol.OutcomeFailed
+				t.Error = "could not confirm Docker container removal: " + container.name + "; restore Docker connectivity and stop this container before reusing the workspace"
+				r.dockerUncertain()
+			}
+		}
+		for _, c := range checks {
+			if !c.remove() {
+				r.dockerUncertain()
+			}
+		}
+		if r.uncertain.Load() {
+			t.Outcome, t.ExitConfirmed = protocol.OutcomeFailed, false
+			t.Error = firstNonEmpty(t.Error, "Docker cleanup could not be confirmed; this runner is drained until it restarts with a working Docker engine")
+		}
 		switch {
 		case ar.leaseLost.Load():
 			t.Outcome = protocol.OutcomeLeaseLost
@@ -38,7 +63,7 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 			t.Outcome = protocol.OutcomeFailed
 			t.Error = "the runner on " + r.id.Name + " shut down during this attempt"
 		}
-		if ar.ws != nil && !ar.ws.ReadOnly && !ar.ws.Scratch {
+		if t.ExitConfirmed && ar.ws != nil && !ar.ws.ReadOnly && !ar.ws.Scratch {
 			t.Checkpoint = r.checkpoint(context.Background(), ar)
 		}
 		t.LastSeq = r.journal.LastSeq(m.RunID)
@@ -46,7 +71,9 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 			r.log.Error("journal terminal failed", "run", m.RunID, "err", err)
 		}
 		_ = r.sendTyped(protocol.EvRunTerminal, m.RunID, ar.epoch, t)
-		r.ws.Release(context.Background(), ar.ws)
+		if t.ExitConfirmed {
+			r.ws.Release(context.Background(), ar.ws)
+		}
 		_ = os.RemoveAll(r.scratchDir(m.RunID))
 		r.mu.Lock()
 		delete(r.runs, m.RunID)
@@ -89,7 +116,12 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	if m.TimeoutMs > 0 {
 		spec.Timeout = time.Duration(m.TimeoutMs) * time.Millisecond
 	}
-	sess, err := adapter.Start(ctx, spec)
+	var sess providers.Session
+	if r.opts.ExecutionProfile == "docker" {
+		sess, err = r.startDocker(ctx, ar, spec)
+	} else {
+		sess, err = adapter.Start(ctx, spec)
+	}
 	if err != nil {
 		outcome := protocol.OutcomeFailed
 		if errors.Is(err, providers.ErrUnsupported) {

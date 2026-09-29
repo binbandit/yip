@@ -38,8 +38,15 @@ var instructionFiles = []string{".cursor/rules", "AGENTS.md", "CLAUDE.md", ".cur
 // checkProjectConfig refuses unapproved execution-granting files and lists
 // instruction files Cursor will also read.
 func (a *Adapter) checkProjectConfig(workdir string) (notes []string, err error) {
+	return a.checkImportedProjectConfig(workdir, false)
+}
+
+func (a *Adapter) checkImportedProjectConfig(workdir string, inherit bool) (notes []string, err error) {
 	var refused []string
 	for _, f := range gatedProjectFiles {
+		if inherit && f.path == ".cursor/mcp.json" {
+			continue
+		}
 		if _, statErr := os.Lstat(filepath.Join(workdir, f.path)); statErr == nil && !a.approvedConfig[f.path] {
 			refused = append(refused, fmt.Sprintf("%s (%s)", f.path, f.why))
 		}
@@ -153,7 +160,7 @@ func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (provider
 	if err != nil {
 		return nil, fmt.Errorf("cursor: resolve workdir: %w", err)
 	}
-	notes, err := a.checkProjectConfig(spec.Workdir)
+	notes, err := a.checkImportedProjectConfig(spec.Workdir, spec.InheritUserConfig && spec.Mode == protocol.ModeEdit)
 	if err != nil {
 		return nil, err
 	}

@@ -108,6 +108,10 @@ type StartSpec struct {
 	Prompt          string // the first user turn, built from the context manifest
 	ResumeSessionID string // vendor session to resume; empty for a fresh session
 	MCP             MCPServer
+	// InheritUserConfig permits imported skills and user MCP configuration in
+	// an explicitly isolated editing runtime. Native and read-only runs retain
+	// their conservative startup boundary.
+	InheritUserConfig bool
 	// PermissionTool is the MCP tool name (without server prefix) the bridge
 	// exposes for permission prompts, for providers that route approvals via MCP.
 	PermissionTool string

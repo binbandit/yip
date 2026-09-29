@@ -200,6 +200,17 @@ func buildLaunch(spec providers.StartSpec, tempRoot string) (*launchPlan, error)
 		"--tools=" + strings.Join(pol.tools, ","),
 		"--allowedTools=" + strings.Join(pol.allowed, ","),
 	}
+	if spec.InheritUserConfig && spec.Mode == protocol.ModeEdit {
+		filtered := args[:0]
+		for _, arg := range args {
+			switch arg {
+			case "--restricted", "--strict-mcp-config", "--disable-slash-commands":
+				continue
+			}
+			filtered = append(filtered, arg)
+		}
+		args = filtered
+	}
 	if len(pol.disallowed) > 0 {
 		args = append(args, "--disallowedTools="+strings.Join(pol.disallowed, ","))
 	}
