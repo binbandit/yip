@@ -30,7 +30,8 @@ evidence are one loop**:
 ## A quick tour
 
 The screenshots show the demo workspace, where engineers run on yip's
-deterministic fake provider — no model is called, and the banner says so.
+deterministic fake provider — no model is called, and each engineer's
+provider preference says so.
 
 ### Peer review on exact revisions
 
@@ -56,7 +57,7 @@ current while work moves through review and completion. Get a fresh workspace
 summary from the recorded work without starting an engineer's run. Ask an
 engineer in a conversation for an open-ended answer.
 
-![Overview showing two reviewed local results, an explicit workspace summary action, and the specific provider limitation affecting conversation readiness](docs/screenshots/ux-2026-09-28/overview-after.png)
+![Overview showing the Atlas decision and both completed jobs since the last visit, recently completed work, and a workspace summary answered from the work ledger](docs/screenshots/overview.png)
 
 ### Engineers persist across rooms
 
@@ -71,7 +72,7 @@ Each paired machine reports its providers and sign-in state, execution
 profiles, capacity, and toolchains. You can drain it, stop its work, or
 revoke it.
 
-![Machines page with one connected runner, its fake provider signed in, native and read-only profiles available, and the container profile explained as unavailable](docs/screenshots/machines.png)
+![Machines page with one connected, idle runner with two work slots and its demo provider ready](docs/screenshots/machines.png)
 
 ### Dark mode and small screens
 
@@ -171,8 +172,9 @@ To try it on a phone or another computer while developing, `just lan` serves
 the demo on your local network (built app on :7721, live-reload client on
 :5173; plain HTTP, demo data only).
 
-To refresh the screenshots (macOS; renders with the system WebKit, so no
-browser download), start a fresh demo and run the capture script:
+To refresh the screenshots, start a fresh demo and run the capture script. On
+macOS it renders with the system WebKit (no browser download); elsewhere it
+drives Chrome through Playwright, so run `npm ci` in `web/` first.
 
 ```sh
 ./bin/yip demo --reset --data /tmp/yip-demo-shots --listen 127.0.0.1:7821 --runner-listen 127.0.0.1:7844
