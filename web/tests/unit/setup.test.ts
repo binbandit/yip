@@ -126,7 +126,7 @@ describe('setup next actions', () => {
     expect(notice.textContent).not.toContain('waiting for an available machine');
   });
 
-  it('routes a disconnected signed-in provider to machines with its actual reason', () => {
+  it('routes a disconnected signed-in provider to its connection guide with its actual reason', () => {
     const { data, node } = team();
     node.status = 'offline';
     app.data = data;
@@ -134,7 +134,7 @@ describe('setup next actions', () => {
     flushSync();
     const notice = document.querySelector('.availability')!;
     expect(notice.textContent).toContain('Signed in, but no machine is available for new work.');
-    expect(notice.querySelector('a')?.getAttribute('href')).toBe('/machines');
+    expect(notice.querySelector('a')?.getAttribute('href')).toBe(`/connections/${node.providers[0].provider}`);
     expect(document.querySelector('.start header')?.textContent).toContain('6 of 7 done');
   });
 

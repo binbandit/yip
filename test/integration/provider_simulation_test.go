@@ -10,7 +10,7 @@ import (
 
 func TestConversationWaitsForReadOnlyCapability(t *testing.T) {
 	t.Parallel()
-	for _, provider := range []string{"codex", "claude", "fake"} {
+	for _, provider := range []string{"codex", "claude", "opencode", "pi", "fake"} {
 		t.Run(provider, func(t *testing.T) {
 			t.Parallel()
 			e := newEnv(t, envOptions{noRunner: true})

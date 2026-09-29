@@ -86,6 +86,8 @@ export interface DataState {
   engineers: Record<string, Engineer>;
   projects: Record<string, Project>;
   nodes: Record<string, Node>;
+  /** Last capabilities-report event per machine, including reports with no providers. */
+  nodeReportSeq: Record<string, number>;
   jobs: Record<string, Job>;
   runs: Record<string, Run>;
   reviews: Record<string, Review>;
@@ -131,6 +133,7 @@ export function emptyState(): DataState {
     engineers: {},
     projects: {},
     nodes: {},
+    nodeReportSeq: {},
     jobs: {},
     runs: {},
     reviews: {},
@@ -466,8 +469,9 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
       break;
     }
     case 'node.updated': {
-      const n = asPayload<Node>(ev);
+      const n = asPayload<Node & { capabilitiesReported?: boolean }>(ev);
       s.nodes[n.id] = n;
+      if (n.capabilitiesReported) s.nodeReportSeq[n.id] = ev.sequence;
       break;
     }
     case 'pr.updated': {

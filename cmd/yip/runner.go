@@ -23,9 +23,13 @@ import (
 	"github.com/binbandit/yip/internal/providers/codex"
 	"github.com/binbandit/yip/internal/providers/cursor"
 	"github.com/binbandit/yip/internal/providers/fake"
+	"github.com/binbandit/yip/internal/providers/opencode"
+	"github.com/binbandit/yip/internal/providers/pi"
 	"github.com/binbandit/yip/internal/providers/worker"
 	"github.com/binbandit/yip/internal/runner"
 )
+
+const defaultProviders = "codex,claude,cursor,opencode,pi"
 
 func init() {
 	// The hub asks the fake provider's director for scripts only for
@@ -53,6 +57,10 @@ func adapters(list string) (map[string]providers.Adapter, error) {
 			out["claude"] = claude.New()
 		case "cursor":
 			out["cursor"] = cursor.New()
+		case "opencode":
+			out["opencode"] = opencode.New()
+		case "pi":
+			out["pi"] = pi.New()
 		case "fake":
 			delay := 1200 * time.Millisecond
 			if v := os.Getenv("YIP_FAKE_DELAY"); v != "" {
@@ -62,7 +70,7 @@ func adapters(list string) (map[string]providers.Adapter, error) {
 			}
 			out["fake"] = fake.New(delay)
 		default:
-			return nil, fmt.Errorf("unknown provider %q (choose from codex, claude, cursor, fake)", name)
+			return nil, fmt.Errorf("unknown provider %q (choose from %s, fake)", name, defaultProviders)
 		}
 	}
 	return out, nil
@@ -93,7 +101,7 @@ func runRunner(args []string) error {
 	fs := flag.NewFlagSet("runner", flag.ExitOnError)
 	state := fs.String("state", defaultRunnerDir(), "runner state directory")
 	slots := fs.Int("slots", 2, "concurrent runs on this machine")
-	provs := fs.String("providers", "codex,claude,cursor", "providers this runner may use")
+	provs := fs.String("providers", defaultProviders, "providers this runner may use")
 	profile := fs.String("profile", cmp.Or(os.Getenv("YIP_EXECUTION_PROFILE"), "native"), "execution profile: native, container (whole runner), or docker (ephemeral agents)")
 	image := fs.String("docker-image", cmp.Or(os.Getenv("YIP_DOCKER_IMAGE"), runner.DefaultDockerImage), "local image for ephemeral agents (never pulled automatically)")
 	importEnv := fs.String("docker-env", "", "comma-separated environment variable names to explicitly import for harness authentication and MCP")
@@ -136,20 +144,30 @@ func runAgentWorker(args []string) error {
 	if *toolchains {
 		return json.NewEncoder(os.Stdout).Encode(runner.ProbeToolchains(ctx))
 	}
-	var adapter providers.Adapter
-	switch *provider {
-	case "codex":
-		adapter = codex.New(codex.WithProbeEnv(os.Environ()))
-	case "claude":
-		adapter = claude.New(claude.Options{Env: os.Environ()})
-	case "cursor":
-		adapter = cursor.New(cursor.WithProbeEnv(os.Environ()))
-	case "fake":
-		adapter = fake.New(0)
-	default:
-		return fmt.Errorf("unknown worker provider %q", *provider)
+	adapter, err := agentWorkerAdapter(*provider, os.Environ())
+	if err != nil {
+		return err
 	}
 	return worker.Serve(ctx, os.Stdin, os.Stdout, adapter, buildinfo.Version)
+}
+
+func agentWorkerAdapter(name string, env []string) (providers.Adapter, error) {
+	switch name {
+	case "codex":
+		return codex.New(codex.WithProbeEnv(env)), nil
+	case "claude":
+		return claude.New(claude.Options{Env: env}), nil
+	case "cursor":
+		return cursor.New(cursor.WithProbeEnv(env)), nil
+	case "opencode":
+		return opencode.New(opencode.WithProbeEnv(env)), nil
+	case "pi":
+		return pi.New(pi.Options{Env: env}), nil
+	case "fake":
+		return fake.New(0), nil
+	default:
+		return nil, fmt.Errorf("unknown worker provider %q", name)
+	}
 }
 
 // startLocalRunner pairs a runner on the hub's own machine through the same

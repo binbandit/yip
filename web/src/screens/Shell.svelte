@@ -19,6 +19,7 @@
   import ProjectsScreen from './ProjectsScreen.svelte';
   import ProjectScreen from './ProjectScreen.svelte';
   import MachinesScreen from './MachinesScreen.svelte';
+  import ConnectionsScreen from './ConnectionsScreen.svelte';
   import SettingsScreen from './SettingsScreen.svelte';
   import Screen from '../components/Screen.svelte';
   import type { PanelMode } from '../components/RightPanel.svelte';
@@ -81,6 +82,8 @@
           return app.data.projects[route.id]?.name ?? 'Project';
         case 'machines':
           return 'Machines';
+        case 'connections':
+          return 'Connections';
         case 'settings':
           return 'Settings';
       }
@@ -133,6 +136,8 @@
         {#key route.id}<ProjectScreen id={route.id} />{/key}
       {:else if route.name === 'machines'}
         <MachinesScreen />
+      {:else if route.name === 'connections'}
+        <ConnectionsScreen provider={route.provider} />
       {:else if route.name === 'settings'}
         <SettingsScreen />
       {:else}

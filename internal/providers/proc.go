@@ -154,13 +154,12 @@ func (p *Process) Terminate(grace time.Duration) bool {
 			return false
 		}
 	}
-	// Reap any stragglers left in the group.
-	if err := syscall.Kill(-pgid, 0); err == nil {
+	// Kill any stragglers left in the group. Only their parents can reap
+	// them; on Linux unreaped zombies still answer the signal-zero probe.
+	if !processGroupExited(pgid) {
 		_ = syscall.Kill(-pgid, syscall.SIGKILL)
 		time.Sleep(100 * time.Millisecond)
-		if err := syscall.Kill(-pgid, 0); err == nil {
-			return false
-		}
+		return processGroupExited(pgid)
 	}
 	return true
 }

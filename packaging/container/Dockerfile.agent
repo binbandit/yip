@@ -7,16 +7,20 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/yip ./cmd/yip
 
+# Pi requires Node >=22.19; use the current Node 22 patch release.
 FROM node:22-bookworm-slim
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates python3 \
+ && apt-get install -y --no-install-recommends git ca-certificates python3 bash \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /workspace /home/yip \
  && chmod 1777 /workspace /home/yip
 # Override versions deliberately when validating a newer harness.
 ARG CODEX_VERSION=0.157.1
 ARG CLAUDE_VERSION=2.1.283
+ARG OPENCODE_VERSION=1.18.33
+ARG PI_VERSION=0.87.1
 RUN npm install --global @openai/codex@${CODEX_VERSION} @anthropic-ai/claude-code@${CLAUDE_VERSION} \
+    opencode-ai@${OPENCODE_VERSION} @earendil-works/pi-coding-agent@${PI_VERSION} \
  && npm cache clean --force
 COPY --from=build /usr/local/go /usr/local/go
 COPY --from=build /out/yip /usr/local/bin/yip

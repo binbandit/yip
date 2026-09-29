@@ -1,6 +1,7 @@
 import type { Engineer, Project, Room } from '../api/types.gen';
 import type { DataState } from '../state/data';
 import { providerReadiness } from './providerReadiness';
+import { connectionPath } from './connections';
 
 type SetupData = Pick<DataState, 'demo' | 'nodes' | 'engineers' | 'rooms' | 'projects' | 'jobs'>;
 
@@ -58,8 +59,8 @@ export function setupReadiness(data: SetupData) {
     return [{
       engineer: e,
       reason: readiness.reason,
-      href: needsProviderChoice ? `/engineers/${e.id}#eng-prov` : '/machines',
-      action: needsProviderChoice ? 'Review provider settings' : 'Check machines',
+      href: needsProviderChoice ? `/engineers/${e.id}#eng-prov` : connectionPath(e.provider.provider),
+      action: needsProviderChoice ? 'Review provider settings' : 'Check connection',
     }];
   });
   return {

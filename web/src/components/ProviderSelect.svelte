@@ -1,10 +1,12 @@
 <script lang="ts">
   // Provider preference with honest readiness: which machines have it signed
   // in, and how it's billed. Provider/model is configuration, not identity.
-  import { Selector, Text } from '@astryx-svelte/core';
+  import { Link, Selector, Text } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { billingLabel, providerLabel } from '../lib/util/labels';
   import { providerReadiness } from '../lib/util/providerReadiness';
+  import { connectionPath, connections } from '../lib/util/connections';
 
   interface Props {
     value: string;
@@ -17,7 +19,7 @@
   let { value, onchange, id, profileId, allowApiBilling = false }: Props = $props();
 
   const options = $derived(
-    (app.data.providers.length ? app.data.providers : [{ provider: 'codex' }, { provider: 'claude' }, { provider: 'cursor' }].map((p) => ({ ...p, label: '', readyNodes: [], billing: 'unknown', fake: false }))).filter(
+    (app.data.providers.length ? app.data.providers : connections.map((p) => ({ provider: p.id, label: p.label, readyNodes: [], billing: 'unknown', fake: false }))).filter(
       (p) => !p.fake || app.data.demo || p.provider === value,
     ).map((p) => ({ ...p, availability: providerReadiness(Object.values(app.data.nodes), { provider: p.provider, profileId: p.provider === value ? profileId : undefined, allowApiBilling }) })),
   );
@@ -39,6 +41,7 @@
 <div class="provider">
   <Selector label="Provider preference" isLabelHidden width="100%" options={choices} {value} onChange={(v: string) => onchange(v)} {...idAttr} />
   <Text as="p" display="block" type="supporting" class="hint">{readiness}</Text>
+  <Link href={workspaceUrl(connectionPath(value))} hasUnderline>{current?.availability.ready.length ? 'Manage connection' : 'How to connect your subscription'}</Link>
 </div>
 
 <style>

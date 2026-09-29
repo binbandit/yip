@@ -364,6 +364,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   codex: 'Codex',
   claude: 'Claude Code',
   cursor: 'Cursor',
+  opencode: 'OpenCode',
+  pi: 'Pi Agent Harness',
   fake: 'Demo provider (fake)',
 };
 

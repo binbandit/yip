@@ -7,7 +7,7 @@ import { providerLabel, type Shape, type Tone } from './labels';
 import { atTime, bytes, clock, relative, toDate } from './time';
 
 /** Each provider signs in with its own tool on the machine; yip only reads the result. */
-export const SIGN_IN_COMMANDS: Record<string, string> = { codex: 'codex login', claude: 'claude auth login', cursor: 'agent login' };
+export const SIGN_IN_COMMANDS: Record<string, string> = { codex: 'codex login', claude: 'claude auth login', cursor: 'agent login', opencode: 'opencode auth login', pi: 'pi' };
 
 /** Below this much free disk the hub gives a machine no new work (store.SetNodeCapabilities). */
 export const LOW_DISK_MB = 2048;
