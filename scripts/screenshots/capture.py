@@ -7,7 +7,8 @@
 It plays the two demo scenarios through the browser API (the Atlas fix with
 peer review, and Pip's Beacon investigation with a question), asks the
 Overview for status, then captures each screen with shoot.swift, which renders
-pages in the system WebKit (macOS only; no browser download, nothing stored).
+pages in the system WebKit (macOS only; no browser download, nothing stored),
+or elsewhere with shoot.mjs, which drives Chrome through Playwright.
 Images are written to docs/screenshots/.
 """
 import argparse
@@ -87,7 +88,7 @@ def populate(h):
     wait("the Atlas fix", lambda: (h.job("Fix Atlas session expiry") or {}).get("state") in done)
     wait("the Beacon investigation", lambda: (h.job("Beacon") or {}).get("state") in done)
     if not any(m["author"]["kind"] == "user" for m in h.messages("Overview")):
-        h.post("Overview", "What got done today, and is anything waiting on me?")
+        h.post("Overview", "Where are we with everything?")
         time.sleep(3)
     # Open rooms at their latest messages rather than an unread divider.
     for r in h.boot["rooms"]:
@@ -100,7 +101,7 @@ BOTTOM = "const s = document.querySelector('.scroller'); if (s) s.scrollTop = s.
 TO_QUESTION = ("const el = [...document.querySelectorAll('.scroller p, .scroller div')]"
                ".filter(e => e.textContent.includes('which repository')).pop();"
                "if (el) el.scrollIntoView({block: 'start'});"
-               "const s = document.querySelector('.scroller'); if (s) s.scrollTop -= 60;")
+               "const s = document.querySelector('.scroller'); if (s) s.scrollTop -= 240;")
 
 
 def shots(h):
@@ -127,17 +128,22 @@ def main():
     ap.add_argument("--hub", default="http://127.0.0.1:7821")
     ap.add_argument("--credentials", required=True, help="demo-credentials.txt written by yip demo")
     ap.add_argument("--out", default=os.path.join(ROOT, "docs", "screenshots"))
+    ap.add_argument("--browser", choices=("webkit", "chrome"), default="webkit" if sys.platform == "darwin" else "chrome",
+                    help="webkit: system WebKit via shoot.swift (macOS); chrome: Playwright via shoot.mjs (needs web/node_modules)")
     a = ap.parse_args()
     creds = dict(l.strip().split(": ", 1) for l in open(a.credentials) if ": " in l)
     h = Hub(a.hub, creds["handle"], creds["password"])
     populate(h)
     with tempfile.TemporaryDirectory() as tmp:
-        tool = os.path.join(tmp, "shoot")
-        subprocess.run(["swiftc", "-O", "-swift-version", "5", "-o", tool, os.path.join(ROOT, "scripts", "screenshots", "shoot.swift")], check=True)
         cfg = os.path.join(tmp, "shots.json")
         with open(cfg, "w") as f:
             json.dump({"base": a.hub, "handle": creds["handle"], "password": creds["password"], "out": a.out, "shots": shots(h)}, f)
-        subprocess.run([tool, cfg], check=True)
+        if a.browser == "webkit":
+            tool = os.path.join(tmp, "shoot")
+            subprocess.run(["swiftc", "-O", "-swift-version", "5", "-o", tool, os.path.join(ROOT, "scripts", "screenshots", "shoot.swift")], check=True)
+            subprocess.run([tool, cfg], check=True)
+        else:
+            subprocess.run(["node", os.path.join(ROOT, "scripts", "screenshots", "shoot.mjs"), cfg], check=True)
 
 
 if __name__ == "__main__":
