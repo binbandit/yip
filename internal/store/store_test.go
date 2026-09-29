@@ -94,7 +94,7 @@ func TestOpenForgetsScriptedProviderAccounts(t *testing.T) {
 		`INSERT INTO orgs(id, name, created_at) VALUES ('o1', 'Org', '2026-01-01T00:00:00Z')`,
 		`INSERT INTO provider_profiles(id, org_id, provider, label, created_at) VALUES ('fake:local', 'o1', 'fake', 'Scripted', '2026-01-01T00:00:00Z')`,
 		`INSERT INTO provider_profiles(id, org_id, provider, label, created_at) VALUES ('codex:default', 'o1', 'codex', 'Codex', '2026-01-01T00:00:00Z')`,
-		`DELETE FROM schema_migrations WHERE version = 13`,
+		`DELETE FROM schema_migrations WHERE version = 14`,
 	} {
 		if _, err := s.w.ExecContext(ctx, q); err != nil {
 			t.Fatal(err)

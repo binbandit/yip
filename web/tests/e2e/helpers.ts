@@ -22,7 +22,8 @@ export async function signIn(page: Page): Promise<void> {
   await page.getByLabel('Handle').fill(owner.handle);
   await page.getByLabel('Password').fill(owner.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/\/(start|rooms\/[^/]+)$/);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
 export function workspaceNav(page: Page) {

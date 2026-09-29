@@ -26,9 +26,9 @@ test('a new hub is set up from the browser, by keyboard', async ({ page }) => {
   await page.getByLabel('Confirm password').fill(owner.password);
   await page.getByLabel('Confirm password').press('Enter');
 
-  await expect(page).toHaveURL(/\/overview$/);
-  await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Getting started' })).toContainText('0 of 7 done');
+  await expect(page).toHaveURL(/\/start$/);
+  await expect(page.getByRole('heading', { name: 'Getting started', level: 1 })).toBeVisible();
+  await expect(page.getByRole('main')).toContainText('0 of 7 done');
   await expect(workspaceNav(page).getByRole('button', { name: 'Your profile' })).toContainText(owner.workspace);
 });
 
@@ -99,7 +99,7 @@ test('keyboard: skip link, dialogs keep and return focus, mention and send, sear
   // No machine is paired: the hub's reason reaches the composer.
   await expect(page.getByText(/Mira will reply when possible — No machines are paired yet/)).toBeVisible();
 
-  await workspaceNav(page).getByRole('link', { name: 'Overview', exact: true }).click();
+  await workspaceNav(page).getByRole('link', { name: 'Projects', exact: true }).click();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
   const search = page.getByRole('dialog', { name: 'Search' });
   const input = search.getByRole('combobox', { name: 'Search' });
@@ -125,7 +125,7 @@ test('Add machine creates a one-time pairing command', async ({ page }) => {
 });
 
 for (const width of [390, 1024, 1440]) {
-  test(`${width}px: nothing scrolls sideways on Overview, Machines or a room${width === 390 ? '; navigation sheet and touch-sized send' : ''}`, async ({ page }) => {
+  test(`${width}px: nothing scrolls sideways on the landing screen, Machines or a room${width === 390 ? '; navigation sheet and touch-sized send' : ''}`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await signIn(page);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
