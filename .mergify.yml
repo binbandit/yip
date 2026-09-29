@@ -7,6 +7,8 @@ queue_rules:
     queue_conditions:
       - base = main
       - -draft
+      - check-success = @pullfrog/pullfrog
+      - check-success = @pullfrog/pullfrog-approval
     # Re-run CI on the integration PR; review approval stays on the original PR.
     merge_conditions:
       - check-success = @github-actions/Go
@@ -16,6 +18,7 @@ queue_rules:
     merge_method: squash
     update_method: rebase
     batch_size: 1
+    max_checks_retries: 2
 
 merge_protections_settings:
   post_comment: false
@@ -30,5 +33,3 @@ merge_protections:
       - -head ~= ^mergify/merge-queue/
     success_conditions:
       - github-review-decision = APPROVED
-      - check-success = @pullfrog/pullfrog
-      - check-success = @pullfrog/pullfrog-approval
