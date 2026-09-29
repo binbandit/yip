@@ -2,6 +2,8 @@ package integration
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -152,12 +154,15 @@ func TestReplyAfterCancelDoesNotRestart(t *testing.T) {
 // A08: a constraint added to a running job reports its actual delivery mode.
 func TestSteeringReceipts(t *testing.T) {
 	t.Parallel()
+	inputDelivered := filepath.Join(t.TempDir(), "input-delivered")
+	quotedMarker := "'" + strings.ReplaceAll(inputDelivered, "'", "'\"'\"'") + "'"
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case m.Job.Kind == "reply" && strings.Contains(m.Request.Body, "investigate"):
 			return script(toolStep("work_create", map[string]any{"title": "Investigate retries", "objective": "Investigate retries", "kind": "investigation", "project": "Beacon"}, ""))
 		case m.Job.Kind == "investigation":
-			return script(fake.Step{Status: "Working"}, fake.Step{Sleep: "3s"},
+			return script(fake.Step{Status: "Working"},
+				fake.Step{Shell: "while ! test -f " + quotedMarker + "; do sleep 0.05; done"},
 				toolStep("work_update", map[string]any{"state": "completed", "summary": "Done. Constraint: {{input}}"}, ""))
 		}
 		return nil
@@ -180,6 +185,10 @@ func TestSteeringReceipts(t *testing.T) {
 		}
 		return false
 	})
+	// Finish only after the runner has acknowledged the input, regardless of load.
+	if err := os.WriteFile(inputDelivered, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
 	j = e.waitJob("Investigate retries", protocol.JobCompleted)
 	if !strings.Contains(e.jobDetail(j.ID).Job.Summary, "Keep the existing API response shape") {
 		t.Fatalf("the result should account for the constraint: %q", j.Summary)

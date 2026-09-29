@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -83,6 +84,9 @@ type env struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	opts      envOptions
+
+	runnerPartitioned atomic.Bool
+	runnerHandler     atomic.Pointer[httpapi.RunnerServer]
 }
 
 func quietLogger() *slog.Logger {
@@ -137,19 +141,22 @@ func (e *env) startHub(lim domain.Limits) {
 	h.Start(e.ctx)
 	e.hub = h
 	e.browser = httptest.NewServer(httpapi.New(h, httpapi.Options{Logger: quietLogger()}))
-	tlsConf, err := h.CA().ServerTLS([]string{"127.0.0.1"})
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	if e.runnerLn == nil {
-		ln, err := net.Listen("tcp", strings.TrimPrefix(e.runnerURL, "https://"))
+	e.runnerHandler.Store(httpapi.NewRunnerServer(h, nil))
+	if e.runnerSrv == nil {
+		tlsConf, err := h.CA().ServerTLS([]string{"127.0.0.1"})
 		if err != nil {
 			e.t.Fatal(err)
 		}
-		e.runnerLn = ln
+		e.runnerSrv = &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := e.runnerHandler.Load()
+			if handler == nil || e.runnerPartitioned.Load() {
+				http.Error(w, "runner network unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			handler.ServeHTTP(w, r)
+		})}
+		go e.runnerSrv.Serve(tls.NewListener(e.runnerLn, tlsConf))
 	}
-	e.runnerSrv = &http.Server{Handler: httpapi.NewRunnerServer(h, nil)}
-	go e.runnerSrv.Serve(tls.NewListener(e.runnerLn, tlsConf))
 }
 
 // fakeScript directs the fake provider: the test's director first, then the
@@ -165,8 +172,8 @@ func (e *env) fakeScript(m *manifest.Manifest) json.RawMessage {
 
 // restartHub simulates a hub crash and restart on the same data directory.
 func (e *env) restartHub() {
-	e.runnerSrv.Close()
-	e.runnerLn = nil
+	// Keep the address reserved while the old hub drops its live connections.
+	e.runnerHandler.Store(nil)
 	e.browser.Close()
 	_ = e.hub.Close()
 	lim := e.hub.Limits()
