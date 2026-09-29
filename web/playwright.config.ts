@@ -1,13 +1,7 @@
-// Browser smoke journeys against a real hub, set up from scratch.
-//
-// Prerequisites: `just all` (builds web/dist and embeds it in bin/yip). The
-// suite starts `bin/yip hub` on private ports with a new, empty data
-// directory; the first journey completes owner setup in the browser with the
-// one-time code the hub prints. No machine is paired and no provider runs.
-// It uses a browser only if one is available — a Playwright-managed browser
-// (PLAYWRIGHT_BROWSERS_PATH / `npx playwright install chromium`) or a system
-// Chrome/Edge. It never downloads browsers itself. With no browser it runs
-// nothing and says why (and fails under CI).
+// Run `just e2e` to build the production binary and separate browser harness.
+// The smoke project exercises owner setup against an empty real hub. Other
+// tests use disposable hubs with either no runner or the scripted test adapter.
+// No installed AI provider is invoked. Browser discovery never downloads one.
 import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test';
 import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -56,8 +50,8 @@ const config: PlaywrightTestConfig = {
   testDir: 'tests/e2e',
   timeout: 60_000,
   expect: { timeout: 15_000 },
-  fullyParallel: false,
-  workers: 1,
+  fullyParallel: true,
+  workers: process.env.YIP_E2E_WORKERS ? Number(process.env.YIP_E2E_WORKERS) : 3,
   // The journeys share one hub whose owner setup happens once; a retry would
   // meet a hub that is already set up.
   retries: 0,
@@ -69,11 +63,11 @@ const config: PlaywrightTestConfig = {
     screenshot: 'only-on-failure',
     ...(channel ? { channel } : {}),
   },
-  // Workspace journeys depend on the smoke project, whose first journey sets up the owner.
+  // Smoke tests share a fresh hub; all other tests use isolated per-test fixtures.
   projects: haveBrowser
     ? [
         { name: 'smoke', testMatch: 'smoke.spec.ts', use: desktop },
-        { name: 'workspaces', testMatch: ['workspaces.spec.ts', 'connections.spec.ts'], dependencies: ['smoke'], use: desktop },
+        { name: 'desktop', testIgnore: 'smoke.spec.ts', use: desktop },
       ]
     : [],
   webServer: haveBrowser

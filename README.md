@@ -146,7 +146,7 @@ Claude Code or Codex sign-in.
 | OpenCode and Pi Agent Harness adapters | Implemented with permission and bridge tests; real OpenCode handshake and Pi SDK tool restrictions checked without model calls. See [OpenCode](docs/adapter-opencode.md) and [Pi](docs/adapter-pi.md) for supported versions and limitations. Live account-backed work remains unverified. |
 | Codex, Claude Code, Cursor adapters | Real Codex edits and Claude conversation/review, cross-room recall, cancellation/retry and restart tested on 28 September. This machine's Codex rules prevent conversation/review mode; Cursor remains untested. See [compatibility](docs/compatibility.md). |
 | GitHub connector | Emulated tests plus 32 real scenarios in dedicated private/public playgrounds, including three-account collaboration and protected branches. See the [campaign](docs/simulations/2026-09-28.md). |
-| Web client | Covered by unit tests and smoke suites that mount the app against recorded hub payloads (with scripted engineers; see the [fixtures README](web/tests/unit/fixtures/README.md)). CI also runs browser journeys in Chromium against a new real hub: setup, sign-in, keyboard use, creating and switching workspaces, and three layouts (`just e2e`). The [UX campaign](docs/simulations/2026-09-28-ux.md) covers onboarding, catch-up, interruptions, evidence and responsive navigation. Firefox remains untested. |
+| Web client | Covered by unit tests and smoke suites that mount the app against recorded hub payloads (with scripted engineers; see the [fixtures README](web/tests/unit/fixtures/README.md)). CI also runs browser journeys in Chromium against a new real hub: setup, sign-in, keyboard use, creating and switching workspaces, and three layouts (`just e2e`). A separate [test-only harness](test/browserharness/README.md) extends this to rooms, messages, work details, reviews, decisions, and recovery with scripted behavior; it does not invoke real AI providers. The [UX campaign](docs/simulations/2026-09-28-ux.md) covers onboarding, catch-up, interruptions, evidence and responsive navigation. Firefox remains untested. |
 | Two physical machines | Protocol is multi-machine; not yet tested across two physical machines |
 
 The release gates (A01–A44) and what remains are tracked in
@@ -200,7 +200,7 @@ just schema              # regenerate JSON Schemas and web types from protocol/*
 just test-dev            # dev-server lifecycle tests, including real Air restarts
 cd web && npm run dev    # frontend only; expects a hub on :7521 (override with YIP_HUB)
 cd web && npm test       # client unit and smoke tests
-just e2e                 # browser smoke journeys against a new real hub (needs Chromium or Chrome)
+just e2e                 # fresh-hub and scripted browser journeys (needs Chromium or Chrome)
 ```
 
 The dev server loads [point-to-svelte](https://github.com/jalbarrang/point-to-svelte):
