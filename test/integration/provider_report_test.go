@@ -7,8 +7,9 @@ import (
 )
 
 func TestEmptyProviderReportHasReceipt(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
-	n := e.fakeNode("empty provider runner")
+	n := e.connectNode("empty provider runner")
 	n.send(e, protocol.EvCapabilities, "", 0, protocol.RunnerCapabilities{Slots: 1, Providers: []protocol.ProviderInstallation{}})
 	var reports int
 	err := e.hub.Store().R().QueryRowContext(e.ctx, `SELECT COUNT(*) FROM events

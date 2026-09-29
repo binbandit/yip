@@ -6,7 +6,7 @@ import { applyEvent } from '../../src/lib/state/data';
 import { activeMachines, connectionPath, connections, connectionSummary } from '../../src/lib/util/connections';
 import { SIGN_IN_COMMANDS } from '../../src/lib/util/machines';
 import type { Event, Node, ProviderInstallation, UpdateEngineerRequest } from '../../src/lib/api/types.gen';
-import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
+import { fixtureHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
 import { choose } from './controls';
 
 const base = fixture<Node[]>('nodes.json')[0];
@@ -65,7 +65,7 @@ async function visit(provider?: string) {
 }
 
 beforeAll(async () => {
-  hub = demoHub();
+  hub = fixtureHub();
   hub.override('GET', /^\/v1\/nodes$/, () => ({ body: Object.values(app.data.nodes) }));
   hub.json('POST', /^\/v1\/nodes\/[^/]+\/probe$/, { ok: true });
   hub.install();
@@ -82,7 +82,6 @@ beforeEach(async () => {
   app.go({ name: 'settings' });
   await settle();
   app.data.nodes = { studio: machine() };
-  app.data.demo = false;
   vi.restoreAllMocks();
 });
 

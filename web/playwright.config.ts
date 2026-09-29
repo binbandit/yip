@@ -73,7 +73,7 @@ const config: PlaywrightTestConfig = {
   projects: haveBrowser
     ? [
         { name: 'smoke', testMatch: 'smoke.spec.ts', use: desktop },
-        { name: 'workspaces', testMatch: 'workspaces.spec.ts', dependencies: ['smoke'], use: desktop },
+        { name: 'workspaces', testMatch: ['workspaces.spec.ts', 'connections.spec.ts'], dependencies: ['smoke'], use: desktop },
       ]
     : [],
   webServer: haveBrowser
