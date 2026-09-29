@@ -29,6 +29,6 @@ merge_protections:
       - base = main
       - -head ~= ^mergify/merge-queue/
     success_conditions:
-      - github-review-approved
+      - github-review-decision = APPROVED
       - check-success = @pullfrog/pullfrog
       - check-success = @pullfrog/pullfrog-approval
