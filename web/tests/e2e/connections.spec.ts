@@ -43,3 +43,32 @@ test('mobile harness connection navigation stays usable', async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   expect(await page.locator('.screen').evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
 });
+
+test('connection setup stays in its workspace, including links opened in a new tab', async ({ page, context }) => {
+  await signIn(page);
+  const initial = await (await page.request.get('/v1/bootstrap')).json();
+  await page.getByRole('button', { name: `Workspace: ${initial.org.name}`, exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Create workspace', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create workspace', exact: true });
+  await dialog.getByLabel('Workspace name').fill('Connection checks');
+  await dialog.getByRole('button', { name: 'Create workspace', exact: true }).click();
+  await expect(page).toHaveURL(/\/w\/[^/]+\/overview$/);
+  const base = new URL(page.url()).pathname.replace(/\/overview$/, '');
+  await expect(page.getByRole('link', { name: 'Connect subscription', exact: true })).toHaveAttribute('href', `${base}/connections`);
+  await page.getByRole('navigation', { name: 'Workspace', exact: true }).getByRole('link', { name: 'Connections', exact: true }).click();
+  const setup = page.getByRole('link', { name: 'Set up OpenCode', exact: true });
+  await expect(setup).toHaveAttribute('href', `${base}/connections/opencode`);
+
+  const tab = await context.newPage();
+  await tab.goto(new URL((await setup.getAttribute('href'))!, page.url()).href);
+  await expect(tab).toHaveURL(new RegExp(`${base}/connections/opencode$`));
+  await expect(tab.getByText('Pair a machine first', { exact: true })).toBeVisible();
+  await expect(tab.getByRole('link', { name: 'All connections', exact: true })).toHaveAttribute('href', `${base}/connections`);
+  await expect(tab.getByRole('link', { name: 'Choose an engineer', exact: true })).toHaveAttribute('href', `${base}/engineers`);
+  await tab.close();
+
+  await page.goto(`${base}/machines`);
+  await expect(page.getByRole('link', { name: 'Connect subscription', exact: true })).toHaveAttribute('href', `${base}/connections`);
+  await page.goto(`${base}/settings`);
+  await expect(page.getByRole('link', { name: 'Manage connections', exact: true })).toHaveAttribute('href', `${base}/connections`);
+});

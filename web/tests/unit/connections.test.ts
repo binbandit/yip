@@ -299,4 +299,25 @@ describe('guided connection setup in the app', () => {
     expect(button('Check connection').disabled).toBe(false);
     expect(text()).not.toContain('New machine report received.');
   });
+
+  it('scopes connection links and probe requests to the workspace URL', async () => {
+    hub.override('GET', /^\/w\/personal\/v1\/nodes$/, () => ({ body: Object.values(app.data.nodes) }));
+    hub.override('POST', /^\/w\/personal\/v1\/nodes\/studio\/probe$/, () => ({ body: { ok: true } }));
+    history.replaceState(null, '', '/w/personal/settings');
+    try {
+      await visit();
+      for (const p of connections) {
+        expect(document.querySelector(`.catalog a[aria-label="Set up ${p.label}"]`)?.getAttribute('href')).toBe(`/w/personal/connections/${p.id}`);
+      }
+      await visit('codex');
+      expect(document.querySelector('.screen a[href="/w/personal/connections"]')).not.toBeNull();
+      expect(document.querySelector('.screen a[href="/w/personal/engineers"]')).not.toBeNull();
+      expect(document.querySelector('.screen a[href*="panel=machine"]')?.getAttribute('href')).toBe('/w/personal/connections/codex?panel=machine%3Astudio&tab=connections');
+      button('Check connection').click();
+      await settle();
+      expect(hub.last('POST', /^\/w\/personal\/v1\/nodes\/studio\/probe$/)).toBeDefined();
+    } finally {
+      history.replaceState(null, '', '/connections');
+    }
+  });
 });

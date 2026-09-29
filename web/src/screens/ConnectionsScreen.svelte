@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { Button, Code, CodeBlock, Heading, Link, Selector, Text } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
   import { activeMachines, connections, connectionSummary } from '../lib/util/connections';
@@ -93,7 +94,7 @@
 <Screen title={guide ? `Connect ${guide.label}` : 'Connections'}
   subtitle={guide ? 'Use the account you already have, on the machine that runs your engineers.' : 'Bring your existing AI subscriptions and agent harnesses. Choose your tool to connect it.'}
   width={920}>
-  {#snippet crumb()}{#if provider}<Link href="/connections" hasUnderline>All connections</Link>{/if}{/snippet}
+  {#snippet crumb()}{#if provider}<Link href={workspaceUrl('/connections')} hasUnderline>All connections</Link>{/if}{/snippet}
   {#if loadError}<Notice tone="danger" role="alert">Could not refresh machines: {loadError} Reload this page to try again.</Notice>{/if}
 
   {#if guide}
@@ -175,7 +176,7 @@
               {#if checkError}<Notice tone="danger" role="alert">{checkError}</Notice>{/if}
               <div class="actions">
                 <Button label={checking ? 'Checking connection…' : 'Check connection'} variant="primary" isDisabled={node.status !== 'online' || checking} onclick={recheck} />
-                <Button label="Machine details" href="/connections/{guide.id}?panel=machine%3A{encodeURIComponent(node.id)}&tab=connections" />
+                <Button label="Machine details" href={workspaceUrl(`/connections/${guide.id}?panel=machine%3A${encodeURIComponent(node.id)}&tab=connections`)} />
               </div>
               <details>
                 <summary>Signed in, but not detected?</summary>
@@ -197,9 +198,9 @@
             <p>A connection does not change your engineers automatically. Choose <strong>{guide.label}</strong> in an engineer’s provider preference. Several engineers can share one sign-in.</p>
             {#if harness}<p>Also choose the underlying model in the engineer’s model setting. Its provider determines billing and usage limits.{#if guide.id === 'opencode'} Enter the full <Code>provider/model</Code> ID; OpenCode’s model list is not fetched automatically.{/if}</p>{/if}
             {#each engineers as engineer (engineer.id)}
-              <Link href="/engineers/{engineer.id}#eng-prov" hasUnderline>{engineer.name}’s provider settings</Link>
+              <Link href={workspaceUrl(`/engineers/${engineer.id}#eng-prov`)} hasUnderline>{engineer.name}’s provider settings</Link>
             {/each}
-            <Button label={engineers.length ? 'Manage engineers' : 'Choose an engineer'} href="/engineers" />
+            <Button label={engineers.length ? 'Manage engineers' : 'Choose an engineer'} href={workspaceUrl('/engineers')} />
             {#if harness}
               <details>
                 <summary>What carries over from my local setup?</summary>
@@ -229,7 +230,7 @@
             {#if p.id === 'cursor'}<Text as="p" type="supporting">Experimental · real-account use not verified</Text>{/if}
             <Text as="p" type="supporting">{connectionSummary(nodes, p.id)}</Text>
           </div>
-          <Button label={`Set up ${p.label}`} href="/connections/{p.id}">Set up</Button>
+          <Button label={`Set up ${p.label}`} href={workspaceUrl(`/connections/${p.id}`)}>Set up</Button>
         </li>
       {/each}
     </ul>

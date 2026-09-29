@@ -2,6 +2,7 @@ package providers
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/fstest"
 	"time"
 )
 
@@ -270,6 +272,117 @@ func TestProcGroupDeadFailsClosed(t *testing.T) {
 			}
 			if got := procGroupDeadOnMount(root, 42, 1); got != (scenario == "dead" || scenario == "layered dead") {
 				t.Fatalf("confirmation = %v for %s", got, strconv.Quote(scenario))
+			}
+		})
+	}
+}
+
+func TestProcGroupDeadProcessChurn(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		snapshots []map[int]string
+		want      bool
+		passes    int
+	}{
+		{"unrelated arrivals and exits", []map[int]string{
+			{123: "Z", 200: "unrelated"},
+			{123: "Z", 201: "unrelated", 202: "unrelated"},
+		}, true, 2},
+		{"vanished unknown then unrelated arrival", []map[int]string{
+			{123: "Z", 200: "missing"},
+			{123: "Z", 201: "unrelated"},
+		}, true, 2},
+		{"unrelated arrivals on every pass with transient retry", []map[int]string{
+			{123: "Z", 200: "unrelated"},
+			{123: "Z", 201: "unrelated", 300: "missing"},
+			{123: "Z", 202: "unrelated"},
+		}, true, 3},
+		{"vanished unknown leaves live child", []map[int]string{
+			{123: "Z", 200: "missing"},
+			{123: "Z", 201: "S"},
+		}, false, 2},
+		{"new dead member needs follow-up", []map[int]string{
+			{123: "Z"},
+			{123: "Z", 201: "Z"},
+			{123: "Z", 201: "Z"},
+		}, true, 3},
+		{"new dead member leaves live child", []map[int]string{
+			{123: "Z"},
+			{123: "Z", 201: "Z"},
+			{123: "Z", 201: "Z", 202: "S"},
+		}, false, 3},
+		{"continuously unknown is bounded", []map[int]string{
+			{123: "Z", 200: "missing"},
+			{123: "Z", 201: "missing"},
+			{123: "Z", 202: "missing"},
+		}, false, 3},
+		{"persistently missing stat is bounded", []map[int]string{
+			{123: "Z", 200: "missing"},
+		}, false, 3},
+		{"target disappeared without positive remaining evidence", []map[int]string{
+			{123: "Z"},
+			{200: "unrelated"},
+		}, false, 2},
+		{"new unreadable member", []map[int]string{
+			{123: "Z"},
+			{123: "Z", 201: "denied"},
+		}, false, 2},
+		{"new live target", []map[int]string{
+			{123: "Z"},
+			{123: "Z", 201: "S"},
+		}, false, 2},
+		{"new malformed member", []map[int]string{
+			{123: "Z"},
+			{123: "Z", 201: "bad"},
+		}, false, 2},
+		{"live target is immediately rejected", []map[int]string{
+			{123: "S"},
+		}, false, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pass := 0
+			var snapshot fstest.MapFS
+			readDir := func(path string) ([]os.DirEntry, error) {
+				if path == "/proc" {
+					index := min(pass, len(tc.snapshots)-1)
+					pass++
+					if pass > 3 {
+						t.Fatal("scan exceeded pass budget")
+					}
+					snapshot = make(fstest.MapFS)
+					for pid, state := range tc.snapshots[index] {
+						dir := strconv.Itoa(pid)
+						if state == "missing" {
+							snapshot[dir+"/gone"] = &fstest.MapFile{}
+							continue
+						}
+						group := 42
+						if state == "unrelated" {
+							group, state = 99, "S"
+						}
+						stat := procStatFixture(pid, group, state)
+						if state == "bad" || state == "denied" {
+							stat = state
+						}
+						snapshot[dir+"/stat"] = &fstest.MapFile{Data: []byte(stat)}
+						snapshot[dir+"/task/"+dir+"/stat"] = &fstest.MapFile{Data: []byte(stat)}
+					}
+					return fs.ReadDir(snapshot, ".")
+				}
+				return fs.ReadDir(snapshot, strings.TrimPrefix(path, "/proc/"))
+			}
+			readFile := func(path string) ([]byte, error) {
+				data, err := fs.ReadFile(snapshot, strings.TrimPrefix(path, "/proc/"))
+				if string(data) == "denied" {
+					return nil, os.ErrPermission
+				}
+				return data, err
+			}
+			if got := procGroupDeadSnapshots("/proc", 42, readDir, readFile); got != tc.want {
+				t.Fatalf("confirmation = %v, want %v", got, tc.want)
+			}
+			if pass != tc.passes {
+				t.Fatalf("used %d passes, want %d", pass, tc.passes)
 			}
 		})
 	}

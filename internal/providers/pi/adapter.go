@@ -103,12 +103,25 @@ func (a *Adapter) installation(override string) (exe, sdk, version string, err e
 		err = e
 		return
 	}
-	root := filepath.Dir(filepath.Dir(resolved))
-	var metadata struct{ Name, Version string }
-	b, e := os.ReadFile(filepath.Join(root, "package.json"))
-	if e != nil {
-		err = fmt.Errorf("Pi must be an npm installation: %w", e)
-		return
+	// Both pinned npm layouts put the CLI at most three directories below
+	// the package root. Stop at the first manifest, including an unrelated or
+	// malformed one: it is not safe to search past a package boundary.
+	root := filepath.Dir(resolved)
+	var b []byte
+	for depth := 0; depth < 3; depth++ {
+		b, e = os.ReadFile(filepath.Join(root, "package.json"))
+		if e == nil {
+			break
+		}
+		if !os.IsNotExist(e) || depth == 2 {
+			err = fmt.Errorf("Pi must be an npm installation: %w", e)
+			return
+		}
+		root = filepath.Dir(root)
+	}
+	var metadata struct {
+		Name, Version, Main string
+		Bin                 struct{ Pi string }
 	}
 	if e = json.Unmarshal(b, &metadata); e != nil {
 		err = e
@@ -121,8 +134,32 @@ func (a *Adapter) installation(override string) (exe, sdk, version string, err e
 		err = fmt.Errorf("%w: require @earendil-works/pi-coding-agent@%s or @mariozechner/pi-coding-agent@%s, found %s@%s", providers.ErrUnsupported, TestedVersion, LegacyTestedVersion, metadata.Name, version)
 		return
 	}
+	cli := "dist/cli.js"
+	if current {
+		cli = "dist/bundle/cli.js"
+	}
+	if resolved != filepath.Join(root, filepath.FromSlash(cli)) || metadata.Bin.Pi != cli || metadata.Main != "./dist/index.js" {
+		err = fmt.Errorf("%w: unexpected Pi npm entry points", providers.ErrUnsupported)
+		return
+	}
+	// Never use a manifest-controlled import path, or follow an SDK symlink
+	// outside the verified package.
 	sdk = filepath.Join(root, "dist", "index.js")
-	_, err = os.Stat(sdk)
+	sdk, err = filepath.EvalSymlinks(sdk)
+	if err != nil {
+		return
+	}
+	rel, e := filepath.Rel(root, sdk)
+	if e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		err = fmt.Errorf("Pi SDK entry point escapes its npm package")
+		return
+	}
+	info, e := os.Stat(sdk)
+	if e != nil {
+		err = e
+	} else if !info.Mode().IsRegular() {
+		err = fmt.Errorf("Pi SDK entry point is not a regular file")
+	}
 	return
 }
 

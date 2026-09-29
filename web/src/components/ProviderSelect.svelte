@@ -3,6 +3,7 @@
   // in, and how it's billed. Provider/model is configuration, not identity.
   import { Link, Selector, Text } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { billingLabel, providerLabel } from '../lib/util/labels';
   import { providerReadiness } from '../lib/util/providerReadiness';
   import { connectionPath, connections } from '../lib/util/connections';
@@ -40,7 +41,7 @@
 <div class="provider">
   <Selector label="Provider preference" isLabelHidden width="100%" options={choices} {value} onChange={(v: string) => onchange(v)} {...idAttr} />
   <Text as="p" display="block" type="supporting" class="hint">{readiness}</Text>
-  <Link href={connectionPath(value)} hasUnderline>{current?.availability.ready.length ? 'Manage connection' : 'How to connect your subscription'}</Link>
+  <Link href={workspaceUrl(connectionPath(value))} hasUnderline>{current?.availability.ready.length ? 'Manage connection' : 'How to connect your subscription'}</Link>
 </div>
 
 <style>

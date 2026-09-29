@@ -16,7 +16,12 @@ func processGroupExited(pgid int) bool {
 	if err != nil {
 		return false
 	}
-	return procGroupDead("/proc", pgid)
+	if procGroupDead("/proc", pgid) {
+		return true
+	}
+	// A group may be fully reaped during inspection, leaving no positive
+	// dead-member evidence. Only kernel-proven absence resolves that case.
+	return syscall.Kill(-pgid, 0) == syscall.ESRCH
 }
 
 // procGroupDead requires positive evidence: at least one group member, all
@@ -52,61 +57,74 @@ func procGroupDeadOnMount(root string, pgid, mountID int) bool {
 	if err != nil || !ok || pid != os.Getpid() {
 		return false
 	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return false
-	}
-	found := false
-	seen := make(map[string]bool)
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil || pid <= 0 {
-			continue
-		}
-		seen[entry.Name()] = true
-		dir := filepath.Join(root, entry.Name())
-		stat, err := os.ReadFile(filepath.Join(dir, "stat"))
-		id, group, state, ok := parseProcStat(string(stat))
-		// Even a disappearing process leaves uncertainty about membership.
-		if err != nil || !ok || id != pid {
+	return procGroupDeadSnapshots(root, pgid, os.ReadDir, os.ReadFile)
+}
+
+// Require a follow-up observation after discovering a dead member: it could
+// have forked between listing /proc and reading stat. Classify new PIDs rather
+// than rejecting unrelated process activity. An unclassified disappearing PID
+// also requires another pass, because it could have left target-group children.
+// Three immediate passes bound work; persistent ambiguity remains unconfirmed.
+func procGroupDeadSnapshots(root string, pgid int, readDir func(string) ([]os.DirEntry, error), readFile func(string) ([]byte, error)) bool {
+	previous := make(map[string]bool)
+	for pass := 0; pass < 3; pass++ {
+		entries, err := readDir(root)
+		if err != nil {
 			return false
 		}
-		if group != pgid {
-			continue
-		}
-		found = true
-		if !deadProcState(state) {
-			return false
-		}
-		// A zombie thread-group leader may still have executing threads.
-		tasks, err := os.ReadDir(filepath.Join(dir, "task"))
-		if err != nil || len(tasks) == 0 {
-			return false
-		}
-		for _, task := range tasks {
-			tid, err := strconv.Atoi(task.Name())
-			if err != nil || tid <= 0 {
-				return false
+		current := make(map[string]bool)
+		retry := false
+		for _, entry := range entries {
+			pid, err := strconv.Atoi(entry.Name())
+			if err != nil || pid <= 0 {
+				continue
 			}
-			stat, err := os.ReadFile(filepath.Join(dir, "task", task.Name(), "stat"))
+			dir := filepath.Join(root, entry.Name())
+			stat, err := readFile(filepath.Join(dir, "stat"))
+			if os.IsNotExist(err) {
+				retry = true
+				continue
+			}
 			id, group, state, ok := parseProcStat(string(stat))
-			if err != nil || !ok || id != tid || group != pgid || !deadProcState(state) {
+			if err != nil || !ok || id != pid {
 				return false
 			}
+			if group != pgid {
+				continue
+			}
+			if !deadProcState(state) {
+				return false
+			}
+			// A zombie thread-group leader may still have executing threads.
+			tasks, err := readDir(filepath.Join(dir, "task"))
+			if err != nil || len(tasks) == 0 {
+				return false
+			}
+			for _, task := range tasks {
+				tid, err := strconv.Atoi(task.Name())
+				if err != nil || tid <= 0 {
+					return false
+				}
+				taskStat, err := readFile(filepath.Join(dir, "task", task.Name(), "stat"))
+				id, group, state, ok := parseProcStat(string(taskStat))
+				if err != nil || !ok || id != tid || group != pgid || !deadProcState(state) {
+					return false
+				}
+			}
+			// Comparing the complete validated stat also detects PID reuse
+			// (starttime), reparenting and other changes conservatively.
+			key := string(stat)
+			current[key] = true
+			if !previous[key] {
+				retry = true
+			}
 		}
-	}
-	// A member could fork after the first directory listing and become dead
-	// before its stat was read. Do not confirm if a new PID appeared meanwhile.
-	entries, err = os.ReadDir(root)
-	if err != nil {
-		return false
-	}
-	for _, entry := range entries {
-		if pid, err := strconv.Atoi(entry.Name()); err == nil && pid > 0 && !seen[entry.Name()] {
-			return false
+		if !retry {
+			return len(current) > 0
 		}
+		previous = current
 	}
-	return found
+	return false
 }
 
 func deadProcState(state byte) bool { return state == 'Z' || state == 'X' || state == 'x' }

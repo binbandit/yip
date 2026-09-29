@@ -10,6 +10,7 @@
   import { api } from '../../lib/api/endpoints';
   import { errorMessage } from '../../lib/api/client';
   import { app } from '../../lib/state/app.svelte';
+  import { workspaceUrl } from '../../lib/workspace';
   import { providerProfiles } from '../../lib/state/profiles.svelte';
   import { lastHeard, type FactTab, type ProviderStatus } from '../../lib/util/machines';
   import { clock } from '../../lib/util/time';
@@ -61,7 +62,7 @@
     Each provider signs in with its own tool on this machine; yip reads the result and never asks for tokens.
     {#if !online && heard}This is from its last report ({heard.rel}).{/if}
   </p>
-  <Link href="/connections" hasUnderline>Connect a subscription — setup guides for each tool</Link>
+  <Link href={workspaceUrl('/connections')} hasUnderline>Connect a subscription — setup guides for each tool</Link>
   {#if online}
     <Button label={checking ? 'Checking…' : 'Check sign-in again'} size="sm" isDisabled={checking} onclick={recheck}>
       {#snippet icon()}<Icon icon={RefreshCw} size="sm" />{/snippet}

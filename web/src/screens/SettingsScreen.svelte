@@ -3,6 +3,7 @@
   import Notice from '../components/Notice.svelte';
   import { Download, LogOut, RefreshCw } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { api, exportUrl } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
   import type { DiagnosticBundle, Diagnostics } from '../lib/api/types.gen';
@@ -105,7 +106,7 @@
     <ScreenSection title="AI subscriptions" id="set-connections" class="group">
       <div class="body">
         <Text as="p" display="block" type="supporting">Use an existing subscription through its tool on a paired machine. See supported tools, setup steps and sign-in status in Connections.</Text>
-        <div class="row-actions"><Button label="Manage connections" href="/connections" /></div>
+        <div class="row-actions"><Button label="Manage connections" href={workspaceUrl('/connections')} /></div>
       </div>
     </ScreenSection>
 

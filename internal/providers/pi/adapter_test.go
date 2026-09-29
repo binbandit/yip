@@ -2,6 +2,7 @@ package pi
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,11 @@ import (
 
 func fixture(t *testing.T, auth string) (*Adapter, providers.StartSpec) {
 	t.Helper()
+	return installationFixture(t, auth, false, false)
+}
+
+func installationFixture(t *testing.T, auth string, legacy, global bool) (*Adapter, providers.StartSpec) {
+	t.Helper()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("Node.js is required for the SDK host tests")
@@ -28,11 +34,17 @@ func fixture(t *testing.T, auth string) (*Adapter, providers.StartSpec) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.Mkdir(filepath.Join(root, "dist"), 0700); err != nil {
+	cli := "dist/bundle/cli.js"
+	metadata := `{"name":"@earendil-works/pi-coding-agent","version":"0.87.1","type":"module","bin":{"pi":"dist/bundle/cli.js"},"main":"./dist/index.js"}`
+	if legacy {
+		cli = "dist/cli.js"
+		metadata = `{"name":"@mariozechner/pi-coding-agent","version":"0.73.1","type":"module","bin":{"pi":"dist/cli.js"},"main":"./dist/index.js"}`
+	}
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, cli)), 0700); err != nil {
 		t.Fatal(err)
 	}
-	write("package.json", []byte(`{"name":"@earendil-works/pi-coding-agent","version":"0.87.1","type":"module"}`))
-	write("dist/cli.js", nil)
+	write("package.json", []byte(metadata))
+	write(cli, nil)
 	sdk, err := os.ReadFile("testdata/sdk.mjs")
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +55,18 @@ func fixture(t *testing.T, auth string) (*Adapter, providers.StartSpec) {
 		t.Fatal(err)
 	}
 	env := []string{"PATH=" + filepath.Dir(node), "HOME=" + root, "PI_TEST_AUTH=" + auth}
-	a := NewAdapter(Options{Executable: filepath.Join(root, "dist/cli.js"), NodeExecutable: node, Env: env, Grace: 100 * time.Millisecond})
+	if legacy {
+		env = append(env, "PI_TEST_LEGACY=1")
+	}
+	executable := filepath.Join(root, cli)
+	if global {
+		link := filepath.Join(t.TempDir(), "pi")
+		if err := os.Symlink(executable, link); err != nil {
+			t.Fatal(err)
+		}
+		executable = link
+	}
+	a := NewAdapter(Options{Executable: executable, NodeExecutable: node, Env: env, Grace: 100 * time.Millisecond})
 	return a, providers.StartSpec{Mode: protocol.ModeReadOnly, Workdir: root, Prompt: "run", MCP: providers.MCPServer{Command: node, Args: []string{bridge}}}
 }
 func run(t *testing.T, a *Adapter, spec providers.StartSpec) (providers.Result, []providers.Event) {
@@ -207,18 +230,95 @@ func TestUnsupportedBoundaries(t *testing.T) {
 	}
 }
 
-func TestLegacySDK(t *testing.T) {
-	a, spec := fixture(t, "oauth")
-	a.opts.Env = append(a.opts.Env, "PI_TEST_LEGACY=1")
-	metadata := filepath.Join(spec.Workdir, "package.json")
-	if err := os.WriteFile(metadata, []byte(`{"name":"@mariozechner/pi-coding-agent","version":"0.73.1","type":"module"}`), 0600); err != nil {
+func TestNPMEntryLayouts(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		for _, global := range []bool{false, true} {
+			name := map[bool]string{false: "current", true: "legacy"}[legacy] + "/" + map[bool]string{false: "direct", true: "global-symlink"}[global]
+			t.Run(name, func(t *testing.T) {
+				a, spec := installationFixture(t, "oauth", legacy, global)
+				version := TestedVersion
+				if legacy {
+					version = LegacyTestedVersion
+				}
+				if got := a.Probe(context.Background()); got.AuthState != protocol.AuthReady || !got.Tested || got.TestedVersion != version || got.Version != version || got.Path != a.opts.Executable {
+					t.Fatalf("%+v", got)
+				}
+				if result, _ := run(t, a, spec); result.Outcome != protocol.OutcomeSucceeded || result.FinalText != "bridge result" || !result.ExitConfirmed {
+					t.Fatalf("%+v", result)
+				}
+			})
+		}
+	}
+}
+
+// Opt in with YIP_PI_NPM_SMOKE=1. This downloads public npm packages into
+// temporary directories, but never uses existing npm or Pi credentials.
+func TestPublishedNPMProbe(t *testing.T) {
+	if os.Getenv("YIP_PI_NPM_SMOKE") != "1" {
+		t.Skip("set YIP_PI_NPM_SMOKE=1 to probe the published npm packages")
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := a.Probe(context.Background()); got.AuthState != protocol.AuthReady || got.TestedVersion != LegacyTestedVersion {
-		t.Fatalf("%+v", got)
+	npm, err := exec.LookPath("npm")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if result, _ := run(t, a, spec); result.Outcome != protocol.OutcomeSucceeded {
-		t.Fatalf("%+v", result)
+	for _, pkg := range []struct{ name, version string }{
+		{"@earendil-works/pi-coding-agent", TestedVersion},
+		{"@mariozechner/pi-coding-agent", LegacyTestedVersion},
+	} {
+		t.Run(pkg.name, func(t *testing.T) {
+			root, home, agentDir := t.TempDir(), t.TempDir(), t.TempDir()
+			env := []string{
+				"PATH=" + strings.Join([]string{filepath.Dir(node), filepath.Dir(npm), "/usr/bin", "/bin"}, string(os.PathListSeparator)),
+				"HOME=" + home,
+				"PI_CODING_AGENT_DIR=" + agentDir,
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, npm, "install", "--prefix", root,
+				"--registry=https://registry.npmjs.org", "--ignore-scripts",
+				"--no-audit", "--no-fund", "--no-package-lock", "--no-save",
+				pkg.name+"@"+pkg.version)
+			cmd.Dir = root
+			cmd.Env = append(append([]string{}, env...),
+				"npm_config_userconfig="+filepath.Join(root, "empty-user.npmrc"),
+				"npm_config_globalconfig="+filepath.Join(root, "empty-global.npmrc"),
+				"npm_config_cache="+filepath.Join(root, "npm-cache"))
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("public npm install: %v\n%s", err, out)
+			}
+			packageRoot := filepath.Join(root, "node_modules", filepath.FromSlash(pkg.name))
+			b, err := os.ReadFile(filepath.Join(packageRoot, "package.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var metadata struct{ Bin struct{ Pi string } }
+			if err := json.Unmarshal(b, &metadata); err != nil {
+				t.Fatal(err)
+			}
+			if metadata.Bin.Pi == "" {
+				t.Fatal("published package has no bin.pi")
+			}
+			// Exercise npm's real executable symlink as well as its published CLI.
+			executable := filepath.Join(root, "node_modules", ".bin", "pi")
+			resolved, err := filepath.EvalSymlinks(executable)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected, err := filepath.EvalSymlinks(filepath.Join(packageRoot, metadata.Bin.Pi))
+			if err != nil || resolved != expected {
+				t.Fatalf("npm executable does not resolve to bin.pi: %q != %q (%v)", resolved, expected, err)
+			}
+			a := NewAdapter(Options{Executable: executable, NodeExecutable: node, Env: env})
+			got := a.Probe(ctx)
+			if !got.Tested || got.Version != pkg.version || got.TestedVersion != pkg.version ||
+				got.AuthState != protocol.AuthNeedsSignIn || len(got.Models) != 0 || got.Billing != protocol.BillingUnknown {
+				t.Fatalf("published package probe: %+v", got)
+			}
+		})
 	}
 }
 
@@ -233,6 +333,86 @@ func TestVersionAndEnvironmentSafety(t *testing.T) {
 	}
 	if _, err := a.Start(context.Background(), spec); err == nil {
 		t.Fatal("untested SDK version accepted")
+	}
+}
+
+func TestNPMInstallationBoundaries(t *testing.T) {
+	for _, scenario := range []string{
+		"unrelated-manifest", "malformed-manifest", "manifest-directory",
+		"missing-manifest", "wrong-name", "swapped-version", "unsafe-main",
+		"wrong-bin", "missing-sdk", "sdk-directory", "sdk-escape", "too-deep",
+	} {
+		t.Run(scenario, func(t *testing.T) {
+			a, spec := fixture(t, "oauth")
+			root := spec.Workdir
+			write := func(path, content string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(root, path), []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			remove := func(path string) {
+				t.Helper()
+				if err := os.Remove(filepath.Join(root, path)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			switch scenario {
+			case "unrelated-manifest":
+				write("dist/package.json", `{"name":"unrelated","version":"0.87.1"}`)
+			case "malformed-manifest":
+				write("dist/package.json", `{`)
+			case "manifest-directory":
+				if err := os.Mkdir(filepath.Join(root, "dist/package.json"), 0700); err != nil {
+					t.Fatal(err)
+				}
+			case "missing-manifest":
+				remove("package.json")
+			case "wrong-name", "swapped-version", "unsafe-main", "wrong-bin":
+				b, err := os.ReadFile(filepath.Join(root, "package.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				old, replacement := "@earendil-works/pi-coding-agent", "unrelated"
+				switch scenario {
+				case "swapped-version":
+					old, replacement = TestedVersion, LegacyTestedVersion
+				case "unsafe-main":
+					old, replacement = "./dist/index.js", "../index.js"
+				case "wrong-bin":
+					old, replacement = "dist/bundle/cli.js", "dist/cli.js"
+				}
+				write("package.json", strings.ReplaceAll(string(b), old, replacement))
+			case "missing-sdk", "sdk-directory", "sdk-escape":
+				remove("dist/index.js")
+				if scenario == "sdk-directory" {
+					if err := os.Mkdir(filepath.Join(root, "dist/index.js"), 0700); err != nil {
+						t.Fatal(err)
+					}
+				} else if scenario == "sdk-escape" {
+					outside := filepath.Join(t.TempDir(), "index.js")
+					if err := os.WriteFile(outside, nil, 0600); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink(outside, filepath.Join(root, "dist/index.js")); err != nil {
+						t.Fatal(err)
+					}
+				}
+			case "too-deep":
+				if err := os.Mkdir(filepath.Join(root, "dist/bundle/nested"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				write("dist/bundle/nested/cli.js", "")
+				a.opts.Executable = filepath.Join(root, "dist/bundle/nested/cli.js")
+			}
+			got := a.Probe(context.Background())
+			if got.Tested || got.AuthState != protocol.AuthUnknown || got.AuthDetail == "" || len(got.Models) != 0 {
+				t.Fatalf("invalid installation reported ready: %+v", got)
+			}
+			if _, err := a.Start(context.Background(), spec); err == nil {
+				t.Fatal("invalid installation accepted")
+			}
+		})
 	}
 }
 

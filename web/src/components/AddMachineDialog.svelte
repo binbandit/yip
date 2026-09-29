@@ -4,6 +4,7 @@
   import { Button, Code, CodeBlock, Icon, Link, MetadataList, MetadataListItem, Text, TextInput } from '@astryx-svelte/core';
   import { Copy } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
   import type { Enrollment } from '../lib/api/types.gen';
@@ -118,7 +119,7 @@
           <StateIcon shape="check-filled" tone="success" size={16} />
           <div class="paired">
             <strong>{paired.name} is paired{paired.status === 'online' ? ' and connected' : ''}.</strong>
-            <Link href="/connections" hasUnderline onclick={onclose}>Next: connect your AI subscription</Link>
+            <Link href={workspaceUrl('/connections')} hasUnderline onclick={onclose}>Next: connect your AI subscription</Link>
             {#if realProviders.length === 0}
               <Text type="supporting">No supported agent tool found on it yet. Open Connections to choose a tool, install it and sign in.</Text>
             {:else}
