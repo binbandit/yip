@@ -168,6 +168,10 @@ func (h *Hub) UpdateEngineer(ctx context.Context, userID, id string, req protoco
 				if err := store.InvalidateProviderSessions(ctx, t.tx, id, "provider changed"); err != nil {
 					return err
 				}
+				if err := store.RepointQueuedRuns(ctx, t.tx, id, next.ID, next.Provider.Provider, next.Provider.Model, next.Provider.ProfileID); err != nil {
+					return err
+				}
+				t.kickAfter()
 			}
 		}
 		if e, err = store.GetEngineer(ctx, t.tx, id); err != nil {

@@ -83,6 +83,44 @@ func TestSearchDecisionsFiltersVisibilityBeforeRanking(t *testing.T) {
 	}
 }
 
+func TestOpenForgetsScriptedProviderAccounts(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "hub.db")
+	s, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO orgs(id, name, created_at) VALUES ('o1', 'Org', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO provider_profiles(id, org_id, provider, label, created_at) VALUES ('fake:local', 'o1', 'fake', 'Scripted', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO provider_profiles(id, org_id, provider, label, created_at) VALUES ('codex:default', 'o1', 'codex', 'Codex', '2026-01-01T00:00:00Z')`,
+		`DELETE FROM schema_migrations WHERE version = 13`,
+	} {
+		if _, err := s.w.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Close()
+	if s, err = Open(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var ids []string
+	rows, err := s.r.QueryContext(ctx, `SELECT id FROM provider_profiles ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id string
+		_ = rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if strings.Join(ids, ",") != "codex:default" {
+		t.Fatalf("only the scripted provider's account should be forgotten: %v", ids)
+	}
+}
+
 func TestOpenRefusesNewerSchema(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "hub.db")

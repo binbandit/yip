@@ -159,6 +159,14 @@ func OfferRun(ctx context.Context, q Q, id, nodeID string, epoch int64, expires 
 }
 
 // ResetOffer returns an unacknowledged offer to created (it never started).
+// RepointQueuedRuns moves an engineer's attempts that no machine has been
+// offered yet onto their new configuration version and provider.
+func RepointQueuedRuns(ctx context.Context, q Q, engineerID, versionID, provider, model, profileID string) error {
+	_, err := q.ExecContext(ctx, `UPDATE runs SET engineer_version_id = ?, provider = ?, model = ?, profile_id = ?, updated_at = ?
+		WHERE engineer_id = ? AND state = 'created'`, versionID, provider, model, profileID, ts(nowUTC()), engineerID)
+	return err
+}
+
 func ResetOffer(ctx context.Context, q Q, id string) error {
 	_, err := q.ExecContext(ctx, `UPDATE runs SET state = 'created', node_id = NULL, lease_expires_at = NULL, updated_at = ? WHERE id = ? AND state = 'offered'`,
 		ts(nowUTC()), id)

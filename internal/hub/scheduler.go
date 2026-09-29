@@ -179,12 +179,15 @@ func (h *Hub) schedule(ctx context.Context) {
 func (h *Hub) place(ctx context.Context, r store.RunRow, j store.JobRow, nodes []store.NodeRow, counts schedCounts) (*placement, string, bool) {
 	provider := ProviderLabel(r.Provider)
 	// The engineer's current preference applies to queued work too.
-	allowAPI, pin := false, r.ProfileID
+	allowAPI, pin, name := false, r.ProfileID, "This engineer"
 	if eng, err := store.GetEngineer(ctx, h.st.R(), r.EngineerID); err == nil {
-		allowAPI = eng.Provider.AllowAPIBilling
+		allowAPI, name = eng.Provider.AllowAPIBilling, eng.Name
 		if eng.Provider.ProfileID != "" {
 			pin = eng.Provider.ProfileID
 		}
+	}
+	if _, ok := knownProviders[r.Provider]; !ok {
+		return nil, fmt.Sprintf("%s is set to a provider this hub doesn't support (%q). Choose Codex, Claude Code, or Cursor in their profile.", name, r.Provider), true
 	}
 	// Workspace affinity: edit work continues where its worktree lives unless
 	// a verified checkpoint of its published revision exists (it is then

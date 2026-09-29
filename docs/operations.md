@@ -296,6 +296,13 @@ yip restore --from /Volumes/Backups/yip-2026-09-25.yipenc --data ~/.yip/hub-rest
 4. Never upgrade a provider CLI under an active session. Pin the versions
    listed in [compatibility.md](compatibility.md).
 
+Upgrading from a build that had `yip demo`: the demo and its scripted
+provider are gone (ADR 0004). Demo data in `~/.yip/demo` is no longer used and
+can be deleted. On a real hub, engineers still set to the scripted provider
+keep that setting, and their work waits with "… is set to a provider this hub
+doesn't support" until you choose Codex, Claude Code or Cursor on their
+profile. Queued work then runs on the new choice.
+
 ## Diagnostics
 
 - `yip doctor` on any machine.

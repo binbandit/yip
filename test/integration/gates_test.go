@@ -164,6 +164,55 @@ func TestIncompatibleMachineExplains(t *testing.T) {
 	}
 }
 
+// An engineer still set to the removed scripted provider after an upgrade
+// waits with a reason that says what to change, and their queued work runs
+// once the owner picks a real provider.
+func TestUnsupportedProviderExplainsAndFollowsTheNewChoice(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	n := e.connectNode("test-runner")
+	pip := e.engineerID("pip")
+	if err := e.hub.Store().Tx(e.ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(e.ctx, `UPDATE engineer_versions SET provider = '{"provider":"fake"}'
+			WHERE id = (SELECT current_version_id FROM engineers WHERE id = ?)`, pip)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.post("Reverse engineering", "@Pip how does Beacon retry requests?", []string{"pip"}, nil)
+	var reply protocol.Job
+	e.waitFor("the explained wait", 20*time.Second, func() bool {
+		for _, j := range e.jobsWithReplies() {
+			if j.OwnerID == pip && j.State == protocol.JobWaiting && j.WaitingReason == protocol.WaitMachine {
+				reply = j
+				return true
+			}
+		}
+		return false
+	})
+	if !strings.Contains(reply.StateDetail, `Pip is set to a provider this hub doesn't support ("fake")`) || !strings.Contains(reply.StateDetail, "Choose Codex") {
+		t.Fatalf("the wait should name the unsupported provider and the fix: %s", reply.StateDetail)
+	}
+	if _, ok := n.find(func(f protocol.Frame) bool { return f.Type == protocol.CmdOfferRun }); ok {
+		t.Fatalf("work for an unsupported provider was offered")
+	}
+	eng, _, err := e.hub.GetEngineer(e.ctx, pip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, err = e.hub.UpdateEngineer(e.ctx, e.ownerID(), pip, protocol.UpdateEngineerRequest{Version: eng.Version, Provider: &protocol.ProviderPreference{Provider: "codex"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := n.start(e, "Pip's reply on Codex", nil)
+	run, _ := store.GetRun(e.ctx, e.hub.Store().R(), r.RunID)
+	if run.JobID != reply.ID || run.Provider != "codex" || run.EngineerVersionID != eng.VersionID {
+		t.Fatalf("the queued reply should run on the new provider: job %s provider %s version %s", run.JobID, run.Provider, run.EngineerVersionID)
+	}
+	if m := e.manifestOf(r.RunID); m.EngineerVersionID != eng.VersionID {
+		t.Fatalf("the attempt's context should come from the new configuration: %s", m.EngineerVersionID)
+	}
+}
+
 // A17: a decision recorded in a private room is found by searches inside it
 // and by nothing outside it: not a broader room's tools, run context, or the
 // owner's room-scoped search.
