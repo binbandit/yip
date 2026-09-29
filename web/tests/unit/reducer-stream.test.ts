@@ -1,4 +1,4 @@
-// Replays a real event stream captured from a demo hub (the Security flow:
+// Replays a real event stream captured from a hub (the Security flow:
 // request → code job → review round with changes requested → revision →
 // approval → result) through the reducer, including a reconnect replay.
 import { describe, expect, it } from 'vitest';

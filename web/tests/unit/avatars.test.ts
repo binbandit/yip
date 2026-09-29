@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
-import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
+import { fixtureHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
 import type { Bootstrap, Engineer, Event } from '../../src/lib/api/types.gen';
 
 let hub: FakeHub;
@@ -50,7 +50,7 @@ function emit(type: string, payload: unknown) {
 }
 
 beforeAll(async () => {
-  hub = demoHub();
+  hub = fixtureHub();
   hub.install();
   (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
   history.replaceState(null, '', '/settings');

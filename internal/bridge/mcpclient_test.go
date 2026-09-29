@@ -10,9 +10,8 @@ import (
 	"sync"
 )
 
-// MCPClient speaks MCP over stdio to a server process. The deterministic
-// fake provider uses it to call yip tools through the real `yip bridge`,
-// exactly as a provider CLI would.
+// MCPClient speaks MCP over stdio to a server process, so tests can call yip
+// tools through the real `yip bridge` exactly as a provider CLI would.
 type MCPClient struct {
 	cmd     *exec.Cmd
 	in      io.WriteCloser
@@ -45,7 +44,7 @@ func StartMCP(cmd *exec.Cmd) (*MCPClient, error) {
 	if _, err := c.request("initialize", map[string]any{
 		"protocolVersion": mcpVersions[0],
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "yip-fake-provider", "version": "1"},
+		"clientInfo":      map[string]any{"name": "yip-bridge-test", "version": "1"},
 	}); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("mcp initialize: %w", err)

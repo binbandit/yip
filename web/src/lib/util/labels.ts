@@ -366,7 +366,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   cursor: 'Cursor',
   opencode: 'OpenCode',
   pi: 'Pi Agent Harness',
-  fake: 'Demo provider (fake)',
 };
 
 export function providerLabel(p: string | undefined): string {

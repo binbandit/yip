@@ -1,4 +1,4 @@
-// Replays a real SSE stream (captured from a demo hub) into the mounted App
+// Replays a real SSE stream (captured from a hub) into the mounted App
 // while the owner watches the Security room, checking that live updates
 // render: messages arrive in order, the work strip moves through its states,
 // the result card appears, and unread counts behave.

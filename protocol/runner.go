@@ -191,8 +191,6 @@ type ExecutionManifest struct {
 	Checks            []string        `json:"checks"`
 	Context           json.RawMessage `json:"context,omitempty"`
 	TimeoutMs         int64           `json:"timeoutMs"`
-	// FakeScript configures the deterministic fake provider.
-	FakeScript json.RawMessage `json:"fakeScript,omitempty"`
 }
 
 type OfferRun struct {

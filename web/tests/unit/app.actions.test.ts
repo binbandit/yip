@@ -8,7 +8,7 @@ import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
 import { loadUnsent } from '../../src/lib/state/drafts';
 import { choose } from './controls';
-import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
+import { fixtureHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
 import { setViewport } from './setup';
 import type { Approval, Bootstrap, Decision, DecisionRequest, JobDetail, Message } from '../../src/lib/api/types.gen';
 
@@ -85,7 +85,7 @@ const approval: Approval = {
 };
 
 beforeAll(async () => {
-  hub = demoHub();
+  hub = fixtureHub();
   const engRoom = roomId('Engineering');
   hub.override('GET', new RegExp(`^/v1/rooms/${engRoom}/messages`), () => ({
     body: {

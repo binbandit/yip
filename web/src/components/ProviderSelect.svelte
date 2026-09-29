@@ -19,9 +19,7 @@
   let { value, onchange, id, profileId, allowApiBilling = false }: Props = $props();
 
   const options = $derived(
-    (app.data.providers.length ? app.data.providers : connections.map((p) => ({ provider: p.id, label: p.label, readyNodes: [], billing: 'unknown', fake: false }))).filter(
-      (p) => !p.fake || app.data.demo || p.provider === value,
-    ).map((p) => ({ ...p, availability: providerReadiness(Object.values(app.data.nodes), { provider: p.provider, profileId: p.provider === value ? profileId : undefined, allowApiBilling }) })),
+    (app.data.providers.length ? app.data.providers : connections.map((p) => ({ provider: p.id, label: p.label, readyNodes: [], billing: 'unknown' }))).map((p) => ({ ...p, availability: providerReadiness(Object.values(app.data.nodes), { provider: p.provider, profileId: p.provider === value ? profileId : undefined, allowApiBilling }) })),
   );
   const choices = $derived(
     options.map((p) => ({ value: p.provider, label: `${p.label || providerLabel(p.provider)}${p.availability.ready.length ? '' : ' - not ready'}` })),
@@ -33,7 +31,7 @@
     if (!ready.length) return `${current.label || providerLabel(current.provider)}: ${reason} Work will wait.`;
     const names = ready.map(({ node }) => node.name).join(', ');
     const billing = [...new Set(ready.map(({ provider }) => billingLabel(provider.billing)))].join(', ');
-    return `Ready on ${names} · ${billing}${current.fake ? ' · scripted demo behaviour, no model is called' : ''}`;
+    return `Ready on ${names} · ${billing}`;
   });
   const idAttr = $derived(id ? { id } : {});
 </script>

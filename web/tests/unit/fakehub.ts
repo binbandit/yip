@@ -1,5 +1,5 @@
 // A tiny in-process stand-in for the hub: routes fetch() to fixtures captured
-// from a real demo hub (tests/unit/fixtures) and replaces EventSource with a
+// from a real hub (tests/unit/fixtures) and replaces EventSource with a
 // controllable fake, so the real App can be mounted and exercised in jsdom.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -108,7 +108,7 @@ export class FakeEventSource {
 }
 
 /** A hub pre-loaded with every fixture the smoke tests use. */
-export function demoHub(): FakeHub {
+export function fixtureHub(): FakeHub {
   const hub = new FakeHub();
   const boot = fixture<{ org: { id: string; name: string }; rooms: { id: string; name: string }[] }>('bootstrap.json');
   const roomId = (name: string) => boot.rooms.find((r) => r.name === name)!.id;

@@ -1,73 +1,41 @@
-// Package integration runs the hub, a paired runner, the yip bridge, and the
-// deterministic fake provider in-process against a real temporary SQLite
-// database and git fixtures, and drives them through the browser API.
-//
-// Each test builds its own environment and calls t.Parallel(), unless it sets
-// the environment or asserts a wall-clock bound.
+// Package integration runs the hub in-process against a real temporary SQLite
+// database and drives it through the browser API. Tests that need a machine
+// connect one in-process and play the runner's side of the protocol.
 package integration
 
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
-	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/binbandit/yip/internal/auth"
-	"github.com/binbandit/yip/internal/bridge"
-	manifest "github.com/binbandit/yip/internal/context"
-	"github.com/binbandit/yip/internal/demo"
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/forge"
 	"github.com/binbandit/yip/internal/forge/github"
 	"github.com/binbandit/yip/internal/httpapi"
 	"github.com/binbandit/yip/internal/hub"
-	"github.com/binbandit/yip/internal/providers"
-	"github.com/binbandit/yip/internal/providers/fake"
-	"github.com/binbandit/yip/internal/runner"
 	"github.com/binbandit/yip/protocol"
 )
 
-// TestMain lets this test binary act as `yip bridge` for provider sessions.
-func TestMain(m *testing.M) {
-	if len(os.Args) > 1 && os.Args[1] == "bridge" {
-		mode := "conversation"
-		for i, a := range os.Args {
-			if a == "--mode" && i+1 < len(os.Args) {
-				mode = os.Args[i+1]
-			}
-		}
-		if err := bridge.RunFromEnv(mode, "test"); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(2)
-		}
-		os.Exit(0)
-	}
-	os.Exit(m.Run())
-}
+const (
+	ownerHandle   = "brayden"
+	ownerPassword = "correct-horse-battery"
+)
 
 type envOptions struct {
 	forge      func(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error)
 	githubRepo func(ctx context.Context, h *hub.Hub, owner, name string) (github.RepoInfo, error)
-	limits     func(*domain.Limits)
-	director   func(m *manifest.Manifest) json.RawMessage
-	noRunner   bool
-	slots      int
 }
 
 type env struct {
@@ -75,18 +43,11 @@ type env struct {
 	dir       string
 	hub       *hub.Hub
 	browser   *httptest.Server
-	runnerLn  net.Listener
-	runnerSrv *http.Server
-	runnerURL string
-	stopRun   func()
 	c         *client
-	seed      demo.Result
+	engineers map[string]string
 	ctx       context.Context
 	cancel    context.CancelFunc
 	opts      envOptions
-
-	runnerPartitioned atomic.Bool
-	runnerHandler     atomic.Pointer[httpapi.RunnerServer]
 }
 
 func quietLogger() *slog.Logger {
@@ -99,81 +60,93 @@ func quietLogger() *slog.Logger {
 
 func newEnv(t *testing.T, opts envOptions) *env {
 	t.Helper()
-	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	e := &env{t: t, dir: t.TempDir(), ctx: ctx, cancel: cancel, opts: opts}
 	lim := domain.DefaultLimits()
 	lim.HeartbeatInterval = 500 * time.Millisecond
-	if opts.limits != nil {
-		opts.limits(&lim)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	e := &env{t: t, dir: dir, ctx: ctx, cancel: cancel, opts: opts}
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.runnerLn = ln
-	e.runnerURL = "https://" + ln.Addr().String()
 	e.startHub(lim)
-	repos, err := demo.MaterializeRepos(filepath.Join(dir, "fixtures"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.seed, err = demo.Seed(ctx, e.hub, repos, "Brayden", "brayden", "correct-horse-battery")
-	if err != nil {
+	var err error
+	if e.engineers, err = seedWorkspace(ctx, e.hub); err != nil {
 		t.Fatal(err)
 	}
 	e.c = e.signIn()
-	if !opts.noRunner {
-		e.startRunner()
-	}
 	t.Cleanup(e.close)
 	return e
 }
 
+// seedWorkspace creates the owner and a small team: Mira, Oren, and Pip on
+// Codex; the Atlas and Beacon projects; and the Security, Engineering, and
+// Reverse engineering rooms. It returns engineer handle → ID.
+func seedWorkspace(ctx context.Context, h *hub.Hub) (map[string]string, error) {
+	secret, _, err := h.IssueBootstrapSecret(ctx)
+	if err != nil {
+		return nil, err
+	}
+	user, err := h.Setup(ctx, protocol.SetupRequest{BootstrapSecret: secret, OrgName: "Brayden's workspace", Name: "Brayden", Handle: ownerHandle, Password: ownerPassword})
+	if err != nil {
+		return nil, err
+	}
+	codex := protocol.ProviderPreference{Provider: "codex"}
+	engineers := map[string]string{}
+	for _, req := range []protocol.CreateEngineerRequest{
+		{Name: "Mira", Role: "Platform engineer", Provider: codex, CapabilityTags: []string{"go", "backend"}},
+		{Name: "Oren", Role: "Security engineer", Provider: codex, CapabilityTags: []string{"security", "review"}},
+		{Name: "Pip", Role: "Reverse engineer", Provider: codex, CapabilityTags: []string{"tracing", "documentation"}},
+	} {
+		eng, err := h.CreateEngineer(ctx, user.ID, req)
+		if err != nil {
+			return nil, err
+		}
+		engineers[eng.Handle] = eng.ID
+	}
+	atlas, err := h.CreateProject(ctx, user.ID, protocol.CreateProjectRequest{Name: "Atlas", Description: "Identity and session services.",
+		Policy: protocol.ProjectPolicy{RequirePeerReview: true, ExecutionProfile: "native"}})
+	if err != nil {
+		return nil, err
+	}
+	beacon, err := h.CreateProject(ctx, user.ID, protocol.CreateProjectRequest{Name: "Beacon", Description: "Request gateway and background workers.",
+		Policy: protocol.ProjectPolicy{ExecutionProfile: "native"}})
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range []struct{ project, name string }{{atlas.ID, "atlas"}, {beacon.ID, "beacon-gateway"}} {
+		if _, err := h.PutRepo(ctx, user.ID, r.project, "", protocol.PutRepoRequest{Name: r.name, RemoteURL: "file:///srv/git/" + r.name + ".git", DefaultBranch: "main"}); err != nil {
+			return nil, err
+		}
+	}
+	for _, g := range []struct{ project, eng, access string }{
+		{atlas.ID, "mira", "write"}, {atlas.ID, "oren", "read"}, {beacon.ID, "mira", "read"}, {beacon.ID, "pip", "write"},
+	} {
+		if _, err := h.PutGrant(ctx, user.ID, g.project, engineers[g.eng], protocol.PutGrantRequest{Access: g.access}); err != nil {
+			return nil, err
+		}
+	}
+	for _, rq := range []protocol.CreateRoomRequest{
+		{Name: "Security", EngineerIDs: []string{engineers["mira"], engineers["oren"]}, ProjectIDs: []string{atlas.ID}, ReplyMode: protocol.ReplyModeQuiet},
+		{Name: "Engineering", EngineerIDs: []string{engineers["mira"], engineers["pip"]}, ProjectIDs: []string{atlas.ID, beacon.ID},
+			ReplyMode: protocol.ReplyModeSteward, StewardID: engineers["mira"]},
+		{Name: "Reverse engineering", EngineerIDs: []string{engineers["pip"]}, ProjectIDs: []string{beacon.ID}, ReplyMode: protocol.ReplyModeQuiet},
+	} {
+		if _, err := h.CreateRoom(ctx, user.ID, rq); err != nil {
+			return nil, err
+		}
+	}
+	return engineers, nil
+}
+
 func (e *env) startHub(lim domain.Limits) {
 	h, err := hub.Open(e.ctx, hub.Config{DataDir: filepath.Join(e.dir, "hub"), Version: "test", Limits: lim, Logger: quietLogger(),
-		RunnerURL: e.runnerURL, Demo: true, ForgeFactory: e.opts.forge, GitHubRepo: e.opts.githubRepo, WebhookVerifier: github.New(github.Options{}).VerifyWebhook,
-		FakeScripter: e.fakeScript})
+		RunnerURL: "https://127.0.0.1:7443", ForgeFactory: e.opts.forge, GitHubRepo: e.opts.githubRepo, WebhookVerifier: github.New(github.Options{}).VerifyWebhook})
 	if err != nil {
 		e.t.Fatal(err)
 	}
 	h.Start(e.ctx)
 	e.hub = h
 	e.browser = httptest.NewServer(httpapi.New(h, httpapi.Options{Logger: quietLogger()}))
-	e.runnerHandler.Store(httpapi.NewRunnerServer(h, nil))
-	if e.runnerSrv == nil {
-		tlsConf, err := h.CA().ServerTLS([]string{"127.0.0.1"})
-		if err != nil {
-			e.t.Fatal(err)
-		}
-		e.runnerSrv = &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			handler := e.runnerHandler.Load()
-			if handler == nil || e.runnerPartitioned.Load() {
-				http.Error(w, "runner network unavailable", http.StatusServiceUnavailable)
-				return
-			}
-			handler.ServeHTTP(w, r)
-		})}
-		go e.runnerSrv.Serve(tls.NewListener(e.runnerLn, tlsConf))
-	}
-}
-
-// fakeScript directs the fake provider: the test's director first, then the
-// default scripts. Each hub gets its own, so tests can run in parallel.
-func (e *env) fakeScript(m *manifest.Manifest) json.RawMessage {
-	if e.opts.director != nil {
-		if s := e.opts.director(m); s != nil {
-			return s
-		}
-	}
-	return fake.Direct(m)
 }
 
 // restartHub simulates a hub crash and restart on the same data directory.
 func (e *env) restartHub() {
-	// Keep the address reserved while the old hub drops its live connections.
-	e.runnerHandler.Store(nil)
 	e.browser.Close()
 	_ = e.hub.Close()
 	lim := e.hub.Limits()
@@ -181,87 +154,9 @@ func (e *env) restartHub() {
 	e.c = e.signIn()
 }
 
-func (e *env) startRunner() {
-	e.stopRun = e.startNamedRunner("runner", "Test mini", e.opts.slots)
-}
-
-// startNamedRunner pairs and starts an independent runner (its own state,
-// replicas, journal, and certificate) and returns a stop function.
-func (e *env) startNamedRunner(sub, name string, slots int) func() {
-	dir := filepath.Join(e.dir, sub)
-	if _, err := runner.LoadIdentity(dir); err != nil {
-		keyPEM, csrPEM, err := auth.NewNodeKeyAndCSR(name)
-		if err != nil {
-			e.t.Fatal(err)
-		}
-		pr, err := e.hub.PairLocal(e.ctx, name, csrPEM)
-		if err != nil {
-			e.t.Fatal(err)
-		}
-		if _, err := runner.SaveLocalIdentity(dir, runner.Identity{NodeID: pr.NodeID, Name: name, HubURL: e.runnerURL,
-			Fingerprint: e.hub.CA().Fingerprint()}, keyPEM, []byte(pr.CertPEM), []byte(pr.CAPEM)); err != nil {
-			e.t.Fatal(err)
-		}
-	}
-	if slots == 0 {
-		slots = 3
-	}
-	r, err := runner.New(runner.Options{StateDir: dir, Slots: slots, Adapters: map[string]providers.Adapter{"fake": quickExit{fake.New(0)}},
-		BridgeExe: os.Args[0], Version: "test", Logger: quietLogger(), ServerName: "127.0.0.1"})
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	rctx, cancel := context.WithCancel(e.ctx)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_ = r.Run(rctx)
-	}()
-	stop := func() {
-		cancel()
-		select {
-		case <-done:
-		case <-time.After(20 * time.Second):
-		}
-	}
-	e.waitFor(name+" connected", 20*time.Second, func() bool {
-		nodes, _ := e.hub.ListNodes(e.ctx)
-		for _, n := range nodes {
-			if n.Name == name && n.Status == protocol.NodeOnline && len(n.Providers) > 0 {
-				return true
-			}
-		}
-		return false
-	})
-	return stop
-}
-
-// quickExit starts the fake provider's bridge (this test binary) without the
-// race detector's one-second sleep at exit. A run waits for its bridge to
-// exit, so under -race every run would take a second longer. Builds without
-// -race ignore GORACE.
-type quickExit struct{ providers.Adapter }
-
-func (a quickExit) Start(ctx context.Context, spec providers.StartSpec) (providers.Session, error) {
-	env := map[string]string{"GORACE": "atexit_sleep_ms=0"}
-	maps.Copy(env, spec.MCP.Env)
-	spec.MCP.Env = env
-	return a.Adapter.Start(ctx, spec)
-}
-
-// killRunner stops the runner abruptly (its connection drops).
-func (e *env) killRunner() {
-	if e.stopRun != nil {
-		e.stopRun()
-		e.stopRun = nil
-	}
-}
-
 func (e *env) close() {
-	e.killRunner()
 	e.cancel()
 	e.browser.Close()
-	e.runnerSrv.Close()
 	_ = e.hub.Close()
 }
 
@@ -295,7 +190,7 @@ type client struct {
 func (e *env) signIn() *client {
 	jar, _ := cookiejar.New(nil)
 	c := &client{t: e.t, base: e.browser.URL, hc: &http.Client{Jar: jar, Timeout: 30 * time.Second}}
-	if err := c.do("POST", "/v1/session", protocol.SignInRequest{Handle: "brayden", Password: "correct-horse-battery"}, nil); err != nil {
+	if err := c.do("POST", "/v1/session", protocol.SignInRequest{Handle: ownerHandle, Password: ownerPassword}, nil); err != nil {
 		e.t.Fatal(err)
 	}
 	if err := c.do("GET", "/v1/bootstrap", nil, &c.boot); err != nil {
@@ -378,11 +273,23 @@ func (e *env) roomID(name string) string {
 }
 
 func (e *env) engineerID(handle string) string {
-	id, ok := e.seed.Engines[handle]
+	id, ok := e.engineers[handle]
 	if !ok {
 		e.t.Fatalf("no engineer %q", handle)
 	}
 	return id
+}
+
+func (e *env) project(name string) protocol.Project {
+	var ps []protocol.Project
+	e.c.must("GET", "/v1/projects", nil, &ps)
+	for _, p := range ps {
+		if p.Name == name {
+			return p
+		}
+	}
+	e.t.Fatalf("no project %s", name)
+	return protocol.Project{}
 }
 
 func (e *env) post(room, body string, mentions []string, mod func(*protocol.PostMessageRequest)) protocol.PostMessageResponse {
@@ -445,20 +352,7 @@ func (e *env) waitJob(prefix string, states ...protocol.JobState) protocol.Job {
 	return got
 }
 
-// script builds a fake-provider script from steps.
-func script(steps ...fake.Step) json.RawMessage {
-	b, _ := json.Marshal(fake.Script{Steps: steps})
-	return b
-}
-
-func toolStep(name string, args map[string]any, save string) fake.Step {
-	b, _ := json.Marshal(args)
-	return fake.Step{Tool: name, Args: b, Save: save}
-}
-
 func isStatus(err error, status int) bool {
 	var ae *apiError
 	return errors.As(err, &ae) && ae.status == status
 }
-
-type sqlTx = sql.Tx

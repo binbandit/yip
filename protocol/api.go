@@ -808,7 +808,6 @@ type Bootstrap struct {
 	Preferences Preferences       `json:"preferences"`
 	ServerTime  time.Time         `json:"serverTime"`
 	Version     string            `json:"version"`
-	Demo        bool              `json:"demo"`
 	Providers   []ProviderSummary `json:"providers"`
 }
 
@@ -818,7 +817,6 @@ type ProviderSummary struct {
 	Label      string   `json:"label"`
 	ReadyNodes []string `json:"readyNodes"`
 	Billing    string   `json:"billing"`
-	Fake       bool     `json:"fake"`
 }
 
 type SetupStatus struct {

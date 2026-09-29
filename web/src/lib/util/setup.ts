@@ -3,7 +3,7 @@ import type { DataState } from '../state/data';
 import { providerReadiness } from './providerReadiness';
 import { connectionPath } from './connections';
 
-type SetupData = Pick<DataState, 'demo' | 'nodes' | 'engineers' | 'rooms' | 'projects' | 'jobs'>;
+type SetupData = Pick<DataState, 'nodes' | 'engineers' | 'rooms' | 'projects' | 'jobs'>;
 
 export function roomSettings(room: Room): string {
   return `/rooms/${room.id}?panel=room%3A${room.id}`;
@@ -12,8 +12,7 @@ export function roomSettings(room: Room): string {
 /** Follow one connected team, rather than counting unrelated setup objects. */
 export function setupReadiness(data: SetupData) {
   const nodes = Object.values(data.nodes).filter((n) => !n.revokedAt && n.status !== 'revoked');
-  const allowedProvider = (provider: string) => !!provider && (provider !== 'fake' || data.demo);
-  const engineers = Object.values(data.engineers).filter((e) => !e.archived && allowedProvider(e.provider.provider));
+  const engineers = Object.values(data.engineers).filter((e) => !e.archived && !!e.provider.provider);
   const rooms = Object.values(data.rooms).filter((r) => r.kind === 'room' && !r.archived);
   const projects = Object.values(data.projects);
   const member = (e: Engineer, r: Room) => r.members.some((m) => m.kind === 'engineer' && m.id === e.id);
@@ -47,7 +46,7 @@ export function setupReadiness(data: SetupData) {
   const reviewer = reviewers.find(available) ?? reviewers[0];
   const reviewerCandidate = engineers.find((e) => e.id !== engineer?.id && !!room && member(e, room)) ?? engineers.find((e) => e.id !== engineer?.id);
   const needsReviewer = project?.policy.requirePeerReview ?? true;
-  const providerInstalled = nodes.flatMap((n) => n.providers ?? []).filter((p) => allowedProvider(p.provider));
+  const providerInstalled = nodes.flatMap((n) => n.providers ?? []);
   const providerSignedIn = engineer ? signedIn(engineer) : providerInstalled.some((p) => p.authState === 'ready');
   const completed = Object.values(data.jobs).some((j) => j.state === 'completed' && j.kind !== 'reply' && j.kind !== 'review' && !j.parentId);
   const unavailable = [engineer, ...(needsReviewer ? [reviewer] : [])].flatMap((e) => {

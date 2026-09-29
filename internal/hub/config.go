@@ -17,7 +17,6 @@ var knownProviders = map[string]string{
 	"cursor":   "Cursor",
 	"opencode": "OpenCode",
 	"pi":       "Pi Agent Harness",
-	"fake":     "Fake provider (deterministic)",
 }
 
 // ProviderLabel returns the user-facing provider name.

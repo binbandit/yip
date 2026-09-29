@@ -6,7 +6,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
 import { choose } from './controls';
-import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
+import { fixtureHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
 import type { JobDetail, Node, ProviderInstallation, ProviderProfile, Run } from '../../src/lib/api/types.gen';
 
 let hub: FakeHub;
@@ -41,8 +41,8 @@ function key(el: Element, k: string) {
   flushSync();
 }
 
-const fake = base.providers[0];
-const inst = (p: Partial<ProviderInstallation>): ProviderInstallation => ({ ...fake, limitations: [], ...p });
+const codex = base.providers[0];
+const inst = (p: Partial<ProviderInstallation>): ProviderInstallation => ({ ...codex, limitations: [], ...p });
 const claudeNoRO = inst({
   provider: 'claude',
   version: '2.1.3',
@@ -51,7 +51,7 @@ const claudeNoRO = inst({
   account: 'me@example.com',
   billing: 'subscription',
   profileId: 'claude:me@example.com',
-  capabilities: { ...fake.capabilities, readOnly: false },
+  capabilities: { ...codex.capabilities, readOnly: false },
   limitations: ['Read-only runs are unavailable: this settings file allows Bash(*) without asking.', 'Token usage is reported by Claude Code; dollar cost is not available.'],
 });
 const codexSignIn = inst({ provider: 'codex', authState: 'needs_signin', authDetail: 'Sign in with `codex login` on this machine.', account: '', profileId: 'codex:default', capabilities: {} as never });
@@ -59,7 +59,7 @@ const codexSignIn = inst({ provider: 'codex', authState: 'needs_signin', authDet
 const LONG = "Brayden's travel MacBook Pro (16-inch, 2019) kept in the office drawer";
 const machines: Node[] = [
   { ...base, id: 'n-studio', name: 'Studio mini', activeRunIds: ['run-a'], workspaces: [] },
-  { ...base, id: 'n-build', name: 'Build server', draining: true, serviceState: 'systemd service', providers: [fake, codexSignIn], workspaces: [] },
+  { ...base, id: 'n-build', name: 'Build server', draining: true, serviceState: 'systemd service', providers: [codexSignIn], workspaces: [] },
   {
     ...base,
     id: 'n-laptop',
@@ -79,7 +79,7 @@ const machines: Node[] = [
 ];
 const profiles: ProviderProfile[] = [
   { id: 'claude:me@example.com', provider: 'claude', label: 'me@example.com', billing: 'subscription', maxConcurrency: 2, pausedUntil: new Date(Date.now() + 2 * 3600_000).toISOString() },
-  { id: 'fake:local', provider: 'fake', label: 'local', billing: 'unknown', maxConcurrency: 4 },
+  { id: 'codex:local', provider: 'codex', label: 'local', billing: 'unknown', maxConcurrency: 4 },
 ];
 
 function load() {
@@ -90,7 +90,7 @@ function load() {
 }
 
 beforeAll(async () => {
-  hub = demoHub();
+  hub = fixtureHub();
   hub.override('GET', /^\/v1\/nodes$/, () => ({ body: Object.values(app.data.nodes) }));
   hub.override('GET', /^\/v1\/provider-profiles$/, () => ({ body: profiles }));
   hub.override('POST', /^\/v1\/nodes\/[^/]+\/drain$/, (c) => {

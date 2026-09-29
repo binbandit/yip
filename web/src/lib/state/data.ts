@@ -72,7 +72,6 @@ export interface StreamPreview {
 export interface DataState {
   user: User | null;
   org: Org | null;
-  demo: boolean;
   version: string;
   providers: ProviderSummary[];
   preferences: Preferences;
@@ -121,7 +120,6 @@ export function emptyState(): DataState {
   return {
     user: null,
     org: null,
-    demo: false,
     version: '',
     providers: [],
     preferences: { ...defaultPreferences },
@@ -164,7 +162,6 @@ const byId = <T extends { id: string }>(list: T[] | null | undefined): Record<st
 export function applyBootstrap(s: DataState, b: Bootstrap): void {
   s.user = b.user;
   s.org = b.org;
-  s.demo = b.demo;
   s.version = b.version;
   s.providers = b.providers ?? [];
   s.preferences = { ...defaultPreferences, ...b.preferences };

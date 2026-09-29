@@ -1,11 +1,10 @@
-// Mounts the real App in jsdom against fixtures captured from a demo hub and
-// walks the main journeys. This stands in for a browser until Playwright can
-// run (see tests/e2e); it catches runtime errors svelte-check cannot.
+// Mounts the real App in jsdom against fixtures captured from a hub and walks
+// the main journeys. It catches runtime errors svelte-check cannot.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
-import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
+import { fixtureHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
 
 let hub: FakeHub;
 let component: ReturnType<typeof mount>;
@@ -52,7 +51,7 @@ function key(el: Element, k: string, init: KeyboardEventInit = {}) {
 }
 
 beforeAll(async () => {
-  hub = demoHub();
+  hub = fixtureHub();
   // One attempt executing in Security (for the "working" indicators).
   const run = fixture<{ runs: Record<string, unknown>[] }>('job-code.json').runs[0];
   hub.override('GET', /^\/v1\/runs$/, () => ({ body: [{ ...run, id: 'run-live', state: 'running' }] }));
@@ -388,10 +387,10 @@ describe('app smoke (jsdom, captured fixtures)', () => {
     const row = await waitFor(() => byText('li.row', 'Studio mini'), 'machines');
     expect(row.textContent).toContain('Connected');
     expect(row.textContent).toContain('Idle');
-    expect(row.textContent).toContain('Demo provider (fake)');
+    expect(row.textContent).toContain('Codex');
     expect(row.textContent).toContain('Temporary session: stops when its terminal closes');
     expect(text()).not.toContain('Execution profiles');
-    expect(text()).not.toContain('Follows scripted demo and test workflows only');
+    expect(text()).not.toContain('Token usage is reported by Codex');
     // Details hold the rest, including diagnostics and the actions.
     byText('button', 'Details')!.click();
     await waitFor(() => text().includes('Pause new work'), 'machine details');

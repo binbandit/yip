@@ -56,7 +56,7 @@
   let description = $state(STARTS[0].description);
   let tags = $state(STARTS[0].tags);
   let instructions = $state(STARTS[0].instructions);
-  const readyProvider = app.data.providers.find((p) => p.readyNodes.length && (!p.fake || app.data.demo));
+  const readyProvider = app.data.providers.find((p) => p.readyNodes.length);
   let provider = $state(readyProvider?.provider ?? 'claude');
   let busy = $state(false);
   let error = $state('');
