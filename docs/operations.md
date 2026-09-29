@@ -40,6 +40,44 @@ Useful flags:
 | `--allowed-origin` | Extra origin for state-changing requests (e.g. a Tailscale name). |
 | `--local-runner` | Also run a runner on the hub machine, paired through the normal path. |
 
+### In Docker
+
+The hub can also run in a container, which needs only Docker (and just for
+the shortcuts below).
+`packaging/container/Dockerfile.hub` builds it with the web client embedded,
+and `compose.hub.yml` runs it as a non-root user with no capabilities, keeping
+the workspace in the `hub-data` volume.
+
+```sh
+just docker                   # build and run it; prints the one-time setup code
+just docker up --build -d     # or in the background, then: just docker logs hub
+just docker down              # stop it; the volume keeps your workspace
+```
+
+Without just, run `docker compose -f packaging/container/compose.hub.yml up --build`.
+
+- The web client is at `http://localhost:7420`, published on this machine's
+  loopback only. A container's own loopback can't be published, so inside it
+  the hub listens on every interface with `--insecure-http` and logs that
+  warning; the loopback-only publish keeps the password and session cookie on
+  this machine. To reach it from elsewhere, use Tailscale Serve on the host
+  (below) or mount a certificate and add `--tls-cert`/`--tls-key` to the
+  compose `command`.
+- Runners pair over port 7443, published on every interface (mutual TLS).
+  `just docker` puts `https://<this machine's hostname>:7443` in pairing
+  commands, as a native hub would; set `YIP_RUNNER_URL` to override it (plain
+  `docker compose` defaults to `https://localhost:7443`, which only runners on
+  this machine can reach). Runners, including the container runner below, run
+  outside the hub's container.
+- Operator commands run inside it: `just docker exec hub yip hub setup-code`,
+  `just docker exec hub yip owner reset-password --handle <you>`, or
+  `just docker exec hub yip backup --out /var/lib/yip/backup.yipenc --encrypt`
+  followed by `just docker cp hub:/var/lib/yip/backup.yipenc .` to copy it out.
+- To upgrade, take a backup, update the checkout, and run
+  `just docker up --build -d`; migrations run on start.
+- To try the demo workspace without Go or Node, stop the hub and run
+  `just docker run --rm --service-ports hub demo --listen :7420 --insecure-http --data /var/lib/yip/demo`.
+
 ## Add machines
 
 1. In **Machines → Add machine**, name the machine. The hub shows a pairing

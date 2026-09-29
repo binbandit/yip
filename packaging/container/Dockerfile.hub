@@ -1,0 +1,47 @@
+# yip hub in a container: the API, the embedded web client, the scheduler and
+# the runner listener. Runners (the machines agents work on) stay outside this
+# image and pair with it over mutual TLS; for a containerised runner see
+# Dockerfile and compose.runner.yml.
+#
+# Build and run with `just docker` (compose.hub.yml), or by hand:
+#
+#   docker build -f packaging/container/Dockerfile.hub -t yip-hub .
+#   docker run -it -p 127.0.0.1:7420:7420 -p 7443:7443 -v yip-hub:/var/lib/yip yip-hub \
+#     hub --listen :7420 --insecure-http --runner-url https://$(uname -n):7443
+#
+# The hub listens on all of the container's interfaces with --insecure-http,
+# because loopback inside a container can't be published. Publish 7420 on the
+# host's loopback only (as above), or serve HTTPS with --tls-cert/--tls-key.
+
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS web
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS build
+ARG TARGETOS TARGETARCH
+ARG VERSION=0.1.0-dev
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+COPY --from=web /src/web/dist ./web/dist
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
+    -ldflags "-s -w -X github.com/binbandit/yip/internal/buildinfo.Version=$VERSION" -o /out/yip ./cmd/yip
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates tini \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --uid 10001 --create-home --home-dir /home/yip --shell /usr/sbin/nologin yip \
+ && mkdir -p /var/lib/yip && chown yip:yip /var/lib/yip
+COPY --from=build /out/yip /usr/local/bin/yip
+USER yip
+ENV YIP_DATA=/var/lib/yip/hub \
+    HOME=/home/yip
+VOLUME ["/var/lib/yip"]
+EXPOSE 7420 7443
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/yip"]
+CMD ["hub", "--listen", ":7420", "--insecure-http"]

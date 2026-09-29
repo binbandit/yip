@@ -1,0 +1,21 @@
+# Keep image builds to the sources they compile. Images build web/dist
+# themselves; web/dist/.gitkeep stays so the Go embed directive always matches.
+.git
+.claude
+.github
+bin
+dist
+docs
+yip-build-kit.zip
+.yip
+data
+*.db
+*.db-wal
+*.db-shm
+web/node_modules
+web/dist/*
+!web/dist/.gitkeep
+web/.svelte-kit
+web/.vite
+web/test-results
+web/playwright-report

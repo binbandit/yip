@@ -110,6 +110,10 @@ yip runner --providers codex,claude,cursor
 yip service install runner       # launchd (macOS) or systemd (Linux)
 ```
 
+To run the hub and web client in Docker instead, use `just docker` (web on
+`http://localhost:7420`, runners pair on `:7443`); see
+[Install the hub → In Docker](docs/operations.md#in-docker).
+
 Sign in to each provider **with its own tool on each runner** (`codex login`,
 `claude auth login`, `agent login`). yip never collects, stores, or proxies
 provider credentials. See [docs/operations.md](docs/operations.md), and
@@ -147,7 +151,7 @@ internal/httpapi/        browser API, SSE, runner listener, embedded web client
 protocol/                wire types + generated JSON Schemas
 web/                     Svelte 5 + TypeScript client
 test/integration/        hub + runner + bridge + fake provider scenarios
-packaging/               launchd/systemd units, container runner profile
+packaging/               launchd/systemd units, hub image, container runner profile
 scripts/screenshots/     demo scenario + WebKit capture for the README images
 docs/                    spec, operations, compatibility, API, decisions, checklist, screenshots
 ```
@@ -179,4 +183,4 @@ browser download), start a fresh demo and run the capture script:
 python3 scripts/screenshots/capture.py --credentials /tmp/yip-demo-shots/demo-credentials.txt
 ```
 
-Requirements: Go 1.26, Node 20+ and [just](https://just.systems) (build only), git on every runner.
+Requirements: Go 1.26, Node 20+ and [just](https://just.systems) (build only; `just docker` needs only Docker and just), git on every runner.
