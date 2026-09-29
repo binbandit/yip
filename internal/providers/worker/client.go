@@ -25,9 +25,11 @@ func Start(ctx context.Context, cmd *exec.Cmd, spec providers.StartSpec, handler
 	s := &session{
 		ctx: ctx, cancel: cancel, handler: handler,
 		events: make(chan providers.Event), wake: make(chan struct{}, 1),
+		abortEvents: make(chan struct{}),
 		resultReady: make(chan struct{}), done: make(chan struct{}),
 	}
-	t, err := launch(cmd, dispatcher{request: s.request, notify: s.notification})
+	t, err := launch(cmd, dispatcher{request: s.request, notify: s.notification,
+		budget: &requestBudget{overflow: func() { s.fail("Worker request buffering limit exceeded.") }}})
 	if err != nil {
 		cancel()
 		return nil, err
@@ -88,7 +90,7 @@ type transport struct {
 	closeOnce sync.Once
 }
 
-func launch(cmd *exec.Cmd, h acp.Handler) (*transport, error) {
+func launch(cmd *exec.Cmd, h dispatcher) (*transport, error) {
 	if cmd.Stdin != nil || cmd.Stdout != nil {
 		return nil, errors.New("worker command stdin and stdout must be unset")
 	}
@@ -114,6 +116,9 @@ func launch(cmd *exec.Cmd, h acp.Handler) (*transport, error) {
 		return nil, err
 	}
 	t := &transport{process: p, in: in, out: out}
+	if h.budget == nil {
+		h.budget = &requestBudget{overflow: t.closePipes}
+	}
 	t.conn = acp.NewConn(frames(out), in, h)
 	// A dead worker may leave stdout inherited by a descendant. Do not wait
 	// forever for EOF, but allow the read loop to consume its final messages.
@@ -154,7 +159,11 @@ type session struct {
 	events      chan providers.Event
 	wake        chan struct{}
 	mu          sync.Mutex
-	queue       []providers.Event
+	queue       []json.RawMessage
+	queueBytes  int
+	abortEvents chan struct{}
+	aborted     bool
+	failure     string
 	eventEnd    bool
 	result      providers.Result
 	haveResult  bool
@@ -185,17 +194,28 @@ func (s *session) request(r *acp.Request) {
 func (s *session) notification(method string, raw json.RawMessage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.eventEnd || s.haveResult {
+	if s.eventEnd || s.haveResult || s.failure != "" {
 		return
 	}
 	switch method {
 	case "session/event":
+		if s.aborted {
+			return
+		}
+		if len(s.queue) >= maxQueuedEvents || len(raw) > maxQueuedEventBytes-s.queueBytes {
+			s.failLocked("Worker event buffering limit exceeded.")
+			return
+		}
 		var event providers.Event
 		if json.Unmarshal(raw, &event) != nil {
 			s.closePipes()
 			return
 		}
-		s.queue = append(s.queue, event)
+		// Retain encoded payloads so the byte budget bounds retained storage,
+		// not just an estimate of potentially much larger decoded structures.
+		// Validate before accepting a later successful terminal result.
+		s.queue = append(s.queue, raw)
+		s.queueBytes += len(raw)
 		select {
 		case s.wake <- struct{}{}:
 		default:
@@ -211,11 +231,41 @@ func (s *session) notification(method string, raw json.RawMessage) {
 	}
 }
 
+func (s *session) abortEventsLocked() {
+	if !s.aborted {
+		s.aborted = true
+		s.queue = nil
+		s.queueBytes = 0
+		close(s.abortEvents)
+	}
+}
+
+func (s *session) fail(message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failLocked(message)
+}
+
+func (s *session) failLocked(message string) {
+	if s.failure == "" {
+		s.failure = message
+	}
+	s.abortEventsLocked()
+	// Signal EOF first and keep reading without retaining more events. Closing
+	// stdout while the worker is writing can kill it before it reaps provider
+	// descendants. cleanup closes both pipes after the bounded exit grace.
+	_ = s.in.Close()
+	s.cancel()
+}
+
 func (s *session) run() {
 	select {
 	case <-s.resultReady:
 	case <-s.conn.Done():
 	case <-s.ctx.Done():
+		s.mu.Lock()
+		s.abortEventsLocked()
+		s.mu.Unlock()
 		// Give the adapter a chance to confirm its process-group exit before
 		// terminating the worker transport. Never block behind a stuck writer.
 		ctx, cancel := context.WithTimeout(context.Background(), stopGrace)
@@ -229,7 +279,9 @@ func (s *session) run() {
 	}
 	cleanExit := s.cleanup()
 	s.mu.Lock()
-	if !s.haveResult {
+	if s.failure != "" {
+		s.result = providers.Result{Outcome: protocol.OutcomeFailed, Error: s.failure}
+	} else if !s.haveResult {
 		s.result = providers.Result{Outcome: protocol.OutcomeFailed, Error: "Worker transport ended without a terminal result.", ExitConfirmed: false}
 		if s.ctx.Err() != nil {
 			s.result.Outcome = protocol.OutcomeCancelled
@@ -240,6 +292,9 @@ func (s *session) run() {
 	// or needs forced termination. The caller must confirm external cleanup.
 	s.result.ExitConfirmed = s.result.ExitConfirmed && cleanExit
 	s.eventEnd = true
+	if s.ctx.Err() != nil || !s.haveResult {
+		s.abortEventsLocked()
+	}
 	s.mu.Unlock()
 	s.cancel()
 	select {
@@ -256,19 +311,38 @@ func (s *session) deliverEvents() {
 	for {
 		s.mu.Lock()
 		if len(s.queue) == 0 {
-			end := s.eventEnd
+			end := s.eventEnd || s.aborted
 			s.mu.Unlock()
 			if end {
 				return
 			}
-			<-s.wake
+			select {
+			case <-s.wake:
+			case <-s.abortEvents:
+			}
 			continue
 		}
-		event := s.queue[0]
-		s.queue[0] = providers.Event{}
-		s.queue = s.queue[1:]
+		raw := s.queue[0]
+		// Keep the in-flight event charged until the consumer accepts it.
 		s.mu.Unlock()
-		s.events <- event
+		var event providers.Event
+		_ = json.Unmarshal(raw, &event) // Validated on receipt.
+		raw = nil
+		select {
+		case s.events <- event:
+		case <-s.abortEvents:
+			return
+		}
+		s.mu.Lock()
+		if !s.aborted {
+			s.queueBytes -= len(s.queue[0])
+			s.queue[0] = nil
+			s.queue = s.queue[1:]
+			if len(s.queue) == 0 {
+				s.queue = nil
+			}
+		}
+		s.mu.Unlock()
 	}
 }
 
@@ -293,6 +367,9 @@ func (s *session) AnswerQuestion(ctx context.Context, id string, a providers.Que
 func (s *session) Cancel(ctx context.Context) error {
 	// Cancellation is a local guarantee as well as an RPC. Even a worker that
 	// stops reading must be torn down within the bounded shutdown grace.
+	s.mu.Lock()
+	s.abortEventsLocked()
+	s.mu.Unlock()
 	s.cancel()
 	select {
 	case <-s.done:

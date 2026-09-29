@@ -36,6 +36,17 @@ func TestWorkerProcess(t *testing.T) {
 	case "silent":
 		time.Sleep(time.Minute)
 		os.Exit(0)
+	case "request-flood":
+		conn := acp.NewConn(os.Stdin, os.Stdout, dispatcher{request: func(r *acp.Request) {
+			_ = r.Reply("immediate")
+			if r.Method == "session/sendInput" {
+				for i := range maxRequests + 1 {
+					fmt.Fprintf(os.Stdout, "{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"bridge/call\",\"params\":{\"tool\":\"blocked\"}}\n", i)
+				}
+			}
+		}})
+		_ = conn.Serve()
+		os.Exit(0)
 	case "result-crash":
 		var conn *acp.Conn
 		conn = acp.NewConn(os.Stdin, os.Stdout, dispatcher{request: func(r *acp.Request) {
@@ -105,7 +116,7 @@ func (testAdapter) Start(ctx context.Context, spec providers.StartSpec) (provide
 		}
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	s := &testSession{ctx: ctx, cancel: cancel, events: make(chan providers.Event, 16), done: make(chan struct{}), approval: make(chan struct{}), question: make(chan struct{})}
+	s := &testSession{ctx: ctx, cancel: cancel, events: make(chan providers.Event, 16), done: make(chan struct{}), approval: make(chan struct{}), question: make(chan struct{}), flood: make(chan struct{})}
 	go s.run(spec)
 	return s, nil
 }
@@ -124,6 +135,7 @@ type testSession struct {
 	cancel                   context.CancelFunc
 	events                   chan providers.Event
 	done, approval, question chan struct{}
+	flood                    chan struct{}
 	approveOnce, answerOnce  sync.Once
 	result                   providers.Result
 }
@@ -139,7 +151,7 @@ func (s *testSession) run(spec providers.StartSpec) {
 	case "hang":
 		<-s.ctx.Done()
 		s.result.Outcome = protocol.OutcomeCancelled
-	case "process":
+	case "process", "flood-count", "flood-bytes":
 		cmd := exec.Command("sh", "-c", `trap 'kill "$child" 2>/dev/null; wait "$child"; exit 0' TERM; sleep 60 & child=$!; echo "$child"; wait "$child"`)
 		childPID, childOut, err := os.Pipe()
 		if err != nil {
@@ -158,6 +170,24 @@ func (s *testSession) run(spec providers.StartSpec) {
 		_, _ = fmt.Fscanln(childPID, &pid)
 		_ = childPID.Close()
 		s.events <- providers.Event{Kind: providers.EventStatus, Text: strconv.Itoa(pid)}
+		if strings.HasPrefix(spec.Prompt, "flood-") {
+			select {
+			case <-s.flood:
+				count, text := maxQueuedEvents+1, "x"
+				if spec.Prompt == "flood-bytes" {
+					count, text = 5, strings.Repeat("x", 8<<20)
+				}
+			flood:
+				for range count {
+					select {
+					case s.events <- providers.Event{Kind: providers.EventMessageDelta, Text: text}:
+					case <-s.ctx.Done():
+						break flood
+					}
+				}
+			case <-s.ctx.Done():
+			}
+		}
 		<-s.ctx.Done()
 		s.result.Outcome = protocol.OutcomeCancelled
 		s.result.ExitConfirmed = process.Terminate(time.Second)
@@ -210,6 +240,9 @@ func (s *testSession) run(spec providers.StartSpec) {
 func (s *testSession) Events() <-chan providers.Event { return s.events }
 func (s *testSession) Wait() providers.Result         { <-s.done; return s.result }
 func (s *testSession) SendInput(_ context.Context, text string) (string, error) {
+	if text == "flood" {
+		close(s.flood)
+	}
 	if text == "unsupported" {
 		return "", providers.ErrUnsupported
 	}
@@ -267,6 +300,7 @@ func TestOrderedEventsAndWaitBeforeDrain(t *testing.T) {
 	if i != 301 {
 		t.Fatalf("received %d events", i)
 	}
+	assertQueueFreed(t, s.(*session))
 }
 
 func TestConcurrentBridgeAndSessionRequests(t *testing.T) {
@@ -517,5 +551,205 @@ func TestFrameLimit(t *testing.T) {
 	got, err := io.ReadAll(frames(strings.NewReader(want)))
 	if err != nil || string(got) != want {
 		t.Fatalf("large frame: %d, %v", len(got), err)
+	}
+}
+
+func assertQueueFreed(t *testing.T, s *session) {
+	t.Helper()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.queue != nil || s.queueBytes != 0 {
+		t.Fatalf("retained queue: %d events, %d bytes", len(s.queue), s.queueBytes)
+	}
+}
+
+func TestBlockedConsumerOverflowReapsProvider(t *testing.T) {
+	for _, prompt := range []string{"flood-count", "flood-bytes"} {
+		t.Run(prompt, func(t *testing.T) {
+			ctx := testContext(t)
+			cmd := command("")
+			started, err := Start(ctx, cmd, providers.StartSpec{Prompt: prompt}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := started.(*session)
+			t.Cleanup(func() { _ = s.Cancel(context.Background()) })
+			var pid int
+			select {
+			case event := <-s.Events():
+				pid, err = strconv.Atoi(event.Text)
+			case <-ctx.Done():
+				t.Fatal("provider did not start")
+			}
+			if err != nil || pid <= 0 {
+				t.Fatalf("invalid provider PID: %d %v", pid, err)
+			}
+			if mode, err := s.SendInput(ctx, "flood"); err != nil || mode != "immediate" {
+				t.Fatalf("trigger: %q %v", mode, err)
+			}
+			// Do not receive another event. Overflow must finish independently
+			// of the consumer, including EOF cleanup of the provider group.
+			select {
+			case <-s.done:
+			case <-ctx.Done():
+				t.Fatal("overflow did not shut down")
+			}
+			result := s.Wait()
+			if result.Outcome != protocol.OutcomeFailed || result.ExitConfirmed ||
+				result.Error != "Worker event buffering limit exceeded." {
+				t.Fatalf("overflow result: %+v", result)
+			}
+			assertQueueFreed(t, s)
+			for range s.Events() {
+			}
+			if cmd.ProcessState == nil {
+				t.Fatal("worker not reaped")
+			}
+			if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+				t.Fatalf("overflow left provider descendant alive: %v", err)
+			}
+		})
+	}
+}
+
+func TestCancelReleasesUndrainedEvents(t *testing.T) {
+	ctx := testContext(t)
+	started, err := Start(ctx, command(""), providers.StartSpec{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := started.(*session)
+	if result := s.Wait(); result.Outcome != protocol.OutcomeSucceeded {
+		t.Fatalf("%+v", result)
+	}
+	if err := s.Cancel(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertQueueFreed(t, s)
+	for range s.Events() {
+	}
+}
+
+func TestRequestFloodFailsClosed(t *testing.T) {
+	ctx := testContext(t)
+	release := make(chan struct{})
+	defer close(release)
+	started, err := Start(ctx, command("request-flood"), providers.StartSpec{},
+		func(bridge.LocalRequest) bridge.LocalResponse {
+			<-release
+			return bridge.LocalResponse{OK: true}
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := started.(*session)
+	t.Cleanup(func() { _ = s.Cancel(context.Background()) })
+	if _, err := s.SendInput(ctx, "flood"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-s.done:
+	case <-ctx.Done():
+		t.Fatal("request overflow blocked the read loop")
+	}
+	if result := s.Wait(); result.Outcome != protocol.OutcomeFailed ||
+		result.Error != "Worker request buffering limit exceeded." || result.ExitConfirmed {
+		t.Fatalf("%+v", result)
+	}
+	assertQueueFreed(t, s)
+	for range s.Events() {
+	}
+}
+
+func TestRequestBudgetBoundsCountAndBytes(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		size, count int
+	}{{"count", 1, maxRequests}, {"bytes", 8 << 20, maxRequestBytes / (8 << 20)}} {
+		t.Run(tc.name, func(t *testing.T) {
+			release := make(chan struct{})
+			defer close(release)
+			overflow := make(chan struct{})
+			b := &requestBudget{overflow: func() { close(overflow) }}
+			d := dispatcher{budget: b, request: func(*acp.Request) { <-release }}
+			for range tc.count {
+				d.HandleRequest(&acp.Request{Params: make(json.RawMessage, tc.size)})
+			}
+			select {
+			case <-overflow:
+				t.Fatal("overflow before limit")
+			default:
+			}
+			d.HandleRequest(&acp.Request{Params: make(json.RawMessage, tc.size)})
+			select {
+			case <-overflow:
+			default:
+				t.Fatal("overflow not detected")
+			}
+			b.mu.Lock()
+			count, bytes := b.count, b.bytes
+			b.mu.Unlock()
+			if count != tc.count || bytes != tc.count*tc.size {
+				t.Fatalf("unbounded requests: %d, %d", count, bytes)
+			}
+		})
+	}
+}
+
+func TestEventBudgetIncludesBlockedDelivery(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		size, count int
+	}{{"count", 64, maxQueuedEvents}, {"bytes", 8 << 20, maxQueuedEventBytes / (8 << 20)}} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			read, write, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer read.Close()
+			defer write.Close()
+			s := &session{
+				transport: &transport{in: write},
+				ctx:       ctx, cancel: cancel, events: make(chan providers.Event),
+				wake: make(chan struct{}, 1), abortEvents: make(chan struct{}),
+				resultReady: make(chan struct{}),
+			}
+			go s.deliverEvents()
+			// JSON whitespace makes the encoded payload exactly the desired
+			// size without relying on serialization overhead estimates.
+			raw := json.RawMessage(`{"text":"x"}` + strings.Repeat(" ", tc.size-len(`{"text":"x"}`)))
+			for range tc.count {
+				s.notification("session/event", raw)
+			}
+			s.mu.Lock()
+			count, bytes, failure := len(s.queue), s.queueBytes, s.failure
+			s.mu.Unlock()
+			if count != tc.count || bytes != tc.size*tc.count || failure != "" {
+				t.Fatalf("limit boundary: count=%d bytes=%d failure=%q", count, bytes, failure)
+			}
+			// With no consumer, even the event held by the delivery goroutine
+			// must count against the budget.
+			s.notification("session/event", raw)
+			s.notification("session/result", json.RawMessage(`{"outcome":"succeeded"}`))
+			s.mu.Lock()
+			failed, haveResult := s.failure != "", s.haveResult
+			s.mu.Unlock()
+			if !failed || haveResult {
+				t.Fatal("overflow accepted a terminal result")
+			}
+			assertQueueFreed(t, s)
+			select {
+			case _, ok := <-s.Events():
+				if ok {
+					// A send already waiting on this channel may race abort.
+					for range s.Events() {
+					}
+				}
+			case <-time.After(stopGrace):
+				t.Fatal("blocked event delivery did not stop")
+			}
+		})
 	}
 }

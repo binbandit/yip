@@ -22,7 +22,8 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, adapter providers.A
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s := &server{ctx: ctx, adapter: adapter, version: version, finished: make(chan struct{})}
-	s.conn = acp.NewConn(frames(in), out, dispatcher{request: s.request})
+	s.conn = acp.NewConn(frames(in), out, dispatcher{request: s.request,
+		budget: &requestBudget{overflow: cancel}})
 	s.conn.OnMalformed = func([]byte, error) { cancel() }
 	go s.conn.Serve()
 	var err error

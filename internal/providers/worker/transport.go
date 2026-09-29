@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/binbandit/yip/internal/providers"
@@ -15,9 +16,13 @@ import (
 )
 
 const (
-	maxFrame        = 16 << 20
-	stopGrace       = 2 * time.Second
-	unsupportedCode = -32010
+	maxFrame            = 16 << 20
+	maxQueuedEvents     = 1024
+	maxQueuedEventBytes = 32 << 20
+	maxRequests         = 64
+	maxRequestBytes     = 32 << 20
+	stopGrace           = 2 * time.Second
+	unsupportedCode     = -32010
 )
 
 // acp preserves notification order, but its request callbacks run on the read
@@ -26,9 +31,50 @@ const (
 type dispatcher struct {
 	request func(*acp.Request)
 	notify  func(string, json.RawMessage)
+	budget  *requestBudget
 }
 
-func (d dispatcher) HandleRequest(r *acp.Request) { go d.request(r) }
+// Count both executing handlers and blocked reply writers. Never wait for a
+// slot on the read loop: permission resolutions and replies need that loop.
+type requestBudget struct {
+	mu           sync.Mutex
+	count, bytes int
+	stopped      bool
+	overflow     func()
+}
+
+func (d dispatcher) HandleRequest(r *acp.Request) {
+	size := len(r.Params) + len(r.ID) + len(r.Method)
+	if d.budget != nil {
+		b := d.budget
+		b.mu.Lock()
+		if b.stopped {
+			b.mu.Unlock()
+			return
+		}
+		if b.count >= maxRequests || size > maxRequestBytes-b.bytes {
+			b.stopped = true
+			b.mu.Unlock()
+			b.overflow()
+			return
+		}
+		b.count++
+		b.bytes += size
+		b.mu.Unlock()
+	}
+	go func() {
+		if d.budget != nil {
+			defer func() {
+				b := d.budget
+				b.mu.Lock()
+				b.count--
+				b.bytes -= size
+				b.mu.Unlock()
+			}()
+		}
+		d.request(r)
+	}()
+}
 func (d dispatcher) HandleNotification(method string, p json.RawMessage) {
 	if d.notify != nil {
 		d.notify(method, p)
