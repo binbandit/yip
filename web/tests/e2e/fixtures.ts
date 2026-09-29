@@ -193,6 +193,12 @@ export class HubApi {
     return this.req('GET', '/v1/nodes');
   }
 
+  /** Changes part of a project's policy (e.g. `{ requireHumanReview: true }`). */
+  async setPolicy(project: string, patch: Record<string, unknown>): Promise<any> {
+    const p = await this.req('GET', `/v1/projects/${this.project(project).id}`);
+    return this.req('PATCH', `/v1/projects/${p.id}`, { version: p.version, policy: { ...p.policy, ...patch } });
+  }
+
   async waitFor<T>(what: string, check: () => Promise<T | undefined | null | false>, timeout = 60_000): Promise<T> {
     const deadline = Date.now() + timeout;
     for (;;) {
