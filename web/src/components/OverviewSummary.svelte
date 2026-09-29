@@ -2,6 +2,7 @@
   import { Button, Icon, Link, Text } from '@astryx-svelte/core';
   import { RefreshCw } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
 
   let { roomId }: { roomId: string } = $props();
   let sending = $state(false);
@@ -24,7 +25,7 @@
     <Button label="Get a fresh summary" variant="primary" isLoading={sending} isDisabled={pending} onclick={summarize}>
       {#snippet icon()}<Icon icon={RefreshCw} size="sm" />{/snippet}
     </Button>
-    <Link href="/engineers" isStandalone hasUnderline>Talk with an engineer</Link>
+    <Link href={workspaceUrl('/engineers')} isStandalone hasUnderline>Talk with an engineer</Link>
   </div>
 </div>
 

@@ -33,6 +33,30 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
   Server errors (5xx) release the key. Uploads with a raw body aren't
   covered.
 
+## Installation workspaces
+
+`GET /v1/workspaces` returns `Workspace[]`: `{id, name, path}`. The existing
+root workspace has `path: ""`; additional workspaces use `/w/<id>`. The same
+list is available at `/w/<id>/v1/workspaces`.
+
+`POST /v1/workspaces` accepts `CreateWorkspaceRequest` (`{name}`) and returns
+the new `Workspace` with HTTP 201. Names are trimmed, limited to 80 characters,
+and unique case-insensitively (409 on duplicates). Authentication, Origin,
+CSRF, and `Idempotency-Key` handling are the same as other mutations. Creation
+retries share the root idempotency ledger, even across workspace prefixes.
+There are no workspace rename or delete endpoints.
+
+Prefix all workspace browser and runner APIs with the returned path, including
+bootstrap, SSE, pairing, WebSocket connections, and artifact transfer. Unknown
+workspace IDs return 404 rather than falling back to the root.
+
+Workspaces share the installation owner's sign-in and root-scoped session
+cookie; signing out anywhere signs out everywhere. Each workspace has its own
+owner preferences, data, artifacts, event cursor, scheduler, and paired machines.
+New workspaces contain only the owner and an Overview conversation. Existing
+root machines and demo data are not copied: pair a runner explicitly using the
+new workspace's Machines enrollment command.
+
 ## Endpoints
 
 | Method / path | Body → response |

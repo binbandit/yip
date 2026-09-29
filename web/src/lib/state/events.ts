@@ -4,6 +4,7 @@
 // with ?cursor= from the last applied sequence.
 import type { Event } from '../api/types.gen';
 import type { TransientStream } from './data';
+import { workspaceUrl } from '../workspace';
 
 export const COMMITTED_TYPES = [
   'message.created',
@@ -87,7 +88,7 @@ export class EventStream {
   private open(): void {
     if (typeof EventSource === 'undefined') return;
     this.h.onState(this.attempts ? 'reconnecting' : 'connecting');
-    const es = new EventSource(`/v1/events?cursor=${this.h.cursor()}`, { withCredentials: true });
+    const es = new EventSource(workspaceUrl(`/v1/events?cursor=${this.h.cursor()}`), { withCredentials: true });
     this.es = es;
     const parse = (e: MessageEvent) => {
       try {

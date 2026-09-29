@@ -103,6 +103,9 @@ func (h *Hub) Setup(ctx context.Context, req protocol.SetupRequest) (protocol.Us
 // SignIn verifies credentials and creates a session. The returned token is
 // the cookie value; only its hash is stored.
 func (h *Hub) SignIn(ctx context.Context, handle, password, clientKey, userAgent string) (token string, s store.Session, err error) {
+	if h.cfg.SessionHub != nil {
+		return h.cfg.SessionHub.SignIn(ctx, handle, password, clientKey, userAgent)
+	}
 	if len(handle) > auth.MaxHandleLength || len(password) > auth.MaxPasswordLength {
 		return "", s, domain.Unauthorized("That handle and password don't match.")
 	}
@@ -147,12 +150,26 @@ func (h *Hub) SignIn(ctx context.Context, handle, password, clientKey, userAgent
 // SessionActive reports whether a session is still signed in (long-lived
 // streams re-check it: signing out or expiry ends them).
 func (h *Hub) SessionActive(ctx context.Context, sessionID string) bool {
+	if h.cfg.SessionHub != nil {
+		return h.cfg.SessionHub.SessionActive(ctx, sessionID)
+	}
 	s, err := store.GetSession(ctx, h.st.R(), sessionID)
 	return err == nil && s.RevokedAt == nil && h.now().Before(s.ExpiresAt)
 }
 
 // Authenticate resolves a session cookie to its user.
 func (h *Hub) Authenticate(ctx context.Context, token string) (store.UserRow, store.Session, error) {
+	if h.cfg.SessionHub != nil {
+		root, session, err := h.cfg.SessionHub.Authenticate(ctx, token)
+		if err != nil {
+			return store.UserRow{}, store.Session{}, err
+		}
+		local, err := store.GetUser(ctx, h.st.R(), root.ID)
+		if err != nil {
+			return store.UserRow{}, store.Session{}, domain.Forbidden("This workspace belongs to another owner.")
+		}
+		return local, session, nil
+	}
 	if token == "" {
 		return store.UserRow{}, store.Session{}, domain.Unauthorized("Sign in to continue.")
 	}
@@ -176,12 +193,18 @@ func (h *Hub) Authenticate(ctx context.Context, token string) (store.UserRow, st
 
 // SignOut revokes a session.
 func (h *Hub) SignOut(ctx context.Context, sessionID string) error {
+	if h.cfg.SessionHub != nil {
+		return h.cfg.SessionHub.SignOut(ctx, sessionID)
+	}
 	return h.do(ctx, func(t *txn) error { return store.RevokeSession(ctx, t.tx, sessionID) })
 }
 
 // ResetOwnerPassword is the host-access recovery path: it sets a new password
 // and revokes every existing session.
 func (h *Hub) ResetOwnerPassword(ctx context.Context, handle, password string) error {
+	if h.cfg.SessionHub != nil {
+		return h.cfg.SessionHub.ResetOwnerPassword(ctx, handle, password)
+	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		return domain.Invalid("%s", err.Error())

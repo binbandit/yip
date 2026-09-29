@@ -6,8 +6,9 @@
   import { Button, Card, Code, CodeBlock, Collapsible, Heading, Icon, Link, MetadataList, MetadataListItem, Selector, Tab, TabList, Text } from '@astryx-svelte/core';
   import { Download, File, MessageSquare, RefreshCw } from '@lucide/svelte';
   import { app, receiptKey } from '../../lib/state/app.svelte';
+  import { workspaceUrl } from '../../lib/workspace';
   import { details } from '../../lib/state/details.svelte';
-  import { api, fetchArtifactText } from '../../lib/api/endpoints';
+  import { api, artifactUrl, fetchArtifactText } from '../../lib/api/endpoints';
   import { ApiError, errorMessage } from '../../lib/api/client';
   import type { Artifact, RunActivity } from '../../lib/api/types.gen';
   import { parseUnifiedDiff, type DiffFile } from '../../lib/util/diff';
@@ -321,7 +322,7 @@
           {/if}
           {#if project}
             <MetadataListItem label="Project">
-              <Link hasUnderline href="/projects/{project.id}">{project.name}</Link>{#if repo}{' '}<Text type="supporting">· <Code size="inherit">{repo.forgeRepo || repo.name}</Code></Text>{/if}
+              <Link hasUnderline href={workspaceUrl(`/projects/${project.id}`)}>{project.name}</Link>{#if repo}{' '}<Text type="supporting">· <Code size="inherit">{repo.forgeRepo || repo.name}</Code></Text>{/if}
             </MetadataListItem>
           {/if}
           <MetadataListItem label="Machine">
@@ -348,7 +349,7 @@
             <span title={job.id}><Code>#{workId(job.id)}</Code></span>
           </MetadataListItem>
           <MetadataListItem label="From">
-            <Link hasUnderline href="/rooms/{job.source.roomId}?msg={job.source.messageId ?? ''}{job.source.threadId ? `&panel=thread%3A${job.source.threadId}` : ''}"
+            <Link hasUnderline href={workspaceUrl(`/rooms/${job.source.roomId}?msg=${job.source.messageId ?? ''}${job.source.threadId ? `&panel=thread%3A${job.source.threadId}` : ''}`)}
               >{room?.name ?? 'the source conversation'}</Link
             >
             {#if job.requiresHumanReview}{' '}<Text type="supporting">· needs your review before it completes</Text>{/if}
@@ -446,7 +447,7 @@
             <DiffView files={diffFiles} focus={app.diffFocus?.jobId === jobId ? app.diffFocus : null} />
             {#if diffTruncated}
               <Text as="p" type="supporting"
-                >The diff is long; <Link href="/v1/artifacts/{diff.id}" target="_blank" rel="noopener" type="inherit" hasUnderline>open the full file</Link>.</Text
+                >The diff is long; <Link href={artifactUrl(diff.id)} target="_blank" rel="noopener" type="inherit" hasUnderline>open the full file</Link>.</Text
               >
             {/if}
           {/if}
@@ -497,9 +498,9 @@
               {#each artifactsByKind(d.artifacts) as a (a.id)}
                 <li>
                   <Icon icon={File} size="sm" color="secondary" />
-                  <Link hasUnderline href="/v1/artifacts/{a.id}" target="_blank" rel="noopener">{a.name}</Link>
+                  <Link hasUnderline href={artifactUrl(a.id)} target="_blank" rel="noopener">{a.name}</Link>
                   <Text type="supporting">{a.kind} · {bytes(a.size)}{a.revision ? ` · ${shortSha(a.revision)}` : ''}</Text>
-                  <Link href="/v1/artifacts/{a.id}?download=1" download label="Download {a.name}" color="secondary">
+                  <Link href={artifactUrl(a.id, true)} download label="Download {a.name}" color="secondary">
                     <Icon icon={Download} size="sm" />
                   </Link>
                 </li>
@@ -547,7 +548,7 @@
                   <Text as="p" type="supporting">
                     {q.status === 'open' ? 'Asked' : q.status === 'answered' ? 'Answered' : 'No longer needed'} · {app.engineerName(q.askerId)}
                     {#if q.continuingWith}{' · '}meanwhile: {q.continuingWith}{/if}
-                    · <Link href="/rooms/{q.source.roomId}?msg={q.messageId}" type="inherit" hasUnderline>open in conversation</Link>
+                    · <Link href={workspaceUrl(`/rooms/${q.source.roomId}?msg=${q.messageId}`)} type="inherit" hasUnderline>open in conversation</Link>
                   </Text>
                 </li>
               {/each}
@@ -555,7 +556,7 @@
                 <li>
                   <p>{a.action.summary}</p>
                   <Text as="p" type="supporting"
-                    >{a.status} · <Link href="/rooms/{a.source.roomId}{a.source.messageId ? `?msg=${a.source.messageId}` : ''}" type="inherit" hasUnderline
+                    >{a.status} · <Link href={workspaceUrl(`/rooms/${a.source.roomId}${a.source.messageId ? `?msg=${a.source.messageId}` : ''}`)} type="inherit" hasUnderline
                       >open in conversation</Link
                     ></Text
                   >
@@ -720,7 +721,7 @@
 </RightPanel>
 
 {#snippet setupAction()}
-  {#if setupLink}<Link href={setupLink.href} type="inherit" hasUnderline>{setupLink.label}</Link>{/if}
+  {#if setupLink}<Link href={workspaceUrl(setupLink.href)} type="inherit" hasUnderline>{setupLink.label}</Link>{/if}
 {/snippet}
 
 {#if confirmStop && job}

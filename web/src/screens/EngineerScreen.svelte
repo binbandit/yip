@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import { Button, Card, Collapsible, Link, List, ListItem, Selector, Switch, Text, TextArea, TextInput, Token } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
   import { ApiError, errorMessage } from '../lib/api/client';
   import type { Decision, EngineerVersion, Job, ProviderProfile, UpdateEngineerRequest } from '../lib/api/types.gen';
@@ -162,12 +163,12 @@
 </script>
 
 {#if !e}
-  {#snippet notFound()}{loadError} <Link hasUnderline href="/engineers">All engineers</Link>{/snippet}
+  {#snippet notFound()}{loadError} <Link hasUnderline href={workspaceUrl('/engineers')}>All engineers</Link>{/snippet}
   <Screen title={loadError ? 'Engineer not found' : 'Loading…'} subtitle={loadError ? notFound : undefined} />
 {:else}
   {#snippet editProfile()}<Button label="Edit profile" onclick={startProfile} />{/snippet}
   <Screen title={e.name} subtitle="{e.role} · AI engineer · @{e.handle}{e.archived ? ' · archived' : ''}" actions={editingProfile ? undefined : editProfile}>
-    {#snippet crumb()}<Link href="/engineers">Engineers</Link>{/snippet}
+    {#snippet crumb()}<Link href={workspaceUrl('/engineers')}>Engineers</Link>{/snippet}
     {#snippet leading()}<Avatar actor={{ kind: 'engineer', id: e.id }} size={64} />{/snippet}
     {#if error}<div class="alert"><Notice tone="danger" role="alert">{error}</Notice></div>{/if}
 
@@ -308,10 +309,10 @@
             <div class="setup">
               <Text as="p" type="supporting">Invite {e.name} into a conversation. Choose them in the room's settings.</Text>
               {#if availableRooms.length === 1}
-                <p><Link hasUnderline href={roomSettings(availableRooms[0])}>Set up {availableRooms[0].name}</Link></p>
+                <p><Link hasUnderline href={workspaceUrl(roomSettings(availableRooms[0]))}>Set up {availableRooms[0].name}</Link></p>
               {:else if availableRooms.length > 1}
                 <Collapsible trigger="Choose a room" defaultIsOpen={false}>
-                  <ul class="links">{#each availableRooms as r (r.id)}<li><Link hasUnderline href={roomSettings(r)}>{r.name}</Link></li>{/each}</ul>
+                  <ul class="links">{#each availableRooms as r (r.id)}<li><Link hasUnderline href={workspaceUrl(roomSettings(r))}>{r.name}</Link></li>{/each}</ul>
                 </Collapsible>
               {/if}
               <div><Button label="Create a room" size="sm" onclick={() => (app.createRoom = { kind: 'room' })} /></div>
@@ -319,7 +320,7 @@
           {:else}
             <ul class="links">
               {#each rooms as r (r.id)}
-                <li><Link hasUnderline href="/rooms/{r.id}">{r.kind === 'dm' ? 'Direct messages' : r.name}</Link>{#if r.private}{' '}<Text type="supporting">· private</Text>{/if}</li>
+                <li><Link hasUnderline href={workspaceUrl(`/rooms/${r.id}`)}>{r.kind === 'dm' ? 'Direct messages' : r.name}</Link>{#if r.private}{' '}<Text type="supporting">· private</Text>{/if}</li>
               {/each}
             </ul>
           {/if}
@@ -329,20 +330,20 @@
             <div class="setup">
               <Text as="p" type="supporting">You can talk now. For repository work, choose what {e.name} can access.</Text>
               {#if availableProjects.length === 1}
-                <p><Link hasUnderline href="/projects/{availableProjects[0].id}#p-access">Choose access to {availableProjects[0].name}</Link></p>
+                <p><Link hasUnderline href={workspaceUrl(`/projects/${availableProjects[0].id}#p-access`)}>Choose access to {availableProjects[0].name}</Link></p>
               {:else if availableProjects.length > 1}
                 <Collapsible trigger="Choose a project" defaultIsOpen={false}>
-                  <ul class="links">{#each availableProjects as p (p.id)}<li><Link hasUnderline href="/projects/{p.id}#p-access">Choose access to {p.name}</Link></li>{/each}</ul>
+                  <ul class="links">{#each availableProjects as p (p.id)}<li><Link hasUnderline href={workspaceUrl(`/projects/${p.id}#p-access`)}>Choose access to {p.name}</Link></li>{/each}</ul>
                 </Collapsible>
               {:else}
-                <div><Button label="Connect a project" size="sm" href="/projects" /></div>
+                <div><Button label="Connect a project" size="sm" href={workspaceUrl('/projects')} /></div>
               {/if}
             </div>
           {:else}
             <ul class="links">
               {#each permitted as x (x.project.id)}
                 <li>
-                  <Link hasUnderline href="/projects/{x.project.id}">{x.project.name}</Link>{' '}<Text type="supporting"
+                  <Link hasUnderline href={workspaceUrl(`/projects/${x.project.id}`)}>{x.project.name}</Link>{' '}<Text type="supporting"
                     >· {x.grant?.access === 'write' ? 'can change code' : 'read only'}{x.grant?.actions.length
                       ? ` · can ${x.grant.actions.map((a) => ACTION_LABELS[a] ?? a).join(', ')}`
                       : ''}</Text

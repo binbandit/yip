@@ -199,8 +199,11 @@ func subtleEq(a, b string) bool {
 	return a != "" && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-// Cookies ignore ports, so each workspace needs a stable, distinct name.
+// Cookies ignore ports, so each installation needs a stable, distinct name.
 func (s *Server) sessionCookieName() string {
+	if root := s.hub.Config().SessionHub; root != nil {
+		return cookieName + "_" + root.Org().ID
+	}
 	return cookieName + "_" + s.hub.Org().ID
 }
 

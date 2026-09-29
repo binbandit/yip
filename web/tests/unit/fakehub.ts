@@ -110,7 +110,7 @@ export class FakeEventSource {
 /** A hub pre-loaded with every fixture the smoke tests use. */
 export function demoHub(): FakeHub {
   const hub = new FakeHub();
-  const boot = fixture<{ rooms: { id: string; name: string }[] }>('bootstrap.json');
+  const boot = fixture<{ org: { id: string; name: string }; rooms: { id: string; name: string }[] }>('bootstrap.json');
   const roomId = (name: string) => boot.rooms.find((r) => r.name === name)!.id;
   const sec = roomId('Security');
   const re = roomId('Reverse engineering');
@@ -120,6 +120,7 @@ export function demoHub(): FakeHub {
   hub
     .json('GET', /^\/v1\/setup$/, fixture('setup.json'))
     .json('GET', /^\/v1\/bootstrap$/, boot)
+    .json('GET', /^\/v1\/workspaces$/, [{ ...boot.org, path: '' }])
     .json('GET', /^\/v1\/overview(\?|$)/, fixture('overview.json'))
     .json('GET', new RegExp(`^/v1/rooms/${sec}/messages`), fixture('security-messages.json'))
     .json('GET', new RegExp(`^/v1/rooms/${sec}/work`), fixture('security-work.json'))

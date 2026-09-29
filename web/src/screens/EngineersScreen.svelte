@@ -2,6 +2,7 @@
   import { Button, EmptyState, Icon, Text, Token } from '@astryx-svelte/core';
   import { Plus } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { isLiveJob } from '../lib/state/data';
   import { providerLabel } from '../lib/util/labels';
   import Avatar from '../components/Avatar.svelte';
@@ -34,7 +35,7 @@
       {#each engineers as e (e.id)}
         {@const n = activeCount(e.id)}
         <li class:archived={e.archived}>
-          <a class="card-link" href="/engineers/{e.id}">
+          <a class="card-link" href={workspaceUrl(`/engineers/${e.id}`)}>
             <div class="top">
               <Avatar actor={{ kind: 'engineer', id: e.id }} size={48} />
               <div class="id">

@@ -28,6 +28,7 @@ import (
 	"github.com/binbandit/yip/internal/hub"
 	"github.com/binbandit/yip/internal/runner"
 	"github.com/binbandit/yip/internal/store"
+	"github.com/google/uuid"
 	"golang.org/x/term"
 )
 
@@ -199,14 +200,15 @@ func errOr(err error, ok string) string {
 // ---- backup & restore ----
 
 type backupManifest struct {
-	Format        string           `json:"format"`
-	Version       string           `json:"version"`
-	CreatedAt     string           `json:"createdAt"`
-	SchemaVersion int              `json:"schemaVersion"`
-	DatabaseSHA   string           `json:"databaseSha256"`
-	Counts        map[string]int   `json:"counts"`
-	Artifacts     []backupArtifact `json:"artifacts"`
-	Notes         []string         `json:"notes"`
+	Format        string                    `json:"format"`
+	Version       string                    `json:"version"`
+	CreatedAt     string                    `json:"createdAt"`
+	SchemaVersion int                       `json:"schemaVersion"`
+	DatabaseSHA   string                    `json:"databaseSha256"`
+	Counts        map[string]int            `json:"counts"`
+	Artifacts     []backupArtifact          `json:"artifacts"`
+	Notes         []string                  `json:"notes"`
+	Workspaces    map[string]backupManifest `json:"workspaces,omitempty"`
 }
 
 type backupArtifact struct {
@@ -247,7 +249,7 @@ func runBackup(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Backup written to %s (verified: database integrity ok, %d artifacts).\n%s\n", *out, len(m.Artifacts), strings.Join(m.Notes, "\n"))
+		fmt.Printf("Backup written to %s (verified: root database, %d root artifacts and %d workspaces).\n%s\n", *out, len(m.Artifacts), len(m.Workspaces), strings.Join(m.Notes, "\n"))
 		return nil
 	}
 	if _, err := os.Stat(*out); err == nil {
@@ -279,8 +281,16 @@ func runBackup(args []string) error {
 
 // writeBackup writes a verified plain backup directory.
 func writeBackup(data, out string) (backupManifest, error) {
+	return writeBackupSnapshot(data, out, true)
+}
+
+// Each workspace gets its own online snapshot; only the root owns the CA.
+func writeBackupSnapshot(data, out string, root bool) (backupManifest, error) {
 	var m backupManifest
 	ctx := context.Background()
+	if _, err := os.Stat(filepath.Join(data, "hub.db")); err != nil {
+		return m, err
+	}
 	st, err := store.Open(ctx, filepath.Join(data, "hub.db"))
 	if err != nil {
 		return m, err
@@ -293,7 +303,11 @@ func writeBackup(data, out string) (backupManifest, error) {
 	if err := st.Backup(ctx, dbPath); err != nil {
 		return m, fmt.Errorf("database backup: %w", err)
 	}
-	for _, sub := range []string{"pki", "hub.key"} {
+	secrets := []string{"hub.key"}
+	if root {
+		secrets = append(secrets, "pki")
+	}
+	for _, sub := range secrets {
 		if err := copyTree(filepath.Join(data, sub), filepath.Join(out, sub)); err != nil {
 			return m, err
 		}
@@ -332,12 +346,39 @@ func writeBackup(data, out string) (backupManifest, error) {
 		}
 		m.Artifacts = append(m.Artifacts, backupArtifact{Hash: a.Hash, Size: a.Size})
 	}
+	if root {
+		entries, err := os.ReadDir(filepath.Join(data, "workspaces"))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return m, err
+		}
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), ".") {
+				continue // Workspace creation is committed by renaming its staging directory.
+			}
+			if !entry.IsDir() || !backupWorkspaceID(entry.Name()) {
+				return m, fmt.Errorf("unexpected workspace entry %q", entry.Name())
+			}
+			child, err := writeBackupSnapshot(filepath.Join(data, "workspaces", entry.Name()), filepath.Join(out, "workspaces", entry.Name()), false)
+			if err != nil {
+				return m, fmt.Errorf("workspace %s: %w", entry.Name(), err)
+			}
+			if m.Workspaces == nil {
+				m.Workspaces = map[string]backupManifest{}
+			}
+			m.Workspaces[entry.Name()] = child
+		}
+	}
 	mb, _ := json.MarshalIndent(m, "", "  ")
 	if err := os.WriteFile(filepath.Join(out, "backup.json"), mb, 0o600); err != nil {
 		return m, err
 	}
 	_ = st.Tx(ctx, func(tx *sql.Tx) error { return store.SetSetting(ctx, tx, "last_backup_at", m.CreatedAt) })
 	return m, nil
+}
+
+func backupWorkspaceID(id string) bool {
+	parsed, err := uuid.Parse(id)
+	return err == nil && parsed.String() == id
 }
 
 // backupPassphrase reads the passphrase from a file, YIP_BACKUP_PASSPHRASE,
@@ -521,19 +562,43 @@ func runRestore(args []string) error {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return err
 	}
-	if sha, _ := fileSHA(filepath.Join(*from, "hub.db")); sha != m.DatabaseSHA {
-		return errors.New("the backup database does not match its recorded checksum")
-	}
-	if err := os.MkdirAll(*data, 0o700); err != nil {
+	if err := restoreBackupSnapshot(*from, *data, m, true); err != nil {
 		return err
 	}
-	for _, sub := range []string{"hub.db", "pki", "hub.key", "artifacts"} {
-		if err := copyTree(filepath.Join(*from, sub), filepath.Join(*data, sub)); err != nil {
+	fmt.Printf("Restored into %s and verified: database integrity, artifact hashes and counts match (root and %d workspaces).\n", *data, len(m.Workspaces))
+	fmt.Println("Start the hub with --data pointing here. Machines keep their certificates; sign providers in again on runners if needed.")
+	return nil
+}
+
+func restoreBackupSnapshot(from, data string, m backupManifest, root bool) error {
+	if m.Format != "yip-backup v1" {
+		return fmt.Errorf("unsupported backup format %q", m.Format)
+	}
+	if !root && len(m.Workspaces) != 0 {
+		return errors.New("nested workspaces are not supported")
+	}
+	for id := range m.Workspaces {
+		if !backupWorkspaceID(id) {
+			return fmt.Errorf("invalid backup workspace ID %q", id)
+		}
+	}
+	if sha, err := fileSHA(filepath.Join(from, "hub.db")); err != nil || sha != m.DatabaseSHA {
+		return errors.New("the backup database does not match its recorded checksum")
+	}
+	if err := os.MkdirAll(data, 0o700); err != nil {
+		return err
+	}
+	files := []string{"hub.db", "hub.key", "artifacts"}
+	if root {
+		files = append(files, "pki")
+	}
+	for _, sub := range files {
+		if err := copyTree(filepath.Join(from, sub), filepath.Join(data, sub)); err != nil {
 			return err
 		}
 	}
 	ctx := context.Background()
-	st, err := store.Open(ctx, filepath.Join(*data, "hub.db"))
+	st, err := store.Open(ctx, filepath.Join(data, "hub.db"))
 	if err != nil {
 		return err
 	}
@@ -541,7 +606,7 @@ func runRestore(args []string) error {
 	if err := store.IntegrityCheck(ctx, st.R()); err != nil {
 		return err
 	}
-	as, _ := hub.NewArtifactStore(filepath.Join(*data, "artifacts"))
+	as, _ := hub.NewArtifactStore(filepath.Join(data, "artifacts"))
 	for _, a := range m.Artifacts {
 		if err := as.Verify(a.Hash); err != nil {
 			return fmt.Errorf("restored artifact failed verification: %w", err)
@@ -553,8 +618,11 @@ func runRestore(args []string) error {
 			return fmt.Errorf("restored %s count %d differs from the backup's %d", k, counts[k], v)
 		}
 	}
-	fmt.Printf("Restored into %s and verified: integrity ok, %d artifacts match their hashes, counts match %v.\n", *data, len(m.Artifacts), counts)
-	fmt.Println("Start the hub with --data pointing here. Machines keep their certificates; sign providers in again on runners if needed.")
+	for id, child := range m.Workspaces {
+		if err := restoreBackupSnapshot(filepath.Join(from, "workspaces", id), filepath.Join(data, "workspaces", id), child, false); err != nil {
+			return fmt.Errorf("workspace %s: %w", id, err)
+		}
+	}
 	return nil
 }
 

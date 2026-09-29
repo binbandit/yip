@@ -4,6 +4,7 @@
   import { AtSign, Folder, Lock, MessageSquareReply, Settings } from '@lucide/svelte';
   import { AvatarGroup, Button, Icon, IconButton, Text, Tooltip, VisuallyHidden } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import type { Room } from '../lib/api/types.gen';
   import Avatar from './Avatar.svelte';
 
@@ -41,7 +42,7 @@
 
   <div class="facts">
     {#each projects as p (p.id)}
-      <Button class="project" variant="secondary" size="sm" href="/projects/{p.id}" label={p.name}>
+      <Button class="project" variant="secondary" size="sm" href={workspaceUrl(`/projects/${p.id}`)} label={p.name}>
         {#snippet icon()}<Icon icon={Folder} size="sm" />{/snippet}
       </Button>
     {/each}

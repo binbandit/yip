@@ -7,6 +7,7 @@
   import { AppShell, Button, Icon, Link } from '@astryx-svelte/core';
   import { RefreshCw, WifiOff } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import Sidebar from '../components/Sidebar.svelte';
   import PanelHost from '../components/PanelHost.svelte';
   import SearchDialog from '../components/SearchDialog.svelte';
@@ -85,7 +86,7 @@
       }
       return org;
     };
-    document.title = `${titleFor()} · yip`;
+    document.title = `${titleFor()} · ${app.data.org?.name ?? 'Workspace'} · yip`;
   });
 </script>
 
@@ -136,7 +137,7 @@
         <SettingsScreen />
       {:else}
         <Screen title="That page doesn't exist">
-          {#snippet subtitle()}It may have been moved or archived. <Link hasUnderline href="/overview">Go to Overview</Link>.{/snippet}
+          {#snippet subtitle()}It may have been moved or archived. <Link hasUnderline href={workspaceUrl('/overview')}>Go to Overview</Link>.{/snippet}
         </Screen>
       {/if}
     </div>

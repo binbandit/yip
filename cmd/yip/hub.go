@@ -154,7 +154,12 @@ func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*
 
 	opts := httpapi.Options{SecureCookies: f.secureCookies || f.tlsCert != "", Web: httpapi.WebFS(web.Dist, "dist"), Logger: log,
 		AllowedOrigins: splitList(f.allowedOrigins)}
-	browser := &http.Server{Addr: f.listen, Handler: httpapi.New(h, opts), ReadHeaderTimeout: 10 * time.Second}
+	workspaces, err := httpapi.OpenWorkspaces(ctx, h, opts)
+	if err != nil {
+		h.Close()
+		return nil, nil, err
+	}
+	browser := &http.Server{Addr: f.listen, Handler: workspaces, ReadHeaderTimeout: 10 * time.Second}
 	hosts := append([]string{hostname}, splitList(f.runnerHosts)...)
 	if u := strings.TrimPrefix(f.runnerURL, "https://"); u != "" {
 		if host, _, err := net.SplitHostPort(u); err == nil {
@@ -163,19 +168,19 @@ func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*
 	}
 	tlsConf, err := h.CA().ServerTLS(hosts)
 	if err != nil {
-		h.Close()
+		workspaces.Close()
 		return nil, nil, err
 	}
 	rln, err := tls.Listen("tcp", f.runnerListen, tlsConf)
 	if err != nil {
-		h.Close()
+		workspaces.Close()
 		return nil, nil, fmt.Errorf("runner listener: %w", err)
 	}
-	runnerSrv := &http.Server{Handler: httpapi.NewRunnerServer(h, func(msg string, args ...any) { log.Info(msg, args...) }), ReadHeaderTimeout: 10 * time.Second}
+	runnerSrv := &http.Server{Handler: workspaces.RunnerHandler(), ReadHeaderTimeout: 10 * time.Second}
 	bln, err := net.Listen("tcp", f.listen)
 	if err != nil {
 		rln.Close()
-		h.Close()
+		workspaces.Close()
 		return nil, nil, fmt.Errorf("browser listener: %w", err)
 	}
 	go func() {
@@ -204,7 +209,7 @@ func startHub(ctx context.Context, f hubFlags, isDemo bool, log *slog.Logger) (*
 		defer cancel()
 		_ = browser.Shutdown(sctx)
 		_ = runnerSrv.Shutdown(sctx)
-		_ = h.Close()
+		_ = workspaces.Close()
 	}
 	return h, stop, nil
 }

@@ -31,10 +31,13 @@ import (
 
 // Config configures a hub.
 type Config struct {
-	DataDir string
-	Version string
-	Limits  domain.Limits
-	Logger  *slog.Logger
+	// SessionHub owns installation-wide human credentials and TLS trust.
+	// A child still authorizes users and machines against its own database.
+	SessionHub *Hub
+	DataDir    string
+	Version    string
+	Limits     domain.Limits
+	Logger     *slog.Logger
 	// RunnerURL is the address runners use to reach the hub's runner
 	// listener (https://host:port). Shown in enrollment commands.
 	RunnerURL string
@@ -110,7 +113,12 @@ func Open(ctx context.Context, cfg Config) (*Hub, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-	ca, err := auth.LoadOrCreateCA(filepath.Join(cfg.DataDir, "pki"))
+	var ca *auth.CA
+	if cfg.SessionHub != nil {
+		ca = cfg.SessionHub.CA()
+	} else {
+		ca, err = auth.LoadOrCreateCA(filepath.Join(cfg.DataDir, "pki"))
+	}
 	if err != nil {
 		st.Close()
 		return nil, fmt.Errorf("hub CA: %w", err)

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from 'svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { errorMessage } from '../lib/api/client';
   import type { PendingMessage } from '../lib/state/data';
   import { Button, Link, Text } from '@astryx-svelte/core';
@@ -71,7 +72,7 @@
 
 {#if !room}
   <Screen title="This room isn't available">
-    {#snippet subtitle()}It may have been archived, or you're no longer a member. <Link href="/overview" hasUnderline>Go to Overview</Link>.{/snippet}
+    {#snippet subtitle()}It may have been archived, or you're no longer a member. <Link href={workspaceUrl('/overview')} hasUnderline>Go to Overview</Link>.{/snippet}
   </Screen>
 {:else}
   <section class="room" aria-labelledby="room-title">

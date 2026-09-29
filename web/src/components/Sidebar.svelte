@@ -7,9 +7,10 @@
   import { BellOff, Folder, Hash, LayoutDashboard, Lock, LogOut, MessageSquare, Monitor, Moon, Pencil, Plus, Search, Settings, Sun, Users } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { roomsWithDrafts } from '../lib/state/drafts';
+  import { workspaceUrl } from '../lib/workspace';
   import Avatar from './Avatar.svelte';
   import StateIcon from './StateIcon.svelte';
-  import Wordmark from './Wordmark.svelte';
+  import WorkspaceSwitcher from './WorkspaceSwitcher.svelte';
 
   /** Set while a modal panel covers the work card. */
   let { inert = false }: { inert?: boolean } = $props();
@@ -84,7 +85,7 @@
 </script>
 
 {#snippet header()}
-  <a class="brand" href="/overview" aria-label="yip — Overview" onclick={go}><Wordmark size={22} /></a>
+  <WorkspaceSwitcher compact={renderMode() === 'topbar'} />
 {/snippet}
 
 {#snippet search()}
@@ -103,7 +104,7 @@
 
 {#snippet footer()}
   <div class="foot">
-    <a class="health" href="/machines" onclick={go}>
+    <a class="health" href={workspaceUrl('/machines')} onclick={go}>
       <StateIcon shape={health.shape} tone={health.tone} size={13} />
       <span>{health.text}</span>
     </a>
@@ -182,10 +183,10 @@
   {footer}
 >
   <SideNavSection title="Pages" isHeaderHidden>
-    <SideNavItem label="Overview" icon={overviewIcon} href="/overview" onclick={go} isSelected={route.name === 'overview'} />
-    <SideNavItem label="Engineers" icon={engineersIcon} href="/engineers" onclick={go} isSelected={route.name === 'engineers' || route.name === 'engineer'} />
-    <SideNavItem label="Projects" icon={projectsIcon} href="/projects" onclick={go} isSelected={route.name === 'projects' || route.name === 'project'} />
-    <SideNavItem label="Machines" icon={machinesIcon} href="/machines" onclick={go} isSelected={route.name === 'machines'} />
+    <SideNavItem label="Overview" icon={overviewIcon} href={workspaceUrl('/overview')} onclick={go} isSelected={route.name === 'overview'} />
+    <SideNavItem label="Engineers" icon={engineersIcon} href={workspaceUrl('/engineers')} onclick={go} isSelected={route.name === 'engineers' || route.name === 'engineer'} />
+    <SideNavItem label="Projects" icon={projectsIcon} href={workspaceUrl('/projects')} onclick={go} isSelected={route.name === 'projects' || route.name === 'project'} />
+    <SideNavItem label="Machines" icon={machinesIcon} href={workspaceUrl('/machines')} onclick={go} isSelected={route.name === 'machines'} />
   </SideNavSection>
 
   <SideNavSection title="Rooms">
@@ -203,7 +204,7 @@
         <SideNavItem
           label={r.name}
           icon={r.private ? privateRoomIcon : roomIcon}
-          href="/rooms/{r.id}"
+          href={workspaceUrl(`/rooms/${r.id}`)}
           onclick={go}
           isSelected={current}
           class="yip-room {r.unreadCount > 0 && !current ? 'unread' : ''}"
@@ -231,7 +232,7 @@
         <SideNavItem
           label={eng?.name ?? r.name}
           icon={eng ? avatarIcon : dmIcon}
-          href="/rooms/{r.id}"
+          href={workspaceUrl(`/rooms/${r.id}`)}
           onclick={go}
           isSelected={current}
           class="yip-room {r.unreadCount > 0 && !current ? 'unread' : ''}"
@@ -244,14 +245,6 @@
 </SideNav>
 
 <style>
-  .brand {
-    display: inline-flex;
-    align-items: center;
-    padding: var(--spacing-1) var(--spacing-2);
-    color: var(--color-text-primary);
-    text-decoration: none;
-    border-radius: var(--radius-inner);
-  }
   .search {
     display: flex;
     align-items: center;

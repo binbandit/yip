@@ -7,6 +7,7 @@
   import Notice from '../components/Notice.svelte';
   import { Plus } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { atTime } from '../lib/util/time';
   import { api } from '../lib/api/endpoints';
   import { ApiError, errorMessage } from '../lib/api/client';
@@ -243,7 +244,7 @@
 </script>
 
 {#if !p}
-  {#snippet notFound()}{loadError} <Link hasUnderline href="/projects">All projects</Link>{/snippet}
+  {#snippet notFound()}{loadError} <Link hasUnderline href={workspaceUrl('/projects')}>All projects</Link>{/snippet}
   <Screen title={loadError ? 'Project not found' : 'Loading…'} subtitle={loadError ? notFound : undefined} />
 {:else}
   {#snippet editAbout()}
@@ -258,7 +259,7 @@
     />
   {/snippet}
   <Screen title={p.name} subtitle={p.description || undefined} actions={editingAbout ? undefined : editAbout}>
-    {#snippet crumb()}<Link href="/projects">Projects</Link>{/snippet}
+    {#snippet crumb()}<Link href={workspaceUrl('/projects')}>Projects</Link>{/snippet}
 
     {#if editingAbout}
       <Card>
@@ -583,7 +584,7 @@
         {#if rooms.length === 0}
           <Text as="p" type="supporting">Not linked to a room. Link it from a room's settings.</Text>
         {:else}
-          <ul class="links">{#each rooms as r (r.id)}<li><Link hasUnderline href="/rooms/{r.id}">{r.name}</Link></li>{/each}</ul>
+          <ul class="links">{#each rooms as r (r.id)}<li><Link hasUnderline href={workspaceUrl(`/rooms/${r.id}`)}>{r.name}</Link></li>{/each}</ul>
         {/if}
       </ScreenSection>
     </div>

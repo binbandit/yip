@@ -7,6 +7,7 @@
 // - A network failure becomes code "offline" so screens can say
 //   "Can't reach your workspace" rather than showing a stack trace.
 import type { APIError } from './types.gen';
+import { workspaceUrl } from '../workspace';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -81,6 +82,7 @@ function responseError(status: number, parsed: unknown): ApiError {
 }
 
 export async function request<T>(method: Method, path: string, body?: unknown, opts: RequestOptions = {}): Promise<T> {
+  const url = workspaceUrl(path);
   const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (method !== 'GET' && csrfToken) headers['X-Yip-Csrf'] = csrfToken;
@@ -90,7 +92,7 @@ export async function request<T>(method: Method, path: string, body?: unknown, o
   let res: Response | undefined;
   for (let attempt = 0; ; attempt++) {
     try {
-      res = await fetch(path, {
+      res = await fetch(url, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -122,11 +124,12 @@ export async function request<T>(method: Method, path: string, body?: unknown, o
 
 /** Send a file as the raw request body (e.g. a git bundle or a picture). */
 export async function upload<T>(path: string, file: Blob, method: 'POST' | 'PUT' = 'POST'): Promise<T> {
+  const url = workspaceUrl(path);
   const headers: Record<string, string> = { Accept: 'application/json', 'Content-Type': 'application/octet-stream' };
   if (csrfToken) headers['X-Yip-Csrf'] = csrfToken;
   let res: Response;
   try {
-    res = await fetch(path, { method, headers, body: file, credentials: 'same-origin' });
+    res = await fetch(url, { method, headers, body: file, credentials: 'same-origin' });
   } catch {
     throw offlineError();
   }

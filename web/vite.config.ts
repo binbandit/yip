@@ -43,6 +43,11 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
+      // Only APIs: Vite still serves the client at /w/<id>/... in development.
+      '^/w/[^/]+/v1(?:/|$)': {
+        target: hub,
+        changeOrigin: false,
+      },
       '/v1': {
         target: hub,
         changeOrigin: false,

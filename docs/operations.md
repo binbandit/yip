@@ -235,8 +235,11 @@ yip restore --from /Volumes/Backups/yip-2026-09-25.yipenc --data ~/.yip/hub-rest
 ```
 
 - Backups are **online** (SQLite `VACUUM INTO`, safe while the hub runs) and
-  include the database, every artifact, the hub CA, and the hub key. Copying
-  only `hub.db` while WAL is active is not a backup.
+  include the root and every committed workspace's database, artifacts and hub
+  key, plus one copy of the shared root CA. Use the installation root for
+  `--data`; hidden workspace staging directories are skipped. Each database
+  has a consistent snapshot, not a single transaction across all workspaces.
+  Copying only `hub.db` while WAL is active is not a backup.
 - `--encrypt` writes one file encrypted with your passphrase (Argon2id key,
   AES-256-GCM in authenticated chunks, so a wrong passphrase, an altered
   file, or a truncated one is refused). The passphrase comes from
@@ -246,7 +249,8 @@ yip restore --from /Volumes/Backups/yip-2026-09-25.yipenc --data ~/.yip/hub-rest
   verified and packed, then removed. Without `--encrypt` you get a plain
   directory: keep it on an encrypted volume.
 - Restores go into a **new, empty directory** and verify database integrity,
-  every artifact hash, and record counts before you point the hub at it.
+  every artifact hash, and record counts for the root and each workspace before
+  you point the hub at it. Older root-only backups remain supported.
 - Provider sign-ins are never in backups; re-establish them on runners.
 
 ## Upgrades

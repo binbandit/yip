@@ -113,11 +113,14 @@ silently become an unaddressed room message or enter a different assignment.
 If the selected work cannot be loaded, the draft remains available and the
 owner can explicitly clear its selection.
 
-Browser session cookies have a stable workspace-specific name because cookies
-are shared across ports on one hostname. A valid legacy cookie migrates on
-its next authenticated request; an invalid legacy cookie is left untouched
-because it may belong to another workspace. Sign-out clears only this
-workspace's cookie. Origin and CSRF checks remain unchanged.
+Browser session cookies have a stable installation-specific name because
+cookies are shared across ports on one hostname. A valid legacy cookie
+migrates on its next authenticated request; an invalid legacy cookie is left
+untouched because it may belong to another installation. Workspaces within
+one installation share sign-in, and sign-out ends that browser session across
+them. Origin and CSRF checks remain unchanged. Workspace URLs select separate
+hub databases, event buses, artifacts, schedulers, and machine authorizations;
+they do not change an installation-wide active-workspace cookie.
 
 Routine shell edits and checks in the assigned checkout can use heredocs.
 The policy parser separates a literal body from executable shell syntax,

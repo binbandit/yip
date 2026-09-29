@@ -53,6 +53,14 @@ async function send() {
   flushSync();
 }
 
+it.each(['pagehide', 'yip:before-workspace-switch'])('flushes the final keystroke on %s before the save debounce fires', (event) => {
+  show();
+  write('Do not lose this last keystroke.');
+  expect(loadDraft(draftKey(roomId))).toBeNull();
+  window.dispatchEvent(new Event(event));
+  expect(loadDraft(draftKey(roomId))?.body).toBe('Do not lose this last keystroke.');
+});
+
 it.each(['completed', 'failed', 'cancelled'] as const)('keeps a drafted update addressed when selected work becomes %s', async (state) => {
   app.data.jobs[job.id] = { ...job, state: 'running' };
   app.steer[rkey] = job.id;

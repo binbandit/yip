@@ -670,6 +670,18 @@
       ],
       "type": "object"
     },
+    "CreateWorkspaceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
     "Decision": {
       "additionalProperties": false,
       "properties": {
@@ -1340,6 +1352,9 @@
           "type": "string"
         },
         "name": {
+          "type": "string"
+        },
+        "runCommand": {
           "type": "string"
         },
         "token": {
@@ -4481,6 +4496,26 @@
       "required": [
         "job",
         "lastConfirmed"
+      ],
+      "type": "object"
+    },
+    "Workspace": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "path"
       ],
       "type": "object"
     },

@@ -4,6 +4,7 @@
 // loss ("Your draft is saved on this device"). Storage failures (private
 // browsing, quota) degrade to in-memory behaviour rather than throwing.
 import { parseSerializedMentions, type SelectedMention } from '../util/mentions';
+import { workspaceStoragePrefix } from '../workspace';
 
 export interface Draft {
   body: string;
@@ -22,10 +23,8 @@ export interface KeyValueStorage {
   key(index: number): string | null;
 }
 
-const PREFIX = 'yip.draft.';
-
 export function draftKey(roomId: string, threadId?: string | null): string {
-  return PREFIX + roomId + (threadId ? '.' + threadId : '');
+  return workspaceStoragePrefix('draft') + roomId + (threadId ? '.' + threadId : '');
 }
 
 function storage(s?: KeyValueStorage): KeyValueStorage | null {
@@ -93,14 +92,15 @@ export function clearDraft(key: string, store?: KeyValueStorage): void {
 
 /** Room ids with a saved top-level draft (the sidebar marks them). */
 export function roomsWithDrafts(store?: KeyValueStorage): Set<string> {
+  const prefix = workspaceStoragePrefix('draft');
   const st = storage(store);
   const out = new Set<string>();
   if (!st) return out;
   try {
     for (let i = 0; i < st.length; i++) {
       const k = st.key(i);
-      if (k && k.startsWith(PREFIX)) {
-        const rest = k.slice(PREFIX.length);
+      if (k && k.startsWith(prefix)) {
+        const rest = k.slice(prefix.length);
         if (!rest.includes('.')) out.add(rest);
       }
     }
@@ -114,8 +114,6 @@ export function roomsWithDrafts(store?: KeyValueStorage): Set<string> {
 // A send that failed is kept (with its clientKey) so an explicit Retry after a
 // reload reconciles to the original if the hub did receive it. Nothing is
 // replayed automatically.
-
-const UNSENT = 'yip.unsent.';
 
 export interface UnsentMessage {
   clientKey: string;
@@ -131,7 +129,7 @@ export interface UnsentMessage {
 
 export function saveUnsent(m: UnsentMessage, store?: KeyValueStorage): void {
   try {
-    storage(store)?.setItem(UNSENT + m.clientKey, JSON.stringify(m));
+    storage(store)?.setItem(workspaceStoragePrefix('unsent') + m.clientKey, JSON.stringify(m));
   } catch {
     /* ignore */
   }
@@ -139,20 +137,21 @@ export function saveUnsent(m: UnsentMessage, store?: KeyValueStorage): void {
 
 export function clearUnsent(clientKey: string, store?: KeyValueStorage): void {
   try {
-    storage(store)?.removeItem(UNSENT + clientKey);
+    storage(store)?.removeItem(workspaceStoragePrefix('unsent') + clientKey);
   } catch {
     /* ignore */
   }
 }
 
 export function loadUnsent(store?: KeyValueStorage): UnsentMessage[] {
+  const prefix = workspaceStoragePrefix('unsent');
   const st = storage(store);
   const out: UnsentMessage[] = [];
   if (!st) return out;
   try {
     for (let i = 0; i < st.length; i++) {
       const k = st.key(i);
-      if (!k || !k.startsWith(UNSENT)) continue;
+      if (!k || !k.startsWith(prefix)) continue;
       try {
         const v = JSON.parse(st.getItem(k) ?? '');
         if (v && typeof v.clientKey === 'string' && typeof v.roomId === 'string' && typeof v.body === 'string') out.push(v);

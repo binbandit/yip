@@ -13,6 +13,11 @@ Prefer not to run agents directly on your host? The opt-in
 [ephemeral Docker runtime](docs/ephemeral-agents.md) isolates each attempt and
 imports supported harness authentication, skills and MCP configuration.
 
+Keep work and personal contexts separate with the workspace menu at the top
+of the sidebar. Create a workspace, then switch between its own rooms, chats,
+engineers, projects, and machine pairings without stopping background work.
+See [Multiple workspaces](docs/workspaces.md).
+
 What makes it different is that **conversation, accountable work, and
 evidence are one loop**:
 

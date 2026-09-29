@@ -26,6 +26,7 @@ import { EventStream, type ConnectionState } from './events';
 import { clearUnsent, loadUnsent, saveUnsent } from './drafts';
 import { href, parseLocation, safeNext, withPanel, type Location, type Panel, type Route } from '../router';
 import { plainText } from '../util/markdown';
+import { recalledWorkspaceLocation, rememberWorkspaceLocation, workspaceBase, workspaceLocalPath, workspaceUrl, type WorkspaceSummary } from '../workspace';
 
 export type Phase = 'loading' | 'setup' | 'signin' | 'ready' | 'error';
 
@@ -59,6 +60,9 @@ class AppState {
   phase = $state<Phase>('loading');
   bootError = $state('');
   setupOrgName = $state('');
+  workspaces = $state<WorkspaceSummary[]>([]);
+  workspacesLoading = $state(false);
+  workspacesError = $state('');
   connection = $state<ConnectionState>('connecting');
   online = $state(typeof navigator === 'undefined' ? true : navigator.onLine !== false);
   now = $state(Date.now());
@@ -90,6 +94,10 @@ class AppState {
     return this.data.user;
   }
 
+  get currentWorkspacePath(): string {
+    return workspaceBase();
+  }
+
   get rooms(): Room[] {
     return Object.values(this.data.rooms).filter((r) => !r.archived);
   }
@@ -118,6 +126,12 @@ class AppState {
     onUnauthorized(() => this.sessionExpired());
     window.addEventListener('popstate', () => {
       this.loc = currentLocation();
+    });
+    window.addEventListener('pageshow', (event) => {
+      // Back can restore the old document after switching workspaces. Its
+      // stream was stopped and snapshots may be stale; restore the same clean
+      // document boundary used by an ordinary workspace switch.
+      if (event.persisted) window.location.reload();
     });
     document.addEventListener('click', (e) => this.interceptLink(e));
     window.addEventListener('online', () => {
@@ -184,11 +198,55 @@ class AppState {
     const r = this.loc.route.name;
     if (r === 'signin' || r === 'setup') {
       this.navigate(safeNext(this.loc.next) ?? '/overview', { replace: true });
-    } else if (window.location.pathname === '/') {
+    } else if (workspaceLocalPath(window.location.pathname) === '/') {
       this.navigate('/overview', { replace: true });
     }
     this.startStream();
     void this.loadRuns();
+    void this.refreshWorkspaces();
+  }
+
+  async refreshWorkspaces(): Promise<void> {
+    if (this.workspacesLoading) return;
+    this.workspacesLoading = true;
+    this.workspacesError = '';
+    try {
+      this.workspaces = await api.workspaces();
+    } catch (err) {
+      this.workspacesError = errorMessage(err);
+    } finally {
+      this.workspacesLoading = false;
+    }
+  }
+
+  async addWorkspace(name: string): Promise<void> {
+    const workspace = await api.createWorkspace(name.trim());
+    this.workspaces = [...this.workspaces.filter((w) => w.id !== workspace.id), workspace];
+    this.switchWorkspace(workspace);
+  }
+
+  switchWorkspace(workspace: WorkspaceSummary): void {
+    if (workspace.path === workspaceBase()) return;
+    // Never interpret a malformed registry entry as an external navigation.
+    if (workspace.path !== '' && workspaceBase(workspace.path) !== workspace.path) return;
+    const local = workspaceLocalPath(window.location.pathname) + window.location.search + window.location.hash;
+    rememberWorkspaceLocation(workspaceBase(), local);
+    const remembered = recalledWorkspaceLocation(workspace.path);
+    // Stored paths are local to the destination, never a different workspace or an API.
+    const destination = remembered && !workspaceBase(remembered) ? safeNext(remembered) : null;
+    const resume = destination ? workspaceLocalPath(destination) : '/overview';
+    this.leaveWorkspace(workspaceUrl(resume, workspace.path));
+  }
+
+  private leaveWorkspace(url: string): void {
+    // Flush the final keystroke before navigating, even inside the draft debounce.
+    window.dispatchEvent(new Event('yip:before-workspace-switch'));
+    this.stream?.stop();
+    for (const timer of this.readTimers.values()) clearTimeout(timer);
+    this.readTimers.clear();
+    // A document boundary also discards detail caches, pending requests, search,
+    // composer scope and old event callbacks. Other workspaces keep running.
+    window.location.assign(url);
   }
 
   /** Active attempts, for "working" indicators; run.* events keep them current. */
@@ -341,6 +399,7 @@ class AppState {
     this.stream = null;
     setCsrfToken('');
     this.data = emptyState();
+    this.workspaces = [];
     this.phase = 'signin';
     this.navigate('/signin', { replace: true });
   }
@@ -348,6 +407,11 @@ class AppState {
   // ---- routing ----
 
   navigate(url: string, opts: { replace?: boolean } = {}): void {
+    url = workspaceUrl(url);
+    if (workspaceBase(url) !== workspaceBase()) {
+      this.leaveWorkspace(url);
+      return;
+    }
     const current = window.location.pathname + window.location.search;
     if (url !== current) {
       if (opts.replace) history.replaceState(null, '', url);
@@ -389,7 +453,7 @@ class AppState {
     const a = (e.target as HTMLElement | null)?.closest?.('a');
     if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
     const url = a.getAttribute('href');
-    if (!url || !url.startsWith('/') || url.startsWith('//') || url.startsWith('/v1/')) return;
+    if (!url || !url.startsWith('/') || url.startsWith('//') || workspaceLocalPath(url).startsWith('/v1/')) return;
     e.preventDefault();
     this.navigate(url);
   }

@@ -6,6 +6,7 @@
   import { Book, MessageSquareText } from '@lucide/svelte';
   import Notice from '../components/Notice.svelte';
   import { app } from '../lib/state/app.svelte';
+  import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
   import type { Job, Overview, Question } from '../lib/api/types.gen';
@@ -151,7 +152,7 @@
 
 {#snippet summaryLink()}
   {#if overviewRoom}
-    <Button label="Open workspace summary" href="/rooms/{overviewRoom.id}">
+    <Button label="Open workspace summary" href={workspaceUrl(`/rooms/${overviewRoom.id}`)}>
       {#snippet icon()}<Icon icon={MessageSquareText} size="sm" />{/snippet}
     </Button>
   {/if}

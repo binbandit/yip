@@ -198,7 +198,13 @@
       if (d.jobId && app.steer[rkey] === undefined) app.steer[rkey] = d.jobId;
     }
     void tick().then(autosize);
-    return () => flushDraft();
+    window.addEventListener('pagehide', flushDraft);
+    window.addEventListener('yip:before-workspace-switch', flushDraft);
+    return () => {
+      window.removeEventListener('pagehide', flushDraft);
+      window.removeEventListener('yip:before-workspace-switch', flushDraft);
+      flushDraft();
+    };
   });
 
   function scheduleSave() {

@@ -3,6 +3,7 @@
   // Adding a member first shows what history becomes visible to them.
   import { Button, CheckboxInput, CheckboxList, CheckboxListItem, Divider, Heading, Link, RadioList, RadioListItem, Selector, Switch, Text, TextInput } from '@astryx-svelte/core';
   import { app } from '../../lib/state/app.svelte';
+  import { workspaceUrl } from '../../lib/workspace';
   import { api } from '../../lib/api/endpoints';
   import { ApiError, errorMessage } from '../../lib/api/client';
   import { setRoomSnapshot } from '../../lib/state/data';
@@ -248,7 +249,7 @@
           {#if Object.keys(app.data.projects).length === 0}
             <fieldset class="group">
               <legend class="legend">Projects</legend>
-              <Text as="p" type="supporting">No projects yet. <Link href="/projects" type="inherit" hasUnderline>Create one</Link>.</Text>
+              <Text as="p" type="supporting">No projects yet. <Link href={workspaceUrl('/projects')} type="inherit" hasUnderline>Create one</Link>.</Text>
             </fieldset>
           {:else}
             <CheckboxList label="Projects" value={projectIds} onChange={(v) => (projectIds = v)}>
