@@ -60,6 +60,8 @@ func main() {
 		}
 	case "bridge":
 		err = runBridge(args)
+	case "agent-worker":
+		err = runAgentWorker(args)
 	case "doctor":
 		err = runDoctor(args)
 	case "backup":

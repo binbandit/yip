@@ -1,10 +1,13 @@
 package runner
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/binbandit/yip/protocol"
 )
 
 // A workspace's size is reported in bytes with whether it was measured and
@@ -78,5 +81,49 @@ func TestListWorkspacesReportsKindsAndSizes(t *testing.T) {
 	}
 	if len(got) != 2 || got["scratch-aaaaaaaaaaaa"] != "scratch" || got["review-bbbbbbbbbbbb"] != "review" {
 		t.Fatalf("workspace kinds: %v", got)
+	}
+}
+
+func TestDockerWorkspaceInspectionIgnoresHostFilters(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	r := &Runner{paths: Paths{t.TempDir()}, log: slog.Default()}
+	dir := filepath.Join(r.paths.work(), "docker-job-aaaaaaaaaaaa")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"init", "--quiet"}, {"config", "user.name", "Test"}, {"config", "user.email", "test@example.invalid"}} {
+		if _, err := isolatedGit(t.Context(), dir, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, data := range map[string]string{".gitattributes": "*.txt filter=host", "note.txt": "original"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"add", "."}, {"commit", "--quiet", "-m", "fixture"}} {
+		if _, err := isolatedGit(t.Context(), dir, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	marker := filepath.Join(home, "filter-executed")
+	config := "[filter \"host\"]\nclean = \"touch '" + marker + "'; cat\"\n"
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("modified"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	list := r.listWorkspaces(t.Context())
+	if len(list) != 1 || list[0].Changes != 1 {
+		t.Fatalf("dirty Docker workspace not reported: %+v", list)
+	}
+	if err := r.cleanupWorkspace(t.Context(), protocol.CleanupWorkspace{Workspace: filepath.Base(dir)}); err == nil {
+		t.Fatal("dirty cleanup should require confirmation")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("workspace inspection executed a host filter")
 	}
 }

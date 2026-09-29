@@ -9,6 +9,10 @@ bring the same engineers (Mira, Oren, Pip — or whoever you configure) into
 different conversations, and ask them to investigate, build, review, and
 explain. Work runs on machines you choose; closing the laptop doesn't stop it.
 
+Prefer not to run agents directly on your host? The opt-in
+[ephemeral Docker runtime](docs/ephemeral-agents.md) isolates each attempt and
+imports supported harness authentication, skills and MCP configuration.
+
 What makes it different is that **conversation, accountable work, and
 evidence are one loop**:
 

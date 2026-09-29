@@ -16,7 +16,10 @@ import (
 )
 
 // workspaceKinds maps a workspace directory prefix to its kind.
-var workspaceKinds = map[string]string{"job-": "job", "review-": "review", "scratch-": "scratch"}
+var workspaceKinds = map[string]string{
+	"job-": "job", "review-": "review", "scratch-": "scratch",
+	"docker-job-": "job", "docker-review-": "review", "docker-scratch-": "scratch",
+}
 
 // listWorkspaces reports every workspace under the work directory: its
 // branch and head, uncommitted changes, size, and whether an active attempt
@@ -42,9 +45,15 @@ func (r *Runner) listWorkspaces(ctx context.Context) []protocol.WorkspaceInfo {
 		}
 		if kind != "scratch" {
 			gctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			info.Branch, _ = git(gctx, dir, "branch", "--show-current")
-			info.Head, _ = git(gctx, dir, "rev-parse", "HEAD")
-			if st, err := git(gctx, dir, "status", "--porcelain"); err == nil && strings.TrimSpace(st) != "" {
+			runGit := git
+			statusArgs := []string{"status", "--porcelain"}
+			if strings.HasPrefix(e.Name(), "docker-") {
+				runGit = isolatedGit
+				statusArgs = append(statusArgs, "--ignore-submodules=all")
+			}
+			info.Branch, _ = runGit(gctx, dir, "branch", "--show-current")
+			info.Head, _ = runGit(gctx, dir, "rev-parse", "HEAD")
+			if st, err := runGit(gctx, dir, statusArgs...); err == nil && strings.TrimSpace(st) != "" {
 				info.Changes = len(strings.Split(strings.TrimSpace(st), "\n"))
 			}
 			cancel()
@@ -142,7 +151,13 @@ func (r *Runner) cleanupWorkspace(ctx context.Context, req protocol.CleanupWorks
 		return fmt.Errorf("%s is being used by a running attempt", req.Workspace)
 	}
 	if kind != "scratch" && !req.Force {
-		if st, err := git(ctx, dir, "status", "--porcelain"); err == nil && strings.TrimSpace(st) != "" {
+		runGit := git
+		statusArgs := []string{"status", "--porcelain"}
+		if strings.HasPrefix(req.Workspace, "docker-") {
+			runGit = isolatedGit
+			statusArgs = append(statusArgs, "--ignore-submodules=all")
+		}
+		if st, err := runGit(ctx, dir, statusArgs...); err == nil && strings.TrimSpace(st) != "" {
 			return fmt.Errorf("%s has %d uncommitted changes; confirm that they may be lost", req.Workspace, len(strings.Split(strings.TrimSpace(st), "\n")))
 		}
 	}

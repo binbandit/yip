@@ -35,9 +35,10 @@ type Options struct {
 	Adapters map[string]providers.Adapter
 	// BridgeExe is the yip executable providers launch as the MCP bridge.
 	BridgeExe string
-	// ExecutionProfile is "native" or "container" (a runner running inside a
-	// restricted container advertises the container profile).
+	// ExecutionProfile is native, container (the entire runner is already
+	// containerized), or docker (a fresh restricted container per attempt).
 	ExecutionProfile string
+	Docker           DockerOptions
 	Version          string
 	Logger           *slog.Logger
 	// ServerName overrides TLS verification of the hub name (e.g. 127.0.0.1).
@@ -69,6 +70,7 @@ type Runner struct {
 	bridgeLn   net.Listener
 	caps       atomic.Value // protocol.RunnerCapabilities
 	shutdown   atomic.Bool
+	uncertain  atomic.Bool // a container may still be using a workspace
 }
 
 // pendingCall is a tool call forwarded to the hub and not yet answered. It
@@ -93,6 +95,8 @@ type activeRun struct {
 	started    bool
 	dropped    bool // removed before it started; must never start
 	session    providers.Session
+	container  *dockerContainer
+	checks     map[string]*dockerContainer
 	ws         *Workspace
 	token      string
 	cancel     context.CancelFunc
@@ -114,6 +118,14 @@ func New(opts Options) (*Runner, error) {
 	}
 	if opts.ExecutionProfile == "" {
 		opts.ExecutionProfile = "native"
+	}
+	switch opts.ExecutionProfile {
+	case "native", "container", "docker":
+	default:
+		return nil, fmt.Errorf("unknown execution profile %q (use native, container, or docker)", opts.ExecutionProfile)
+	}
+	if opts.Docker.Image == "" {
+		opts.Docker.Image = DefaultDockerImage
 	}
 	if opts.BridgeExe == "" {
 		exe, err := os.Executable()
@@ -159,6 +171,7 @@ func New(opts Options) (*Runner, error) {
 		httpc: &http.Client{Timeout: 10 * time.Minute, Transport: &http.Transport{TLSClientConfig: tlsConf}},
 		runs:  map[string]*activeRun{}, tokens: map[string]string{}, tools: map[string]*pendingCall{},
 		approvals: map[string]*pendingApproval{}}
+	r.ws.isolated = opts.ExecutionProfile == "docker"
 	r.heartbeat.Store(int64(10 * time.Second))
 	r.stopMargin.Store(int64(10 * time.Second))
 	r.recoverJournal()
@@ -193,6 +206,20 @@ func (r *Runner) recoverJournal() {
 
 // Run connects to the hub and serves until ctx ends, reconnecting with backoff.
 func (r *Runner) Run(ctx context.Context) error {
+	if r.opts.ExecutionProfile == "docker" {
+		cctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		err := dockerEngineReady(cctx)
+		if err == nil {
+			err = r.reapDocker(cctx)
+		}
+		if err == nil {
+			err = r.dockerReady(cctx)
+		}
+		cancel()
+		if err != nil {
+			return err
+		}
+	}
 	ln, err := r.listenBridge()
 	if err != nil {
 		return err
@@ -729,12 +756,16 @@ func (r *Runner) onOffer(c *websocket.Conn, f protocol.Frame) error {
 	switch {
 	case exists:
 		return reject("this attempt is already active here under another epoch")
-	case draining:
+	case draining || r.uncertain.Load():
 		return reject("this machine is draining")
 	case busy:
 		return reject("no free slot on this machine")
 	case r.opts.Adapters[m.Provider] == nil:
 		return reject("provider " + m.Provider + " is not enabled on this runner")
+	case m.ExecutionProfile == "container" && r.opts.ExecutionProfile == "native":
+		return reject("this runner cannot provide container isolation")
+	case m.ExecutionProfile == "native" && r.opts.ExecutionProfile != "native":
+		return reject("this runner does not expose native host execution")
 	}
 	ack := protocol.RunAck{CommandID: f.ID, Accepted: true, State: "accepted"}
 	if err := r.journal.AcceptRun(f.ID, m, f.LeaseEpoch, ack); err != nil {

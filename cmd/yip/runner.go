@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/binbandit/yip/internal/providers/codex"
 	"github.com/binbandit/yip/internal/providers/cursor"
 	"github.com/binbandit/yip/internal/providers/fake"
+	"github.com/binbandit/yip/internal/providers/worker"
 	"github.com/binbandit/yip/internal/runner"
 )
 
@@ -92,7 +94,9 @@ func runRunner(args []string) error {
 	state := fs.String("state", defaultRunnerDir(), "runner state directory")
 	slots := fs.Int("slots", 2, "concurrent runs on this machine")
 	provs := fs.String("providers", "codex,claude,cursor", "providers this runner may use")
-	profile := fs.String("profile", cmp.Or(os.Getenv("YIP_EXECUTION_PROFILE"), "native"), "execution profile: native or container")
+	profile := fs.String("profile", cmp.Or(os.Getenv("YIP_EXECUTION_PROFILE"), "native"), "execution profile: native, container (whole runner), or docker (ephemeral agents)")
+	image := fs.String("docker-image", cmp.Or(os.Getenv("YIP_DOCKER_IMAGE"), runner.DefaultDockerImage), "local image for ephemeral agents (never pulled automatically)")
+	importEnv := fs.String("docker-env", "", "comma-separated environment variable names to explicitly import for harness authentication and MCP")
 	serverName := fs.String("server-name", "", "override the TLS name used to verify the hub")
 	_ = fs.Parse(args)
 	ad, err := adapters(*provs)
@@ -100,6 +104,7 @@ func runRunner(args []string) error {
 		return err
 	}
 	r, err := runner.New(runner.Options{StateDir: *state, Slots: *slots, Adapters: ad, ExecutionProfile: *profile,
+		Docker:  runner.DockerOptions{Image: *image, Env: splitList(*importEnv)},
 		Version: buildinfo.Version, Logger: logger(), ServerName: *serverName})
 	if err != nil {
 		return err
@@ -115,6 +120,36 @@ func runBridge(args []string) error {
 	mode := fs.String("mode", "conversation", "run mode (edit, readonly, conversation)")
 	_ = fs.Parse(args)
 	return bridge.RunFromEnv(*mode, buildinfo.Version)
+}
+
+// runAgentWorker is the image's internal stdio entrypoint, not a paired runner.
+// Its environment was constructed explicitly by the host Docker runtime.
+func runAgentWorker(args []string) error {
+	fs := flag.NewFlagSet("agent-worker", flag.ContinueOnError)
+	provider := fs.String("provider", "", "provider adapter to serve over stdio")
+	toolchains := fs.Bool("toolchains", false, "report toolchains inside the image")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	ctx, cancel := signalContext()
+	defer cancel()
+	if *toolchains {
+		return json.NewEncoder(os.Stdout).Encode(runner.ProbeToolchains(ctx))
+	}
+	var adapter providers.Adapter
+	switch *provider {
+	case "codex":
+		adapter = codex.New(codex.WithProbeEnv(os.Environ()))
+	case "claude":
+		adapter = claude.New(claude.Options{Env: os.Environ()})
+	case "cursor":
+		adapter = cursor.New(cursor.WithProbeEnv(os.Environ()))
+	case "fake":
+		adapter = fake.New(0)
+	default:
+		return fmt.Errorf("unknown worker provider %q", *provider)
+	}
+	return worker.Serve(ctx, os.Stdin, os.Stdout, adapter, buildinfo.Version)
 }
 
 // startLocalRunner pairs a runner on the hub's own machine through the same
@@ -144,6 +179,7 @@ func startLocalRunner(ctx context.Context, h *hub.Hub, f hubFlags, log *slog.Log
 		return nil, err
 	}
 	r, err := runner.New(runner.Options{StateDir: dir, Slots: f.localSlots, Adapters: ad, Version: buildinfo.Version,
+		ExecutionProfile: f.localProfile, Docker: runner.DockerOptions{Image: f.localDockerImage, Env: splitList(f.localDockerEnv)},
 		Logger: log.With("component", "local-runner"), ServerName: "127.0.0.1"})
 	if err != nil {
 		return nil, err

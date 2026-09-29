@@ -23,9 +23,10 @@ import (
 // isolate working files, not processes or secrets; the provider's own
 // sandbox and the execution profile provide the process boundary.
 type Workspaces struct {
-	paths Paths
-	mu    sync.Mutex
-	locks map[string]*sync.Mutex
+	paths    Paths
+	mu       sync.Mutex
+	locks    map[string]*sync.Mutex
+	isolated bool
 }
 
 func newWorkspaces(p Paths) *Workspaces {
@@ -69,11 +70,34 @@ func gitArgs(args []string) []string { return append(append([]string{}, gitSafe.
 
 // git runs a git command and returns trimmed stdout.
 func git(ctx context.Context, dir string, args ...string) (string, error) {
+	return gitWithEnv(ctx, dir, gitEnv(), args...)
+}
+
+// isolatedGitEnv excludes the owner's global configuration: even an immutable
+// local config is not enough when agent-written .gitattributes can select a
+// global clean/process filter that would execute during host-side checkpointing.
+func isolatedGitEnv() []string {
+	return append(gitEnv(), "GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_CONFIG_COUNT=4",
+		"GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
+		// A nested repository's writable config is outside the protected .git
+		// mount. Even status can execute its clean filters while checking a
+		// tracked gitlink, so host git must never inspect submodule dirtiness.
+		"GIT_CONFIG_KEY_1=diff.ignoreSubmodules", "GIT_CONFIG_VALUE_1=all",
+		"GIT_CONFIG_KEY_2=submodule.recurse", "GIT_CONFIG_VALUE_2=false",
+		"GIT_CONFIG_KEY_3=status.submoduleSummary", "GIT_CONFIG_VALUE_3=false")
+}
+
+func isolatedGit(ctx context.Context, dir string, args ...string) (string, error) {
+	return gitWithEnv(ctx, dir, isolatedGitEnv(), args...)
+}
+
+func gitWithEnv(ctx context.Context, dir string, env []string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", gitArgs(args)...)
 	cmd.Dir = dir
-	cmd.Env = gitEnv()
+	cmd.Env = env
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
@@ -224,12 +248,14 @@ func importBundle(ctx context.Context, repoDir, bundlePath, head string) error {
 
 // Workspace is a prepared working directory for one run.
 type Workspace struct {
-	Dir      string
-	Replica  string
-	Branch   string
-	Base     string
-	ReadOnly bool
-	Scratch  bool
+	mutationMu sync.Mutex
+	Dir        string
+	Replica    string
+	Branch     string
+	Base       string
+	ReadOnly   bool
+	Scratch    bool
+	Isolated   bool
 }
 
 // bundleFetcher downloads and verifies an artifact to a temporary file.
@@ -247,6 +273,15 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		}
 		defer os.Remove(source)
 		dir := filepath.Join(w.paths.work(), "review-"+domain.Short(m.RunID))
+		if w.isolated {
+			dir = filepath.Join(w.paths.work(), "docker-review-"+domain.Short(m.RunID))
+			if err := isolatedPath(dir); err != nil {
+				return nil, err
+			}
+			if err := isolatedPath(filepath.Join(dir, "review-artifact")); err != nil {
+				return nil, err
+			}
+		}
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, err
 		}
@@ -270,15 +305,21 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		if err := makeReadOnly(dir); err != nil {
 			return nil, err
 		}
-		return &Workspace{Dir: dir, ReadOnly: true, Scratch: true}, nil
+		return &Workspace{Dir: dir, ReadOnly: true, Scratch: true, Isolated: w.isolated}, nil
 	}
 
 	if m.Repo == nil {
 		dir := filepath.Join(w.paths.work(), "scratch-"+domain.Short(m.RunID))
+		if w.isolated {
+			dir = filepath.Join(w.paths.work(), "docker-scratch-"+domain.Short(m.RunID))
+			if err := isolatedPath(dir); err != nil {
+				return nil, err
+			}
+		}
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, err
 		}
-		return &Workspace{Dir: dir, Scratch: true}, nil
+		return &Workspace{Dir: dir, Scratch: true, Isolated: w.isolated}, nil
 	}
 	rep, err := w.replica(ctx, *m.Repo, fetch)
 	if err != nil {
@@ -306,6 +347,9 @@ func (w *Workspaces) Prepare(ctx context.Context, m protocol.ExecutionManifest, 
 		}
 		defer os.Remove(bundle)
 		return importBundle(ctx, rep, bundle, rev)
+	}
+	if w.isolated {
+		return w.prepareIsolated(ctx, m, rep, ensure)
 	}
 	if m.Repo.SnapshotRev != "" {
 		// Reviewer: a read-only, detached snapshot of exactly this revision.
@@ -363,11 +407,185 @@ func (w *Workspaces) Release(ctx context.Context, ws *Workspace) {
 	if ws == nil || !ws.ReadOnly {
 		return
 	}
+	if ws.Isolated {
+		if err := isolatedPath(ws.Dir); err != nil {
+			return
+		}
+	}
 	_ = makeWritable(ws.Dir)
-	if ws.Replica != "" {
+	if ws.Replica != "" && !ws.Isolated {
 		_, _ = git(ctx, ws.Replica, "worktree", "remove", "--force", ws.Dir)
 	}
 	_ = os.RemoveAll(ws.Dir)
+}
+
+// isolatedPath checks every existing path component without following symlinks.
+// In particular a migrated linked worktree must never become a container mount.
+func isolatedPath(path string) error {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	for p := path; ; p = filepath.Dir(p) {
+		info, err := os.Lstat(p)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("isolated workspace path contains a symlink: %s", p)
+		}
+		if filepath.Dir(p) == p {
+			return nil
+		}
+	}
+}
+
+func standaloneWorkspace(ctx context.Context, dir string) error {
+	if err := isolatedPath(dir); err != nil {
+		return err
+	}
+	meta := filepath.Join(dir, ".git")
+	info, err := os.Lstat(meta)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("isolated workspace requires a standalone .git directory: %s", dir)
+	}
+	if err := filepath.WalkDir(meta, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("isolated git metadata contains a symlink: %s", path)
+		}
+		switch strings.TrimPrefix(path, meta+string(filepath.Separator)) {
+		case "commondir", "gitdir", "objects/info/alternates", "objects/info/http-alternates":
+			return fmt.Errorf("isolated git metadata references external storage: %s", path)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	// Read the config directly before letting git discover a repository. Includes
+	// and core.worktree can redirect otherwise standalone-looking metadata.
+	config, err := isolatedGit(ctx, filepath.Dir(dir), "config", "--no-includes", "--file", filepath.Join(meta, "config"), "--list")
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(config, "\n") {
+		key, _, _ := strings.Cut(line, "=")
+		key = strings.ToLower(key)
+		// Only clone-created storage settings are needed. A workspace from a
+		// previous, writable-metadata runtime must not smuggle in commands,
+		// includes, credential helpers, remotes, or external file paths.
+		switch key {
+		case "core.repositoryformatversion", "core.filemode", "core.bare",
+			"core.logallrefupdates", "core.ignorecase", "core.precomposeunicode",
+			"extensions.objectformat":
+		default:
+			return fmt.Errorf("unsupported isolated git config: %s", key)
+		}
+	}
+	_, err = isolatedGit(ctx, dir, "rev-parse", "--verify", "HEAD")
+	return err
+}
+
+func (w *Workspaces) prepareIsolated(ctx context.Context, m protocol.ExecutionManifest, rep string, ensure func(string) error) (*Workspace, error) {
+	review := m.Repo.SnapshotRev != ""
+	name := "docker-job-" + domain.Short(m.JobID)
+	if review {
+		name = "docker-review-" + domain.Short(m.RunID)
+	}
+	dir := filepath.Join(w.paths.work(), name)
+	unlock := w.lock(name)
+	defer unlock()
+	if err := isolatedPath(dir); err != nil {
+		return nil, err
+	}
+	base := m.Repo.BaseRev
+	if base == "" && !review {
+		var err error
+		base, err = defaultHead(ctx, rep, m.Repo.DefaultBranch)
+		if err != nil {
+			return nil, err
+		}
+	}
+	branch := firstNonEmpty(m.Repo.Branch, "yip/"+domain.Short(m.JobID))
+	ws := &Workspace{Dir: dir, Replica: rep, Branch: branch, Base: base, ReadOnly: review, Isolated: true}
+	if review {
+		ws.Branch = ""
+	}
+	if _, err := os.Lstat(dir); err == nil {
+		if err := standaloneWorkspace(ctx, dir); err != nil {
+			return nil, err
+		}
+		if !review {
+			return ws, nil // Never reset dirty work from an earlier attempt.
+		}
+		if err := makeWritable(dir); err != nil {
+			return nil, err
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			return nil, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	start := base
+	if review {
+		start = m.Repo.SnapshotRev
+	} else if m.Repo.CheckpointArtifact != nil && m.Repo.CheckpointArtifact.Revision != "" {
+		start = m.Repo.CheckpointArtifact.Revision
+	}
+	for _, rev := range []string{base, start} {
+		if err := ensure(rev); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := isolatedGit(ctx, w.paths.work(), "clone", "--quiet", "--no-local", "--no-hardlinks", "--no-checkout", "--template=", rep, dir); err != nil {
+		return nil, err
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			_ = os.RemoveAll(dir)
+		}
+	}()
+	// Recorded revisions can live outside refs/heads (bundle imports and
+	// checkpoints), so explicitly transfer them, including their full history.
+	for _, rev := range []string{base, start} {
+		if rev != "" {
+			if _, err := isolatedGit(ctx, dir, "fetch", "--quiet", "--no-write-fetch-head", rep, rev); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if base != "" {
+		if _, err := isolatedGit(ctx, dir, "update-ref", "refs/yip/base", base); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := isolatedGit(ctx, dir, "remote", "remove", "origin"); err != nil {
+		return nil, err
+	}
+	args := []string{"checkout", "--quiet", "-B", branch, start}
+	if review {
+		args = []string{"checkout", "--quiet", "--detach", start}
+	}
+	if _, err := isolatedGit(ctx, dir, args...); err != nil {
+		return nil, err
+	}
+	if err := standaloneWorkspace(ctx, dir); err != nil {
+		return nil, err
+	}
+	if review {
+		if err := makeReadOnly(dir); err != nil {
+			return nil, err
+		}
+	}
+	ok = true
+	return ws, nil
 }
 
 func makeReadOnly(dir string) error {
@@ -405,16 +623,33 @@ func makeWritable(dir string) error {
 	})
 }
 
+// gitEnv keeps credentialed replica/native operations separate from isolated
+// job operations. The runtime must mount the isolated .git directory read-only.
+func (ws *Workspace) gitEnv() []string {
+	if ws.Isolated {
+		return isolatedGitEnv()
+	}
+	return gitEnv()
+}
+
+func (ws *Workspace) git(ctx context.Context, args ...string) (string, error) {
+	return gitWithEnv(ctx, ws.Dir, ws.gitEnv(), args...)
+}
+
 // Head returns the workspace HEAD and whether the tree has uncommitted changes.
 func (ws *Workspace) Head(ctx context.Context) (head string, dirty bool, untracked int, err error) {
 	if ws.Scratch {
 		return "", false, 0, nil
 	}
-	head, err = git(ctx, ws.Dir, "rev-parse", "HEAD")
+	head, err = ws.git(ctx, "rev-parse", "HEAD")
 	if err != nil {
 		return "", false, 0, err
 	}
-	st, err := git(ctx, ws.Dir, "status", "--porcelain", "--untracked-files=all")
+	args := []string{"status", "--porcelain", "--untracked-files=all"}
+	if ws.Isolated {
+		args = append(args, "--ignore-submodules=all")
+	}
+	st, err := ws.git(ctx, args...)
 	if err != nil {
 		return head, false, 0, err
 	}
@@ -432,23 +667,70 @@ func (ws *Workspace) Head(ctx context.Context) (head string, dirty bool, untrack
 
 // Commit records all outstanding changes as the engineer.
 func (ws *Workspace) Commit(ctx context.Context, name, email, message string) (string, error) {
-	if _, err := git(ctx, ws.Dir, "add", "-A"); err != nil {
+	ws.mutationMu.Lock()
+	defer ws.mutationMu.Unlock()
+	if err := ws.add(ctx, ws.gitEnv()); err != nil {
 		return "", err
 	}
-	if _, err := git(ctx, ws.Dir, "-c", "user.name="+name, "-c", "user.email="+email, "-c", "commit.gpgsign=false",
+	if _, err := ws.git(ctx, "-c", "user.name="+name, "-c", "user.email="+email, "-c", "commit.gpgsign=false",
 		"commit", "--quiet", "--no-verify", "-m", message); err != nil {
 		return "", err
 	}
-	return git(ctx, ws.Dir, "rev-parse", "HEAD")
+	return ws.git(ctx, "rev-parse", "HEAD")
+}
+
+// add stages the parent repository only. Git add does not honor
+// diff.ignoreSubmodules while refreshing gitlinks and can execute clean filters
+// from their writable nested configs. Exclude every indexed gitlink explicitly,
+// using the same index (including Checkpoint's temporary index) as the add.
+// Existing gitlinks are frozen, including deleted or modified submodules:
+// isolated jobs publish parent-repository changes, not nested repository work.
+func (ws *Workspace) add(ctx context.Context, env []string) error {
+	if !ws.Isolated {
+		_, err := gitWithEnv(ctx, ws.Dir, env, "add", "-A")
+		return err
+	}
+	index, err := gitWithEnv(ctx, ws.Dir, env, "ls-files", "--stage", "-z")
+	if err != nil {
+		return err
+	}
+	var paths strings.Builder
+	paths.WriteString(".\x00")
+	for _, entry := range strings.Split(index, "\x00") {
+		if !strings.HasPrefix(entry, "160000 ") {
+			continue
+		}
+		_, path, ok := strings.Cut(entry, "\t")
+		if !ok {
+			return errors.New("invalid gitlink index entry")
+		}
+		paths.WriteString(":(exclude,literal)")
+		paths.WriteString(path)
+		paths.WriteByte(0)
+	}
+	cmd := exec.CommandContext(ctx, "git", gitArgs([]string{"add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"})...)
+	cmd.Dir, cmd.Env, cmd.Stdin = ws.Dir, env, strings.NewReader(paths.String())
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git add: %w: %s", err, output)
+	}
+	return nil
 }
 
 // Diff returns the unified diff and stats between base and head.
 func (ws *Workspace) Diff(ctx context.Context, base, head string) (diff string, files, ins, del int, err error) {
-	diff, err = git(ctx, ws.Dir, "diff", "--no-color", "--no-ext-diff", base, head)
+	args := []string{"diff", "--no-color", "--no-ext-diff"}
+	if ws.Isolated {
+		args = append(args, "--ignore-submodules=all")
+	}
+	diff, err = ws.git(ctx, append(args, base, head)...)
 	if err != nil {
 		return "", 0, 0, 0, err
 	}
-	stat, err := git(ctx, ws.Dir, "diff", "--numstat", base, head)
+	args = []string{"diff", "--numstat"}
+	if ws.Isolated {
+		args = append(args, "--ignore-submodules=all")
+	}
+	stat, err := ws.git(ctx, append(args, base, head)...)
 	if err != nil {
 		return diff, 0, 0, 0, err
 	}
@@ -475,15 +757,15 @@ func (ws *Workspace) Bundle(ctx context.Context, base, head string) (string, err
 	}
 	f.Close()
 	tmpRef := "refs/yip/bundle/" + domain.Short(head)
-	if _, err := git(ctx, ws.Dir, "update-ref", tmpRef, head); err != nil {
+	if _, err := ws.git(ctx, "update-ref", tmpRef, head); err != nil {
 		return "", err
 	}
-	defer git(ctx, ws.Dir, "update-ref", "-d", tmpRef)
+	defer ws.git(ctx, "update-ref", "-d", tmpRef)
 	args := []string{"bundle", "create", f.Name(), tmpRef}
 	if base != "" && base != head {
 		args = append(args, "^"+base)
 	}
-	if _, err := git(ctx, ws.Dir, args...); err != nil {
+	if _, err := ws.git(ctx, args...); err != nil {
 		return "", err
 	}
 	return f.Name(), nil
@@ -492,6 +774,8 @@ func (ws *Workspace) Bundle(ctx context.Context, base, head string) (string, err
 // Checkpoint snapshots uncommitted work (including untracked files, subject
 // to .gitignore) without moving the branch.
 func (ws *Workspace) Checkpoint(ctx context.Context, runID string) (commit string, untracked int, err error) {
+	ws.mutationMu.Lock()
+	defer ws.mutationMu.Unlock()
 	head, dirty, untracked, err := ws.Head(ctx)
 	if err != nil || !dirty {
 		return head, untracked, err
@@ -505,14 +789,14 @@ func (ws *Workspace) Checkpoint(ctx context.Context, runID string) (commit strin
 	run := func(args ...string) (string, error) {
 		cmd := exec.CommandContext(ctx, "git", gitArgs(args)...)
 		cmd.Dir = ws.Dir
-		cmd.Env = append(gitEnv(), "GIT_INDEX_FILE="+idx.Name())
+		cmd.Env = append(ws.gitEnv(), "GIT_INDEX_FILE="+idx.Name())
 		out, err := cmd.Output()
 		return strings.TrimSpace(string(out)), err
 	}
 	if _, err := run("read-tree", "HEAD"); err != nil {
 		return "", 0, err
 	}
-	if _, err := run("add", "-A"); err != nil {
+	if err := ws.add(ctx, append(ws.gitEnv(), "GIT_INDEX_FILE="+idx.Name())); err != nil {
 		return "", 0, err
 	}
 	tree, err := run("write-tree")
@@ -523,7 +807,7 @@ func (ws *Workspace) Checkpoint(ctx context.Context, runID string) (commit strin
 	if err != nil {
 		return "", 0, err
 	}
-	_, err = git(ctx, ws.Dir, "update-ref", "refs/yip/checkpoints/"+domain.Short(runID), commit)
+	_, err = ws.git(ctx, "update-ref", "refs/yip/checkpoints/"+domain.Short(runID), commit)
 	return commit, untracked, err
 }
 

@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"runtime"
@@ -49,6 +50,21 @@ func (r *Runner) probeOnce(ctx context.Context) {
 func (r *Runner) Probe(ctx context.Context) protocol.RunnerCapabilities {
 	caps := protocol.RunnerCapabilities{OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), Slots: r.opts.Slots,
 		DiskFreeMB: diskFreeMB(r.paths.Dir), MemMB: memMB(), Toolchains: map[string]string{}, ServiceState: serviceState()}
+	var dockerErr error
+	if r.opts.ExecutionProfile == "docker" {
+		pctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		dockerErr = r.dockerReady(pctx)
+		if dockerErr == nil {
+			out, err := dockerCommand(pctx, "image", "inspect", "--format", "{{.Architecture}}", r.opts.Docker.Image).Output()
+			if err != nil || strings.TrimSpace(string(out)) == "" {
+				dockerErr = errors.New("could not determine the agent image architecture")
+			} else {
+				caps.Arch = strings.TrimSpace(string(out))
+			}
+		}
+		cancel()
+		caps.OS, caps.CPUs, caps.MemMB = "linux", 2, 4096
+	}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for name, a := range r.opts.Adapters {
@@ -57,7 +73,16 @@ func (r *Runner) Probe(ctx context.Context) protocol.RunnerCapabilities {
 			defer wg.Done()
 			pctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			inst := a.Probe(pctx)
+			var inst protocol.ProviderInstallation
+			if r.opts.ExecutionProfile == "docker" {
+				if dockerErr != nil {
+					inst = protocol.ProviderInstallation{Provider: name, AuthState: protocol.AuthError, AuthDetail: dockerErr.Error()}
+				} else {
+					inst = r.probeDocker(pctx, name)
+				}
+			} else {
+				inst = a.Probe(pctx)
+			}
 			if inst.Provider == "" {
 				inst.Provider = name
 			}
@@ -71,7 +96,35 @@ func (r *Runner) Probe(ctx context.Context) protocol.RunnerCapabilities {
 			mu.Unlock()
 		}(name)
 	}
-	// Toolchains a project can require (ProjectPolicy.Requires).
+	wg.Wait()
+	if r.opts.ExecutionProfile == "docker" {
+		if dockerErr == nil {
+			pctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			caps.Toolchains = r.dockerToolchains(pctx)
+			cancel()
+		}
+	} else {
+		caps.Toolchains = ProbeToolchains(ctx)
+	}
+	caps.Profiles = r.profiles(caps)
+	if r.uncertain.Load() {
+		dockerErr = errors.New("container cleanup is unconfirmed; restore Docker connectivity and restart this runner")
+	}
+	if dockerErr != nil {
+		for i := range caps.Profiles {
+			caps.Profiles[i].Available = false
+			caps.Profiles[i].Reason = dockerErr.Error()
+		}
+	}
+	caps.Workspaces = r.listWorkspaces(ctx)
+	return caps
+}
+
+// ProbeToolchains runs inside the same execution environment as the agents.
+func ProbeToolchains(ctx context.Context) map[string]string {
+	tools := map[string]string{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	for tool, args := range map[string][]string{"git": {"--version"}, "go": {"version"}, "node": {"--version"}, "python3": {"--version"},
 		"docker": {"--version"}, "cargo": {"--version"}, "swift": {"--version"}, "xcodebuild": {"-version"}, "gh": {"--version"}} {
 		wg.Add(1)
@@ -79,18 +132,23 @@ func (r *Runner) Probe(ctx context.Context) protocol.RunnerCapabilities {
 			defer wg.Done()
 			if v := toolVersion(ctx, tool, args...); v != "" {
 				mu.Lock()
-				caps.Toolchains[tool] = v
+				tools[tool] = v
 				mu.Unlock()
 			}
 		}(tool, args)
 	}
 	wg.Wait()
-	caps.Profiles = r.profiles(caps)
-	caps.Workspaces = r.listWorkspaces(ctx)
-	return caps
+	return tools
 }
 
 func (r *Runner) profiles(caps protocol.RunnerCapabilities) []protocol.ExecutionProfile {
+	if r.opts.ExecutionProfile == "docker" {
+		return []protocol.ExecutionProfile{
+			{Name: "container", Available: true, Summary: "A fresh non-root Docker container per attempt. Only the job workspace and disposable copies of selected harness configuration are exposed."},
+			{Name: "readonly", Available: true, Summary: "A read-only workspace mount in an ephemeral Docker container; checks also run in containers."},
+			{Name: "native", Available: false, Reason: "This runner only executes agents and checks in Docker; it never falls back to the host."},
+		}
+	}
 	if r.opts.ExecutionProfile == "container" {
 		return []protocol.ExecutionProfile{
 			{Name: "container", Available: true, Summary: "Runner inside a restricted Linux container: non-root, workspace volume only, no host Docker socket or home directory."},
@@ -103,7 +161,7 @@ func (r *Runner) profiles(caps protocol.RunnerCapabilities) []protocol.Execution
 		{Name: "readonly", Available: true, Summary: "Detached, read-only snapshot of the exact revision, with the provider in its read-only permission mode."},
 	}
 	container := protocol.ExecutionProfile{Name: "container", Available: false,
-		Reason: "Run a runner inside the yip container image (packaging/container) to offer this profile; this runner runs natively."}
+		Reason: "Start this runner with --profile docker for ephemeral containers, or run a containerized runner (packaging/container)."}
 	if _, ok := caps.Toolchains["docker"]; !ok {
 		container.Reason = "Docker is not installed here. " + container.Reason
 	}
