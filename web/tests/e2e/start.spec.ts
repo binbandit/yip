@@ -33,6 +33,7 @@ test('setup can be skipped and reopened from the profile menu', async ({ app: pa
   await expect(page.locator('#room-title')).toBeVisible();
   const roomURL = page.url();
   await page.reload();
+  await page.goto(roomURL.slice(0, roomURL.indexOf('/rooms/')) + '/');
   await expect(page).toHaveURL(roomURL);
   await expect(page.locator('#room-title')).toBeVisible();
   await openSetup(page);

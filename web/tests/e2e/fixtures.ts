@@ -10,6 +10,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Bootstrap } from '../../src/lib/api/types.gen';
 
 export const YIP_BIN = process.env.YIP_E2E_BIN ?? fileURLToPath(new URL('../../../bin/yip', import.meta.url));
 
@@ -269,6 +270,17 @@ export const test = base.extend<Options & Fixtures>({
 
   hub: async ({ hubKind, fakeDelay }, use, testInfo) => {
     const started = await startHub(hubKind, fakeDelay);
+    if (hubKind === 'demo') {
+      const api = await HubApi.connect(started.hub);
+      try {
+        await expect.poll(async () => {
+          const boot: Bootstrap = await api.refresh();
+          return boot.nodes.some((node) => node.status === 'online' && node.providers.some((provider) => provider.provider === 'fake' && provider.authState === 'ready'));
+        }, { timeout: 30_000, message: 'The demo runner has reported its ready provider' }).toBe(true);
+      } finally {
+        await api.dispose();
+      }
+    }
     await use(started.hub);
     await attachLog(testInfo, started.hub);
     await started.stop();

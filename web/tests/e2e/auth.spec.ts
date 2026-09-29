@@ -57,9 +57,11 @@ test.describe('sign in', () => {
   });
 
   test('a signed-in visit to /signin goes to the last room', async ({ app: page }) => {
+    await openRoom(page, 'Security');
+    const roomURL = page.url();
     await page.goto('/signin');
-    await expect(page).toHaveURL(/\/rooms\/[^/]+$/);
-    await expect(page.locator('#room-title')).toBeVisible();
+    await expect(page).toHaveURL(roomURL);
+    await expect(page.locator('#room-title')).toHaveText(/^#?Security$/);
   });
 });
 
