@@ -49,6 +49,21 @@ export function message(page: Page, text: string | RegExp): Locator {
   return page.locator('article[data-message-id]').filter({ hasText: text });
 }
 
+/** Waits until a composer draft containing `text` is saved on this device. */
+export async function draftSaved(page: Page, text: string): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (t) =>
+          Object.keys(localStorage)
+            .filter((k) => k.startsWith('yip.draft.'))
+            .some((k) => (localStorage.getItem(k) ?? '').includes(t)),
+        text,
+      ),
+    )
+    .toBe(true);
+}
+
 /** Horizontal overflow of the document in CSS pixels (0 when nothing scrolls sideways). */
 export async function horizontalOverflow(page: Page): Promise<number> {
   return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
