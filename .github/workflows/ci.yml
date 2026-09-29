@@ -113,6 +113,7 @@ jobs:
             // Only main is known to have passed every check.
             const intoMain = pr.base.ref === repository.default_branch;
             const rows = [[{ data: 'Check', header: true }, { data: 'Plan', header: true }]];
+            const outputs = {};
             for (const check of checks) {
               const { job, name } = check;
               const current = fingerprint(check, head);
@@ -129,17 +130,20 @@ jobs:
                 const url = `${context.serverUrl}/${owner}/${repo}/actions/runs/${id}/attempts/${attempt}`;
                 skip = `<a href="${url}">run ${id}</a> passed with the same files`;
               }
-              core.setOutput(`${job}-key`, key);
-              core.setOutput(`${job}-skip`, String(skip !== ''));
+              outputs[`${job}-key`] = key;
+              outputs[`${job}-skip`] = String(skip !== '');
               rows.push([name, skip ? `Skipped: ${skip}` : 'Runs']);
             }
             await core.summary.addTable(rows).write();
+            // Publish the plan only once it's complete. The checks also
+            // ignore it unless this job succeeds.
+            for (const [name, value] of Object.entries(outputs)) core.setOutput(name, value);
 
   go:
     name: Go
     needs: plan
     # A failed or skipped plan runs every check.
-    if: ${{ !cancelled() && needs.plan.outputs.go-skip != 'true' }}
+    if: ${{ !cancelled() && (needs.plan.result != 'success' || needs.plan.outputs.go-skip != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -170,7 +174,7 @@ jobs:
   go-race:
     name: Go (race detector)
     needs: plan
-    if: ${{ !cancelled() && needs.plan.outputs.go-race-skip != 'true' }}
+    if: ${{ !cancelled() && (needs.plan.result != 'success' || needs.plan.outputs.go-race-skip != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -203,7 +207,7 @@ jobs:
   web:
     name: Web client
     needs: plan
-    if: ${{ !cancelled() && needs.plan.outputs.web-skip != 'true' }}
+    if: ${{ !cancelled() && (needs.plan.result != 'success' || needs.plan.outputs.web-skip != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -238,7 +242,7 @@ jobs:
   e2e:
     name: Browser journeys
     needs: plan
-    if: ${{ !cancelled() && needs.plan.outputs.e2e-skip != 'true' }}
+    if: ${{ !cancelled() && (needs.plan.result != 'success' || needs.plan.outputs.e2e-skip != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
