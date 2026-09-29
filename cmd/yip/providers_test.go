@@ -40,3 +40,18 @@ func TestExplicitHarnessAdapters(t *testing.T) {
 		t.Fatal("unknown adapter accepted")
 	}
 }
+
+func TestAgentWorkerSupportsEveryDefaultProvider(t *testing.T) {
+	for _, name := range strings.Split(defaultProviders, ",") {
+		adapter, err := agentWorkerAdapter(name, []string{"HOME=/home/yip"})
+		if err != nil {
+			t.Fatalf("container worker cannot construct %s: %v", name, err)
+		}
+		if adapter.Name() != name {
+			t.Errorf("worker provider %s returned %s", name, adapter.Name())
+		}
+	}
+	if _, err := agentWorkerAdapter("unknown", nil); err == nil {
+		t.Fatal("unknown worker provider accepted")
+	}
+}

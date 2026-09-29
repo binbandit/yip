@@ -17,7 +17,7 @@ func syntheticHome(t *testing.T) string {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	for _, key := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR", "CURSOR_CONFIG_DIR", "XDG_CONFIG_HOME"} {
+	for _, key := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR", "CURSOR_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "PI_CODING_AGENT_DIR"} {
 		t.Setenv(key, "")
 	}
 	return home
@@ -176,7 +176,7 @@ func TestExplicitEnvironment(t *testing.T) {
 	if !slices.Contains(s.Env, "CODEX_HOME="+HOME+"/.codex") {
 		t.Fatal("missing home remapping")
 	}
-	for _, key := range []string{"HOME", "PATH", "SSH_AUTH_SOCK", "YIP_TOKEN", "BAD=synthetic-secret", "bad\nname"} {
+	for _, key := range []string{"HOME", "PATH", "XDG_DATA_HOME", "PI_CODING_AGENT_DIR", "SSH_AUTH_SOCK", "YIP_TOKEN", "BAD=synthetic-secret", "bad\nname"} {
 		_, err := Stage("codex", []string{key})
 		if err == nil || strings.Contains(err.Error(), "synthetic-secret") {
 			t.Fatalf("unsafe error: %v", err)

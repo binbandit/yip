@@ -144,20 +144,30 @@ func runAgentWorker(args []string) error {
 	if *toolchains {
 		return json.NewEncoder(os.Stdout).Encode(runner.ProbeToolchains(ctx))
 	}
-	var adapter providers.Adapter
-	switch *provider {
-	case "codex":
-		adapter = codex.New(codex.WithProbeEnv(os.Environ()))
-	case "claude":
-		adapter = claude.New(claude.Options{Env: os.Environ()})
-	case "cursor":
-		adapter = cursor.New(cursor.WithProbeEnv(os.Environ()))
-	case "fake":
-		adapter = fake.New(0)
-	default:
-		return fmt.Errorf("unknown worker provider %q", *provider)
+	adapter, err := agentWorkerAdapter(*provider, os.Environ())
+	if err != nil {
+		return err
 	}
 	return worker.Serve(ctx, os.Stdin, os.Stdout, adapter, buildinfo.Version)
+}
+
+func agentWorkerAdapter(name string, env []string) (providers.Adapter, error) {
+	switch name {
+	case "codex":
+		return codex.New(codex.WithProbeEnv(env)), nil
+	case "claude":
+		return claude.New(claude.Options{Env: env}), nil
+	case "cursor":
+		return cursor.New(cursor.WithProbeEnv(env)), nil
+	case "opencode":
+		return opencode.New(opencode.WithProbeEnv(env)), nil
+	case "pi":
+		return pi.New(pi.Options{Env: env}), nil
+	case "fake":
+		return fake.New(0), nil
+	default:
+		return nil, fmt.Errorf("unknown worker provider %q", name)
+	}
 }
 
 // startLocalRunner pairs a runner on the hub's own machine through the same

@@ -139,7 +139,7 @@
               {:else if guide.id === 'opencode'}
                 <p>Choose the model provider you want OpenCode to use and complete its sign-in. Run <Code>opencode models</Code> to find a model ID for that account, then enter it in your engineer’s model setting. Listing a model does not grant access to it.</p>
               {/if}
-              <Text as="p" type="supporting">Finish signing in with the provider, then come back here. yip does not receive your password or tokens.</Text>
+              <Text as="p" type="supporting">Finish signing in with the provider, then come back here. Your sign-in stays on the runner machine; passwords and tokens are not sent to the browser or hub.</Text>
             {/if}
           </div>
         </li>

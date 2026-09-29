@@ -424,6 +424,9 @@ func TestExactActionApprovals(t *testing.T) {
 	if !strings.Contains(m.Body, "expired") {
 		t.Fatalf("an undecided request should expire and deny: %s", m.Body)
 	}
+	// The expiry message precedes work_update. Finish that assignment before
+	// sending a new one, or intake can correctly steer the still-open job.
+	e.waitJob("Push test", protocol.JobFailed)
 
 	// With the push grant, the same routine push proceeds without asking.
 	a := e.project("Atlas")
