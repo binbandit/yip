@@ -38,17 +38,13 @@ jobs:
   go-race:
     name: Go (race detector)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # test/integration runs in the Go job without -race. Under -race,
-      # TestRegressionTeamConversation can hang: an answer delivered to a run
-      # that is already finishing is never picked up. Add ./test/integration/
-      # here (with -timeout 35m; it takes ~20 minutes) once that is fixed.
-      - run: go test -race ./internal/...
+      - run: go test -race -timeout 35m ./internal/... ./test/integration/
 
   web:
     name: Web client
