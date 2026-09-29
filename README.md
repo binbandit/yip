@@ -200,6 +200,7 @@ just schema              # regenerate JSON Schemas and web types from protocol/*
 just test-dev            # dev-server lifecycle tests, including real Air restarts
 cd web && npm run dev    # frontend only; expects a hub on :7521 (override with YIP_HUB)
 cd web && npm test       # client unit and smoke tests
+just e2e                 # browser smoke journeys against a new real hub (needs Chromium or Chrome)
 ```
 
 The dev server loads [point-to-svelte](https://github.com/jalbarrang/point-to-svelte):

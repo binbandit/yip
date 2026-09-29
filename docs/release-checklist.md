@@ -37,8 +37,11 @@ These must be done before the MVP can be called complete (MVP brief §10):
    (ADR 0004). A run across two physical machines has not been recorded.
 3. **Remaining browser verification (A26, A27).** On 28 September system
    WebKit passed 53 distinct journeys and installed Chrome 153 passed six
-   Playwright journeys. They ran against the removed demo (ADR 0004), so no
-   browser journeys remain. Firefox remains untested.
+   Playwright journeys. They ran against the removed demo (ADR 0004). What
+   CI now runs in Chromium against a new real hub (`web/tests/e2e`) covers
+   setup, sign-in, keyboard use of dialogs, mentions and search, pairing and
+   three layouts, but no engineer replies, drawers of real work, 200% zoom,
+   WebKit or Firefox.
 4. **Runner reboot (A30)** under the intended service account has not been
    performed.
 
@@ -231,8 +234,8 @@ other chats' test hubs were not used. Builds reused installed web dependencies
 | A23 | Verified (partial) | `TestRegressionBillingGateAndAccountPin`; incompatible machines wait with the reason and are never offered the work (`TestIncompatibleMachineExplains`), as does work for a provider the hub doesn't support (`TestUnsupportedProviderExplainsAndFollowsTheNewChoice`). Project toolchain requirements were verified by `TestRegressionProjectToolchainRequirement`, removed with the fake provider (ADR 0004). |
 | A24 | Implemented | Workspaces are never deleted automatically. Machines lists them with their work and what deleting loses; removal needs explicit selection, a named confirmation, and `force` for uncommitted/unpublished work, and is refused for open or in-use work (Machines unit test). CLI: `yip runner workspaces` / `cleanup`. Previously verified by `TestRegressionRemoveWorkspaceFromMachines`, removed with the fake provider (ADR 0004). |
 | A25 | Verified | `yip backup` / `yip restore` verified integrity, artifact hashes and record counts (25 Sep). On 28 Sep a new restored hub accepted the owner login and retained both real-provider approved results, reviewer records and 11 unique artifact blobs. Encrypted backups round-trip and refuse a wrong passphrase leaving nothing behind (`TestEncryptedBackupRoundTrip`, `internal/backupcrypt` tampering/truncation tests). |
-| A26 | Implemented | On 28 September, real key presses in system WebKit covered the skip link, mentions, Enter to send, drawer focus trapping/return, search, and 200% zoom, and six installed-Chrome journeys covered keyboard, drawers and search. Those journeys ran against the removed demo (ADR 0004). Firefox untested. |
-| A27 | Implemented | On 28 September, system WebKit layouts at 390, 1024 and 1440 px, mobile controls, crowded selectors and a Chrome mobile journey passed. Those journeys ran against the removed demo (ADR 0004). Firefox untested. |
+| A26 | Verified (partial) | In CI, Chromium against a new real hub (`web/tests/e2e/smoke.spec.ts`): owner setup by keyboard, the skip link, a modal dialog that keeps focus and returns it on Escape, a mention chosen by keyboard, Enter to send, and search opened and followed by keyboard. Drawers of real work and 200% zoom were last checked on 28 September in system WebKit and Chrome against the removed demo (ADR 0004). WebKit and Firefox are not in CI. |
+| A27 | Verified (partial) | In CI, Chromium at 390, 1024 and 1440 px: Overview, Machines and a room never scroll sideways, the composer stays in view, and at 390 px the navigation sheet works and Send is a 44 px target (`web/tests/e2e/smoke.spec.ts`). Crowded selectors and busy rooms were last checked on 28 September against the removed demo (ADR 0004). WebKit and Firefox are not in CI. |
 | A28 | Verified in tested configuration | Real Codex edit/permission/resume and Claude MCP/permission smoke tests, independent team review, recall, cancellation/retry and restart durability passed. Cursor and other combinations remain unverified. |
 | A29 | Verified (partial) | Agent-authored mentions never wake anyone; tool arguments cannot set identity or scope (bridge binds the run token; hub derives authority from the lease). |
 | A30 | Incomplete | Service install exists; reboot behaviour not yet tested. Restarted runners report interrupted attempts as unknown (ADR 0009). |

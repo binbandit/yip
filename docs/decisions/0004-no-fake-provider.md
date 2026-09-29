@@ -21,5 +21,10 @@ release checklist marks those gates Implemented, not Verified, until they are
 rewritten this way. Each adapter is tested against a double of its vendor's
 interface, and the real-provider gates still need the opt-in smoke tests and
 campaigns (`scripts/simulation/`). The browser journeys ran against the demo and were
-removed with it; the web client relies on its unit and smoke suites. The
+removed with it. Their replacement (`web/tests/e2e`, `just e2e`, CI's
+Browser smoke job) starts a real hub on an empty data directory, completes
+owner setup in the browser with the printed code, and covers sign-in,
+keyboard use of dialogs, mentions and search, machine pairing, and layouts at
+390, 1024 and 1440 px. With no provider it can't show engineers replying or
+working; those screens rely on the unit and jsdom smoke suites. The
 README screenshots predate this decision and show the old scripted workspace.
