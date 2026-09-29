@@ -1089,6 +1089,9 @@
         "archived": {
           "type": "boolean"
         },
+        "avatarId": {
+          "type": "string"
+        },
         "capabilityTags": {
           "items": {
             "type": "string"
@@ -4386,6 +4389,9 @@
     "User": {
       "additionalProperties": false,
       "properties": {
+        "avatarId": {
+          "type": "string"
+        },
         "createdAt": {
           "format": "date-time",
           "type": "string"

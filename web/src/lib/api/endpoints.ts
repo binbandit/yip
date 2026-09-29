@@ -67,6 +67,8 @@ export const api = {
   bootstrap: (opts?: { quiet401?: boolean }) => get<Bootstrap>('/v1/bootstrap', opts),
   putPreferences: (preferences: Preferences) => put<Preferences>('/v1/preferences', { preferences }),
   updateProfile: (req: ProfileRequest) => patch<User>('/v1/profile', req),
+  setProfileAvatar: (picture: Blob) => upload<User>('/v1/profile/avatar', picture, 'PUT'),
+  removeProfileAvatar: () => del<User>('/v1/profile/avatar'),
 
   // rooms & messages
   rooms: () => get<Room[]>('/v1/rooms'),
@@ -95,6 +97,8 @@ export const api = {
   engineer: (id: string) => get<{ engineer: Engineer; versions: EngineerVersion[] }>(`/v1/engineers/${q(id)}`),
   createEngineer: (req: CreateEngineerRequest) => post<Engineer>('/v1/engineers', req),
   updateEngineer: (id: string, req: UpdateEngineerRequest) => patch<Engineer>(`/v1/engineers/${q(id)}`, req),
+  setEngineerAvatar: (id: string, picture: Blob) => upload<Engineer>(`/v1/engineers/${q(id)}/avatar`, picture, 'PUT'),
+  removeEngineerAvatar: (id: string) => del<Engineer>(`/v1/engineers/${q(id)}/avatar`),
   projects: () => get<Project[]>('/v1/projects'),
   project: (id: string) => get<Project>(`/v1/projects/${q(id)}`),
   createProject: (req: CreateProjectRequest) => post<Project>('/v1/projects', req),
@@ -166,6 +170,8 @@ export const api = {
   diagnosticBundle: () => get<DiagnosticBundle>('/v1/diagnostics/bundle'),
 };
 
+/** A profile picture; its content never changes under an ID. */
+export const avatarUrl = (id: string) => `/v1/avatars/${q(id)}`;
 export const artifactUrl = (id: string, download = false) => `/v1/artifacts/${q(id)}${download ? '?download=1' : ''}`;
 export const exportUrl = '/v1/export';
 

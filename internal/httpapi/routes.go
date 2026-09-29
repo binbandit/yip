@@ -27,6 +27,9 @@ func (s *Server) routes() {
 	a("GET /v1/bootstrap", s.getBootstrap)
 	a("PUT /v1/preferences", s.putPreferences)
 	a("PATCH /v1/profile", s.patchProfile)
+	a("PUT /v1/profile/avatar", s.setProfileAvatar)
+	a("DELETE /v1/profile/avatar", s.setProfileAvatar)
+	a("GET /v1/avatars/{id}", s.getAvatar)
 
 	a("GET /v1/rooms", s.listRooms)
 	a("POST /v1/rooms", s.createRoom)
@@ -48,6 +51,8 @@ func (s *Server) routes() {
 	a("POST /v1/engineers", s.createEngineer)
 	a("GET /v1/engineers/{id}", s.getEngineer)
 	a("PATCH /v1/engineers/{id}", s.patchEngineer)
+	a("PUT /v1/engineers/{id}/avatar", s.setEngineerAvatar)
+	a("DELETE /v1/engineers/{id}/avatar", s.setEngineerAvatar)
 
 	a("GET /v1/projects", s.listProjects)
 	a("POST /v1/projects", s.createProject)
@@ -198,6 +203,41 @@ func (s *Server) patchProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := s.hub.UpdateProfile(r.Context(), userFrom(r).ID, req)
 	respond(s, w, r, u, err)
+}
+
+// ---- profile pictures ----
+
+// avatarBody is a picture upload's raw body, or nil for DELETE (removal).
+func avatarBody(w http.ResponseWriter, r *http.Request) io.Reader {
+	if r.Method == http.MethodDelete {
+		return nil
+	}
+	return http.MaxBytesReader(w, r.Body, hub.MaxAvatarBytes+1)
+}
+
+func (s *Server) setProfileAvatar(w http.ResponseWriter, r *http.Request) {
+	u, err := s.hub.SetUserAvatar(r.Context(), userFrom(r).ID, avatarBody(w, r))
+	respond(s, w, r, u, err)
+}
+
+func (s *Server) setEngineerAvatar(w http.ResponseWriter, r *http.Request) {
+	e, err := s.hub.SetEngineerAvatar(r.Context(), userFrom(r).ID, r.PathValue("id"), avatarBody(w, r))
+	respond(s, w, r, e, err)
+}
+
+// getAvatar serves a profile picture. An ID names immutable content, so it
+// is cached for good; a new picture gets a new ID.
+func (s *Server) getAvatar(w http.ResponseWriter, r *http.Request) {
+	a, f, err := s.hub.OpenAvatar(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", a.ContentType)
+	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	http.ServeContent(w, r, "", a.CreatedAt, f)
 }
 
 // ---- rooms & messages ----

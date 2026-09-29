@@ -2,10 +2,15 @@
   // Engineers are rounded squares tinted by their hue, the human owner is a
   // circle, and yip itself (system and machine messages) wears its mark. Shape
   // is the only distinction: no presence dots implying someone is online.
+  // A profile picture, when one is set, fills the same shape; GIFs animate
+  // unless reduced motion is preferred, when their first frame stands still.
   // Avatars sit beside the name they belong to, so they're hidden from
   // assistive tech (Astryx names any avatar with a `name`, hence the wrapper).
   import { Avatar, type AvatarSize } from '@astryx-svelte/core';
+  import { prefersReducedMotion } from 'svelte/motion';
   import { app } from '../lib/state/app.svelte';
+  import { avatarUrl } from '../lib/api/endpoints';
+  import { stillFrame } from '../lib/util/avatars';
   import type { Actor } from '../lib/api/types.gen';
 
   interface Props {
@@ -18,10 +23,27 @@
   const eng = $derived(actor.kind === 'engineer' ? app.data.engineers[actor.id] : undefined);
   const name = $derived(yip ? 'yip' : (eng?.name ?? app.actorName(actor as Actor) ?? '?'));
   const kind = $derived(yip ? 'yip-mark-avatar' : actor.kind === 'engineer' ? 'yip-engineer-avatar' : actor.kind === 'user' ? 'yip-owner-avatar' : '');
+
+  const pictureId = $derived(eng ? eng.avatarId : actor.kind === 'user' && actor.id === app.me?.id ? app.me.avatarId : undefined);
+  const picture = $derived(pictureId ? avatarUrl(pictureId) : undefined);
+  // The still for `picture`, once made (the initial shows meanwhile).
+  let still = $state<{ of: string; src: string | undefined }>();
+  $effect(() => {
+    const url = picture;
+    if (!url || !prefersReducedMotion.current) return;
+    let current = true;
+    void stillFrame(url).then((src) => {
+      if (current) still = { of: url, src };
+    });
+    return () => {
+      current = false;
+    };
+  });
+  const src = $derived(!picture || !prefersReducedMotion.current ? picture : still?.of === picture ? still.src : undefined);
 </script>
 
 <span class="yip-avatar" aria-hidden="true">
-  <Avatar {name} {size} shape={actor.kind === 'user' ? 'circle' : 'rounded'} tooltip={false} class={kind} style="--yip-hue: {eng?.hue ?? 190}" />
+  <Avatar {name} {src} {size} shape={actor.kind === 'user' ? 'circle' : 'rounded'} tooltip={false} class={kind} style="--yip-hue: {eng?.hue ?? 190}" />
 </span>
 
 <style>

@@ -16,6 +16,7 @@ import {
   mergeRuns,
   mergeThread,
   mergeWorkRows,
+  newer,
   setRoomSnapshot,
   type DataState,
   type PendingMessage,
@@ -565,6 +566,19 @@ class AppState {
     const cur = this.data.inputs[input.id];
     if (!(cur && cur.delivery !== 'pending' && input.delivery === 'pending')) this.data.inputs[input.id] = input;
     this.receipts[key] = input.id;
+  }
+
+  // ---- profile pictures ----
+
+  /** Replaces your picture, or removes it with null. Failures throw for the picker to show. */
+  async setMyPicture(picture: Blob | null): Promise<void> {
+    this.data.user = picture ? await api.setProfileAvatar(picture) : await api.removeProfileAvatar();
+  }
+
+  /** Replaces an engineer's picture, or removes it with null. Failures throw. */
+  async setEngineerPicture(id: string, picture: Blob | null): Promise<void> {
+    const e = picture ? await api.setEngineerAvatar(id, picture) : await api.removeEngineerAvatar(id);
+    if (newer(this.data.engineers[id], e)) this.data.engineers[id] = e;
   }
 
   // ---- preferences & appearance ----

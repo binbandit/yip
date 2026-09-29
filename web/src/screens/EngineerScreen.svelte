@@ -12,6 +12,7 @@
   import { atTime, relative } from '../lib/util/time';
   import { roomSettings } from '../lib/util/setup';
   import Avatar from '../components/Avatar.svelte';
+  import AvatarPicker from '../components/AvatarPicker.svelte';
   import Notice from '../components/Notice.svelte';
   import StateIcon from '../components/StateIcon.svelte';
   import MessageBody from '../components/MessageBody.svelte';
@@ -173,6 +174,9 @@
     {#if editingProfile}
       <div class="block">
         <Card>
+          <div class="picture">
+            <AvatarPicker actor={{ kind: 'engineer', id: e.id }} hasPicture={!!e.avatarId} onchange={(p) => app.setEngineerPicture(e.id, p)} />
+          </div>
           <form class="form" onsubmit={saveProfile}>
             <div class="two">
               <TextInput label="Name" bind:value={name} description="Renaming keeps the same engineer and their message history." />
@@ -431,6 +435,11 @@
   .form {
     display: grid;
     gap: var(--spacing-3);
+  }
+  .picture {
+    padding-bottom: var(--spacing-4);
+    margin-bottom: var(--spacing-4);
+    border-bottom: 1px solid var(--color-border);
   }
   .two {
     display: grid;

@@ -204,6 +204,16 @@ describe('event reducer', () => {
     expect(s.user).toMatchObject({ name: 'Brayden Moon', handle: 'brayden' });
   });
 
+  it('takes a new or removed picture of mine from another window', () => {
+    const s = emptyState();
+    boot(s);
+    const me = { ...s.user!, avatarId: 'pic-1' };
+    applyEvent(s, ev('user.updated', me));
+    expect(s.user?.avatarId).toBe('pic-1');
+    applyEvent(s, ev('user.updated', { ...me, avatarId: undefined }));
+    expect(s.user?.avatarId).toBeUndefined();
+  });
+
   it('applies jobs by version so stale snapshots never regress state', () => {
     const s = emptyState();
     boot(s);
