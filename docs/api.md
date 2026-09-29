@@ -79,7 +79,6 @@ new workspace's Machines enrollment command.
 | `GET /v1/rooms/{id}/work[?include=replies]` | → `WorkRow[]` (work strip; `include=replies` adds queued/running conversational replies; `runState` is the latest attempt's state) |
 | `GET /v1/runs` | → `Run[]` attempts queued or executing in your rooms (for "working" indicators) |
 | `GET /v1/questions/{id}`, `GET /v1/decisions/{id}` | → `Question` / `Decision` |
-| `POST /v1/overview/seen` | records the visit used by "Since you were here" |
 | `GET /v1/threads/{rootMessageId}` | → `MessagePage` (root first, then replies) |
 | `POST /v1/messages/{id}/reactions` | `ReactRequest` → `Message` |
 | `PATCH/DELETE /v1/messages/{id}` | `{body}` → `Message` / redact own message |
@@ -108,7 +107,6 @@ new workspace's Machines enrollment command.
 | `GET /v1/provider-profiles`, `PUT /v1/provider-profiles/{id}` | → `ProviderProfile[]` / `ProviderProfileRequest` (`maxConcurrency` 1–16; default 1 — runs on one account share its allowance). `pausedUntil` is set while the account's allowance is exhausted; its queued work waits until then |
 | `GET /v1/decisions?status=`, `POST /v1/decisions`, `POST /v1/decisions/{id}` | `DecisionRequest` / `DecisionActionRequest` |
 | `GET /v1/engineers/{id}/notes`, `POST /v1/engineers/{id}/notes`, `POST /v1/notes/{id}` | → `EngineerNote[]` / `NoteRequest` (an owner-written note, kept at once; `supersedesId` corrects one, keeping its scope and visibility) / `NoteActionRequest` (`accept`, `reject`, `renew`, `remove`, with `version`). Engineers keep notes with the `note_record` tool. Live changes arrive as `note.updated` (owner only) |
-| `GET /v1/overview?seen=1` | → `Overview` (catch-up since last visit, work rows, decisions, open questions, `roomId` of the personal Overview conversation). `seen=1` records the visit. |
 | `GET /v1/search?q=&room=&project=` | → `SearchResult[]` (kinds: room, engineer, project, job, message, decision). `project` narrows to rooms linked to it, its work and its decisions, before ranking. A work ID (whole, `#`-prefixed, or six or more characters from either end; the UI shows the last six) finds that work directly |
 | `GET /v1/artifacts/{id}[?download=1]` | artifact bytes; text types render as plain text, never HTML |
 | `GET /v1/diagnostics` | → `Diagnostics` |

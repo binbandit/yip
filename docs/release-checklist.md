@@ -220,7 +220,7 @@ other chats' test hubs were not used. Builds reused installed web dependencies
 | A18 | Verified | `TestAccessRevokedMidJob`; grant/membership changes invalidate provider sessions |
 | A19 | Partial | Separate worktree and branch per job; reviews on fixed revisions. A project-level integration lock for merges is not implemented (yip performs no merges itself). |
 | A20 | Verified | `TestDoneWithoutEvidence`; `work_respond` can't complete the caller's own job (`TestRegressionWorkRespondCannotSelfComplete`) |
-| A21 | Verified | Overview conversation answers from the ledger without reciting raw timestamps or waking an engineer, covering every project and what waits on you (`TestRegressionOverviewStatusCoversAllProjects`) |
+| A21 | Withdrawn | The Overview conversation was removed with journey F ([0016](decisions/0016-no-overview.md)); status is still read from the ledger, never by waking an engineer |
 | A22 | Verified | `TestDecisionCorrection`; correction from the decision drawer keeps the sources (unit test) |
 | A23 | Verified | `TestIncompatibleMachineExplains`, `TestRegressionBillingGateAndAccountPin`, `TestRegressionProjectToolchainRequirement` |
 | A24 | Verified | Workspaces are never deleted automatically. Machines lists them with their work and what deleting loses; removal needs explicit selection, a named confirmation, and `force` for uncommitted/unpublished work, and is refused for open or in-use work (`TestRegressionRemoveWorkspaceFromMachines`, Machines unit test). CLI: `yip runner workspaces` / `cleanup`. |
