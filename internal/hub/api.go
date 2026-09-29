@@ -236,14 +236,14 @@ func (h *Hub) NodeHoldsRun(ctx context.Context, nodeID string) bool {
 // Export writes the user's visible data in documented JSON formats.
 func (h *Hub) Export(ctx context.Context, userID string, writeJSON func(string, any) error, writeFile func(string, io.Reader) error) error {
 	q := h.st.R()
-	rooms, err := store.ListRoomsForUser(ctx, q, userID)
+	rooms, err := store.ListAllRoomsForUser(ctx, q, userID)
 	if err != nil {
 		return err
 	}
 	if err := writeJSON("README.json", map[string]any{
 		"format": "yip export v1", "exportedAt": h.now(), "org": h.Org(),
 		"files": map[string]string{
-			"rooms.json": "rooms visible to the owner", "messages/<room>.json": "full message history per room",
+			"rooms.json": "rooms visible to the owner, archived ones included", "messages/<room>.json": "full message history per room",
 			"jobs.json": "work ledger with runs, checks, reviews", "decisions.json": "decisions with sources",
 			"artifacts.json": "artifact manifest (sha256, size, kind)", "artifacts/<sha256>": "artifact content",
 		}}); err != nil {

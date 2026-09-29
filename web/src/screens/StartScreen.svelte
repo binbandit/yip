@@ -14,7 +14,7 @@
 
   onMount(() => {
     api
-      .jobs({ state: ['completed'] })
+      .jobs({ state: ['completed'], root: true, limit: 1 })
       .then((js) => {
         for (const j of js ?? []) if (newer(app.data.jobs[j.id], j)) app.data.jobs[j.id] = j;
       })

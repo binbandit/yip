@@ -40,9 +40,18 @@ func GetRoom(ctx context.Context, q Q, id string) (protocol.Room, error) {
 // ListRoomsForUser returns non-archived rooms the user belongs to, with
 // per-user unread and mention counts.
 func ListRoomsForUser(ctx context.Context, q Q, userID string) ([]protocol.Room, error) {
+	return listRoomsForUser(ctx, q, userID, false)
+}
+
+// ListAllRoomsForUser is ListRoomsForUser including archived rooms.
+func ListAllRoomsForUser(ctx context.Context, q Q, userID string) ([]protocol.Room, error) {
+	return listRoomsForUser(ctx, q, userID, true)
+}
+
+func listRoomsForUser(ctx context.Context, q Q, userID string, archived bool) ([]protocol.Room, error) {
 	rooms, err := list(ctx, q, scanRoom, `SELECT `+roomCols+` FROM rooms r
-		WHERE archived = 0 AND EXISTS (SELECT 1 FROM room_memberships m WHERE m.room_id = r.id AND m.member_kind = 'user' AND m.member_id = ?)
-		ORDER BY kind, name`, userID)
+		WHERE (? OR archived = 0) AND EXISTS (SELECT 1 FROM room_memberships m WHERE m.room_id = r.id AND m.member_kind = 'user' AND m.member_id = ?)
+		ORDER BY kind, name`, b2i(archived), userID)
 	if err != nil {
 		return nil, err
 	}

@@ -72,7 +72,7 @@ The shell is Astryx's `AppShell` with a `SideNav`. yip draws the frame gradient 
 
 | Width | Layout |
 |---|---|
-| ≥1200px | The sidebar, the work card, and an **inline** right panel. The panel defaults to 336px and can be resized with a pointer or the keyboard (Astryx's resize handle); the width is remembered. Detail drawers (job, review) are at least 480px wide. The Overview docks its workspace summary in a 400px column. |
+| ≥1200px | The sidebar, the work card, and an **inline** right panel. The panel defaults to 336px and can be resized with a pointer or the keyboard (Astryx's resize handle); the width is remembered. Detail drawers (job, review) are at least 480px wide. |
 | 769–1199px | The right panel **overlays** the conversation instead of crushing it. It is modal: the rest of the page is inert and focus is trapped. |
 | ≤768px | One primary surface (AppShell's `md` breakpoint). A top bar holds the mark, search and a "Rooms and navigation" button that opens the sidebar in AppShell's drawer, which slides in from that button's side and opens on the current page. Threads and drawers are full-screen views with a Back button; while one is open the top bar steps aside. The chrome, drawer and composer respect the safe areas, and there is no horizontal page scroll. |
 

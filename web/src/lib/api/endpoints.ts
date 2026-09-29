@@ -116,11 +116,13 @@ export const api = {
     put<Project>(`/v1/projects/${q(projectId)}/grants/${q(engineerId)}`, req),
 
   // work
-  jobs: (params: { state?: string[]; project?: string; owner?: string } = {}) => {
+  jobs: (params: { state?: string[]; project?: string; owner?: string; root?: boolean; limit?: number } = {}) => {
     const s = new URLSearchParams();
     if (params.state?.length) s.set('state', params.state.join(','));
     if (params.project) s.set('project', params.project);
     if (params.owner) s.set('owner', params.owner);
+    if (params.root) s.set('root', '1');
+    if (params.limit) s.set('limit', String(params.limit));
     const qs = s.toString();
     return get<Job[]>(`/v1/jobs${qs ? `?${qs}` : ''}`);
   },

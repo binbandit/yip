@@ -430,7 +430,8 @@ func (s *Server) putGrant(w http.ResponseWriter, r *http.Request) {
 // ---- work ----
 
 func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
-	f := store.JobFilter{OwnerID: r.URL.Query().Get("owner"), ProjectID: r.URL.Query().Get("project"), Limit: int(queryInt(r, "limit", 200))}
+	f := store.JobFilter{OwnerID: r.URL.Query().Get("owner"), ProjectID: r.URL.Query().Get("project"),
+		RootOnly: r.URL.Query().Get("root") == "1", Limit: int(queryInt(r, "limit", 200))}
 	for _, st := range strings.Split(r.URL.Query().Get("state"), ",") {
 		if st != "" {
 			f.States = append(f.States, protocol.JobState(st))

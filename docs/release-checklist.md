@@ -110,14 +110,16 @@ benchmark is skipped under the race detector).
 A second pass over the spec against the running product found these gaps,
 now closed (each with a test):
 
-- First-run journey on Overview (§7A), derived from live state and ending
-  with finished work, not a connection dot.
+- First-run journey (§7A), derived from live state and ending with finished
+  work, not a connection dot. It was on the Overview and is now Getting
+  started (ADR 0016).
 - Provider accounts: sign-in re-check on demand, per-account concurrency,
   pinning an engineer to one account, no silent API billing, and an
   exhausted allowance pausing the whole account until it resets.
 - Search by short work ID and by project, filtered before ranking.
 - Overview status covering every project (quiet ones named) and what waits
-  on you, with active work never crowded out.
+  on you, with active work never crowded out. Withdrawn with the Overview
+  (ADR 0016).
 - Owner review in place of peer review when nobody else is in the
   conversation; a present colleague without access still gets asked (A42).
 - Interrupt and restart for updates a provider can only queue (§8D).

@@ -33,6 +33,12 @@ func TestAtlasFixReviewLoop(t *testing.T) {
 	if len(d.Reviews) != 1 || d.Reviews[0].ReviewerID != e.engineerID("oren") || d.Reviews[0].AuthorID != e.engineerID("mira") {
 		t.Fatalf("reviews: %+v", d.Reviews)
 	}
+	var completed, roots []protocol.Job
+	e.c.must("GET", "/v1/jobs?state=completed", nil, &completed)
+	e.c.must("GET", "/v1/jobs?state=completed&root=1", nil, &roots)
+	if len(completed) < 2 || len(roots) != 1 || roots[0].ID != j.ID {
+		t.Fatalf("root=1 should leave only the fix out of %d completed jobs: %+v", len(completed), roots)
+	}
 	rounds := d.Reviews[0].Rounds
 	if len(rounds) != 2 {
 		t.Fatalf("want 2 rounds, got %d", len(rounds))
