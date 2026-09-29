@@ -22,7 +22,7 @@ var apiRoots = []any{
 	protocol.Approval{}, protocol.ApprovalDecisionRequest{}, protocol.Question{}, protocol.AnswerQuestionRequest{},
 	protocol.Node{}, protocol.Enrollment{}, protocol.CreateEnrollmentRequest{}, protocol.NodeActionRequest{},
 	protocol.Decision{}, protocol.DecisionRequest{}, protocol.DecisionActionRequest{}, protocol.Overview{}, protocol.SearchResult{},
-	protocol.RunActivity{}, protocol.Diagnostics{}, protocol.DiagnosticBundle{}, protocol.Event{}, protocol.PreferencesRequest{}, protocol.RevisionRecord{},
+	protocol.RunActivity{}, protocol.Diagnostics{}, protocol.DiagnosticBundle{}, protocol.Event{}, protocol.PreferencesRequest{}, protocol.ProfileRequest{}, protocol.RevisionRecord{},
 	protocol.ProviderProfile{}, protocol.ProviderProfileRequest{}, protocol.CleanupWorkspaceRequest{}, protocol.EngineerNote{}, protocol.NoteRequest{}, protocol.NoteActionRequest{},
 }
 

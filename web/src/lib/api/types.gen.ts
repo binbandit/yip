@@ -672,6 +672,10 @@ export interface PreferencesRequest {
   preferences: Preferences;
 }
 
+export interface ProfileRequest {
+  name: string;
+}
+
 export interface Project {
   id: string;
   orgId: string;

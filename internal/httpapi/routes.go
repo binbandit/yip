@@ -26,6 +26,7 @@ func (s *Server) routes() {
 	a("DELETE /v1/session", s.deleteSession)
 	a("GET /v1/bootstrap", s.getBootstrap)
 	a("PUT /v1/preferences", s.putPreferences)
+	a("PATCH /v1/profile", s.patchProfile)
 
 	a("GET /v1/rooms", s.listRooms)
 	a("POST /v1/rooms", s.createRoom)
@@ -188,6 +189,15 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, req.Preferences)
+}
+
+func (s *Server) patchProfile(w http.ResponseWriter, r *http.Request) {
+	req, ok := decodeJSON[protocol.ProfileRequest](s, w, r)
+	if !ok {
+		return
+	}
+	u, err := s.hub.UpdateProfile(r.Context(), userFrom(r).ID, req)
+	respond(s, w, r, u, err)
 }
 
 // ---- rooms & messages ----

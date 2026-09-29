@@ -34,6 +34,7 @@ import type {
   PostMessageRequest,
   PostMessageResponse,
   Preferences,
+  ProfileRequest,
   Project,
   ProviderProfile,
   PullRequest,
@@ -51,6 +52,7 @@ import type {
   UpdateEngineerRequest,
   UpdateProjectRequest,
   UpdateRoomRequest,
+  User,
   WorkRow,
 } from './types.gen';
 
@@ -64,6 +66,7 @@ export const api = {
   signOut: () => del<{ ok: boolean }>('/v1/session', { quiet401: true }),
   bootstrap: (opts?: { quiet401?: boolean }) => get<Bootstrap>('/v1/bootstrap', opts),
   putPreferences: (preferences: Preferences) => put<Preferences>('/v1/preferences', { preferences }),
+  updateProfile: (req: ProfileRequest) => patch<User>('/v1/profile', req),
 
   // rooms & messages
   rooms: () => get<Room[]>('/v1/rooms'),

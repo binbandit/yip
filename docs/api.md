@@ -42,6 +42,7 @@ JSON Schemas in `protocol/schema/api.v1.json`, TypeScript in
 | `POST /v1/session` / `DELETE /v1/session` | `SignInRequest` → sets cookie / sign out |
 | `GET /v1/bootstrap` | → `Bootstrap` (user, org, rooms with unread/mention counts, engineers, projects, nodes, provider summary, `cursor`, `csrfToken`, preferences, `demo`) |
 | `PUT /v1/preferences` | `PreferencesRequest` → `Preferences` |
+| `PATCH /v1/profile` | `ProfileRequest` (`name`, 1–80 characters; whitespace is collapsed) → `User`. The handle can't be changed: it signs in and is how engineers mention you. Engineers use the new name from their next run |
 | `GET/POST /v1/rooms` | → `Room[]` / `CreateRoomRequest` → `Room` |
 | `GET/PATCH /v1/rooms/{id}` | → `Room` / `UpdateRoomRequest` (with `version`) → `Room` |
 | `GET /v1/rooms/{id}/members/{engineerId}/preview` | → `MembershipPreview` (show before adding) |
@@ -114,6 +115,7 @@ Committed event types and their `payload`:
 | `room.created`, `room.updated` | `Room` |
 | `room.member_added`, `room.member_removed` | `{room, engineerId}` |
 | `read.updated` | `{roomId, seq}` |
+| `user.updated` | `User` (the owner renamed themselves) |
 | `engineer.created`, `engineer.updated` | `Engineer` |
 | `project.created`, `project.updated` | `Project` |
 | `job.created`, `job.updated` | `Job` |

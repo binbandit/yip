@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/binbandit/yip/internal/auth"
 	"github.com/binbandit/yip/internal/domain"
@@ -201,6 +202,42 @@ func (h *Hub) ResetOwnerPassword(ctx context.Context, handle, password string) e
 		}
 		return t.audit(protocol.Actor{Kind: protocol.ActorSystem, ID: "host"}, "host_access", "owner.password_reset", u.ID, "ok", "all sessions revoked")
 	})
+}
+
+// maxNameLength bounds the owner's display name (it appears in every
+// engineer's instructions).
+const maxNameLength = 80
+
+// UpdateProfile renames the owner. The handle is unchanged, so sign-in and
+// mentions keep working; engineers see the new name from their next run.
+func (h *Hub) UpdateProfile(ctx context.Context, userID string, req protocol.ProfileRequest) (protocol.User, error) {
+	name := strings.Join(strings.Fields(req.Name), " ")
+	if name == "" {
+		return protocol.User{}, domain.Invalid("Enter your name.")
+	}
+	if utf8.RuneCountInString(name) > maxNameLength {
+		return protocol.User{}, domain.Invalid("Use a name of at most %d characters.", maxNameLength)
+	}
+	var user protocol.User
+	err := h.do(ctx, func(t *txn) error {
+		u, err := store.GetUser(ctx, t.tx, userID)
+		if err != nil {
+			return err
+		}
+		user = u.User
+		if u.Name == name {
+			return nil
+		}
+		if err := store.SetUserName(ctx, t.tx, userID, name); err != nil {
+			return err
+		}
+		user.Name = name
+		if err := t.audit(userActor(userID), "owner", "owner.rename", userID, "ok", ""); err != nil {
+			return err
+		}
+		return t.emit(ev{Type: "user.updated", Actor: userActor(userID), Payload: user})
+	})
+	return user, err
 }
 
 // SetPreferences stores the owner's UI preferences.
