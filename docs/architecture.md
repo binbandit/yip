@@ -2,22 +2,22 @@
 
 A map from the twelve invariants in
 [`spec/01-solution-architecture.md` §2](spec/01-solution-architecture.md) to
-the code that enforces them and the tests that prove it.
+the code that enforces them and the tests that prove it, where they exist.
 
 | # | Invariant | Enforcement | Evidence |
 |---|---|---|---|
 | 1 | The hub owns canonical state; no browser tab owns a job | Jobs and runs live in the hub database; runners hold leases; the browser only issues commands and reads events (`internal/hub`, `internal/store`) | `TestEventReplayAfterDisconnect`, `TestOutboxRedeliveryExecutesOnce` |
-| 2 | Every dispatched unit has a persisted run ID, immutable destination, engineer, scope, cause | `runs` rows carry `dest_room_id/dest_thread_id/dest_message_id`, `cause_id`, `root_request_id`, engineer version, and scope fingerprint, written before any offer (`enqueueRun`, `offer`) | `TestEachMessageKeepsItsDestination` |
-| 3 | A chat claim isn't job state | State changes go through validated hub operations and tools; completion is evaluated from recorded revisions, checks, and reviews (`completionMissing`) | `TestDoneWithoutEvidence` |
-| 4 | One active owner holds a job lease; contributors get child jobs or reviews | One non-terminal attempt per job (`enqueueRun`), one active run per engineer, help and review as child jobs | `TestCancelJobTree`, `TestWakeupBudgetAndCycles` |
-| 5 | Membership grants conversation access, not repository access | Room membership and `project_grants` are separate; tools re-check both on every call (`checkRunAccess`, `resolveScope`) | `TestAccessRevokedMidJob`, `TestNoPermittedReviewer` |
-| 6 | Agent messages don't indiscriminately wake others | Only structured requests wake engineers; wakeups carry root, cause, and a unique delivery key and are bounded (`ClaimWakeup`, ADR 0008) | `TestIdempotentSendQuietRoomsAndAgentMentions`, `TestWakeupBudgetAndCycles` |
+| 2 | Every dispatched unit has a persisted run ID, immutable destination, engineer, scope, cause | `runs` rows carry `dest_room_id/dest_thread_id/dest_message_id`, `cause_id`, `root_request_id`, engineer version, and scope fingerprint, written before any offer (`enqueueRun`, `offer`) | none since the fake provider was removed (ADR 0004) |
+| 3 | A chat claim isn't job state | State changes go through validated hub operations and tools; completion is evaluated from recorded revisions, checks, and reviews (`completionMissing`) | `TestDoneWithoutEvidence`, `TestRegressionWorkRespondCannotSelfComplete` |
+| 4 | One active owner holds a job lease; contributors get child jobs or reviews | One non-terminal attempt per job (`enqueueRun`), one active run per engineer, help and review as child jobs | none since the fake provider was removed (ADR 0004) |
+| 5 | Membership grants conversation access, not repository access | Room membership and `project_grants` are separate; tools re-check both on every call (`checkRunAccess`, `resolveScope`) | `TestAccessRevokedMidJob`, `TestPrivateCanaryIsolation`, `TestRegressionRemovedMemberNotRoutedOrLeaked` |
+| 6 | Agent messages don't indiscriminately wake others | Only structured requests wake engineers; wakeups carry root, cause, and a unique delivery key and are bounded (`ClaimWakeup`, ADR 0008) | none since the fake provider was removed (ADR 0004) |
 | 7 | A provider change preserves identity and approved knowledge, not a vendor session | Engineers are stable IDs with versioned config; provider sessions are reused only when engineer, provider account, context, node, and scope fingerprint all match (`FindProviderSession`); provider changes invalidate sessions | `TestFingerprintChangesWithScope` |
-| 8 | An interrupted external write isn't replayed | Lost attempts become `unknown`; retries are explicit; forge publications journal a pending delivery before the network call and reconcile by marker | `TestPartitionProducesUnknownThenReconciles`, `TestTwoMachinesAndCheckpointMove` |
+| 8 | An interrupted external write isn't replayed | Lost attempts become `unknown`; retries are explicit; forge publications journal a pending delivery before the network call and reconcile by marker | `TestPublication…` (publication reconciliation); lost attempts becoming `unknown` lost their test with the fake provider (ADR 0004) |
 | 9 | Provider secrets are not sent to the hub | Adapters use provider auth APIs. The opt-in Docker importer copies allowlisted file-backed auth into a disposable home, never extracts keychain secrets, and does not write back. Backups exclude provider logins; forge tokens are sealed on the hub | adapter/importer tests; `docs/ephemeral-agents.md` |
 | 10 | No merge, deploy, push, or outbound communication is implied by success | Push, merge, PR creation, and review publication need grants or an exact-action approval (`evaluatePolicy`, ADR 0006) | `TestExactActionApprovals`, `TestSharedCredentialCannotFabricateApproval` |
-| 11 | Engineers work autonomously; genuine questions go in the room; only dependent work waits | `human_ask` posts an ordinary message; a natural reply resolves it once; no inbox; human acceptance only by policy | `TestAtlasFixReviewLoop`, `TestQuestionFlowAndLateReplies`, `TestHumanReviewPolicy` |
-| 12 | Peer reviews bind to immutable revisions; internal approval ≠ forge merge eligibility | Rounds bind to base/head or artifact hash; new heads supersede; PR records keep remote reviews, checks, and merge state separately | `TestReviewDedupeAndRevisionBinding`, `TestWebhookSupersedesReviewOnNewCommits`, `TestSharedCredentialCannotFabricateApproval` |
+| 11 | Engineers work autonomously; genuine questions go in the room; only dependent work waits | `human_ask` posts an ordinary message; a natural reply resolves it once; no inbox; human acceptance only by policy | none since the fake provider was removed (ADR 0004) |
+| 12 | Peer reviews bind to immutable revisions; internal approval ≠ forge merge eligibility | Rounds bind to base/head or artifact hash; new heads supersede; PR records keep remote reviews, checks, and merge state separately | `TestSharedCredentialCannotFabricateApproval` (internal approval against forge facts); revision binding lost its tests with the fake provider (ADR 0004) |
 
 ## Request → result, end to end
 

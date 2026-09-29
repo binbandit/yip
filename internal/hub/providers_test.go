@@ -24,7 +24,7 @@ func TestHarnessPreferencesAndSummary(t *testing.T) {
 				continue
 			}
 			found = true
-			if p.Label == id || p.Fake || len(p.ReadyNodes) != 1 || p.ReadyNodes[0] != "runner" {
+			if p.Label == id || len(p.ReadyNodes) != 1 || p.ReadyNodes[0] != "runner" {
 				t.Errorf("invalid %s summary: %+v", id, p)
 			}
 		}

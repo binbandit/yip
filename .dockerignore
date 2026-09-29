@@ -17,5 +17,3 @@ web/dist/*
 !web/dist/.gitkeep
 web/.svelte-kit
 web/.vite
-web/test-results
-web/playwright-report

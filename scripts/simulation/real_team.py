@@ -7,16 +7,13 @@ directory. It never configures forge credentials or publishes to GitHub.
 """
 import argparse
 import json
-import os
 from pathlib import Path
 import socket
 import sqlite3
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts" / "e2e"))
-from machines_fixture import Hub, Procs, log_has, wait
+from hubtools import Hub, Procs, read_credentials, start_hub, wait
 
 REMOTE = "https://github.com/binbandit/yip-simulation-public.git"
 CHECK = "python3 -m unittest discover -s tests -v"
@@ -26,25 +23,28 @@ def save(path, value):
     path.write_text(json.dumps(value, indent=2) + "\n")
 
 
+CAMPAIGN = (" This campaign uses a small Python session service. Keep changes focused. "
+            "Use the recorded checks and independent review process. Do not push, "
+            "publish remote reviews, create a pull request, merge, or deploy anything.")
+
+
 def configure(hub):
-    for name, provider in (("Mira", "codex"), ("Oren", "claude")):
-        engineer = hub.engineer(name)
-        hub.req("PATCH", "/v1/engineers/" + engineer["id"], {
-            "version": engineer["version"], "provider": {"provider": provider},
-            "instructions": engineer["instructions"] +
-                " This campaign uses a small Python session service. Keep changes focused. "
-                "Use the recorded checks and independent review process. Do not push, "
-                "publish remote reviews, create a pull request, merge, or deploy anything.",
-        })
-    project = next(p for p in hub.boot["projects"] if p["name"] == "Atlas")
-    repo = project["repos"][0]
-    hub.req("PUT", f"/v1/projects/{project['id']}/repos/{repo['id']}", {
-        "name": "session-service", "remoteUrl": REMOTE, "defaultBranch": "main",
-        "forge": "github", "forgeRepo": "binbandit/yip-simulation-public",
+    """Creates the team: Mira on Codex and Oren on Claude Code, the Session
+    service project, and the Security and Engineering rooms."""
+    mira = hub.req("POST", "/v1/engineers", {
+        "name": "Mira", "role": "Platform engineer", "capabilityTags": ["python", "backend", "sessions"],
+        "provider": {"provider": "codex"},
+        "instructions": "Preserve established contracts. Prefer small, well-tested changes. "
+            "Get an independent review for security-sensitive code." + CAMPAIGN,
     })
-    project = hub.req("GET", "/v1/projects/" + project["id"])
-    hub.req("PATCH", "/v1/projects/" + project["id"], {
-        "version": project["version"], "name": "Session service",
+    oren = hub.req("POST", "/v1/engineers", {
+        "name": "Oren", "role": "Security engineer", "capabilityTags": ["security", "review", "auth"],
+        "provider": {"provider": "claude"},
+        "instructions": "Review the actual revision and surrounding code. Distinguish blocking defects "
+            "from suggestions. Never approve what you could not check." + CAMPAIGN,
+    })
+    project = hub.req("POST", "/v1/projects", {
+        "name": "Session service",
         "instructions": "A session is valid only while now is strictly before expires. "
             "At the exact expiry time it is expired. This project uses Python's standard "
             f"library only. Record `{CHECK}` on the published revision. "
@@ -53,7 +53,15 @@ def configure(hub):
         "policy": {"requirePeerReview": True, "requireHumanReview": False,
                    "autoPublish": False, "checks": [CHECK],
                    "executionProfile": "native", "requires": ["python3"]},
+        "repos": [{"name": "session-service", "remoteUrl": REMOTE, "defaultBranch": "main",
+                   "forge": "github", "forgeRepo": "binbandit/yip-simulation-public"}],
     })
+    for engineer, access in ((mira, "write"), (oren, "read")):
+        hub.req("PUT", f"/v1/projects/{project['id']}/grants/{engineer['id']}", {"access": access, "actions": []})
+    hub.req("POST", "/v1/rooms", {"name": "Security", "replyMode": "quiet",
+        "engineerIds": [mira["id"], oren["id"]], "projectIds": [project["id"]]})
+    hub.req("POST", "/v1/rooms", {"name": "Engineering", "replyMode": "steward", "stewardId": mira["id"],
+        "engineerIds": [mira["id"]], "projectIds": [project["id"]]})
     hub.boot = hub.req("GET", "/v1/bootstrap")
 
 
@@ -120,7 +128,7 @@ def recall(hub, directory, evidence, deadline):
                 run = detail["runs"][-1]
                 activity = hub.req("GET", f"/v1/jobs/{detail['job']['id']}/runs/{run['id']}/activity")
                 save(directory / "recall-activity.json", activity)
-                with sqlite3.connect(f"file:{directory / 'demo' / 'hub.db'}?mode=ro", uri=True) as db:
+                with sqlite3.connect(f"file:{directory / 'hub' / 'hub.db'}?mode=ro", uri=True) as db:
                     manifest = json.loads(db.execute("SELECT manifest FROM runs WHERE id = ?", (run["id"],)).fetchone()[0])
                 save(directory / "recall-manifest.json", manifest)
                 sourced = any(n.get("kind") == "record" and evidence["head"][:8] in json.dumps(n)
@@ -149,21 +157,15 @@ def run(args):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(("127.0.0.1", port))
     directory.mkdir(parents=True)
-    data = directory / "demo"
     log = directory / "hub.log"
     procs = Procs(str(directory))
     start = time.monotonic()
     result = {"passed": False, "reason": "campaign did not finish", "remote": REMOTE}
     hub = None
     try:
-        procs.start("hub", [str(ROOT / "bin" / "yip"), "demo", "--data", str(data),
-            "--listen", "127.0.0.1:7961", "--runner-listen", "127.0.0.1:7984",
-            "--with-providers", "codex,claude"], str(log),
-            env={"PATH": str(ROOT / "bin") + os.pathsep + os.environ["PATH"]})
-        wait("the disposable real-provider hub", lambda: log_has(str(log), "runner connected"), timeout=90)
-        creds = dict(line.strip().split(": ", 1) for line in
-                     (data / "demo-credentials.txt").read_text().splitlines() if ": " in line)
-        hub = Hub("http://127.0.0.1:7961", creds["handle"], creds["password"])
+        base = start_hub(procs, directory / "hub", log, 7961, 7984, "codex,claude", directory / "credentials.txt")
+        creds = read_credentials(directory / "credentials.txt")
+        hub = Hub(base, creds["handle"], creds["password"])
         configure(hub)
         def providers_ready():
             hub.boot = hub.req("GET", "/v1/bootstrap")

@@ -2,7 +2,6 @@ package integration
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -11,9 +10,7 @@ import (
 	"testing"
 	"time"
 
-	manifest "github.com/binbandit/yip/internal/context"
 	"github.com/binbandit/yip/internal/domain"
-	"github.com/binbandit/yip/internal/providers/fake"
 	"github.com/binbandit/yip/protocol"
 )
 
@@ -71,7 +68,7 @@ func (e *env) sseEvents(cursor string, n int, timeout time.Duration) (ids []int6
 // cursor that no longer exists gets an explicit reset, never silent loss.
 func TestEventReplayAfterDisconnect(t *testing.T) {
 	t.Parallel()
-	e := newEnv(t, envOptions{noRunner: true})
+	e := newEnv(t, envOptions{})
 	ids, _, control := e.sseEvents("", 3, 3*time.Second)
 	if len(control) == 0 || control[0] != "ready" || len(ids) < 3 {
 		t.Fatalf("initial stream: ids %v control %v", ids, control)
@@ -102,79 +99,6 @@ func TestEventReplayAfterDisconnect(t *testing.T) {
 	}
 }
 
-// A43: a document is reviewed without any forge: request, substantive
-// feedback, revised artifact, approval of the new artifact.
-func TestDocumentReviewWithoutForge(t *testing.T) {
-	t.Parallel()
-	doc := func(v string) []fake.Step {
-		return []fake.Step{{Write: &fake.WriteFile{Path: "docs/plan.md", Content: "# Plan\n\n" + v + "\n"}},
-			toolStep("artifact_publish", map[string]any{"path": "docs/plan.md", "name": "Plan", "kind": "document"}, "")}
-	}
-	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
-		switch {
-		case replyTo(m, "Engineering", "plan"):
-			return script(toolStep("work_create", map[string]any{"title": "Write the plan", "objective": "x", "kind": "document", "project": "Beacon", "repo": "beacon-gateway"}, ""))
-		case m.Review != nil && m.Review.Round == 1:
-			return script(toolStep("work_review", map[string]any{"verdict": "changes_requested", "expectedHead": "", "expectedHash": m.Review.Hash, "summary": "Missing rollback.",
-				"findings": []map[string]any{{"severity": "blocking", "body": "The plan has no rollback step.", "evidence": "docs/plan.md has no rollback section"}},
-				"message":  "The plan needs a rollback step."}, ""))
-		case m.Review != nil:
-			var resolve []string
-			for _, f := range m.Review.Findings {
-				resolve = append(resolve, f.ID)
-			}
-			return script(toolStep("work_review", map[string]any{"verdict": "approved", "expectedHead": "", "expectedHash": m.Review.Hash, "summary": "Rollback added.", "resolve": resolve,
-				"message": "Approved."}, ""))
-		case m.Job.Title == "Write the plan" && m.OwnReview != nil:
-			var resp []map[string]any
-			for _, f := range m.OwnReview.Findings {
-				resp = append(resp, map[string]any{"findingId": f.ID, "body": "Added a rollback section."})
-			}
-			return script(append(doc("Deploy. Rollback: revert the release."),
-				toolStep("work_respond_to_review", map[string]any{"responses": resp, "requestRereview": true, "message": "@mira added a rollback step."}, ""),
-				toolStep("work_wait", map[string]any{"reason": "review"}, ""))...)
-		case m.Job.Title == "Write the plan" && m.Purpose == "start":
-			return script(append(doc("Deploy."),
-				toolStep("work_request_review", map[string]any{"reviewer": "mira", "message": "@mira can you review the plan?"}, ""),
-				toolStep("work_wait", map[string]any{"reason": "review"}, ""))...)
-		}
-		return nil
-	}})
-	e.post("Engineering", "@Pip write the plan", []string{"pip"}, nil)
-	var d protocol.JobDetail
-	e.waitFor("second round approved", 60*time.Second, func() bool {
-		j, ok := e.job("Write the plan")
-		if !ok {
-			return false
-		}
-		d = e.jobDetail(j.ID)
-		return len(d.Reviews) == 1 && len(d.Reviews[0].Rounds) == 2 && d.Reviews[0].Rounds[1].State == protocol.ReviewApproved
-	})
-	r1, r2 := d.Reviews[0].Rounds[0], d.Reviews[0].Rounds[1]
-	if r1.Target.Kind != "artifact" || r1.Target.Hash == r2.Target.Hash || r1.State != protocol.ReviewChangesRequested {
-		t.Fatalf("rounds must bind to distinct document versions: %+v / %+v", r1.Target, r2.Target)
-	}
-	if len(d.PullRequests) != 0 {
-		t.Fatalf("no forge should be involved")
-	}
-}
-
-// A02: a room linked to two projects never guesses the repository.
-func TestScopeIsExplicitInMultiProjectRoom(t *testing.T) {
-	t.Parallel()
-	e := newEnv(t, envOptions{})
-	e.post("Engineering", "@Mira please fix the bug where things break", []string{"mira"}, nil)
-	m := e.waitMessage("Engineering", "Which project should I change")
-	if !strings.Contains(m.Body, "Atlas") || !strings.Contains(m.Body, "Beacon") {
-		t.Fatalf("the question should name the candidate projects: %s", m.Body)
-	}
-	for _, j := range listAllJobs(e) {
-		if j.Kind == protocol.JobKindCode {
-			t.Fatalf("code work started without an explicit repository")
-		}
-	}
-}
-
 // §9 performance fixture: 10,000 messages across ten rooms and 100 jobs.
 // Measures (and bounds) ordinary read latency; not an advertised capacity.
 func TestLargeHistoryReadLatency(t *testing.T) {
@@ -185,7 +109,7 @@ func TestLargeHistoryReadLatency(t *testing.T) {
 	if raceEnabled {
 		t.Skip("latency targets don't apply under the race detector")
 	}
-	e := newEnv(t, envOptions{noRunner: true})
+	e := newEnv(t, envOptions{})
 	var rooms []string
 	for i := 0; i < 10; i++ {
 		var r protocol.Room

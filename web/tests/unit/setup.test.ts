@@ -8,12 +8,11 @@ import { applyBootstrap, emptyState } from '../../src/lib/state/data';
 import { roomSettings, setupReadiness } from '../../src/lib/util/setup';
 import { providerReadiness } from '../../src/lib/util/providerReadiness';
 import type { Bootstrap, JobDetail } from '../../src/lib/api/types.gen';
-import { demoHub, fixture } from './fakehub';
+import { fixtureHub, fixture } from './fakehub';
 
 function team() {
   const data = emptyState();
   applyBootstrap(data, fixture<Bootstrap>('bootstrap.json'));
-  data.demo = false;
   const [author, reviewer] = Object.values(data.engineers);
   const room = Object.values(data.rooms).find((r) => r.name === 'Security')!;
   const project = Object.values(data.projects)[0];
@@ -86,15 +85,6 @@ describe('connected setup readiness', () => {
     for (const e of Object.values(data.engineers)) e.provider.allowApiBilling = true;
     expect(setupReadiness(data).readyNow).toBe(true);
   });
-
-  it('accepts the scripted provider only in the demo', () => {
-    const data = emptyState();
-    applyBootstrap(data, fixture<Bootstrap>('bootstrap.json'));
-    data.demo = true;
-    expect(setupReadiness(data).readyNow).toBe(true);
-    data.demo = false;
-    expect(setupReadiness(data).engineer).toBeUndefined();
-  });
 });
 
 let component: ReturnType<typeof mount> | undefined;
@@ -141,7 +131,7 @@ describe('setup next actions', () => {
 
   it('updates provider readiness from live nodes when the bootstrap summary stays stale', () => {
     const { data, node } = team();
-    data.providers = [{ provider: 'claude', label: 'Claude Code', readyNodes: [node.id], billing: 'subscription', fake: false }];
+    data.providers = [{ provider: 'claude', label: 'Claude Code', readyNodes: [node.id], billing: 'subscription' }];
     app.data = data;
     component = mount(ProviderSelect, { target: document.body, props: { value: 'claude', onchange: () => {} } });
     flushSync();
@@ -224,7 +214,7 @@ describe('setup next actions', () => {
     const { data, author, room, project } = team();
     author.roomIds = [];
     project.grants = [];
-    const hub = demoHub();
+    const hub = fixtureHub();
     hub.override('GET', new RegExp(`/v1/engineers/${author.id}$`), () => ({ body: { engineer: author, versions: [] } }));
     hub.install();
     app.data = data;

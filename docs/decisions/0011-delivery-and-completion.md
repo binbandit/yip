@@ -1,7 +1,10 @@
 # 0011 — Delivery and completion invariants
 
-These rules came out of the backend review (25 September 2026). Each is
-pinned by a `TestRegression…` test in `test/integration/regression_test.go`.
+These rules came out of the backend review (25 September 2026). Most are
+pinned by `TestRegression…` tests in `test/integration`, with the test
+playing the runner. Those that relied on scripted conversations (failed
+children, steering, resuming after sign-in, and completion with several
+reviewers) lost their integration tests with the fake provider (ADR 0004).
 
 **Run outcomes.**
 - A run's terminal report is settled only by an explicit acknowledgement

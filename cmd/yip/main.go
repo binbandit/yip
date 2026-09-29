@@ -14,7 +14,6 @@ const usage = `yip — a self-hosted workspace for your AI engineering team
 Usage:
   yip hub [flags]              Run the hub (API, web client, scheduler, runner listener)
   yip hub setup-code           Print a new one-time owner setup code
-  yip demo [flags]             Run a labelled demo workspace with the fake provider
   yip runner pair [flags]      Pair this machine with a hub
   yip runner [flags]           Run a paired runner
   yip runner workspaces        List job workspaces and whether they hold uncommitted work
@@ -45,8 +44,6 @@ func main() {
 		} else {
 			err = runHub(args)
 		}
-	case "demo":
-		err = runDemo(args)
 	case "runner":
 		switch {
 		case len(args) > 0 && args[0] == "pair":

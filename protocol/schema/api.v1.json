@@ -302,9 +302,6 @@
         "cursor": {
           "type": "integer"
         },
-        "demo": {
-          "type": "boolean"
-        },
         "engineers": {
           "items": {
             "$ref": "#/$defs/Engineer"
@@ -364,7 +361,6 @@
         "preferences",
         "serverTime",
         "version",
-        "demo",
         "providers"
       ],
       "type": "object"
@@ -2922,9 +2918,6 @@
         "billing": {
           "type": "string"
         },
-        "fake": {
-          "type": "boolean"
-        },
         "label": {
           "type": "string"
         },
@@ -2942,8 +2935,7 @@
         "provider",
         "label",
         "readyNodes",
-        "billing",
-        "fake"
+        "billing"
       ],
       "type": "object"
     },

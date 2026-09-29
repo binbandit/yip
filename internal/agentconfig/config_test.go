@@ -251,18 +251,10 @@ func TestFreshSnapshots(t *testing.T) {
 	if a.Dir == b.Dir {
 		t.Fatal("snapshot reused")
 	}
-	if _, err := Stage("unknown", nil); err == nil {
-		t.Fatal("accepted unknown provider")
-	}
-}
-
-func TestFakeImportsNoHostFiles(t *testing.T) {
-	home := syntheticHome(t)
-	fixture(t, home, ".agents/skills/a/SKILL.md", "not-for-fake")
-	s := snapshot(t, "fake")
-	entries, err := os.ReadDir(s.Dir)
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("fake should have empty home: %v %v", entries, err)
+	for _, provider := range []string{"unknown", "fake"} {
+		if _, err := Stage(provider, nil); err == nil {
+			t.Fatalf("accepted unsupported provider %q", provider)
+		}
 	}
 }
 

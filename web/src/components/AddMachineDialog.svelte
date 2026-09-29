@@ -32,7 +32,7 @@
     return fresh.find((n) => n.name === enrollment!.name) ?? fresh[0];
   });
   const SIGN_IN = SIGN_IN_COMMANDS;
-  const realProviders = $derived((paired?.providers ?? []).filter((p) => p.provider !== 'fake' && p.authState !== 'not_installed'));
+  const installedProviders = $derived((paired?.providers ?? []).filter((p) => p.authState !== 'not_installed'));
 
   async function create(e: SubmitEvent) {
     e.preventDefault();
@@ -120,11 +120,11 @@
           <div class="paired">
             <strong>{paired.name} is paired{paired.status === 'online' ? ' and connected' : ''}.</strong>
             <Link href={workspaceUrl('/connections')} hasUnderline onclick={onclose}>Next: connect your AI subscription</Link>
-            {#if realProviders.length === 0}
+            {#if installedProviders.length === 0}
               <Text type="supporting">No supported agent tool found on it yet. Open Connections to choose a tool, install it and sign in.</Text>
             {:else}
               <ul>
-                {#each realProviders as p (p.provider)}
+                {#each installedProviders as p (p.provider)}
                   <li>
                     {providerLabel(p.provider)} · {authStateLabel(p.authState, p.authDetail)}{#if p.authState === 'ready'}{' · '}{billingLabel(p.billing)}{#if p.account}{' · '}{p.account}{/if}
                     {:else if SIGN_IN[p.provider]}{' · run '}<Code size="inherit">{SIGN_IN[p.provider]}</Code>{' on it'}{/if}

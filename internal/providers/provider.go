@@ -1,8 +1,8 @@
 // Package providers defines the contract every provider adapter implements.
 //
 // An adapter converts one vendor's supported programmatic interface (Codex
-// app-server, Claude Code's structured CLI, Cursor ACP, or the deterministic
-// fake) into yip's internal run events. Adapters run inside the runner, never
+// app-server, Claude Code's structured CLI, or Cursor ACP) into yip's
+// internal run events. Adapters run inside the runner, never
 // in the hub. They must use documented interfaces only: no terminal scraping,
 // no token extraction, no spoofed clients, and no blanket permission bypass.
 package providers
@@ -120,8 +120,6 @@ type StartSpec struct {
 	Env        []string
 	Executable string // optional explicit executable path override
 	Timeout    time.Duration
-	// FakeScript is only read by the fake provider.
-	FakeScript json.RawMessage
 }
 
 // Result is the terminal outcome of a session.

@@ -386,7 +386,6 @@
                 if (v !== e.provider.provider) void patch({ provider: { ...e.provider, provider: v, model: '', profileId: '' } }, () => {});
               }}
             />
-            {#if e.provider.provider !== 'fake'}
               <div class="prov-grid">
                 {#if e.provider.provider === 'opencode'}
                   <form class="model-form" onsubmit={saveModel}>
@@ -423,7 +422,6 @@
                 value={!!e.provider.allowApiBilling}
                 onChange={(on) => patch({ provider: { ...e.provider, allowApiBilling: on } }, () => {})}
               />
-            {/if}
             <Text as="p" type="supporting">Which model ran a job is shown in the job's run details, not in conversation.</Text>
           </div>
         </ScreenSection>

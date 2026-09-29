@@ -10,10 +10,10 @@ import (
 
 func TestConversationWaitsForReadOnlyCapability(t *testing.T) {
 	t.Parallel()
-	for _, provider := range []string{"codex", "claude", "opencode", "pi", "fake"} {
+	for _, provider := range []string{"codex", "claude", "cursor", "opencode", "pi"} {
 		t.Run(provider, func(t *testing.T) {
 			t.Parallel()
-			e := newEnv(t, envOptions{noRunner: true})
+			e := newEnv(t, envOptions{})
 			var engineer protocol.Engineer
 			e.c.must("GET", "/v1/engineers/"+e.engineerID("mira"), nil, &struct {
 				Engineer *protocol.Engineer `json:"engineer"`
@@ -23,7 +23,7 @@ func TestConversationWaitsForReadOnlyCapability(t *testing.T) {
 				Version: engineer.Version, Provider: &preference,
 			}, &engineer)
 			installation := protocol.ProviderInstallation{Provider: provider, AuthState: protocol.AuthReady, ProfileID: provider + ":simulation"}
-			node := e.fakeNodeWith("edit-only installation", installation)
+			node := e.connectNodeWith("edit-only installation", installation)
 			e.post("Security", "@Mira please inspect the session contract", []string{"mira"}, nil)
 			e.waitFor("conversation waits instead of dispatching to an unsupported provider", 5*time.Second, func() bool {
 				if _, offered := node.find(func(f protocol.Frame) bool { return f.Type == protocol.CmdOfferRun }); offered {

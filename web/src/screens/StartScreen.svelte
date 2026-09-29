@@ -40,7 +40,7 @@
       done: setup.providerSignedIn,
       title: 'Connect your AI subscription',
       detail: setup.providerSignedIn
-        ? `${providerLabel(signInProvider ?? '')} sign-in is connected${app.data.demo && signInProvider === 'fake' ? ' for the scripted demo' : ''}.`
+        ? `${providerLabel(signInProvider ?? '')} sign-in is connected.`
         : 'Choose your tool, sign in on the machine that runs it, and check the connection. No credentials to upload.',
       href: connectionPath(signInProvider), action: 'Connect subscription',
     },

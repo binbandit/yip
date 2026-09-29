@@ -22,7 +22,6 @@ import (
 	"github.com/binbandit/yip/internal/providers/claude"
 	"github.com/binbandit/yip/internal/providers/codex"
 	"github.com/binbandit/yip/internal/providers/cursor"
-	"github.com/binbandit/yip/internal/providers/fake"
 	"github.com/binbandit/yip/internal/providers/opencode"
 	"github.com/binbandit/yip/internal/providers/pi"
 	"github.com/binbandit/yip/internal/providers/worker"
@@ -30,12 +29,6 @@ import (
 )
 
 const defaultProviders = "codex,claude,cursor,opencode,pi"
-
-func init() {
-	// The hub asks the fake provider's director for scripts only for
-	// engineers explicitly configured with the fake provider.
-	hub.FakeScripter = fake.Direct
-}
 
 func defaultRunnerDir() string {
 	if d := os.Getenv("YIP_RUNNER_STATE"); d != "" {
@@ -61,16 +54,8 @@ func adapters(list string) (map[string]providers.Adapter, error) {
 			out["opencode"] = opencode.New()
 		case "pi":
 			out["pi"] = pi.New()
-		case "fake":
-			delay := 1200 * time.Millisecond
-			if v := os.Getenv("YIP_FAKE_DELAY"); v != "" {
-				if d, err := time.ParseDuration(v); err == nil {
-					delay = d
-				}
-			}
-			out["fake"] = fake.New(delay)
 		default:
-			return nil, fmt.Errorf("unknown provider %q (choose from %s, fake)", name, defaultProviders)
+			return nil, fmt.Errorf("unknown provider %q (choose from %s)", name, defaultProviders)
 		}
 	}
 	return out, nil
@@ -163,8 +148,6 @@ func agentWorkerAdapter(name string, env []string) (providers.Adapter, error) {
 		return opencode.New(opencode.WithProbeEnv(env)), nil
 	case "pi":
 		return pi.New(pi.Options{Env: env}), nil
-	case "fake":
-		return fake.New(0), nil
 	default:
 		return nil, fmt.Errorf("unknown worker provider %q", name)
 	}

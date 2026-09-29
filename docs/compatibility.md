@@ -14,7 +14,6 @@ tests; their results and limits are recorded below.
 | Cursor | none (not installed on the build machine) | `agent acp` (ACP v1) with Cursor's `cursor/ask_question` and `cursor/create_plan` extensions | Cursor CLI login on the runner (`agent login`); billing `unknown`. Stock runners do not forward host API-key variables. | **Not run; no installation available.** Probe reports `Tested=false`. `YIP_REAL_PROVIDER_TESTS=1 go test -v ./internal/providers/cursor/` |
 | OpenCode | `1.18.33` (other versions refused) | `opencode acp`, isolated `yip` agent and permissions | `opencode auth login`; local credential metadata from the CLI | **No account-backed inference.** Actual binary initialized sessions and selected the controlled agent in all three modes with an empty temporary home. [Adapter details](adapter-opencode.md). |
 | Pi Agent Harness | `@earendil-works/pi-coding-agent@0.87.1`; legacy `@mariozechner/pi-coding-agent@0.73.1` | Bundled Node SDK host, restricted native tools, stdio MCP bridge | `pi` then `/login`; SDK credential metadata | **No account-backed inference.** Both published SDKs checked with in-memory authentication for read-only tools and denied write/bash overrides. [Adapter details](adapter-pi.md). |
-| Fake (deterministic) | built-in | Scripted MCP client of the real `yip bridge` | none | n/a — used by the demo and the integration suite |
 
 ## Harness support limits
 
@@ -70,21 +69,21 @@ replaced by API billing.
 
 ## Capabilities
 
-| Capability | Codex | Claude Code | Cursor | Fake |
-|---|---|---|---|---|
-| Structured events | fake-verified | fake-verified | fake-verified | yes |
-| Tool approvals round trip | via app-server requests; fake-verified | via bridge permission tool; format read from the pinned binary; fake-verified | via `session/request_permission`; fake-verified | yes |
-| Read-only (reviewer) runs | granular policy + auto-decline; **refused when user `~/.codex/rules` allow-rules exist** (they bypass the sandbox) | `dontAsk` + tools limited to Read/Glob/Grep; Bash/Edit/Write denied | `ask` mode enforced + denials + abort-on-write backstop | yes |
-| User questions | `requestUserInput` → declined, redirected to `human_ask` | disabled (questions go through room tools) | `cursor/ask_question` → declined, redirected; plans never self-approved | n/a |
-| Steering | `turn/steer` → **immediate**; falls back to queued | **queued** (delivery into the active turn not promised) | **queued** during a turn | immediate |
-| Session resume | `thread/resume` (**machine-local**: resumes only on the machine that created the thread) | `--resume <id>` | `session/resume` or `session/load` when advertised | no |
-| Cancel | `turn/interrupt` + process-group kill; real cancellation/retry passed; SIGKILL escalation fake-verified | stdin interrupt + process-group kill | `session/cancel` + process-group kill | yes |
-| Usage telemetry | vendor token usage (cumulative per attempt) | vendor tokens; cost omitted for resumed sessions | only if reported | unknown |
-| Rate limit → wait | vendor reset time when provided; never invented | `resetsAt` only | heuristic text match (real texts unknown) | scripted |
-| Auth expiry → wait for sign-in | fake-verified | fake-verified | fake-verified | scripted |
-| Model enumeration | `model/list` | no (aliases only) | `agent models` (format undocumented) | n/a |
-| Startup boundary (A31) | hooks/plugins/apps/memories disabled, other MCP servers disabled, repo marked untrusted; refuses if an approved hook would still run | `--restricted`, `--strict-mcp-config`, `--disable-slash-commands`, hooks disabled, CLAUDE.md/auto-memory off | refuses to launch while `.cursor/hooks.json`, `cli.json`, or `mcp.json` exist without owner approval | n/a |
-| Commits in the worktree | the Codex sandbox keeps `.git` read-only — the **runner commits** on `work_publish_revision` | the model may commit; the runner commits outstanding changes on publish | same | runner |
+| Capability | Codex | Claude Code | Cursor |
+|---|---|---|---|
+| Structured events | fake-verified | fake-verified | fake-verified |
+| Tool approvals round trip | via app-server requests; fake-verified | via bridge permission tool; format read from the pinned binary; fake-verified | via `session/request_permission`; fake-verified |
+| Read-only (reviewer) runs | granular policy + auto-decline; **refused when user `~/.codex/rules` allow-rules exist** (they bypass the sandbox) | `dontAsk` + tools limited to Read/Glob/Grep; Bash/Edit/Write denied | `ask` mode enforced + denials + abort-on-write backstop |
+| User questions | `requestUserInput` → declined, redirected to `human_ask` | disabled (questions go through room tools) | `cursor/ask_question` → declined, redirected; plans never self-approved |
+| Steering | `turn/steer` → **immediate**; falls back to queued | **queued** (delivery into the active turn not promised) | **queued** during a turn |
+| Session resume | `thread/resume` (**machine-local**: resumes only on the machine that created the thread) | `--resume <id>` | `session/resume` or `session/load` when advertised |
+| Cancel | `turn/interrupt` + process-group kill; real cancellation/retry passed; SIGKILL escalation fake-verified | stdin interrupt + process-group kill | `session/cancel` + process-group kill |
+| Usage telemetry | vendor token usage (cumulative per attempt) | vendor tokens; cost omitted for resumed sessions | only if reported |
+| Rate limit → wait | vendor reset time when provided; never invented | `resetsAt` only | heuristic text match (real texts unknown) |
+| Auth expiry → wait for sign-in | fake-verified | fake-verified | fake-verified |
+| Model enumeration | `model/list` | no (aliases only) | `agent models` (format undocumented) |
+| Startup boundary (A31) | hooks/plugins/apps/memories disabled, other MCP servers disabled, repo marked untrusted; refuses if an approved hook would still run | `--restricted`, `--strict-mcp-config`, `--disable-slash-commands`, hooks disabled, CLAUDE.md/auto-memory off | refuses to launch while `.cursor/hooks.json`, `cli.json`, or `mcp.json` exist without owner approval |
+| Commits in the worktree | the Codex sandbox keeps `.git` read-only — the **runner commits** on `work_publish_revision` | the model may commit; the runner commits outstanding changes on publish | same |
 
 ## Known limitations and open verification
 

@@ -305,7 +305,6 @@
         "executionProfile": {
           "type": "string"
         },
-        "fakeScript": {},
         "instructions": {
           "type": "string"
         },

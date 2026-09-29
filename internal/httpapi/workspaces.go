@@ -80,7 +80,6 @@ func (m *Workspaces) childConfig(id string) hub.Config {
 	cfg.DataDir = filepath.Join(cfg.DataDir, "workspaces", id)
 	cfg.RunnerURL = strings.TrimRight(cfg.RunnerURL, "/") + "/w/" + id
 	cfg.SessionHub = m.root.hub
-	cfg.Demo = false
 	return cfg
 }
 

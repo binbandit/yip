@@ -1,19 +1,23 @@
-// Browser journeys against a real demo hub (deterministic fake provider).
+// Browser smoke journeys against a real hub, set up from scratch.
 //
 // Prerequisites: `just all` (builds web/dist and embeds it in bin/yip). The
-// suite starts `bin/yip demo --reset` on private ports with a temporary data
-// directory. It uses a browser only if one is available — a Playwright-managed
-// browser (PLAYWRIGHT_BROWSERS_PATH / `npx playwright install chromium`) or a
-// system Chrome/Edge. It never downloads browsers itself. With no browser it
-// runs nothing and says why (and fails under CI).
+// suite starts `bin/yip hub` on private ports with a new, empty data
+// directory; the first journey completes owner setup in the browser with the
+// one-time code the hub prints. No machine is paired and no provider runs.
+// It uses a browser only if one is available — a Playwright-managed browser
+// (PLAYWRIGHT_BROWSERS_PATH / `npx playwright install chromium`) or a system
+// Chrome/Edge. It never downloads browsers itself. With no browser it runs
+// nothing and says why (and fails under CI).
 import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const PORT = Number(process.env.YIP_E2E_PORT ?? 7599);
 const RUNNER_PORT = PORT + 1;
-export const E2E_DATA = process.env.YIP_E2E_DATA ?? join(tmpdir(), 'yip-e2e-demo');
+// Set once in the runner process so its workers read the same directory.
+process.env.YIP_E2E_DATA ??= mkdtempSync(join(tmpdir(), 'yip-e2e-'));
+const DATA = process.env.YIP_E2E_DATA;
 
 function playwrightBrowserInstalled(): boolean {
   const base = process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), process.platform === 'darwin' ? 'Library/Caches/ms-playwright' : '.cache/ms-playwright');
@@ -27,6 +31,7 @@ function playwrightBrowserInstalled(): boolean {
 function systemChannel(): 'chrome' | 'msedge' | null {
   const chrome = [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/opt/google/chrome/chrome',
     '/usr/bin/google-chrome',
     '/usr/bin/google-chrome-stable',
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -45,15 +50,18 @@ if (!haveBrowser) {
   console.warn('[yip e2e] No browser found (no Playwright chromium, Chrome or Edge). Skipping browser journeys.');
 }
 
+const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 960 }, ...(channel ? { channel } : {}) };
+
 const config: PlaywrightTestConfig = {
   testDir: 'tests/e2e',
   timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  // The journeys share one hub whose owner setup happens once; a retry would
+  // meet a hub that is already set up.
+  retries: 0,
   reporter: [['list']],
-  globalSetup: haveBrowser ? './tests/e2e/global-setup.ts' : undefined,
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     launchOptions: { chromiumSandbox: true },
@@ -61,14 +69,20 @@ const config: PlaywrightTestConfig = {
     screenshot: 'only-on-failure',
     ...(channel ? { channel } : {}),
   },
-  projects: haveBrowser ? [{ name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 960 }, ...(channel ? { channel } : {}) } }] : [],
+  // Workspace journeys depend on the smoke project, whose first journey sets up the owner.
+  projects: haveBrowser
+    ? [
+        { name: 'smoke', testMatch: 'smoke.spec.ts', use: desktop },
+        { name: 'workspaces', testMatch: ['workspaces.spec.ts', 'connections.spec.ts'], dependencies: ['smoke'], use: desktop },
+      ]
+    : [],
   webServer: haveBrowser
     ? {
-        command: `../bin/yip demo --reset --data ${JSON.stringify(E2E_DATA)} --listen 127.0.0.1:${PORT} --runner-listen 127.0.0.1:${RUNNER_PORT}`,
+        // The setup code is printed on stdout; the first journey reads it from hub.out.
+        command: `../bin/yip hub --data ${JSON.stringify(DATA)} --listen 127.0.0.1:${PORT} --runner-listen 127.0.0.1:${RUNNER_PORT} > ${JSON.stringify(join(DATA, 'hub.out'))}`,
         url: `http://127.0.0.1:${PORT}/healthz`,
         reuseExistingServer: false,
         timeout: 60_000,
-        env: { YIP_FAKE_DELAY: process.env.YIP_FAKE_DELAY ?? '800ms' },
         stdout: 'ignore',
         stderr: 'pipe',
       }

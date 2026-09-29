@@ -16,11 +16,6 @@ import (
 
 const settingOrgRules = "org_rules"
 
-// FakeScripter selects a deterministic script for the fake provider from a
-// run's manifest. It is only consulted for engineers configured with the
-// explicitly labelled fake provider. Config.FakeScripter overrides it per hub.
-var FakeScripter func(m *manifest.Manifest) json.RawMessage
-
 // buildManifest gathers the permitted context for a run on a chosen node.
 // Everything comes from the run's destination scope.
 func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, job store.JobRow, nodeID string) (protocol.ExecutionManifest, *manifest.Manifest, error) {
@@ -348,15 +343,6 @@ func (h *Hub) buildManifest(ctx context.Context, q store.Q, run store.RunRow, jo
 	x.Prompt = m.Prompt()
 	if raw, err := json.Marshal(m); err == nil {
 		x.Context = raw
-	}
-	if run.Provider == "fake" {
-		scripter := h.cfg.FakeScripter
-		if scripter == nil {
-			scripter = FakeScripter
-		}
-		if scripter != nil {
-			x.FakeScript = scripter(m)
-		}
 	}
 	return x, m, nil
 }
