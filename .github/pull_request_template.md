@@ -25,7 +25,7 @@ size, anything left undone or now out of date.
 
 | Check | Result |
 |---|---|
-| `make lint` | |
+| `just lint` | |
 | `go test ./...` | |
 | `go test -race ./internal/... ./test/integration/` | |
 | `cd web && npm run check` | |
@@ -42,7 +42,7 @@ in which themes, and at phone width.
 
 ## Checklist
 
-- [ ] `make schema` re-run and its output committed, if `protocol/*.go` changed
+- [ ] `just schema` re-run and its output committed, if `protocol/*.go` changed
 - [ ] `docs/api.md` updated, if the browser API or its events changed
 - [ ] An ADR added to `docs/decisions/` and its index, if this departs from or reinterprets `docs/spec/`
 - [ ] `docs/release-checklist.md` and the README status table updated, if a gate's status changed

@@ -6,4 +6,4 @@ manager as a convenience. Browser-facing TypeScript types and JSON Schemas are
 generated from the Go protocol structs (`yip schema`), so there is one source
 of truth.
 
-**Consequence.** `make web` uses `npm ci`.
+**Consequence.** `just web` uses `npm ci`.

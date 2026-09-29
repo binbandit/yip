@@ -19,7 +19,7 @@ There is no hidden cloud failover.
 ## Install the hub
 
 ```sh
-make                                  # or download a release binary
+just                                  # or download a release binary
 yip hub --data ~/.yip/hub             # defaults: web on 127.0.0.1:7420, runners on :7443
 ```
 
@@ -138,7 +138,7 @@ and session cookie cross it unencrypted) and is logged as a warning.
 yip never opens ports or sets up port forwarding by itself. Runners need to
 reach the runner listener (default 7443) on the hub.
 
-**Trying the demo on your phone.** `make lan` serves the demo workspace on
+**Trying the demo on your phone.** `just lan` serves the demo workspace on
 your local network over plain HTTP: the built app on port 7721 and the
 live-reload development client on 5173. Open `http://<this machine's IP>:7721`
 on the phone and sign in with the details in the demo's

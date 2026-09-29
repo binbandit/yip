@@ -90,7 +90,7 @@ pipeline: hub, runner over mutual TLS, git worktrees, the MCP bridge, reviews,
 questions, steering, and recovery.
 
 ```sh
-make            # builds the web client (npm) and the yip binary
+just            # builds the web client (npm) and the yip binary
 ./bin/yip demo  # prints the URL and demo credentials
 ```
 
@@ -157,7 +157,7 @@ docs/                    spec, operations, compatibility, API, decisions, checkl
 ```sh
 go test ./...            # unit + integration (≈1 min)
 go test -race ./internal/... ./test/integration/
-make schema              # regenerate JSON Schemas and web types from protocol/*.go
+just schema              # regenerate JSON Schemas and web types from protocol/*.go
 cd web && npm run dev    # client dev server (proxy /v1 to a running hub)
 cd web && npm test       # client unit and smoke tests
 ```
@@ -167,7 +167,7 @@ hold ⌘C / Ctrl+C (or use its toolbar toggle), then click any element to copy
 it with its `.svelte` file, line and column, and component stack, ready to
 paste into a coding agent. It is dev-only; built clients never include it.
 
-To try it on a phone or another computer while developing, `make lan` serves
+To try it on a phone or another computer while developing, `just lan` serves
 the demo on your local network (built app on :7721, live-reload client on
 :5173; plain HTTP, demo data only).
 
@@ -179,4 +179,4 @@ browser download), start a fresh demo and run the capture script:
 python3 scripts/screenshots/capture.py --credentials /tmp/yip-demo-shots/demo-credentials.txt
 ```
 
-Requirements: Go 1.26, Node 20+ (build only), git on every runner.
+Requirements: Go 1.26, Node 20+ and [just](https://just.systems) (build only), git on every runner.

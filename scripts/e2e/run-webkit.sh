@@ -32,7 +32,7 @@ stop() {
 }
 trap 'stop; rm -rf "$WORK"' EXIT
 
-[ -x bin/yip ] || make build
+[ -x bin/yip ] || just build
 swiftc -O -swift-version 5 -o "$WORK/webkit" scripts/e2e/webkit.swift
 
 PORT=${YIP_E2E_PORT:-7931}

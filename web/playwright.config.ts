@@ -1,6 +1,6 @@
 // Browser journeys against a real demo hub (deterministic fake provider).
 //
-// Prerequisites: `make all` (builds web/dist and embeds it in bin/yip). The
+// Prerequisites: `just all` (builds web/dist and embeds it in bin/yip). The
 // suite starts `bin/yip demo --reset` on private ports with a temporary data
 // directory. It uses a browser only if one is available — a Playwright-managed
 // browser (PLAYWRIGHT_BROWSERS_PATH / `npx playwright install chromium`) or a
