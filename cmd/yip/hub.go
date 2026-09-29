@@ -262,7 +262,11 @@ func runHub(args []string) error {
 		return err
 	}
 	defer stop()
-	if need, _ := h.NeedsSetup(ctx); need {
+	need, err := h.NeedsSetup(ctx)
+	if err != nil {
+		return err
+	}
+	if need {
 		secret, exp, err := h.IssueBootstrapSecret(ctx)
 		if err != nil {
 			return err
@@ -270,13 +274,8 @@ func runHub(args []string) error {
 		fmt.Printf("\nNo owner exists yet. Finish setup in your browser:\n\n  http://%s/setup\n\nOne-time setup code (expires %s): %s\n\n", displayAddr(f.listen), exp.Local().Format("15:04"), secret)
 	}
 	if f.localRunner {
-		// Pairing needs the organisation that owner setup creates.
-		for need, _ := h.NeedsSetup(ctx); need; need, _ = h.NeedsSetup(ctx) {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(time.Second):
-			}
+		if !waitForOwner(ctx, h.NeedsSetup, time.Second, log) {
+			return nil
 		}
 		stopRunner, err := startLocalRunner(ctx, h, f, log)
 		if err != nil {
@@ -289,6 +288,28 @@ func runHub(args []string) error {
 	return nil
 }
 
+// waitForOwner blocks until owner setup has created the organisation that
+// pairing needs, checking every interval. A failed check is retried, never
+// taken as finished. It returns false if ctx ends first.
+func waitForOwner(ctx context.Context, needsSetup func(context.Context) (bool, error), every time.Duration, log *slog.Logger) bool {
+	lastErr := ""
+	for {
+		need, err := needsSetup(ctx)
+		switch {
+		case err != nil && err.Error() != lastErr:
+			lastErr = err.Error()
+			log.Warn("could not check whether owner setup is finished; retrying", "err", err)
+		case err == nil && !need:
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(every):
+		}
+	}
+}
+
 func runSetupCode(args []string) error {
 	fs := flag.NewFlagSet("setup-code", flag.ExitOnError)
 	data := fs.String("data", defaultDataDir(), "hub data directory")
@@ -299,7 +320,11 @@ func runSetupCode(args []string) error {
 		return err
 	}
 	defer h.Close()
-	if need, _ := h.NeedsSetup(ctx); !need {
+	need, err := h.NeedsSetup(ctx)
+	if err != nil {
+		return err
+	}
+	if !need {
 		return errors.New("this hub already has an owner; use `yip owner reset-password` to recover access")
 	}
 	secret, exp, err := h.IssueBootstrapSecret(ctx)
