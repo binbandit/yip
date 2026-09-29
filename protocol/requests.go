@@ -97,11 +97,14 @@ type UpdateEngineerRequest struct {
 }
 
 type CreateProjectRequest struct {
+	// Name defaults to the first repository's name.
 	Name         string        `json:"name"`
 	Description  string        `json:"description"`
 	Instructions string        `json:"instructions"`
 	Policy       ProjectPolicy `json:"policy"`
 	RoomIDs      []string      `json:"roomIds"`
+	// Repos are added with the project, each as PutRepoRequest describes.
+	Repos []PutRepoRequest `json:"repos,omitempty"`
 }
 
 type UpdateProjectRequest struct {
@@ -112,6 +115,13 @@ type UpdateProjectRequest struct {
 	Policy       *ProjectPolicy `json:"policy,omitempty"`
 }
 
+// PutRepoRequest adds or changes a repository. RemoteURL may be a GitHub
+// owner/name (or any github.com URL): the hub then fills in the HTTPS clone
+// URL, forge github with that owner/name, the name, and the default branch
+// GitHub reports. Machines clone with their own sign-in, so a private
+// repository works where the GitHub CLI (`gh auth login`) can see it.
+// Empty fields take those defaults; for other remotes the name defaults to
+// the URL's last path segment, the branch to main and the forge to none.
 type PutRepoRequest struct {
 	Name          string `json:"name"`
 	RemoteURL     string `json:"remoteUrl"`

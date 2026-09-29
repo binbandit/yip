@@ -24,6 +24,7 @@ import (
 	"github.com/binbandit/yip/internal/backupcrypt"
 	"github.com/binbandit/yip/internal/buildinfo"
 	"github.com/binbandit/yip/internal/domain"
+	"github.com/binbandit/yip/internal/forge/github"
 	"github.com/binbandit/yip/internal/hub"
 	"github.com/binbandit/yip/internal/runner"
 	"github.com/binbandit/yip/internal/store"
@@ -691,21 +692,27 @@ func runForge(args []string) error {
 		return nil
 	}
 	if len(args) < 2 || args[0] != "github" || args[1] != "add" {
-		return errors.New("usage: yip forge github add [--data DIR] [--host github.com] [--label L] (token read from stdin)")
+		return errors.New("usage: yip forge github add [--data DIR] [--host github.com] [--label L] [--from-gh] (token read from stdin, or from the GitHub CLI with --from-gh)")
 	}
 	fs := flag.NewFlagSet("forge github add", flag.ExitOnError)
 	data := fs.String("data", defaultDataDir(), "hub data directory")
 	host := fs.String("host", "github.com", "GitHub host")
 	label := fs.String("label", "GitHub", "label shown in audit entries")
+	fromGH := fs.Bool("from-gh", false, "store the token the GitHub CLI is signed in with on this machine (gh auth token)")
 	_ = fs.Parse(args[2:])
-	token, err := readSecret("GitHub token: ", false)
-	if err != nil {
+	ctx := context.Background()
+	var token string
+	var err error
+	if *fromGH {
+		if token, err = github.CLIToken(ctx, *host); err != nil {
+			return fmt.Errorf("%w; sign in with `gh auth login --hostname %s` first", err, *host)
+		}
+	} else if token, err = readSecret("GitHub token: ", false); err != nil {
 		return err
 	}
 	if strings.TrimSpace(token) == "" {
 		return errors.New("no token provided")
 	}
-	ctx := context.Background()
 	h, err := openHub(ctx, *data)
 	if err != nil {
 		return err

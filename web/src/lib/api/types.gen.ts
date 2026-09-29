@@ -171,6 +171,7 @@ export interface CreateProjectRequest {
   instructions: string;
   policy: ProjectPolicy;
   roomIds: string[];
+  repos?: PutRepoRequest[];
 }
 
 export interface CreateRoomRequest {

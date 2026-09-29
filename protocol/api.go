@@ -707,7 +707,7 @@ type ProjectPolicy struct {
 	Checks             []string `json:"checks"`
 	ExecutionProfile   string   `json:"executionProfile"` // native | container
 	// Requires lists what a machine needs for this project's work: tools the
-	// runner reports (go, node, python3, docker, cargo, swift, xcodebuild)
+	// runner reports (go, node, python3, docker, cargo, swift, xcodebuild, gh)
 	// or an operating system as os:darwin / os:linux.
 	Requires []string `json:"requires,omitempty"`
 }

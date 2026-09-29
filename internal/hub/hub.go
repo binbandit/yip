@@ -23,6 +23,7 @@ import (
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/events"
 	"github.com/binbandit/yip/internal/forge"
+	"github.com/binbandit/yip/internal/forge/github"
 	"github.com/binbandit/yip/internal/store"
 	"github.com/binbandit/yip/protocol"
 )
@@ -40,6 +41,11 @@ type Config struct {
 	Demo bool
 	// ForgeFactory builds a forge connector for a repository.
 	ForgeFactory func(ctx context.Context, h *Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error)
+	// GitHubRepo asks GitHub about a repository being added (its canonical
+	// owner/name and default branch). A repository GitHub doesn't show the
+	// asker is forge.ErrNotFound. Nil means the hub doesn't ask, and a
+	// repository added without a default branch gets main.
+	GitHubRepo func(ctx context.Context, h *Hub, owner, name string) (github.RepoInfo, error)
 	// WebhookVerifier validates a signed forge webhook delivery.
 	WebhookVerifier func(secret []byte, headers map[string]string, body []byte) (forge.Webhook, error)
 	// Now overrides the clock in tests.

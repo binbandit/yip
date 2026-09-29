@@ -602,6 +602,12 @@
         "policy": {
           "$ref": "#/$defs/ProjectPolicy"
         },
+        "repos": {
+          "items": {
+            "$ref": "#/$defs/PutRepoRequest"
+          },
+          "type": "array"
+        },
         "roomIds": {
           "items": {
             "type": "string"

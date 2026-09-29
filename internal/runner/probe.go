@@ -73,7 +73,7 @@ func (r *Runner) Probe(ctx context.Context) protocol.RunnerCapabilities {
 	}
 	// Toolchains a project can require (ProjectPolicy.Requires).
 	for tool, args := range map[string][]string{"git": {"--version"}, "go": {"version"}, "node": {"--version"}, "python3": {"--version"},
-		"docker": {"--version"}, "cargo": {"--version"}, "swift": {"--version"}, "xcodebuild": {"-version"}} {
+		"docker": {"--version"}, "cargo": {"--version"}, "swift": {"--version"}, "xcodebuild": {"-version"}, "gh": {"--version"}} {
 		wg.Add(1)
 		go func(tool string, args []string) {
 			defer wg.Done()
