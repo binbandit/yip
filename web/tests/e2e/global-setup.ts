@@ -8,7 +8,7 @@ export default async function globalSetup(): Promise<void> {
   const file = join(dir, 'demo-credentials.txt');
   const deadline = Date.now() + 30_000;
   while (!existsSync(file)) {
-    if (Date.now() > deadline) throw new Error(`The demo hub did not write ${file}. Build it with \`make all\` first.`);
+    if (Date.now() > deadline) throw new Error(`The demo hub did not write ${file}. Build it with \`just all\` first.`);
     await new Promise((r) => setTimeout(r, 250));
   }
   const text = readFileSync(file, 'utf8');

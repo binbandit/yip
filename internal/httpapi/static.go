@@ -11,7 +11,7 @@ const placeholder = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{font:15px/1.55 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#E9F2F3;color:#183A43}
 main{max-width:520px;padding:32px;background:#fff;border-radius:16px}code{background:#F3F7F7;padding:2px 6px;border-radius:6px}</style></head>
-<body><main><h1>yip hub is running</h1><p>The web client hasn't been built into this binary. Build it with <code>make web</code> and rebuild the hub.</p>
+<body><main><h1>yip hub is running</h1><p>The web client hasn't been built into this binary. Build it with <code>just web</code> and rebuild the hub.</p>
 <p>The API is available under <code>/v1</code>.</p></main></body></html>`
 
 // static serves the embedded single-page client, falling back to index.html

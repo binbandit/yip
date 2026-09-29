@@ -203,7 +203,7 @@ Where yip differs, and why:
 - `cd web && npm ci`, then `npm run dev`. This starts Vite on :5173 and proxies `/v1`, including the SSE stream, to `YIP_HUB` (default `http://127.0.0.1:7521`). Start the hub with `--allowed-origin http://localhost:5173` so state-changing requests from the dev origin pass the Origin check.
 - `npm run check` runs svelte-check over the app and the tests, and fails on warnings. `npm run build` writes `web/dist` (keeping `dist/.gitkeep`) for the hub to embed.
 - `npm test` runs the unit tests (reducer, mentions, message rendering and escaping, drafts, router, diff parsing) and the jsdom smoke suites. The smoke suites mount the real `App` against payloads captured from a demo hub (`tests/unit/fixtures`), including a full captured SSE stream.
-- `npm run e2e` runs the Playwright journeys in `tests/e2e` against `bin/yip demo` (build it first with `make all`). They run only if a Playwright Chromium or a system Chrome or Edge is installed; the command never downloads a browser.
+- `npm run e2e` runs the Playwright journeys in `tests/e2e` against `bin/yip demo` (build it first with `just all`). They run only if a Playwright Chromium or a system Chrome or Edge is installed; the command never downloads a browser.
 - `node scripts/contrast.mjs` recomputes the contrast table.
 
 ### Conversation verification (26 September 2026)

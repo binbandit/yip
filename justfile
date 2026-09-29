@@ -1,0 +1,64 @@
+# Run `just --list` to see every recipe. Override the embedded version with
+# `just version=1.2.3 build` or the VERSION environment variable.
+
+version := env("VERSION", `git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev`)
+ldflags := "-s -w -X github.com/binbandit/yip/internal/buildinfo.Version=" + version
+
+# build the web client and the yip binary
+all: web build
+
+# compile the yip binary (embeds web/dist if built)
+build:
+    go build -trimpath -ldflags "{{ ldflags }}" -o bin/yip ./cmd/yip
+
+# install the web client's locked dependencies
+web-deps:
+    cd web && npm ci
+
+# build the Svelte client into web/dist
+web: web-deps
+    cd web && npm run build
+
+# regenerate JSON schemas and TypeScript types from protocol/*.go
+schema:
+    go run ./cmd/yip schema
+
+# run the Go unit and integration tests
+test:
+    go test ./...
+
+# type-check and test the web client
+test-web:
+    cd web && npm run check && npm run test
+
+# browser journeys against a demo hub
+e2e: all
+    cd web && npm run e2e
+
+# the same journeys, plus layout and zoom sweeps, in the system WebKit (macOS; downloads nothing)
+e2e-webkit: all
+    scripts/e2e/run-webkit.sh
+
+# check Go formatting and run go vet
+lint:
+    gofmt -l . | grep -v -e '^web/' -e '^\.claude/' | (! grep .)
+    go vet ./...
+
+# run the demo workspace
+demo: all
+    ./bin/yip demo
+
+# demo on your local network (built app :7721, live-reload client :5173)
+lan: all
+    ./scripts/lan-dev.sh
+
+# cross-compile release binaries and their checksums into dist/
+release:
+    GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "{{ ldflags }}" -o dist/yip-darwin-arm64 ./cmd/yip
+    GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "{{ ldflags }}" -o dist/yip-linux-amd64 ./cmd/yip
+    GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "{{ ldflags }}" -o dist/yip-linux-arm64 ./cmd/yip
+    cd dist && shasum -a 256 yip-* > SHA256SUMS
+
+# remove build output
+clean:
+    rm -rf bin dist web/dist/assets web/dist/index.html
