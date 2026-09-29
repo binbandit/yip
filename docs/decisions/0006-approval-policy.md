@@ -48,3 +48,5 @@ code does. That is why checks also run without the owner's credentials
 become owner questions, not silent approvals. Covered by the classifier unit
 tests in `internal/hub/policy_test.go`, and end to end through the hub by
 `TestExactActionApprovals` and `TestRegressionHeredocEditNeedsNoApproval`.
+That `work_run_check` asks about the exact command and revision, and runs
+nothing unless allowed, is `TestRunCheckAsksBeforeRunning`.
