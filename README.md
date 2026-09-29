@@ -146,7 +146,7 @@ Claude Code or Codex sign-in.
 | OpenCode and Pi Agent Harness adapters | Implemented with permission and bridge tests; real OpenCode handshake and Pi SDK tool restrictions checked without model calls. See [OpenCode](docs/adapter-opencode.md) and [Pi](docs/adapter-pi.md) for supported versions and limitations. Live account-backed work remains unverified. |
 | Codex, Claude Code, Cursor adapters | Real Codex edits and Claude conversation/review, cross-room recall, cancellation/retry and restart tested on 28 September. This machine's Codex rules prevent conversation/review mode; Cursor remains untested. See [compatibility](docs/compatibility.md). |
 | GitHub connector | Emulated tests plus 32 real scenarios in dedicated private/public playgrounds, including three-account collaboration and protected branches. See the [campaign](docs/simulations/2026-09-28.md). |
-| Web client | Covered by unit tests and smoke suites that mount the app against recorded hub payloads (with scripted engineers; see the [fixtures README](web/tests/unit/fixtures/README.md)). The [UX campaign](docs/simulations/2026-09-28-ux.md) covers onboarding, catch-up, interruptions, evidence and responsive navigation. Firefox remains untested. |
+| Web client | Covered by unit tests and smoke suites that mount the app against recorded hub payloads (with scripted engineers; see the [fixtures README](web/tests/unit/fixtures/README.md)). CI also runs browser journeys in Chromium against a new real hub: setup, sign-in, keyboard use and three layouts (`just e2e`). The [UX campaign](docs/simulations/2026-09-28-ux.md) covers onboarding, catch-up, interruptions, evidence and responsive navigation. Firefox remains untested. |
 | Two physical machines | Protocol is multi-machine; not yet tested across two physical machines |
 
 The release gates (A01–A44) and what remains are tracked in
@@ -211,7 +211,8 @@ paste into a coding agent. It is dev-only; built clients never include it.
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs these
 checks on every pull request and on manual dispatch: `just lint`, a check that
 `just schema` output is committed, `go test ./...`, `just test-race`, the
-client's `npm run check`, unit tests, build and contrast check.
+client's `npm run check`, unit tests, build and contrast check, and the
+browser journeys (`npm run e2e`) in Chromium.
 
 The [merge queue](docs/merge-queue.md) tests each pull request together with
 the latest `main` before merging, so CI does not repeat the suite on pushes
