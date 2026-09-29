@@ -205,11 +205,18 @@ hold ⌘C / Ctrl+C (or use its toolbar toggle), then click any element to copy
 it with its `.svelte` file, line and column, and component stack, ready to
 paste into a coding agent. It is dev-only; built clients never include it.
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same
-checks on every pull request and push to `main`: `just lint`, a check that
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs these
+checks on every pull request and on manual dispatch: `just lint`, a check that
 `just schema` output is committed, `go test ./...`, `go test -race
 ./internal/... ./test/integration/`, the client's `npm run check`, unit tests,
 build and contrast check, and the browser journeys (`npm run e2e`) in Chromium.
+
+GitHub branch protection requires passing checks on an up-to-date PR before
+merging into `main`, so CI does not repeat the suite on pushes to `main`.
+Keep **Require branches to be up to date before merging** enabled alongside
+the required checks; without it, independently passing PRs could introduce an
+untested combination when merged. Use **Actions → CI → Run workflow** for an
+explicit full-suite run on `main` when needed.
 
 To try it on a phone or another computer while developing, `just lan` serves
 the demo on your local network (built app on :7721, live-reload client on

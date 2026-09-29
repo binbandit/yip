@@ -1,8 +1,7 @@
 name: CI
 
+# main requires up-to-date PR checks; don't repeat the suite after merging.
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
