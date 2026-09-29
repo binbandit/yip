@@ -68,20 +68,22 @@ jobs:
               { job: 'e2e', name: 'Browser journeys', inputs: [['.', ...unread]] },
             ];
 
-            // Of this workflow, a check reads only its own job and the
-            // workflow-wide settings. Editing Plan, another job or a comment
-            // doesn't run it.
+            // Of this workflow, a check reads its own job, this one (which
+            // decides whether it runs, so a change here is tested rather than
+            // trusted) and the workflow-wide settings. Editing another job or
+            // a comment doesn't run it.
             function side(rev, env) {
               const yaml = execFileSync('git', ['show', `${rev}:.github/workflows/ci.yml`]);
               const workflow = JSON.parse(execFileSync('yq', ['--output-format=json', 'explode(.)'], { input: yaml }));
               return { env, workflow };
             }
 
-            // Hashes a check's job and the index entries (mode, blob and
-            // path) of its inputs.
+            // Hashes a check's job, this one and the index entries (mode,
+            // blob and path) of its inputs.
+            const plan = process.env.GITHUB_JOB;
             function fingerprint({ job, inputs }, { env, workflow: { jobs, ...settings } }) {
               const hash = createHash('sha256');
-              hash.update(JSON.stringify({ ...settings, job: jobs?.[job] ?? null }));
+              hash.update(JSON.stringify({ ...settings, plan: jobs?.[plan] ?? null, job: jobs?.[job] ?? null }));
               for (const pathspecs of inputs) {
                 hash.update(execFileSync('git', ['ls-files', '--stage', '--', ...pathspecs], { env }));
               }
@@ -95,6 +97,7 @@ jobs:
             execFileSync('git', ['read-tree', 'HEAD^1'], { env: baseIndex });
             const head = side('HEAD', process.env);
             const base = side('HEAD^1', baseIndex);
+            if (!head.workflow.jobs?.[plan]) throw new Error(`No job ${plan} in ci.yml`);
 
             const { owner, repo } = context.repo;
             const markers = (await github.paginate(github.rest.actions.getActionsCacheList, {

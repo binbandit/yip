@@ -234,8 +234,8 @@ files (`main` already passed with them), or when an earlier run of the same PR
 passed with exactly those files, as after rebasing onto changes the check
 doesn't read. No check reads the docs, other workflows or local-only tooling
 (screenshots, simulations, WebKit journeys), and of `ci.yml` each reads only
-its own job and the workflow-wide settings, so a PR changing only those runs
-no checks. The Plan job's summary says why each check ran or was skipped, and
+its own job, the Plan job and the workflow-wide settings, so a PR changing
+only the rest runs no checks. The Plan job's summary says why each check ran or was skipped, and
 **Re-run all jobs** runs them all. If a check starts reading files outside its
 listed inputs, update the lists in the Plan job.
 
