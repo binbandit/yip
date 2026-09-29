@@ -24,7 +24,7 @@ campaigns (`scripts/simulation/`). The browser journeys ran against the demo and
 removed with it. Their replacement (`web/tests/e2e`, `just e2e`, CI's
 Browser smoke job) starts a real hub on an empty data directory, completes
 owner setup in the browser with the printed code, and covers sign-in,
-keyboard use of dialogs, mentions and search, machine pairing, and layouts at
-390, 1024 and 1440 px. With no provider it can't show engineers replying or
+keyboard use of dialogs, mentions and search, machine pairing, creating and
+switching workspaces, and layouts at 390, 1024 and 1440 px. With no provider it can't show engineers replying or
 working; those screens rely on the unit and jsdom smoke suites. The
 README screenshots predate this decision and show the old scripted workspace.

@@ -50,6 +50,8 @@ if (!haveBrowser) {
   console.warn('[yip e2e] No browser found (no Playwright chromium, Chrome or Edge). Skipping browser journeys.');
 }
 
+const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 960 }, ...(channel ? { channel } : {}) };
+
 const config: PlaywrightTestConfig = {
   testDir: 'tests/e2e',
   timeout: 60_000,
@@ -67,7 +69,13 @@ const config: PlaywrightTestConfig = {
     screenshot: 'only-on-failure',
     ...(channel ? { channel } : {}),
   },
-  projects: haveBrowser ? [{ name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 960 }, ...(channel ? { channel } : {}) } }] : [],
+  // Workspace journeys depend on the smoke project, whose first journey sets up the owner.
+  projects: haveBrowser
+    ? [
+        { name: 'smoke', testMatch: 'smoke.spec.ts', use: desktop },
+        { name: 'workspaces', testMatch: 'workspaces.spec.ts', dependencies: ['smoke'], use: desktop },
+      ]
+    : [],
   webServer: haveBrowser
     ? {
         // The setup code is printed on stdout; the first journey reads it from hub.out.

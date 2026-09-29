@@ -54,7 +54,7 @@ Workspaces share the installation owner's sign-in and root-scoped session
 cookie; signing out anywhere signs out everywhere. Each workspace has its own
 owner preferences, data, artifacts, event cursor, scheduler, and paired machines.
 New workspaces contain only the owner and an Overview conversation. Existing
-root machines and demo data are not copied: pair a runner explicitly using the
+root machines and data are not copied: pair a runner explicitly using the
 new workspace's Machines enrollment command.
 
 ## Endpoints
