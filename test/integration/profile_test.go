@@ -16,6 +16,7 @@ import (
 // The owner renames themselves: the handle and sign-in are unchanged, open
 // windows hear about it, and engineers use the new name from their next run.
 func TestOwnerRename(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	var instructions string
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {

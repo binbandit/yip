@@ -1,6 +1,9 @@
 // Package integration runs the hub, a paired runner, the yip bridge, and the
 // deterministic fake provider in-process against a real temporary SQLite
 // database and git fixtures, and drives them through the browser API.
+//
+// Each test builds its own environment and calls t.Parallel(), unless it sets
+// the environment or asserts a wall-clock bound.
 package integration
 
 import (
@@ -13,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -97,16 +101,6 @@ func newEnv(t *testing.T, opts envOptions) *env {
 	if opts.limits != nil {
 		opts.limits(&lim)
 	}
-	prev := hub.FakeScripter
-	hub.FakeScripter = func(m *manifest.Manifest) json.RawMessage {
-		if opts.director != nil {
-			if s := opts.director(m); s != nil {
-				return s
-			}
-		}
-		return fake.Direct(m)
-	}
-	t.Cleanup(func() { hub.FakeScripter = prev })
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &env{t: t, dir: dir, ctx: ctx, cancel: cancel, opts: opts}
 
@@ -135,7 +129,8 @@ func newEnv(t *testing.T, opts envOptions) *env {
 
 func (e *env) startHub(lim domain.Limits) {
 	h, err := hub.Open(e.ctx, hub.Config{DataDir: filepath.Join(e.dir, "hub"), Version: "test", Limits: lim, Logger: quietLogger(),
-		RunnerURL: e.runnerURL, Demo: true, ForgeFactory: e.opts.forge, GitHubRepo: e.opts.githubRepo, WebhookVerifier: github.New(github.Options{}).VerifyWebhook})
+		RunnerURL: e.runnerURL, Demo: true, ForgeFactory: e.opts.forge, GitHubRepo: e.opts.githubRepo, WebhookVerifier: github.New(github.Options{}).VerifyWebhook,
+		FakeScripter: e.fakeScript})
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -155,6 +150,17 @@ func (e *env) startHub(lim domain.Limits) {
 	}
 	e.runnerSrv = &http.Server{Handler: httpapi.NewRunnerServer(h, nil)}
 	go e.runnerSrv.Serve(tls.NewListener(e.runnerLn, tlsConf))
+}
+
+// fakeScript directs the fake provider: the test's director first, then the
+// default scripts. Each hub gets its own, so tests can run in parallel.
+func (e *env) fakeScript(m *manifest.Manifest) json.RawMessage {
+	if e.opts.director != nil {
+		if s := e.opts.director(m); s != nil {
+			return s
+		}
+	}
+	return fake.Direct(m)
 }
 
 // restartHub simulates a hub crash and restart on the same data directory.
@@ -193,7 +199,7 @@ func (e *env) startNamedRunner(sub, name string, slots int) func() {
 	if slots == 0 {
 		slots = 3
 	}
-	r, err := runner.New(runner.Options{StateDir: dir, Slots: slots, Adapters: map[string]providers.Adapter{"fake": fake.New(0)},
+	r, err := runner.New(runner.Options{StateDir: dir, Slots: slots, Adapters: map[string]providers.Adapter{"fake": quickExit{fake.New(0)}},
 		BridgeExe: os.Args[0], Version: "test", Logger: quietLogger(), ServerName: "127.0.0.1"})
 	if err != nil {
 		e.t.Fatal(err)
@@ -221,6 +227,19 @@ func (e *env) startNamedRunner(sub, name string, slots int) func() {
 		return false
 	})
 	return stop
+}
+
+// quickExit starts the fake provider's bridge (this test binary) without the
+// race detector's one-second sleep at exit. A run waits for its bridge to
+// exit, so under -race every run would take a second longer. Builds without
+// -race ignore GORACE.
+type quickExit struct{ providers.Adapter }
+
+func (a quickExit) Start(ctx context.Context, spec providers.StartSpec) (providers.Session, error) {
+	env := map[string]string{"GORACE": "atexit_sleep_ms=0"}
+	maps.Copy(env, spec.MCP.Env)
+	spec.MCP.Env = env
+	return a.Adapter.Start(ctx, spec)
 }
 
 // killRunner stops the runner abruptly (its connection drops).

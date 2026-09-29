@@ -67,6 +67,7 @@ func fakeGitHubHead(t *testing.T, headV *atomic.Value, posted *atomic.Int32) *ht
 // internal review, but no remote approval is fabricated; peer approval,
 // remote reviews, checks, and merge state stay separate facts.
 func TestSharedCredentialCannotFabricateApproval(t *testing.T) {
+	t.Parallel()
 	var posted atomic.Int32
 	var head string
 	var gh *httptest.Server
@@ -125,6 +126,7 @@ func TestSharedCredentialCannotFabricateApproval(t *testing.T) {
 
 // A18: removing an engineer's project access mid-job denies further tools.
 func TestAccessRevokedMidJob(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Security", "revoke"):
@@ -163,6 +165,7 @@ func TestAccessRevokedMidJob(t *testing.T) {
 // A20: "done" without the expected evidence leaves the work incomplete with
 // the missing evidence named, and creates no human-approval task.
 func TestDoneWithoutEvidence(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Security", "claim"):
@@ -195,6 +198,7 @@ func TestDoneWithoutEvidence(t *testing.T) {
 // the old head and schedules exactly one new round; a replayed delivery
 // changes nothing.
 func TestWebhookSupersedesReviewOnNewCommits(t *testing.T) {
+	t.Parallel()
 	var posted atomic.Int32
 	var headV atomic.Value
 	var gh *httptest.Server

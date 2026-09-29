@@ -21,6 +21,7 @@ import (
 // synthetic public GitHub PR. The provider deliberately emits deterministic
 // tool calls; this is separate from the real-model conversation campaign.
 func TestLiveGitHubReviewThroughHub(t *testing.T) {
+	t.Parallel()
 	repo := os.Getenv("YIP_GITHUB_REPO")
 	token := os.Getenv("YIP_GITHUB_TOKEN")
 	number, _ := strconv.Atoi(os.Getenv("YIP_GITHUB_PR"))

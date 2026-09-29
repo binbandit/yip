@@ -62,6 +62,7 @@ func (c *client) fetch(path string) (*http.Response, []byte) {
 }
 
 func TestProfilePictures(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	anim := animatedGIF(t)
 

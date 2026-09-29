@@ -112,6 +112,7 @@ func (n *fakeNode) waitFrame(e *env, what string, match func(protocol.Frame) boo
 // A conversational reply that reports work_update(failed) must not wedge
 // the engineer or the machine: the next request is still answered.
 func TestRegressionReplyFailureDoesNotWedge(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Engineering", "impossible"):
@@ -137,6 +138,7 @@ func TestRegressionReplyFailureDoesNotWedge(t *testing.T) {
 // work_respond only answers a help request addressed to the caller; a code
 // job can't use it to complete itself without evidence.
 func TestRegressionWorkRespondCannotSelfComplete(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Engineering", "fix"):
@@ -162,6 +164,7 @@ func TestRegressionWorkRespondCannotSelfComplete(t *testing.T) {
 // An engineer removed from a private room is neither woken by replies in a
 // thread they started nor given the room's new messages.
 func TestRegressionRemovedMemberNotRoutedOrLeaked(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	var seen []string
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
@@ -206,6 +209,7 @@ func TestRegressionRemovedMemberNotRoutedOrLeaked(t *testing.T) {
 // engineer: the run is cancelled (not stuck stopping), the runner is told
 // to drop the attempt, and the next request is offered normally.
 func TestRegressionCancelOfferedRunIsFreed(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	n := e.fakeNode("fake-runner")
 	e.post("Engineering", "@Mira hello", []string{"mira"}, nil)
@@ -230,6 +234,7 @@ func TestRegressionCancelOfferedRunIsFreed(t *testing.T) {
 // A tool call re-sent after a reconnect returns the recorded result instead
 // of running its mutation twice.
 func TestRegressionToolCallRetryRunsOnce(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	n := e.fakeNode("fake-runner")
 	e.post("Engineering", "@Mira hello", []string{"mira"}, nil)
@@ -265,6 +270,7 @@ func TestRegressionToolCallRetryRunsOnce(t *testing.T) {
 // The hub acknowledges a terminal report explicitly, including one for a
 // run it doesn't know, so the runner stops re-sending it.
 func TestRegressionTerminalAckIsExplicit(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	n := e.fakeNode("fake-runner")
 	n.send(e, protocol.EvRunTerminal, "no-such-run", 3, protocol.RunTerminal{Outcome: protocol.OutcomeSucceeded, LastSeq: 4, ExitConfirmed: true})
@@ -281,6 +287,7 @@ func TestRegressionTerminalAckIsExplicit(t *testing.T) {
 
 // Runner artifact access follows the current credential and assignment.
 func TestRegressionRunnerArtifactAccess(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	n := e.fakeNode("fake-runner")
 	art := protocol.Artifact{ID: domain.NewID(), Kind: "bundle", Name: "x.bundle", Hash: strings.Repeat("a", 64), Size: 1, CreatedAt: time.Now()}
@@ -310,6 +317,7 @@ func TestRegressionRunnerArtifactAccess(t *testing.T) {
 // An owner's answer that lands while the asking run is still going is not
 // lost when that run then parks the job: the job resumes with the answer.
 func TestRegressionAnswerBeforeWaitResumes(t *testing.T) {
+	t.Parallel()
 	var attempts atomic.Int32
 	var answer atomic.Value
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
@@ -357,6 +365,7 @@ func TestRegressionAnswerBeforeWaitResumes(t *testing.T) {
 // parks on the question again, the job resumes with the answer instead of
 // waiting forever. The machine is played by hand to hold that window open.
 func TestRegressionAnswerWhileStartingResumes(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	n := e.fakeNode("slow-box")
 	seen := map[string]bool{}
@@ -470,6 +479,7 @@ func TestRegressionAnswerWhileStartingResumes(t *testing.T) {
 // A delegated child that fails resolves its parent's dependency, and the
 // parent is told the outcome.
 func TestRegressionFailedChildResolvesParent(t *testing.T) {
+	t.Parallel()
 	var resumed atomic.Value
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
@@ -499,6 +509,7 @@ func TestRegressionFailedChildResolvesParent(t *testing.T) {
 
 // One approval doesn't outvote another reviewer's requested changes.
 func TestRegressionCompletionNeedsEveryReviewer(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Security", "both"):
@@ -554,6 +565,7 @@ func TestRegressionCompletionNeedsEveryReviewer(t *testing.T) {
 // Deleting a message removes its text from events, job text, run context
 // and search.
 func TestRegressionRedactionIsComplete(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		if replyTo(m, "Engineering", "REDACT-CANARY") {
 			return script(fake.Step{Final: "Noted."})
@@ -588,6 +600,7 @@ func TestRegressionRedactionIsComplete(t *testing.T) {
 // A forge refresh doesn't hold the single writer while it waits on the
 // network.
 func TestRegressionForgeRefreshOutsideWriter(t *testing.T) {
+	// Not parallel: it bounds how long a write waits.
 	e := newEnv(t, envOptions{noRunner: true, forge: func(ctx context.Context, h *hub.Hub, repo protocol.Repo) (forge.Connector, forge.RepoRef, error) {
 		return slowForge{d: 700 * time.Millisecond}, forge.RepoRef{Host: "github.com", Owner: "acme", Name: "atlas"}, nil
 	}})
@@ -620,6 +633,7 @@ func TestRegressionForgeRefreshOutsideWriter(t *testing.T) {
 // work_run_check goes through the permission policy and runs without the
 // machine owner's credentials; conversation replies can't run checks.
 func TestRegressionRunCheckIsPolicedAndIsolated(t *testing.T) {
+	// Not parallel: it sets the environment.
 	marker := filepath.Join(t.TempDir(), "env.txt")
 	t.Setenv("SSH_AUTH_SOCK", "/tmp/fake-agent.sock")
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
@@ -676,6 +690,7 @@ func TestRegressionRunCheckIsPolicedAndIsolated(t *testing.T) {
 // A routine file edit reaches the runner without an owner prompt, while the
 // consequential command after it still waits for its own exact approval.
 func TestRegressionHeredocEditNeedsNoApproval(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Security", "heredoc"):
@@ -714,6 +729,7 @@ func TestRegressionHeredocEditNeedsNoApproval(t *testing.T) {
 // Sign-in attempts are bounded per client, and oversized input is refused
 // before any password hashing.
 func TestRegressionSignInIsBounded(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	if _, _, err := e.hub.SignIn(e.ctx, "brayden", strings.Repeat("x", 5000), "client-a", "test"); err == nil {
 		t.Fatalf("an oversized password was accepted")
@@ -769,6 +785,7 @@ func (s slowForge) VerifyWebhook(secret []byte, headers map[string]string, body 
 // A check that outlives its timeout is stopped as a process group: it ends
 // with exit 124 promptly and nothing it would have done afterwards happens.
 func TestRegressionCheckTimeoutStopsProcess(t *testing.T) {
+	// Not parallel: it bounds how long a check runs.
 	marker := filepath.Join(t.TempDir(), "late.txt")
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
@@ -799,6 +816,7 @@ func TestRegressionCheckTimeoutStopsProcess(t *testing.T) {
 // No silent fallback to API billing, and a pinned account is respected:
 // work waits (with the reason) instead of running on the wrong terms.
 func TestRegressionBillingGateAndAccountPin(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	n := e.fakeNodeWith("api-box", protocol.ProviderInstallation{Provider: "fake", AuthState: protocol.AuthReady, ProfileID: "fake:api-key",
 		Billing: protocol.BillingAPI, Capabilities: protocol.ProviderCapabilities{ReadOnly: true}})
@@ -860,6 +878,7 @@ func (e *env) jobsWithReplies() []protocol.Job {
 // "Since you were here" reports each job's current state: an earlier wait
 // is history once the job is running again.
 func TestRegressionCatchupShowsCurrentState(t *testing.T) {
+	t.Parallel()
 	var attempts atomic.Int32
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
@@ -929,6 +948,7 @@ func TestRegressionCatchupShowsCurrentState(t *testing.T) {
 // Search finds work by its short ID, and a project filter narrows results
 // to that project before ranking.
 func TestRegressionSearchByWorkIDAndProject(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	e.post("Engineering", "@Mira look at the quartzite cache", []string{"mira"}, nil)
 	var job protocol.Job
@@ -968,6 +988,7 @@ func TestRegressionSearchByWorkIDAndProject(t *testing.T) {
 // With no other engineer in the conversation, code work is reviewed by the
 // owner instead of waiting forever for a peer.
 func TestRegressionSoloEngineerOwnerReviews(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	a := e.project("Atlas")
 	e.c.must("POST", "/v1/rooms", protocol.CreateRoomRequest{Name: "Solo", EngineerIDs: []string{e.engineerID("mira")}, ProjectIDs: []string{a.ID}}, nil)
@@ -990,6 +1011,7 @@ func TestRegressionSoloEngineerOwnerReviews(t *testing.T) {
 // Asking the Overview where things stand covers every project the user's
 // rooms reach, naming quiet ones, and what waits on the user.
 func TestRegressionOverviewStatusCoversAllProjects(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	e.post("Engineering", "@Pip can you investigate Beacon's request flow?", []string{"pip"}, nil)
 	e.waitJob("Document Beacon", protocol.JobRunning, protocol.JobWaiting, protocol.JobReviewReady, protocol.JobCompleted)
@@ -1024,6 +1046,7 @@ func TestRegressionOverviewStatusCoversAllProjects(t *testing.T) {
 
 // The diagnostic bundle is useful without carrying personal or secret data.
 func TestRegressionDiagnosticBundle(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	var raw json.RawMessage
 	e.c.must("GET", "/v1/diagnostics/bundle", nil, &raw)
@@ -1044,6 +1067,7 @@ func TestRegressionDiagnosticBundle(t *testing.T) {
 // A23: a project that needs a tool no machine has waits with that reason and
 // never launches elsewhere; bad requirement names are refused.
 func TestRegressionProjectToolchainRequirement(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	p := e.project("Atlas")
 	pol := p.Policy
@@ -1073,6 +1097,7 @@ func TestRegressionProjectToolchainRequirement(t *testing.T) {
 // A request made in the thread of finished work starts follow-up work that
 // links to the original, and the engineer sees what it follows (spec §8).
 func TestRegressionFollowUpLinksOriginal(t *testing.T) {
+	t.Parallel()
 	var sawFollow atomic.Bool
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
@@ -1108,6 +1133,7 @@ func TestRegressionFollowUpLinksOriginal(t *testing.T) {
 // §8D: "interrupt and restart" stops the current attempt without closing the
 // work and starts the next one at once, told why.
 func TestRegressionInterruptAndRestart(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Reverse engineering", "investigate"):
@@ -1144,6 +1170,7 @@ func TestRegressionInterruptAndRestart(t *testing.T) {
 // A provider crash that changed nothing outside the workspace is retried
 // automatically after a backoff, a bounded number of times.
 func TestRegressionCrashRetriesAutomatically(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Reverse engineering", "investigate"):
@@ -1177,6 +1204,7 @@ func TestRegressionCrashRetriesAutomatically(t *testing.T) {
 // Output a machine sends under an old lease epoch never changes the work;
 // it is kept, once, as quarantined diagnostic evidence.
 func TestRegressionStaleOutputIsQuarantined(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	n := e.fakeNode("old-box")
 	e.post("Engineering", "@Mira hello", []string{"mira"}, nil)
@@ -1230,6 +1258,7 @@ func TestRegressionStaleOutputIsQuarantined(t *testing.T) {
 // Uncommitted work needs an explicit confirmation of the loss; open work's
 // workspace can't be deleted; the machine itself removes the files.
 func TestRegressionRemoveWorkspaceFromMachines(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Reverse engineering", "map the gateway"):
@@ -1297,6 +1326,7 @@ func TestRegressionRemoveWorkspaceFromMachines(t *testing.T) {
 // A repository with no reachable remote is imported from a git bundle; the
 // machine builds its copy from the bundle, and a newer bundle refreshes it.
 func TestRegressionImportRepoFromBundle(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Reverse engineering", "read the notes"):
@@ -1377,6 +1407,7 @@ func TestRegressionImportRepoFromBundle(t *testing.T) {
 // A change sent twice with the same Idempotency-Key acts once and replays its
 // first result; the key can't be reused for a different request.
 func TestRegressionIdempotencyKeys(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{noRunner: true})
 	var replayed bool
 	c := e.c.withKey("create-project-once-123")
@@ -1421,6 +1452,7 @@ func TestRegressionIdempotencyKeys(t *testing.T) {
 // otherwise (no queue), correctable by supersession, and left out of
 // context once due for review until renewed.
 func TestRegressionEngineerNotes(t *testing.T) {
+	t.Parallel()
 	var seen sync.Map // room name → notes Pip saw
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		if m.Job.Kind == "reply" {
@@ -1553,6 +1585,7 @@ func TestRegressionEngineerNotes(t *testing.T) {
 // checks, and how review findings ended, and the author recalls it in
 // another room. A corrected note carries its history into context.
 func TestRegressionFinishedWorkIsRemembered(t *testing.T) {
+	t.Parallel()
 	var ctxNotes sync.Map // request body → rendered context of the reply
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		if m.Job.Kind == "reply" && m.RoomName == "Engineering" && m.Request != nil {
@@ -1629,6 +1662,7 @@ func TestRegressionFinishedWorkIsRemembered(t *testing.T) {
 // does this by default when one question is waiting on you), resumes the
 // work; plain chat without that target is never assumed to be an answer.
 func TestRegressionRoomAnswerTargetsQuestion(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	e.post("Reverse engineering", "@Pip can you work out how Beacon retries requests? I want to know where a duplicate write could happen.", []string{"pip"}, nil)
 	e.waitJob("Document Beacon", protocol.JobWaiting)
@@ -1655,6 +1689,7 @@ func TestRegressionRoomAnswerTargetsQuestion(t *testing.T) {
 // into that work (a reply would wait until she stops); the owner's message
 // shows the receipt and nobody posts a second acknowledgment.
 func TestRegressionClarificationReachesRunningWork(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		if m.Job.Kind == "code" {
 			return script(fake.Step{Status: "Working on it"}, fake.Step{Fault: "hang"})
@@ -1691,6 +1726,7 @@ func TestRegressionClarificationReachesRunningWork(t *testing.T) {
 // clarification to her one open assignment and adds it there; with two
 // plausible assignments she asks one short question and adds nothing.
 func TestRegressionClarificationToWaitingWork(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		if m.Job.Kind == "code" && m.Purpose != "input" {
 			return script(toolStep("work_wait", map[string]any{"reason": "dependency", "detail": "waiting on the security team"}, ""))
@@ -1746,6 +1782,7 @@ func TestRegressionClarificationToWaitingWork(t *testing.T) {
 
 // Recall speaks about the decision; its internal identifiers stay in evidence.
 func TestRegressionDecisionRecallUsesHumanTitles(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	e.post("Security", "@Mira fix Atlas accepting expired sessions", []string{"mira"}, nil)
 	j := e.waitJob("Fix Atlas session expiry", protocol.JobCompleted)
@@ -1766,6 +1803,7 @@ func TestRegressionDecisionRecallUsesHumanTitles(t *testing.T) {
 // One assignment, an ordinary clarification and answer, then the engineers
 // exchange changes and re-review without any owner relay or acceptance.
 func TestRegressionTeamConversation(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{})
 	e.post("Security", "@Mira fix Atlas expiry for the client rollout", []string{"mira"}, nil)
 	j := e.waitJob("Fix Atlas session expiry", protocol.JobWaiting)
@@ -1850,6 +1888,7 @@ func TestRegressionTeamConversation(t *testing.T) {
 // review identity. A corrected artifact needs a new, readable snapshot and
 // approval of its content hash before completion.
 func TestRegressionDocumentCorrectionAndRereview(t *testing.T) {
+	t.Parallel()
 	publish := func(body string) []fake.Step {
 		return []fake.Step{{Write: &fake.WriteFile{Path: "docs/plan.md", Content: body}},
 			toolStep("work_publish_revision", map[string]any{"summary": "Update plan"}, ""),
@@ -1916,6 +1955,7 @@ func TestRegressionDocumentCorrectionAndRereview(t *testing.T) {
 }
 
 func TestRegressionCorrectingApprovedDocumentRequiresNewApproval(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 		switch {
 		case replyTo(m, "Engineering", "approved document"):

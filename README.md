@@ -193,7 +193,7 @@ jobs on your normal hub.
 
 ```sh
 go test ./...            # unit + integration (≈1 min)
-go test -race ./internal/... ./test/integration/
+just test-race           # unit + integration under the race detector
 just schema              # regenerate JSON Schemas and web types from protocol/*.go
 just test-dev            # dev-server lifecycle tests, including real Air restarts
 cd web && npm run dev    # frontend only; expects a hub on :7521 (override with YIP_HUB)
@@ -207,9 +207,9 @@ paste into a coding agent. It is dev-only; built clients never include it.
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs these
 checks on every pull request and on manual dispatch: `just lint`, a check that
-`just schema` output is committed, `go test ./...`, `go test -race
-./internal/... ./test/integration/`, the client's `npm run check`, unit tests,
-build and contrast check, and the browser journeys (`npm run e2e`) in Chromium.
+`just schema` output is committed, `go test ./...`, `just test-race`, the
+client's `npm run check`, unit tests, build and contrast check, and the
+browser journeys (`npm run e2e`) in Chromium.
 
 GitHub branch protection requires passing checks on an up-to-date PR before
 merging into `main`, so CI does not repeat the suite on pushes to `main`.

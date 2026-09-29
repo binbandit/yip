@@ -20,6 +20,7 @@ import (
 // A push grant belongs to the assignment's repository. Ask the actual hub for
 // permission without ever executing a push, including in the allowed control.
 func TestSimulationPushGrantStaysInsideAssignedCheckout(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []struct {
 		name, command string
 		autoAllow     bool
@@ -44,6 +45,7 @@ func TestSimulationPushGrantStaysInsideAssignedCheckout(t *testing.T) {
 		{"environment github repository", "env GH_REPO=another-owner/other-repo gh pr create --fill", false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
 				switch {
 				case replyTo(m, "Security", "repository permission"):
@@ -92,6 +94,7 @@ func TestSimulationPushGrantStaysInsideAssignedCheckout(t *testing.T) {
 // One workspace carries an entire working day into the next. Every chapter
 // uses the same database, repositories, engineers, history and runner identity.
 func TestSimulationDailyDriverPersistentWorkspace(t *testing.T) {
+	t.Parallel()
 	type assignment struct {
 		id, title, kind, room, author string
 		question, cancel, rework      bool

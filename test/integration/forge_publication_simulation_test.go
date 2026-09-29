@@ -163,6 +163,7 @@ func publicationDelivery(t *testing.T, e *env, roundID string) store.ForgeDelive
 }
 
 func TestSimulationPublicationFailedThenSuccessfulRetryIsDurable(t *testing.T) {
+	t.Parallel()
 	e, f, run, round := publicationEnv(t, func(n int) int {
 		if n == 1 {
 			return http.StatusForbidden
@@ -190,6 +191,7 @@ func TestSimulationPublicationFailedThenSuccessfulRetryIsDurable(t *testing.T) {
 }
 
 func TestSimulationPublicationAmbiguousRetryWaitsForVisibleReview(t *testing.T) {
+	t.Parallel()
 	var visible atomic.Bool
 	e, f, run, round := publicationEnv(t, func(int) int { return http.StatusServiceUnavailable }, visible.Load)
 	if result := publishReviewCall(e, run, "ambiguous"); result.OK {
@@ -212,6 +214,7 @@ func TestSimulationPublicationAmbiguousRetryWaitsForVisibleReview(t *testing.T) 
 }
 
 func TestSimulationPublicationConcurrentCallsSendOnce(t *testing.T) {
+	t.Parallel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
@@ -245,6 +248,7 @@ func TestSimulationPublicationConcurrentCallsSendOnce(t *testing.T) {
 }
 
 func TestSimulationPublicationPersistenceFailureDoesNotReportSuccess(t *testing.T) {
+	t.Parallel()
 	e, f, run, round := publicationEnv(t, nil, nil)
 	_, err := e.hub.Store().R().ExecContext(e.ctx, `CREATE TRIGGER fail_publication_save BEFORE UPDATE ON forge_deliveries WHEN NEW.status = 'published' BEGIN SELECT RAISE(FAIL, 'simulated disk write failure'); END`)
 	if err != nil {
@@ -267,6 +271,7 @@ func TestSimulationPublicationPersistenceFailureDoesNotReportSuccess(t *testing.
 }
 
 func TestSimulationPublicationConcurrentReconciliationSurvivesLateError(t *testing.T) {
+	t.Parallel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
@@ -298,8 +303,10 @@ func TestSimulationPublicationConcurrentReconciliationSurvivesLateError(t *testi
 }
 
 func TestSimulationPublicationAdoptsLegacyRetryJournal(t *testing.T) {
+	t.Parallel()
 	for _, status := range []string{"published", "unknown"} {
 		t.Run(status, func(t *testing.T) {
+			t.Parallel()
 			e, f, run, roundID := publicationEnv(t, nil, nil)
 			_, round, err := store.ReviewByReviewJob(e.ctx, e.hub.Store().R(), run.JobID)
 			if err != nil {

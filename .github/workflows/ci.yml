@@ -37,13 +37,24 @@ jobs:
   go-race:
     name: Go (race detector)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test -race -timeout 35m ./internal/... ./test/integration/
+          cache: false
+      # A -race build shares no compiled packages with the other Go jobs, and
+      # setup-go's one cache is saved by whichever job finishes first.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-race-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-race-${{ runner.os }}-
+      - uses: extractions/setup-just@v4
+      - run: just test-race
 
   web:
     name: Web client
