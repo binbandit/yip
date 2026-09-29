@@ -42,7 +42,7 @@ func GetRoom(ctx context.Context, q Q, id string) (protocol.Room, error) {
 func ListRoomsForUser(ctx context.Context, q Q, userID string) ([]protocol.Room, error) {
 	rooms, err := list(ctx, q, scanRoom, `SELECT `+roomCols+` FROM rooms r
 		WHERE archived = 0 AND EXISTS (SELECT 1 FROM room_memberships m WHERE m.room_id = r.id AND m.member_kind = 'user' AND m.member_id = ?)
-		ORDER BY kind = 'overview' DESC, kind, name`, userID)
+		ORDER BY kind, name`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -147,12 +147,4 @@ func SetRead(ctx context.Context, q Q, roomID, userID string, seq int64) error {
 	_, err := q.ExecContext(ctx, `INSERT INTO room_reads(room_id, user_id, last_read_seq) VALUES (?, ?, ?)
 		ON CONFLICT(room_id, user_id) DO UPDATE SET last_read_seq = MAX(last_read_seq, excluded.last_read_seq)`, roomID, userID, seq)
 	return err
-}
-
-// OverviewRoomID returns the owner's personal Overview conversation.
-func OverviewRoomID(ctx context.Context, q Q, userID string) (string, error) {
-	var id string
-	err := q.QueryRowContext(ctx, `SELECT r.id FROM rooms r JOIN room_memberships m ON m.room_id = r.id
-		WHERE r.kind = 'overview' AND m.member_kind = 'user' AND m.member_id = ? LIMIT 1`, userID).Scan(&id)
-	return id, notFound(err)
 }

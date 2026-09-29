@@ -356,13 +356,3 @@ func (h *Hub) GetDecision(ctx context.Context, userID, id string) (protocol.Deci
 	}
 	return d, nil
 }
-
-// MarkOverviewSeen records the owner's visit for "Since you were here".
-func (h *Hub) MarkOverviewSeen(ctx context.Context, userID string) error {
-	u, err := store.GetUser(ctx, h.st.R(), userID)
-	if err != nil {
-		return err
-	}
-	u.Preferences.LastSeenAt = h.now().Format(time.RFC3339)
-	return h.SetPreferences(ctx, userID, u.Preferences)
-}

@@ -102,11 +102,6 @@ func (h *Hub) PostMessage(ctx context.Context, userID, roomID string, req protoc
 		}
 		resp.Message = msg
 
-		// The owner's Overview answers status from the ledger, without waking anyone.
-		if room.Kind == protocol.RoomKindOverview && len(engineerMentions(mentions)) == 0 {
-			return h.answerStatus(ctx, t, userID, room, msg)
-		}
-
 		// 1. A natural reply resolves a correlated question.
 		resolved, err := h.resolveQuestionsFromMessage(ctx, t, userID, room, msg)
 		if err != nil {

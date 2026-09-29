@@ -83,15 +83,6 @@ func (h *Hub) Setup(ctx context.Context, req protocol.SetupRequest) (protocol.Us
 		if err := store.SetSetting(ctx, t.tx, settingInstance, domain.NewID()); err != nil {
 			return err
 		}
-		// The owner's personal Overview conversation.
-		overview := protocol.Room{ID: domain.NewID(), OrgID: org.ID, Name: "Overview", Kind: protocol.RoomKindOverview,
-			Purpose: "Ask where things stand across your projects.", Private: true, ReplyMode: protocol.ReplyModeQuiet, CreatedAt: h.now()}
-		if err := store.InsertRoom(ctx, t.tx, overview); err != nil {
-			return err
-		}
-		if _, err := store.AddMember(ctx, t.tx, overview.ID, protocol.Member{Kind: protocol.ActorUser, ID: user.ID}); err != nil {
-			return err
-		}
 		if err := t.audit(userActor(user.ID), "bootstrap_secret", "owner.create", user.ID, "ok", ""); err != nil {
 			return err
 		}

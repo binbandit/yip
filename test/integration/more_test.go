@@ -224,5 +224,4 @@ func TestLargeHistoryReadLatency(t *testing.T) {
 	measure("older page", "/v1/rooms/"+rooms[3]+"/messages?limit=60&before=500")
 	measure("search", "/v1/search?q=gateway+retry")
 	measure("jobs", "/v1/jobs?limit=200")
-	measure("overview", "/v1/overview")
 }
