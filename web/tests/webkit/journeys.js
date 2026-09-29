@@ -9,7 +9,7 @@ window.__journeys = (() => {
   const roomTitle = (t) => t.q('#room-title')?.textContent.replace(/^\s*#/, '').trim();
   const composer = (t) => t.waitFor(() => t.q('.room-composer textarea'), 'the composer');
   const openRoom = async (t, name) => {
-    const link = await t.waitFor(() => t.qa('nav a.row').find((a) => a.textContent.trim().startsWith(name)), `the ${name} link`);
+    const link = await t.waitFor(() => t.qa('nav.side a').find((a) => a.textContent.trim().startsWith(name)), `the ${name} link`);
     await t.click(link);
     await t.waitFor(() => roomTitle(t) === name, `${name} to open`);
   };
@@ -24,7 +24,7 @@ window.__journeys = (() => {
     // Controls must not be cut off by the edge either (a clipped header
     // doesn't scroll the page but still hides the button).
     const clipped = t
-      .qa('main button, main a.btn, main input, main select')
+      .qa('[role=main] button, [role=main] a.astryx-button, [role=main] input, [role=main] select')
       .filter((el) => el.offsetParent !== null && !el.closest('.table-scroll, .grants, [data-scrolls-x], .code, pre, table'))
       .find((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.right > innerWidth + 1 || r.left < -1); });
     t.expect(!clipped, `${where}: "${(clipped?.textContent || clipped?.getAttribute('aria-label') || '').trim()}" is cut off at ${innerWidth}px`);
@@ -64,10 +64,10 @@ window.__journeys = (() => {
         document.activeElement?.blur();
         document.body.focus();
         await t.press('Tab');
-        t.expect(document.activeElement?.classList.contains('skip-link'), 'first Tab should reach "Skip to content", got ' + document.activeElement?.outerHTML.slice(0, 60));
+        t.expect(document.activeElement?.getAttribute('data-testid') === 'skip-to-content', 'first Tab should reach "Skip to content", got ' + document.activeElement?.outerHTML.slice(0, 60));
         await t.press('Enter');
         await t.sleep(100);
-        t.expect(document.activeElement?.id === 'main' || t.q('#main')?.contains(document.activeElement), 'the skip link should move focus into the content');
+        t.expect(t.q('[role=main]')?.contains(document.activeElement), 'the skip link should move focus into the content');
       },
     },
     {
@@ -152,7 +152,8 @@ window.__journeys = (() => {
         const opener = await t.waitFor(() => t.q('.strip button.open') || t.q('.result button.claim'), 'a way into the work', 30000);
         opener.focus();
         await t.press('Enter');
-        const drawer = await t.waitFor(() => t.q('[role=dialog]'), 'the drawer');
+        // The visible one: closed popovers (a message's reactions) keep their dialog in the DOM.
+        const drawer = await t.waitFor(() => t.qa('aside[role=dialog]').find((d) => d.getClientRects().length), 'the drawer');
         await t.waitFor(() => t.qa('[role=tab]', drawer).some((x) => x.textContent.includes('Evidence')), 'the Evidence tab');
         for (let i = 0; i < 25; i++) {
           await t.press('Tab');
@@ -188,7 +189,7 @@ window.__journeys = (() => {
       run: async (t) => {
         noScroll(t, 'the Overview');
         await t.click(t.q('button[aria-label="Rooms and navigation"]'));
-        const sheet = await t.waitFor(() => t.q('[role=dialog][aria-label="Rooms and navigation"]'), 'the rooms sheet');
+        const sheet = await t.waitFor(() => t.q('dialog[open][aria-label="Rooms and navigation"]'), 'the rooms sheet');
         await t.click(t.qa('a', sheet).find((a) => a.textContent.trim().startsWith('Reverse engineering')));
         await t.waitFor(() => roomTitle(t) === 'Reverse engineering', 'the room');
         const box = (await composer(t)).getBoundingClientRect();
@@ -209,7 +210,7 @@ window.__journeys = (() => {
         await sweep(t);
         await openRoom(t, 'Security').catch(async () => {
           await t.click(t.q('button[aria-label="Rooms and navigation"]'));
-          const sheet = await t.waitFor(() => t.q('[role=dialog][aria-label="Rooms and navigation"]'), 'the rooms sheet');
+          const sheet = await t.waitFor(() => t.q('dialog[open][aria-label="Rooms and navigation"]'), 'the rooms sheet');
           await t.click(t.qa('a', sheet).find((a) => a.textContent.trim().startsWith('Security')));
         });
         await t.waitFor(() => t.q('#room-title'), 'a room');

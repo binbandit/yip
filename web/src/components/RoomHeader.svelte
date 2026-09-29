@@ -1,10 +1,11 @@
 <script lang="ts">
   // The room header always identifies who can answer: members with roles,
   // the reply mode, and linked projects.
+  import { AtSign, Folder, Lock, MessageSquareReply, Settings } from '@lucide/svelte';
+  import { AvatarGroup, Button, Icon, IconButton, Text, Tooltip, VisuallyHidden } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
   import type { Room } from '../lib/api/types.gen';
   import Avatar from './Avatar.svelte';
-  import Icon from './Icon.svelte';
 
   interface Props {
     room: Room;
@@ -30,35 +31,50 @@
 <header class="room-head">
   <div class="titles">
     <h1 id="room-title" data-screen-title tabindex="-1">
-      {#if room.kind === 'room'}<span class="hash" aria-hidden="true">{#if room.private}<Icon name="lock" size={14} />{:else}#{/if}</span>{/if}{title}
+      {#if room.kind === 'room'}<span class="hash" aria-hidden="true">{#if room.private}<Icon icon={Lock} size="sm" />{:else}#{/if}</span>{/if}{title}
     </h1>
-    {#if room.private && room.kind !== 'overview'}<span class="vh">, private</span>{/if}
-    <p class="purpose truncate">
+    {#if room.private && room.kind !== 'overview'}<VisuallyHidden>, private</VisuallyHidden>{/if}
+    <Text as="p" type="supporting" maxLines={1} class="purpose">
       {#if room.kind === 'dm' && engineers[0]}{engineers[0].role}{:else if room.kind === 'overview'}Across your rooms and projects{:else}{room.purpose}{/if}
-    </p>
+    </Text>
   </div>
 
   <div class="facts">
     {#each projects as p (p.id)}
-      <a class="head-btn project" href="/projects/{p.id}"><Icon name="folder" size={14} />{p.name}</a>
+      <Button class="project" variant="secondary" size="sm" href="/projects/{p.id}" label={p.name}>
+        {#snippet icon()}<Icon icon={Folder} size="sm" />{/snippet}
+      </Button>
     {/each}
-    <span class="head-btn static" title={replyText}>
-      <Icon name={room.replyMode === 'steward' ? 'reply' : 'at'} size={14} /><span aria-hidden="true">{replyShort}</span><span class="vh">{replyText}</span>
-    </span>
+    <Tooltip content={replyText}>
+      <span class="reply-mode">
+        <Icon icon={room.replyMode === 'steward' ? MessageSquareReply : AtSign} size="sm" /><span aria-hidden="true">{replyShort}</span><VisuallyHidden>{replyText}</VisuallyHidden>
+      </span>
+    </Tooltip>
     {#if engineers.length}
-      <button class="head-btn members" onclick={() => app.openPanel({ kind: 'room', id: room.id })} title={membersLabel} aria-label="Members: {membersLabel}. Manage room">
-        <span class="faces" aria-hidden="true">
-          {#each engineers.slice(0, 3) as e (e.id)}<Avatar actor={{ kind: 'engineer', id: e.id }} size={20} />{/each}
+      <Button
+        class="members"
+        variant="secondary"
+        size="sm"
+        label="Members: {membersLabel}. Manage room"
+        tooltip={membersLabel}
+        onclick={() => app.openPanel({ kind: 'room', id: room.id })}
+      >
+        <span class="members-row">
+          <span class="faces" aria-hidden="true">
+            <AvatarGroup size={20} shape="rounded">
+              {#each engineers.slice(0, 3) as e (e.id)}<Avatar actor={{ kind: 'engineer', id: e.id }} size={20} />{/each}
+            </AvatarGroup>
+          </span>
+          <!-- Who can answer, by name; a count when the room is narrow. -->
+          <span class="names" aria-hidden="true">{engineers.slice(0, 3).map((e) => e.name).join(', ')}{engineers.length > 3 ? ` +${engineers.length - 3}` : ''}</span>
+          <span class="count" aria-hidden="true">{engineers.length}</span>
         </span>
-        <!-- Who can answer, by name; a count when the room is narrow. -->
-        <span class="names" aria-hidden="true">{engineers.slice(0, 3).map((e) => e.name).join(', ')}{engineers.length > 3 ? ` +${engineers.length - 3}` : ''}</span>
-        <span class="count" aria-hidden="true">{engineers.length}</span>
-      </button>
+      </Button>
     {/if}
     {#if room.kind !== 'overview'}
-      <button class="icon-btn" aria-label="Room settings" onclick={() => app.openPanel({ kind: 'room', id: room.id })}>
-        <Icon name="settings" size={17} />
-      </button>
+      <IconButton label="Room settings" tooltip="Room settings" variant="ghost" size="sm" onclick={() => app.openPanel({ kind: 'room', id: room.id })}>
+        {#snippet icon()}<Icon icon={Settings} size="sm" />{/snippet}
+      </IconButton>
     {/if}
   </div>
 </header>
@@ -68,10 +84,10 @@
     flex: none;
     display: flex;
     align-items: center;
-    gap: 12px;
-    min-height: 52px;
-    padding: 8px 12px 8px 20px;
-    border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+    gap: var(--spacing-3);
+    min-height: var(--yip-pane-header-h);
+    padding: var(--spacing-2) var(--spacing-3) var(--spacing-2) var(--spacing-5);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
   }
   .titles {
     display: flex;
@@ -80,72 +96,60 @@
     min-width: 0;
     flex: 1;
   }
+  /* The title keeps its width while the purpose gives way; if even the title
+     doesn't fit, it ends in an ellipsis (which needs a block, not a flex box). */
   h1 {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 2px;
     flex: 0 1 auto;
     min-width: 0;
+    margin: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: var(--text-title);
-    font-weight: 600;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
     letter-spacing: -0.02em;
     line-height: 24px;
   }
-  h1:focus-visible {
-    outline-offset: 2px;
+  /* The title takes focus after navigation so screen readers start there; it isn't a control. */
+  h1:focus {
+    outline: none;
   }
   .hash {
     display: inline-flex;
-    align-self: center;
-    width: 14px;
-    margin-right: 4px;
-    color: color-mix(in srgb, var(--ink) 45%, transparent);
-    font-weight: 500;
+    vertical-align: -2px;
+    margin-right: var(--spacing-1);
+    color: color-mix(in srgb, var(--color-text-primary) 45%, transparent);
+    font-weight: var(--font-weight-medium);
   }
-  .purpose {
+  .titles :global(.purpose) {
+    flex: 1 1 0;
     min-width: 0;
-    font-size: 13px;
-    color: var(--ink-secondary);
   }
   .facts {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--spacing-1-5);
     flex: none;
   }
-  .head-btn {
+  .reply-mode {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    height: 30px;
+    gap: var(--spacing-1-5);
     padding: 0 10px;
-    border: 1px solid var(--line-strong);
-    border-radius: var(--r-control);
-    background: var(--surface);
-    color: var(--ink);
-    font-size: 13px;
-    font-weight: 500;
-    text-decoration: none;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
     white-space: nowrap;
-    cursor: pointer;
   }
-  .head-btn:hover {
-    background: var(--surface-subtle);
-  }
-  .head-btn.static {
-    border-color: transparent;
-    color: var(--ink-secondary);
-    cursor: default;
-  }
-  .head-btn.static:hover {
-    background: none;
-  }
-  .members {
-    padding-left: 5px;
+  .facts :global(.members) {
     max-width: 280px;
+    padding-left: 5px;
+  }
+  .members-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-1-5);
+    min-width: 0;
   }
   .names {
     min-width: 0;
@@ -165,22 +169,19 @@
   }
   .faces {
     display: inline-flex;
-  }
-  .faces :global(.avatar + .avatar) {
-    margin-left: -5px;
-    box-shadow: 0 0 0 2px var(--surface);
+    flex: none;
   }
   @media (max-width: 1100px) {
-    .purpose {
+    .titles :global(.purpose) {
       display: none;
     }
   }
-  @media (max-width: 760px) {
+  @media (max-width: 768px) {
     .room-head {
-      padding: 8px 8px 8px 16px;
+      padding: var(--spacing-2) var(--spacing-2) var(--spacing-2) var(--spacing-4);
     }
-    .head-btn.static,
-    .head-btn.project {
+    .reply-mode,
+    .facts :global(.project) {
       display: none;
     }
   }

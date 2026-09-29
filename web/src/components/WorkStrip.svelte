@@ -3,6 +3,8 @@
   // owner and reviewer handoff, last confirmed activity, and the machine.
   // Each row opens the job drawer; "Add to" scopes the composer to that job.
   import { untrack } from 'svelte';
+  import { Button, Icon } from '@astryx-svelte/core';
+  import { ChevronDown, ChevronRight } from '@lucide/svelte';
   import { details } from '../lib/state/details.svelte';
   import { currentReviewRound } from '../lib/util/reviews';
   import { app, receiptKey } from '../lib/state/app.svelte';
@@ -10,7 +12,6 @@
   import { jobShape, jobStateLabel, jobTone, runStateNote, waitingReasonLabel } from '../lib/util/labels';
   import { relative } from '../lib/util/time';
   import StateIcon from './StateIcon.svelte';
-  import Icon from './Icon.svelte';
 
   interface Props {
     roomId: string;
@@ -103,50 +104,49 @@
             </span>
           </button>
           {#if live}
-            <button
-              class="btn btn-sm btn-quiet steer"
+            <Button
+              class="steer"
+              label={scoped === j.id ? 'Adding to this' : 'Add to this'}
+              tooltip="Send your next message to this work"
+              variant="ghost"
+              size="sm"
               aria-pressed={scoped === j.id}
               onclick={() => steer(j.id)}
-              title="Send your next message to this work"
-            >
-              {scoped === j.id ? 'Adding to this' : 'Add to this'}
-            </button>
+            />
           {/if}
         </li>
       {/each}
     </ul>
     {#if jobs.length > 3}
-      <button class="more link-btn" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
-        {expanded ? 'Show less' : `Show all ${jobs.length}`}
-        <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={14} />
-      </button>
+      <Button
+        class="more"
+        label={expanded ? 'Show less' : `Show all ${jobs.length}`}
+        variant="ghost"
+        size="sm"
+        aria-expanded={expanded}
+        onclick={() => (expanded = !expanded)}
+      >
+        {#snippet endContent()}<Icon icon={expanded ? ChevronDown : ChevronRight} size="sm" />{/snippet}
+      </Button>
     {/if}
   </section>
 {/if}
 
 <style>
-  .where {
-    color: var(--ink);
-  }
   .strip {
     flex: none;
-    border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
-    padding: 4px 8px;
-    background: var(--surface);
-  }
-  ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
+    padding: var(--spacing-1) var(--spacing-2);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-background-surface);
   }
   .row {
     display: flex;
     align-items: center;
-    gap: 4px;
-    border-radius: 10px;
+    gap: var(--spacing-1);
+    border-radius: var(--radius-element);
   }
   .row.scoped {
-    background: var(--accent-subtle);
+    background: var(--color-accent-muted);
   }
   .open {
     flex: 1;
@@ -154,52 +154,57 @@
     display: grid;
     grid-template-columns: auto minmax(120px, 1.2fr) minmax(90px, 1fr) minmax(0, 1.4fr);
     align-items: center;
-    gap: 12px;
+    gap: var(--spacing-3);
     min-height: 36px;
-    padding: 4px 10px;
-    border: 0;
-    border-radius: var(--r-row);
-    background: none;
-    color: var(--ink);
-    font-size: 13px;
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-element);
+    color: var(--color-text-primary);
+    font-size: var(--text-supporting-size);
+    line-height: var(--text-supporting-leading);
     text-align: left;
-    cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-standard);
   }
   .open:hover {
-    background: var(--hover);
+    background: var(--color-overlay-hover);
+  }
+  .open:focus-visible {
+    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+    outline-offset: -2px;
+  }
+  .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
   .state {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    font-weight: 600;
+    gap: var(--spacing-1-5);
+    font-weight: var(--font-weight-semibold);
     white-space: nowrap;
   }
   .title {
-    font-weight: 600;
+    font-size: var(--text-body-size);
+    font-weight: var(--font-weight-semibold);
   }
   .who,
-  .last {
-    font-size: 12px;
-    color: var(--ink-secondary);
-  }
+  .last,
   .when {
-    color: var(--ink-secondary);
+    color: var(--color-text-secondary);
   }
-  .steer {
+  .where {
+    color: var(--color-text-primary);
+  }
+  .row :global(.steer) {
     flex: none;
   }
-  .steer[aria-pressed='true'] {
-    color: var(--ink);
-    font-weight: 600;
+  /* The row's wash already marks the selected work; the pressed button only firms up. */
+  .row :global(.steer[aria-pressed='true']) {
+    font-weight: var(--font-weight-semibold);
   }
-  .more {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin: 2px 8px 4px;
-    font-size: 13px;
+  .strip :global(.more) {
+    margin: var(--spacing-0-5) var(--spacing-1) var(--spacing-1);
   }
   @container room (max-width: 860px) {
     .open {
@@ -207,8 +212,8 @@
       grid-template-areas:
         'state title'
         'who last';
-      gap: 1px 12px;
-      padding: 6px 10px;
+      gap: 1px var(--spacing-3);
+      padding: var(--spacing-1-5) var(--spacing-2);
     }
     .state {
       grid-area: state;

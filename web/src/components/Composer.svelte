@@ -4,6 +4,8 @@
   // thread on this device. A selected job keeps its context when it finishes:
   // further messages follow up with its engineer in the original thread.
   import { onMount, tick, untrack } from 'svelte';
+  import { Button, CheckboxInput, Icon, IconButton, Text, VisuallyHidden } from '@astryx-svelte/core';
+  import { ArrowUp, AtSign, Folder, GitCommitHorizontal, MessageSquareReply, X } from '@lucide/svelte';
   import { app, receiptKey } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
   import { draftKey, loadDraft, saveDraft, clearDraft } from '../lib/state/drafts';
@@ -13,9 +15,9 @@
   import type { Mention } from '../lib/api/types.gen';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
-  import Icon from './Icon.svelte';
   import Avatar from './Avatar.svelte';
   import StateIcon from './StateIcon.svelte';
+  import Notice from './Notice.svelte';
 
   interface Props {
     roomId: string;
@@ -403,38 +405,45 @@
   const offline = $derived(!app.online || app.connection === 'offline');
   const roomProjects = $derived((room?.projectIds ?? []).map((id) => app.data.projects[id]).filter(Boolean));
   const sendLabel = $derived(app.data.preferences.sendKey === 'mod-enter' ? 'Send (⌘/Ctrl+Enter)' : 'Send (Enter)');
+  const projectNames = $derived(projectIds.map((p) => app.data.projects[p]?.name).filter(Boolean).join(', '));
+  // VisuallyHidden types only the generic HTML attributes, so the label's `for` goes in through a spread.
+  const inputLabel = { for: `${uid}-input` };
 </script>
 
 <div class="composer" class:compact>
   {#if offline}
-    <p class="notice attention offline" role="status">Can't reach your workspace. Your draft is saved on this device.</p>
+    <Notice class="offline" tone="warning" role="status">Can't reach your workspace. Your draft is saved on this device.</Notice>
   {/if}
 
   <div class="box" class:scoped={!!scopeJobId || !!answering}>
     {#if answering}
       <div class="scope answering" role="status">
-        <Icon name="reply" size={15} />
-        <span class="truncate">Answering {app.engineerName(answering.askerId)}'s question{answering.missingFact ? `: ${answering.missingFact}` : ''}</span>
-        <button class="btn btn-sm btn-quiet" onclick={() => (notAnswer = answering?.id ?? null)}>Not an answer</button>
+        <Icon icon={MessageSquareReply} size="sm" color="secondary" />
+        <span class="scope-text truncate">Answering {app.engineerName(answering.askerId)}'s question{answering.missingFact ? `: ${answering.missingFact}` : ''}</span>
+        <Button label="Not an answer" variant="ghost" size="sm" onclick={() => (notAnswer = answering?.id ?? null)} />
       </div>
     {/if}
     {#if scopeJob}
       <div class="scope" role="status">
-        <Icon name={followUp ? 'reply' : 'commit'} size={15} />
-        <span class:truncate={!followUp}>
+        <Icon icon={followUp ? MessageSquareReply : GitCommitHorizontal} size="sm" color="secondary" />
+        <span class="scope-text" class:truncate={!followUp}>
           {#if followUp}
             <strong>{scopeJob.title}</strong> is {jobStateLabel(scopeJob).toLowerCase()}. Follow up with {app.engineerName(scopeJob.ownerId)} in its thread.
           {:else}
             Adding to: <strong>{scopeJob.title}</strong> · {app.engineerName(scopeJob.ownerId)}
           {/if}
         </span>
-        <button class="icon-btn clear" aria-label="Clear selected work: {scopeJob.title}" onclick={clearScope}><Icon name="x" size={15} /></button>
+        <IconButton class="clear" label="Clear selected work: {scopeJob.title}" tooltip="Clear selected work" variant="ghost" size="sm" onclick={clearScope}>
+          {#snippet icon()}<Icon icon={X} size="sm" />{/snippet}
+        </IconButton>
       </div>
     {:else if scopeJobId}
       <div class="scope" role="status">
-        <Icon name="commit" size={15} />
-        <span>{scopeMissing ? 'Selected work is unavailable. Clear it to send a room message.' : 'Loading selected work. Your draft is saved.'}</span>
-        <button class="icon-btn clear" aria-label="Clear selected work" onclick={clearScope}><Icon name="x" size={15} /></button>
+        <Icon icon={GitCommitHorizontal} size="sm" color="secondary" />
+        <span class="scope-text">{scopeMissing ? 'Selected work is unavailable. Clear it to send a room message.' : 'Loading selected work. Your draft is saved.'}</span>
+        <IconButton class="clear" label="Clear selected work" tooltip="Clear selected work" variant="ghost" size="sm" onclick={clearScope}>
+          {#snippet icon()}<Icon icon={X} size="sm" />{/snippet}
+        </IconButton>
       </div>
     {/if}
 
@@ -458,12 +467,12 @@
               <Avatar actor={{ kind: c.kind, id: c.id }} size={24} />
               <span class="opt-name">{c.name}</span>
               <span class="opt-role truncate">{c.unavailable ?? c.role}</span>
-              <span class="opt-handle mono">@{c.handle}</span>
+              <span class="opt-handle">@{c.handle}</span>
             </div>
           {/each}
         </div>
       {/if}
-      <label class="vh" for="{uid}-input">{placeholder}</label>
+      <VisuallyHidden as="label" {...inputLabel}>{placeholder}</VisuallyHidden>
       <textarea
         bind:this={textarea}
         bind:value={body}
@@ -488,9 +497,11 @@
     </div>
 
     <div class="toolbar">
-      <button
-        class="icon-btn"
-        aria-label="Mention someone"
+      <IconButton
+        class="mention-tool"
+        label="Mention someone"
+        tooltip="Mention someone"
+        variant="ghost"
         onclick={() => {
           const at = textarea?.selectionStart ?? body.length;
           const pre = body.slice(0, at);
@@ -502,40 +513,44 @@
             textarea?.setSelectionRange(c, c);
             updateQuery();
           });
-        }}><Icon name="at" size={17} /></button
+        }}
       >
+        {#snippet icon()}<Icon icon={AtSign} size="sm" />{/snippet}
+      </IconButton>
       {#if roomProjects.length}
         <div class="projects">
-          <button
-            class="chip ctx"
-            class:set={projectIds.length > 0}
+          <!-- Icon-only until a project is chosen; then the project names are its label. -->
+          <Button
+            class={projectIds.length ? 'ctx set' : 'ctx'}
+            label={projectIds.length ? projectNames : 'Add project context'}
+            isIconOnly={!projectIds.length}
+            tooltip={projectIds.length ? undefined : 'Add project context'}
+            variant="ghost"
+            size="sm"
             aria-expanded={projectsOpen}
             aria-controls="{uid}-projects"
-            aria-label={projectIds.length ? undefined : 'Add project context'}
-            title={projectIds.length ? undefined : 'Add project context'}
             onclick={() => (projectsOpen = !projectsOpen)}
           >
-            <Icon name="folder" size={15} />
-            {#if projectIds.length}{projectIds.map((p) => app.data.projects[p]?.name).filter(Boolean).join(', ')}{/if}
-          </button>
+            {#snippet icon()}<Icon icon={Folder} size="sm" />{/snippet}
+          </Button>
           {#if projectsOpen}
             <fieldset class="project-pop" id="{uid}-projects">
-              <legend class="vh">Projects for this message</legend>
+              <VisuallyHidden as="legend">Projects for this message</VisuallyHidden>
               {#each roomProjects as p (p.id)}
-                <label class="check"><input type="checkbox" checked={projectIds.includes(p.id)} onchange={() => toggleProject(p.id)} /><span>{p.name}</span></label>
+                <CheckboxInput label={p.name} value={projectIds.includes(p.id)} onChange={() => toggleProject(p.id)} />
               {/each}
-              <button class="btn btn-sm" onclick={() => (projectsOpen = false)}>Done</button>
+              <Button label="Done" size="sm" onclick={() => (projectsOpen = false)} />
             </fieldset>
           {/if}
         </div>
       {/if}
       {#if mentioned.length}
-        <span class="mentioning meta truncate">Asking {mentioned.map((m) => app.engineerName(m.id)).join(', ')}</span>
+        <Text class="mentioning" type="supporting" maxLines={1}>Asking {mentioned.map((m) => app.engineerName(m.id)).join(', ')}</Text>
       {/if}
       <span class="spacer"></span>
-      <button class="send" aria-label={sendLabel} title={sendLabel} disabled={!body.trim() || (!!scopeJobId && !scopeJob)} onclick={send}>
-        <Icon name="send" size={18} />
-      </button>
+      <IconButton class="send" label={sendLabel} tooltip={sendLabel} variant="primary" isDisabled={!body.trim() || (!!scopeJobId && !scopeJob)} onclick={send}>
+        {#snippet icon()}<Icon icon={ArrowUp} size="sm" />{/snippet}
+      </IconButton>
     </div>
   </div>
 
@@ -546,7 +561,7 @@
         {receipt.text}
       </span>
       {#if receipt.canRestart}
-        <button class="btn btn-sm btn-quiet restart" disabled={restarting} onclick={restartNow}>Interrupt and restart now</button>
+        <Button class="restart" label="Interrupt and restart now" variant="ghost" size="sm" isLoading={restarting} onclick={restartNow} />
       {/if}
     {:else if sendError}
       <span class="tone-danger">{sendError}</span>
@@ -560,27 +575,236 @@
         {/each}
       </span>
     {/if}
-    <span class="vh">{app.data.preferences.sendKey === 'mod-enter' ? 'Command or Control and Enter sends; Enter adds a new line.' : 'Enter sends; Shift and Enter adds a new line.'} Type @ to mention an engineer.</span>
+    <VisuallyHidden>{app.data.preferences.sendKey === 'mod-enter' ? 'Command or Control and Enter sends; Enter adds a new line.' : 'Enter sends; Shift and Enter adds a new line.'} Type @ to mention an engineer.</VisuallyHidden>
   </p>
 </div>
 
 <style>
   .composer {
     flex: none;
-    padding: 0 16px calc(12px + env(safe-area-inset-bottom));
-    background: linear-gradient(to bottom, transparent, var(--surface) 12px);
+    padding: 0 var(--spacing-4) calc(var(--spacing-3) + env(safe-area-inset-bottom));
+    background: linear-gradient(to bottom, transparent, var(--color-background-surface) var(--spacing-3));
   }
   .compact {
-    padding: 0 12px calc(10px + env(safe-area-inset-bottom));
+    padding: 0 var(--spacing-3) calc(var(--spacing-2) + env(safe-area-inset-bottom));
+  }
+  .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .composer :global(.offline) {
+    max-width: calc(var(--yip-measure) + 120px);
+    margin-bottom: var(--spacing-2);
+  }
+
+  .box {
+    position: relative;
+    max-width: calc(var(--yip-measure) + 120px);
+    border: 1px solid var(--color-border-emphasized);
+    border-radius: var(--radius-container);
+    background: color-mix(in srgb, var(--color-background-surface) 88%, transparent);
+    backdrop-filter: blur(12px);
+    transition:
+      border-color var(--duration-fast) var(--ease-standard),
+      box-shadow var(--duration-fast) var(--ease-standard);
+  }
+  .box:focus-within {
+    border-color: color-mix(in srgb, var(--color-text-primary) 35%, var(--color-background-surface));
+    box-shadow: var(--shadow-low);
+  }
+  .box.scoped {
+    border-color: color-mix(in srgb, var(--color-text-primary) 35%, var(--color-background-surface));
+  }
+
+  .scope {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    padding: var(--spacing-1) var(--spacing-1) var(--spacing-1) var(--spacing-3);
+    border-bottom: 1px solid var(--color-border);
+    border-radius: calc(var(--radius-container) - 1px) calc(var(--radius-container) - 1px) 0 0;
+    background: var(--color-background-muted);
+    color: var(--color-text-primary);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+  }
+  .scope-text {
+    flex: 1;
+  }
+  .scope strong {
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .field-wrap {
+    position: relative;
+  }
+  .input-area {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    max-height: 40vh;
+    padding: var(--spacing-3) var(--spacing-3) var(--spacing-0-5);
+    border: 0;
+    background: transparent;
+    resize: none;
+    font-family: var(--font-family-body);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+    color: var(--color-text-primary);
+    caret-color: var(--color-accent);
+  }
+  .input-area:focus-visible {
+    outline: none;
+  }
+  /* The visible label: the <label> itself is visually hidden. */
+  .input-area::placeholder {
+    color: var(--color-text-secondary);
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-1);
+    padding: var(--spacing-1) var(--spacing-2) var(--spacing-2);
+    min-width: 0;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .toolbar :global(.mentioning) {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  .projects {
+    /* Static, so the picker positions against the whole box. */
+    position: static;
+    min-width: 0;
+  }
+  .projects :global(.ctx) {
+    max-width: min(320px, 60vw);
+  }
+  /* Toolbar tools rest in secondary ink and firm up when used. */
+  .toolbar :global(.mention-tool),
+  .projects :global(.ctx) {
+    color: var(--color-text-secondary);
+  }
+  .toolbar :global(.mention-tool:hover),
+  .projects :global(.ctx:hover),
+  .projects :global(.ctx[aria-expanded='true']),
+  .projects :global(.ctx.set) {
+    color: var(--color-text-primary);
+  }
+  .projects :global(.ctx.set),
+  .projects :global(.ctx[aria-expanded='true']) {
+    background-color: var(--color-overlay-hover);
+  }
+  .project-pop {
+    position: absolute;
+    bottom: calc(100% + var(--spacing-1-5));
+    left: 44px;
+    z-index: 20;
+    display: grid;
+    justify-items: start;
+    gap: var(--spacing-2);
+    width: min(320px, calc(100% - 56px));
+    min-width: 0;
+    max-height: min(300px, 50vh);
+    overflow: auto;
+    margin: 0;
+    padding: var(--spacing-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-container);
+    background: var(--color-background-popover);
+    box-shadow: var(--shadow-med);
+  }
+  .project-pop :global(.astryx-checkbox-input) {
+    width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .toolbar :global(.send) {
+    flex: none;
+    border-radius: var(--radius-full);
+  }
+
+  .listbox {
+    position: absolute;
+    bottom: calc(100% + var(--spacing-2));
+    left: 0;
+    right: 0;
+    z-index: 30;
+    max-width: 520px;
+    max-height: 280px;
+    overflow: auto;
+    padding: var(--spacing-1);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-container);
+    background: var(--color-background-popover);
+    box-shadow: var(--shadow-med);
+  }
+  .option {
+    display: grid;
+    grid-template-columns: 24px auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--spacing-2);
+    min-height: 40px;
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-inner);
+    cursor: pointer;
+    font-size: var(--text-body-size);
+  }
+  .option.active {
+    background: var(--color-accent-muted);
+  }
+  .option.unavailable {
+    cursor: not-allowed;
+  }
+  .option.unavailable .opt-name {
+    color: var(--color-text-secondary);
+  }
+  .opt-name {
+    font-weight: var(--font-weight-semibold);
+  }
+  .opt-role {
+    color: var(--color-text-secondary);
+    font-size: var(--text-supporting-size);
+  }
+  .opt-handle {
+    color: var(--color-text-secondary);
+    font-family: var(--font-family-code);
+    font-size: var(--text-supporting-size);
+  }
+
+  .hint {
+    min-height: 18px;
+    margin-top: var(--spacing-1);
+    padding: 0 var(--spacing-1-5);
+    font-size: var(--text-supporting-size);
+    line-height: var(--text-supporting-leading);
+    color: var(--color-text-secondary);
+  }
+  .hint :global(.restart) {
+    margin-left: var(--spacing-1-5);
+  }
+  .receipt {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-1-5);
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-medium);
   }
   .activity {
     display: block;
-    min-width: 0;
   }
   .sep {
-    margin: 0 6px;
+    margin: 0 var(--spacing-1-5);
     opacity: 0.6;
   }
+  /* The only looping motion in the app: someone is composing a reply. */
   .dots {
     display: inline-flex;
     gap: 2px;
@@ -590,7 +814,7 @@
   .dots i {
     width: 3px;
     height: 3px;
-    border-radius: 50%;
+    border-radius: var(--radius-full);
     background: currentColor;
     animation: blink 1.2s infinite ease-in-out;
   }
@@ -610,222 +834,16 @@
       opacity: 1;
     }
   }
-  .offline {
-    margin-bottom: 8px;
-  }
-  .box {
-    position: relative;
-    border: 1px solid var(--line-strong);
-    border-radius: var(--r-surface);
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-    backdrop-filter: blur(12px);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
-    transition:
-      border-color var(--t-fast) var(--ease),
-      box-shadow var(--t-fast) var(--ease);
-    max-width: calc(var(--measure) + 120px);
-  }
-  .box:focus-within {
-    border-color: color-mix(in srgb, var(--ink) 35%, var(--surface));
-    box-shadow: 0 1px 6px rgb(0 0 0 / 0.06);
-  }
-  .box.scoped {
-    border-color: color-mix(in srgb, var(--ink) 35%, var(--surface));
-  }
-  .scope {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 6px 6px 12px;
-    border-bottom: 1px solid var(--line);
-    border-radius: 15px 15px 0 0;
-    background: var(--surface-subtle);
-    color: var(--ink);
-    font-size: 13px;
-  }
-  .scope span {
-    flex: 1;
-  }
-  .clear {
-    width: 28px;
-    height: 28px;
-  }
-  .field-wrap {
-    position: relative;
-  }
-  .input-area {
-    display: block;
-    width: 100%;
-    min-height: 44px;
-    max-height: 40vh;
-    padding: 12px 14px 2px;
-    border: 0;
-    background: transparent;
-    resize: none;
-    font-size: 14px;
-    line-height: 20px;
-    color: var(--ink);
-  }
-  .input-area:focus-visible {
-    outline: none;
-  }
-  .input-area::placeholder {
-    color: color-mix(in srgb, var(--ink-secondary) 85%, transparent);
-  }
-  .toolbar {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding: 4px 8px 8px 8px;
-    min-width: 0;
-  }
-  .spacer {
-    flex: 1;
-  }
-  .mentioning {
-    min-width: 0;
-  }
-  .ctx {
-    min-height: 28px;
-    max-width: min(320px, 60vw);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    border-color: transparent;
-    background: none;
-    color: var(--ink-secondary);
-  }
-  .ctx:hover,
-  .ctx[aria-expanded='true'] {
-    background: var(--hover);
-    color: var(--ink);
-  }
-  .ctx:not(.set) {
-    min-width: 30px;
-    padding: 0;
-    justify-content: center;
-  }
-  .ctx.set {
-    color: var(--ink);
-    background: var(--hover);
-  }
-  .projects {
-    position: static;
-  }
-  .project-pop {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    left: 44px;
-    z-index: 20;
-    display: grid;
-    gap: 4px;
-    width: min(320px, calc(100% - 56px));
-    min-width: 0;
-    max-height: min(300px, 50vh);
-    overflow: auto;
-    margin: 0;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--surface);
-    box-shadow: var(--shadow-pop);
-  }
-  .project-pop .check {
-    align-items: flex-start;
-  }
-  .project-pop .check span {
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .send {
-    display: grid;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    flex: none;
-    border: 0;
-    border-radius: 50%;
-    background: var(--accent);
-    color: var(--accent-ink);
-    cursor: pointer;
-    transition: opacity var(--t-fast) var(--ease);
-  }
-  .send:disabled {
-    opacity: 0.35;
-    cursor: default;
-  }
-  .listbox {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 0;
-    right: 0;
-    z-index: 30;
-    max-width: 520px;
-    max-height: 280px;
-    overflow: auto;
-    padding: 4px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--surface);
-    box-shadow: var(--shadow-pop);
-  }
-  .option {
-    display: grid;
-    grid-template-columns: 24px auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 10px;
-    min-height: 40px;
-    padding: 4px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 14px;
-  }
-  .option.active {
-    background: var(--accent-subtle);
-  }
-  .option.unavailable {
-    cursor: not-allowed;
-  }
-  .option.unavailable .opt-name {
-    color: var(--ink-secondary);
-  }
-  .opt-name {
-    font-weight: 600;
-  }
-  .opt-role {
-    color: var(--ink-secondary);
-    font-size: 13px;
-  }
-  .opt-handle {
-    color: var(--ink-secondary);
-    font-size: 12px;
-  }
-  .hint {
-    min-height: 18px;
-    margin-top: 5px;
-    padding: 0 6px;
-    font-size: 11.5px;
-    color: color-mix(in srgb, var(--ink-secondary) 85%, transparent);
-  }
-  .restart {
-    margin-left: 6px;
-    min-height: 26px;
-  }
-  .receipt {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--ink);
-    font-weight: 560;
-  }
-  @media (max-width: 760px) {
+
+  @media (max-width: 768px) {
     .composer {
-      padding: 0 8px calc(8px + env(safe-area-inset-bottom));
+      padding: 0 var(--spacing-2) calc(var(--spacing-2) + env(safe-area-inset-bottom));
     }
+    /* iOS zooms into fields set below 16px. */
     .input-area {
-      font-size: 16px;
+      font-size: 1rem;
     }
-    .send {
+    .toolbar :global(.send) {
       width: 44px;
       height: 44px;
     }
@@ -835,11 +853,6 @@
     .option {
       grid-template-columns: 24px auto minmax(0, 1fr);
       min-height: 44px;
-    }
-  }
-  @media (pointer: coarse) {
-    .ctx {
-      min-height: 40px;
     }
   }
 </style>

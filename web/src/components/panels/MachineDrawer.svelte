@@ -5,6 +5,7 @@
   // their shared concurrency), Storage (workspaces and cleanup) and
   // Diagnostics (versions, profiles, toolchains, fingerprint, activity).
   import { onMount } from 'svelte';
+  import { Tab, TabList, Text, VisuallyHidden } from '@astryx-svelte/core';
   import type { NodeWorkspace } from '../../lib/api/types.gen';
   import { api } from '../../lib/api/endpoints';
   import { app } from '../../lib/state/app.svelte';
@@ -24,9 +25,10 @@
   let { nodeId, mode }: Props = $props();
 
   const TABS = ['overview', 'connections', 'storage', 'diagnostics'] as const;
-  type Tab = (typeof TABS)[number];
-  const TAB_LABEL: Record<Tab, string> = { overview: 'Overview', connections: 'Connections', storage: 'Storage', diagnostics: 'Diagnostics' };
-  const tab: Tab = $derived((TABS as readonly string[]).includes(app.loc.tab ?? '') ? (app.loc.tab as Tab) : 'overview');
+  type Section = (typeof TABS)[number];
+  const TAB_LABEL: Record<Section, string> = { overview: 'Overview', connections: 'Connections', storage: 'Storage', diagnostics: 'Diagnostics' };
+  const isTab = (v: string | null | undefined): v is Section => (TABS as readonly string[]).includes(v ?? '');
+  const tab: Section = $derived(isTab(app.loc.tab) ? app.loc.tab : 'overview');
 
   const n = $derived(app.data.nodes[nodeId]);
   let missing = $state(false);
@@ -54,20 +56,16 @@
     storage: facts.some((f) => f.id === 'disk'),
   });
 
-  function tabKey(e: KeyboardEvent) {
-    const i = TABS.indexOf(tab);
-    let next = i;
-    if (e.key === 'ArrowRight') next = (i + 1) % TABS.length;
-    else if (e.key === 'ArrowLeft') next = (i - 1 + TABS.length) % TABS.length;
-    else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = TABS.length - 1;
-    else return;
-    e.preventDefault();
-    showTab(TABS[next], true);
+  // The tab list moves focus with the arrow keys, Home and End; the tab that
+  // takes focus is shown straight away.
+  function onTabFocus(e: FocusEvent) {
+    const v = (e.target as HTMLElement).closest<HTMLElement>('[data-tab-value]')?.dataset.tabValue;
+    if (isTab(v) && v !== tab) app.setTab(v);
   }
-  function showTab(t: Tab, focusTab = false) {
+  // From a link inside a section: show the tab and move focus to its content.
+  function showTab(t: Section) {
     app.setTab(t);
-    queueMicrotask(() => (focusTab ? document.getElementById(`machinetab-${t}`) : document.getElementById('machinepanel'))?.focus());
+    queueMicrotask(() => document.getElementById('machinepanel')?.focus());
   }
 
   // ---- consequential actions, each confirmed ----
@@ -111,7 +109,7 @@
       const active = document.activeElement;
       if (active && active !== document.body && panel?.contains(active)) return;
       const inv = c?.invoker as HTMLButtonElement | null;
-      if (inv && inv.isConnected && !inv.disabled && inv.getClientRects().length) {
+      if (inv && inv.isConnected && !inv.disabled && (inv.checkVisibility?.() ?? true)) {
         inv.focus();
         return;
       }
@@ -161,27 +159,27 @@
   });
 </script>
 
+{#snippet attentionMark()}
+  <span class="mark" aria-hidden="true"></span><VisuallyHidden> (needs attention)</VisuallyHidden>
+{/snippet}
+
 <RightPanel title={n?.name ?? 'Machine'} {mode} wide onclose={() => app.closePanel()}>
   {#snippet subtitle()}{#if conn}{conn.label}{conn.meta ? ` · ${conn.meta}` : ''}{/if}{/snippet}
   {#if !n}
-    <p class="pad meta">{missing ? 'This machine isn’t available.' : 'Loading…'}</p>
+    <div class="pad"><Text as="p" color="secondary">{missing ? 'This machine isn’t available.' : 'Loading…'}</Text></div>
   {:else}
-    <div class="tabs" role="tablist" aria-label="Machine details">
-      {#each TABS as t (t)}
-        <button
-          class="tab"
-          role="tab"
-          id="machinetab-{t}"
-          aria-selected={tab === t}
-          aria-controls="machinepanel"
-          tabindex={tab === t ? 0 : -1}
-          onclick={() => app.setTab(t)}
-          onkeydown={tabKey}
-        >
-          {TAB_LABEL[t]}
-          {#if (t === 'connections' && attention.connections) || (t === 'storage' && attention.storage)}<span class="marker tab-marker" aria-hidden="true"></span><span class="vh"> (needs attention)</span>{/if}
-        </button>
-      {/each}
+    <div class="tabs">
+      <TabList value={tab} onChange={(v) => isTab(v) && app.setTab(v)} role="tablist" aria-label="Machine details" size="sm" hasDivider onfocusin={onTabFocus}>
+        {#each TABS as t (t)}
+          <Tab
+            value={t}
+            label={TAB_LABEL[t]}
+            id="machinetab-{t}"
+            panelId="machinepanel"
+            endContent={(t === 'connections' && attention.connections) || (t === 'storage' && attention.storage) ? attentionMark : undefined}
+          />
+        {/each}
+      </TabList>
     </div>
     <div class="pad" role="tabpanel" id="machinepanel" aria-labelledby="machinetab-{tab}" tabindex="-1">
       {#if tab === 'overview'}
@@ -203,50 +201,40 @@
 
 <style>
   .tabs {
-    padding: 0 10px;
-    gap: 0;
     flex: none;
   }
-  .tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    padding-left: 8px;
-    padding-right: 8px;
-    font-size: var(--text-body);
+  /* Inset inside the tab list, so its hairline runs the panel's full width. */
+  .tabs > :global(.astryx-tab-list) {
+    padding-inline: var(--spacing-2);
   }
-  .tab-marker {
-    margin-left: 6px;
-    width: 7px;
-    height: 7px;
+  /* The amber "waiting on you" marker used across yip. */
+  .mark {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-inline-start: var(--spacing-0-5);
+    border-radius: var(--radius-full);
+    background: var(--yip-attention-fill);
   }
+  /* The section scrolls under the tabs, which stay in view. */
   .pad {
-    padding: 16px 18px 28px;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: var(--spacing-4) var(--spacing-4) var(--spacing-7);
     container: machinepanel / inline-size;
   }
   [role='tabpanel']:focus-visible {
     outline: none;
   }
-  @media (pointer: coarse) {
-    .tab {
-      min-height: 44px;
-    }
-  }
+  /* All four sections stay in view on a phone rather than scrolling. */
   @media (max-width: 480px) {
-    .tabs {
-      padding: 0 4px;
+    .tabs > :global(.astryx-tab-list) {
+      padding-inline: var(--spacing-1);
     }
-    .tab {
-      padding-left: 7px;
-      padding-right: 7px;
-    }
-    .tab-marker {
-      margin-left: 4px;
-    }
-  }
-  @media (max-width: 760px) {
-    .pad {
-      padding: 16px 16px 28px;
+    .tabs :global([role='tab']) {
+      padding-inline: var(--spacing-1-5);
     }
   }
 </style>

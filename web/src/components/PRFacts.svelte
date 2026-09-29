@@ -2,6 +2,7 @@
   // A pull request's facts, kept separate: internal peer approval, remote
   // reviews, remote checks, and merge state. Nothing here implies a merge
   // that the forge has not reported.
+  import { Card, Code, Link, MetadataList, MetadataListItem, Text } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
   import type { PullRequest, Review } from '../lib/api/types.gen';
   import { relative, shortSha } from '../lib/util/time';
@@ -56,67 +57,67 @@
 
 {#if compact}
   <span class="compact">
-    <a href={pr.url} target="_blank" rel="noopener noreferrer">#{pr.number}</a>
+    <Link hasUnderline href={pr.url} target="_blank" rel="noopener noreferrer">#{pr.number}</Link>
     <span>{prState}</span>
-    <span class="meta">· {checksText} · {mergeText}</span>
+    <Text type="supporting">· {checksText} · {mergeText}</Text>
   </span>
 {:else}
   <div class="pr">
     <p class="title">
-      <a href={pr.url} target="_blank" rel="noopener noreferrer">{pr.owner}/{pr.name} #{pr.number}</a>
-      <span class="meta">{pr.title}</span>
+      <Link hasUnderline href={pr.url} target="_blank" rel="noopener noreferrer" weight="semibold">{pr.owner}/{pr.name} #{pr.number}</Link>
+      <Text type="supporting">{pr.title}</Text>
     </p>
-    <p class="meta">{prState} · {pr.head} → {pr.base}{#if pr.lastSyncedAt}{' · '}synced {relative(pr.lastSyncedAt, app.now)}{/if}</p>
-    <dl>
-      <div>
-        <dt>Peer review (in yip)</dt>
-        <dd>
-          {#if peer.length === 0}
-            <span class="meta">No internal review recorded.</span>
-          {:else}
-            {#each peer as p, i (i)}
-              <p>{p.reviewer}: {p.state === 'approved' ? 'approved' : p.state.replace('_', ' ')} <span class="mono">{shortSha(p.head)}</span></p>
-            {/each}
-            <p class="meta">Internal approval is not a forge approval.</p>
-          {/if}
-        </dd>
-      </div>
-      <div>
-        <dt>Remote reviews</dt>
-        <dd>
-          {#if remote.length === 0}
-            <span class="meta">None on the forge.</span>
-          {:else}
-            {#each remote as r (r.externalId)}
-              <p>
-                {r.actor}: {r.state.toLowerCase().replace('_', ' ')} <span class="mono">{shortSha(r.commitId)}</span>
-                {#if r.publishedByEngineerId}{' '}<span class="meta">— published by yip for {app.engineerName(r.publishedByEngineerId)}</span>{/if}
-              </p>
-            {/each}
-          {/if}
-        </dd>
-      </div>
-      <div>
-        <dt>Remote checks</dt>
-        <dd>
-          <StateIcon
-            shape={checks.state === 'success' ? 'check-filled' : checks.state === 'failure' ? 'triangle' : checks.state === 'pending' ? 'bar' : 'circle'}
-            tone={checks.state === 'success' ? 'success' : checks.state === 'failure' ? 'danger' : 'neutral'}
-            size={13}
-          />
-          {checksText}
-        </dd>
-      </div>
-      <div>
-        <dt>Merge</dt>
-        <dd>
-          {mergeText}
-          {#if merge.reasons?.length}
-            <ul class="reasons">{#each merge.reasons as r (r)}<li>{r}</li>{/each}</ul>
-          {/if}
-        </dd>
-      </div>
-    </dl>
+    <Text as="p" type="supporting">{prState} · {pr.head} → {pr.base}{#if pr.lastSyncedAt}{' · '}synced {relative(pr.lastSyncedAt, app.now)}{/if}</Text>
+    <div class="facts">
+      <Card padding={3}>
+        <MetadataList label={{ position: 'start', width: 150 }}>
+          <MetadataListItem label="Peer review (in yip)">
+            <span class="lines">
+              {#if peer.length === 0}
+                <Text type="supporting">No internal review recorded.</Text>
+              {:else}
+                {#each peer as p, i (i)}
+                  <span>{p.reviewer}: {p.state === 'approved' ? 'approved' : p.state.replace('_', ' ')} <Code size="inherit">{shortSha(p.head)}</Code></span>
+                {/each}
+                <Text type="supporting">Internal approval is not a forge approval.</Text>
+              {/if}
+            </span>
+          </MetadataListItem>
+          <MetadataListItem label="Remote reviews">
+            <span class="lines">
+              {#if remote.length === 0}
+                <Text type="supporting">None on the forge.</Text>
+              {:else}
+                {#each remote as r (r.externalId)}
+                  <span>
+                    {r.actor}: {r.state.toLowerCase().replace('_', ' ')} <Code size="inherit">{shortSha(r.commitId)}</Code>
+                    {#if r.publishedByEngineerId}{' '}<Text type="supporting">— published by yip for {app.engineerName(r.publishedByEngineerId)}</Text>{/if}
+                  </span>
+                {/each}
+              {/if}
+            </span>
+          </MetadataListItem>
+          <MetadataListItem label="Remote checks">
+            <span class="checks-line">
+              <StateIcon
+                shape={checks.state === 'success' ? 'check-filled' : checks.state === 'failure' ? 'triangle' : checks.state === 'pending' ? 'bar' : 'circle'}
+                tone={checks.state === 'success' ? 'success' : checks.state === 'failure' ? 'danger' : 'neutral'}
+                size={13}
+              />
+              {checksText}
+            </span>
+          </MetadataListItem>
+          <MetadataListItem label="Merge">
+            <span class="lines">
+              <span>{mergeText}</span>
+              {#if merge.reasons?.length}
+                <ul class="reasons">{#each merge.reasons as r (r)}<li>{r}</li>{/each}</ul>
+              {/if}
+            </span>
+          </MetadataListItem>
+        </MetadataList>
+      </Card>
+    </div>
   </div>
 {/if}
 
@@ -124,60 +125,48 @@
   .compact {
     display: inline-flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--spacing-1-5);
     align-items: baseline;
   }
   .pr {
     display: grid;
-    gap: 6px;
+    gap: var(--spacing-1-5);
   }
   .title {
     display: flex;
-    gap: 8px;
+    gap: var(--spacing-2);
     flex-wrap: wrap;
     align-items: baseline;
-    font-weight: 600;
   }
-  dl {
-    margin: 6px 0 0;
-    display: grid;
-    gap: 0;
-    border: 1px solid var(--line);
-    border-radius: var(--r-artifact);
+  .facts {
+    margin-top: var(--spacing-1-5);
+    container-type: inline-size;
   }
-  dl > div {
-    display: grid;
-    grid-template-columns: 150px minmax(0, 1fr);
-    gap: 12px;
-    padding: 9px 12px;
-    font-size: 14px;
-  }
-  dl > div + div {
-    border-top: 1px solid var(--line-soft);
-  }
-  dt {
-    color: var(--ink-secondary);
-    font-size: 13px;
-  }
-  dd {
-    margin: 0;
+  .lines {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--spacing-0-5);
   }
-  dd :global(svg) {
-    display: inline-block;
+  .checks-line {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-1-5);
   }
   .reasons {
-    margin: 2px 0 0;
-    padding-left: 18px;
-    font-size: 13px;
-    color: var(--ink-secondary);
+    margin: var(--spacing-0-5) 0 0;
+    padding-left: var(--spacing-4);
+    list-style: disc;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
   }
-  @media (max-width: 480px) {
-    dl > div {
-      grid-template-columns: 1fr;
-      gap: 2px;
+  /* In a narrow panel the labels sit above their facts. */
+  @container (max-width: 420px) {
+    .facts :global(dl) {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
+    .facts :global(dd + dt) {
+      margin-top: var(--spacing-2);
     }
   }
 </style>

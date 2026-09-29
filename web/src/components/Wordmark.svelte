@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { VisuallyHidden } from '@astryx-svelte/core';
+
   // The branching-y mark with the lowercase wordmark, drawn monochrome in the
   // current ink so it follows the neutral palette in day and night.
   interface Props {
@@ -14,7 +16,7 @@
     <path d="M72 64 128 124" fill="none" class="arm" stroke-width="28" stroke-linecap="round" />
     <path d="M184 64 72 196" fill="none" class="stem" stroke-width="28" stroke-linecap="round" />
   </svg>
-  {#if showText}<span class="text">yip</span>{:else}<span class="vh">yip</span>{/if}
+  {#if showText}<span class="text">yip</span>{:else}<VisuallyHidden>yip</VisuallyHidden>{/if}
 </span>
 
 <style>
@@ -22,23 +24,23 @@
     display: inline-flex;
     align-items: center;
     gap: calc(var(--size) * 0.34);
-    color: var(--ink);
+    color: var(--color-text-primary);
   }
   .mark {
     display: block;
     flex: none;
   }
   .tile {
-    fill: var(--ink);
+    fill: var(--color-text-primary);
   }
   .arm {
-    stroke: color-mix(in srgb, var(--surface) 62%, var(--ink));
+    stroke: color-mix(in srgb, var(--color-background-surface) 62%, var(--color-text-primary));
   }
   .stem {
-    stroke: var(--surface);
+    stroke: var(--color-background-surface);
   }
   .text {
-    font-family: var(--font-brand);
+    font-family: var(--font-family-heading);
     font-weight: 650;
     font-size: calc(var(--size) * 0.86);
     letter-spacing: -0.035em;

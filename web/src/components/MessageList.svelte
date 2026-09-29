@@ -8,9 +8,10 @@
   import type { Message } from '../lib/api/types.gen';
   import type { PendingMessage } from '../lib/state/data';
   import { dayLabel, sameDay, toDate } from '../lib/util/time';
+  import { ChevronDown } from '@lucide/svelte';
+  import { Button, Divider, Icon, Text } from '@astryx-svelte/core';
   import MessageRow from './MessageRow.svelte';
   import PendingRow from './PendingRow.svelte';
-  import Icon from './Icon.svelte';
 
   interface Props {
     items: Message[];
@@ -225,8 +226,11 @@
   }
 
   function onKey(e: KeyboardEvent) {
+    // A control that already used the key (ArrowDown opening a menu) keeps it.
+    if (e.defaultPrevented) return;
     const t = e.target as HTMLElement;
-    if (t.closest('textarea, input, [role="menu"], .emoji-pop')) return;
+    // Typing, menus and popovers (the emoji palette) keep their own keys.
+    if (t.closest('textarea, input, [role="menu"], [popover]')) return;
     const list = articles();
     if (!list.length) return;
     const current = t.closest<HTMLElement>('article[data-message-id]');
@@ -252,19 +256,25 @@
   const rovingId = $derived(activeId && items.some((m) => m.id === activeId) ? activeId : (items[items.length - 1]?.id ?? null));
 </script>
 
+{#snippet newLabel()}<span class="new-label">New</span>{/snippet}
+
 <div class="wrap">
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="scroller" bind:this={scroller} onscroll={onScroll} onkeydown={onKey} onfocusin={onFocusIn} role="region" aria-label={label}>
     {#if top}{@render top()}{/if}
     {#if hasMore}
       <div class="older">
-        <button class="btn btn-sm btn-quiet" onclick={loadOlder} disabled={loadingOlder}>
-          {loadingOlder ? 'Loading earlier messages…' : 'Load earlier messages'}
-        </button>
+        <Button
+          label={loadingOlder ? 'Loading earlier messages…' : 'Load earlier messages'}
+          variant="ghost"
+          size="sm"
+          isDisabled={loadingOlder}
+          onclick={loadOlder}
+        />
       </div>
     {/if}
     {#if !loaded}
-      <p class="loading meta" aria-busy="true">Loading messages…</p>
+      <Text as="p" type="supporting" class="loading" aria-busy="true">Loading messages…</Text>
     {:else if items.length === 0 && pending.length === 0}
       {#if empty}{@render empty()}{/if}
     {/if}
@@ -274,7 +284,7 @@
           <div class="day" role="separator" aria-label={row.day}><span>{row.day}</span></div>
         {/if}
         {#if row.showNew}
-          <div class="new-divider" role="separator" aria-label="New messages since you were here"><span>New</span></div>
+          <Divider class="new-divider" variant="strong" label={newLabel} aria-label="New messages since you were here" />
         {/if}
         <MessageRow
           message={row.m}
@@ -294,11 +304,20 @@
   </div>
 
   {#if newCount > 0 && !atBottom}
-    <button class="jump" onclick={() => scrollToBottom(true)}>
-      <Icon name="chevronDown" size={15} />{newCount} new {newCount === 1 ? 'message' : 'messages'}
-    </button>
+    <Button
+      class="jump"
+      label="{newCount} new {newCount === 1 ? 'message' : 'messages'}"
+      variant="primary"
+      size="sm"
+      elevation="med"
+      onclick={() => scrollToBottom(true)}
+    >
+      {#snippet icon()}<Icon icon={ChevronDown} size="sm" />{/snippet}
+    </Button>
   {:else if !atBottom && items.length > 20}
-    <button class="jump quiet" onclick={() => scrollToBottom(true)}><Icon name="chevronDown" size={15} />Jump to latest</button>
+    <Button class="jump" label="Jump to latest" variant="secondary" size="sm" elevation="med" onclick={() => scrollToBottom(true)}>
+      {#snippet icon()}<Icon icon={ChevronDown} size="sm" />{/snippet}
+    </Button>
   {/if}
 </div>
 
@@ -316,86 +335,61 @@
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior: contain;
-    padding: 8px 0 16px;
+    padding: var(--spacing-2) 0 var(--spacing-4);
   }
   .scroller:focus-visible {
-    outline: 2px solid var(--focus);
+    outline: 2px solid var(--color-accent);
     outline-offset: -2px;
   }
   .items {
-    max-width: calc(var(--measure) + 120px);
+    max-width: calc(var(--yip-measure) + 120px);
   }
   .older {
     display: flex;
     justify-content: center;
-    padding: 8px;
+    padding: var(--spacing-2);
   }
-  .loading {
-    padding: 24px;
+  .scroller :global(.loading) {
+    padding: var(--spacing-6);
   }
   .day {
     display: flex;
     justify-content: center;
-    margin: 20px 0 6px;
+    margin: var(--spacing-5) 0 var(--spacing-1-5);
     pointer-events: none;
   }
   .day span {
     padding: 3px 10px;
-    border: 1px solid color-mix(in srgb, var(--line-strong) 80%, transparent);
-    border-radius: var(--r-pill);
-    background: var(--surface);
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--ink-secondary);
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasized) 80%, transparent);
+    border-radius: var(--radius-full);
+    background: var(--color-background-surface);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-secondary);
   }
-  .new-divider {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 14px 16px 2px;
-    font-size: 11px;
-    font-weight: 600;
+  /* The read position when you opened the room: a monochrome hairline. */
+  .items :global(.new-divider) {
+    --color-border-emphasized: color-mix(in srgb, var(--color-text-primary) 40%, transparent);
+    margin: 14px var(--spacing-4) var(--spacing-0-5);
+  }
+  .new-label {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--ink);
-  }
-  .new-divider::before,
-  .new-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: color-mix(in srgb, var(--ink) 40%, transparent);
+    color: var(--color-text-primary);
   }
   .end {
     height: 1px;
   }
-  .jump {
+  .wrap :global(.jump) {
     position: absolute;
     left: 50%;
-    bottom: 12px;
+    bottom: var(--spacing-3);
     transform: translateX(-50%);
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 28px;
-    padding: 0 12px 0 9px;
-    border: 0;
-    border-radius: var(--r-pill);
-    background: var(--accent);
-    color: var(--accent-ink);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-    box-shadow: var(--shadow-pop);
-    cursor: pointer;
+    border-radius: var(--radius-full);
     z-index: 6;
-    animation: rise var(--t-slow) var(--ease);
-  }
-  .jump.quiet {
-    background: color-mix(in srgb, var(--surface) 85%, transparent);
-    backdrop-filter: blur(6px);
-    color: var(--ink);
-    border: 1px solid color-mix(in srgb, var(--line-strong) 60%, transparent);
+    animation: rise var(--duration-medium-min) var(--ease-standard);
   }
   @keyframes rise {
     from {
@@ -404,7 +398,7 @@
     }
   }
   @media (pointer: coarse) {
-    .jump {
+    .wrap :global(.jump) {
       height: 44px;
     }
   }

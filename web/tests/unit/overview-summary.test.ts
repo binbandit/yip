@@ -60,10 +60,10 @@ it.each(['overview', 'room'] as const)('preserves a failed summary and offers wo
   expect(loadUnsent().some((message) => message.clientKey === pending.clientKey)).toBe(true);
   expect(summaryButton()!.disabled).toBe(true);
   const actions = [...document.querySelectorAll<HTMLButtonElement>('.pending.failed button')];
-  expect(actions.map((button) => button.textContent)).toEqual(['Retry', 'Discard']);
+  expect(actions.map((button) => button.textContent?.trim())).toEqual(['Retry', 'Discard']);
 
   reject = false;
-  actions.find((button) => button.textContent === 'Retry')!.click();
+  actions.find((button) => button.textContent?.trim() === 'Retry')!.click();
   await waitFor(() => !document.querySelector('.pending.failed') && !summaryButton()!.disabled);
   const sent = hub.last('POST', new RegExp(`^/v1/rooms/${room.id}/messages$`))!.body as PostMessageRequest;
   expect(sent.clientKey).toBe(pending.clientKey);

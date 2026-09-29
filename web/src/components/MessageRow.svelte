@@ -3,21 +3,20 @@
   // reactions and thread summary. Structured kinds render distinctly. Actions
   // appear on hover and whenever the row has keyboard focus.
   import { untrack } from 'svelte';
+  import { Check, Ellipsis, Link as LinkIcon, MessageSquareReply, Pencil, SmilePlus, Trash2 } from '@lucide/svelte';
+  import { AvatarGroup, Button, DropdownMenu, Icon, IconButton, Link, Popover, Text, TextArea, Tooltip } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
   import { details } from '../lib/state/details.svelte';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
   import type { Message } from '../lib/api/types.gen';
   import { clock, fullTime, relative } from '../lib/util/time';
-  import { pushLayer } from '../lib/ui/layers';
   import Avatar from './Avatar.svelte';
-  import Icon from './Icon.svelte';
   import MessageBody from './MessageBody.svelte';
   import Reactions from './Reactions.svelte';
   import ResultCard from './ResultCard.svelte';
   import ApprovalCard from './ApprovalCard.svelte';
   import RefChips from './RefChips.svelte';
-  import Menu from './Menu.svelte';
 
   interface Props {
     message: Message;
@@ -41,6 +40,8 @@
   // One-line hub facts are quiet lines; longer hub answers (e.g. the Overview
   // status reply) read as a full message from the work ledger.
   const isStatus = $derived(systemAuthored && !message.body.trim().includes('\n') && message.kind !== 'approval');
+  // The quiet text after the name: an engineer's role, or where a hub answer comes from.
+  const role = $derived(isEngineer ? engineer?.role : systemAuthored ? 'From the work ledger' : undefined);
   const jobRef = $derived(message.refs.find((r) => r.kind === 'job'));
   const approvalRef = $derived(message.refs.find((r) => r.kind === 'approval'));
   const questionRef = $derived(message.refs.find((r) => r.kind === 'question'));
@@ -63,14 +64,37 @@
   let editing = $state(false);
   let draft = $state('');
   let saving = $state(false);
+  // The emoji palette and the more menu are Astryx overlays: Escape and focus
+  // return are their own. The action pill stays shown while either is open,
+  // and one frame longer so the overlay can hand focus back to its trigger.
   let emojiOpen = $state(false);
-  let emojiBtn: HTMLButtonElement | undefined = $state();
-
+  let menuOpen = $state(false);
+  let pinned = $state(false);
   $effect(() => {
-    if (!emojiOpen) return;
-    const release = untrack(() => pushLayer(() => (emojiOpen = false), { returnFocus: emojiBtn }));
-    return () => release(false);
+    if (emojiOpen || menuOpen) {
+      pinned = true;
+      return;
+    }
+    if (!untrack(() => pinned)) return;
+    const frame = requestAnimationFrame(() => (pinned = false));
+    return () => cancelAnimationFrame(frame);
   });
+
+  // The pill and its overlays exist only while the row is in use, so a long
+  // history carries no idle menus. CSS still decides when a mounted pill shows
+  // (hover, focus within, pinned; focus or pinned alone on touch screens).
+  // Roving focus lands on the article first, so Tab still reaches the pill.
+  let hovered = $state(false);
+  let focusWithin = $state(false);
+  const active = $derived(hovered || focusWithin || pinned);
+
+  function onFocusOut(e: FocusEvent) {
+    const row = e.currentTarget as HTMLElement;
+    if (e.relatedTarget instanceof Node && row.contains(e.relatedTarget)) return;
+    // Check where focus settled: switching windows leaves it here, and an
+    // overlay handing it back to its trigger lands here again.
+    setTimeout(() => (focusWithin = row.contains(document.activeElement)));
+  }
 
   async function react(emoji: string) {
     emojiOpen = false;
@@ -128,6 +152,16 @@
   const threadParticipants = $derived((message.thread?.participants ?? []).slice(0, 3));
 </script>
 
+{#snippet time(cls: string)}
+  <Tooltip content={fullTime(message.createdAt)}>
+    <time class={cls} datetime={message.createdAt}>{clock(message.createdAt)}</time>
+  </Tooltip>
+{/snippet}
+
+{#snippet moreIcon()}<Icon icon={Ellipsis} size="sm" />{/snippet}
+{#snippet editIcon()}<Icon icon={Pencil} size="sm" />{/snippet}
+{#snippet removeIcon()}<Icon icon={Trash2} size="sm" />{/snippet}
+
 {#if isStatus}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -- roving focus between messages (feed pattern) -->
   <article
@@ -139,7 +173,7 @@
   >
     <div class="status-body">
       <MessageBody {message} />
-      <time class="status-time" datetime={message.createdAt} title={fullTime(message.createdAt)}>{clock(message.createdAt)}</time>
+      {@render time('status-time')}
       {#if approvalRef}<ApprovalCard approvalId={approvalRef.id} />{/if}
       <RefChips refs={message.refs} skip={['approval']} hide={seenRefs} messageId={message.id} />
     </div>
@@ -152,13 +186,18 @@
     class:highlight
     class:mine
     class:asks-me={asksMe && !mine}
+    class:pinned
     data-message-id={message.id}
     {tabindex}
     aria-label="{app.actorName(author)}{engineer ? `, AI engineer, ${engineer.role}` : ''}, {clock(message.createdAt)}"
+    onpointerenter={(e) => (hovered = e.pointerType !== 'touch')}
+    onpointerleave={() => (hovered = false)}
+    onfocusin={() => (focusWithin = true)}
+    onfocusout={onFocusOut}
   >
     <div class="gutter">
       {#if continuation}
-        <time class="hover-time" datetime={message.createdAt} title={fullTime(message.createdAt)}>{clock(message.createdAt)}</time>
+        {@render time('hover-time')}
       {:else}
         <Avatar actor={author} size={36} />
       {/if}
@@ -167,29 +206,29 @@
       {#if !continuation}
         <header class="header">
           {#if isEngineer}
-            <button class="name linkish" onclick={openAuthor}>{app.actorName(author)}</button>
-            {#if engineer?.role}<span class="role-badge">{engineer.role}</span>{/if}
-          {:else if systemAuthored}
-            <span class="name">yip</span>
-            <span class="role-badge">From the work ledger</span>
+            <Link class="name" color="primary" weight="semibold" onclick={openAuthor}>{app.actorName(author)}</Link>
           {:else}
-            <span class="name">{app.actorName(author)}</span>
+            <Text class="name" weight="semibold">{systemAuthored ? 'yip' : app.actorName(author)}</Text>
           {/if}
-          <time class="time" datetime={message.createdAt} title={fullTime(message.createdAt)}>{clock(message.createdAt)}</time>
-          {#if message.editedAt && !deleted}<span class="meta">(edited)</span>{/if}
+          {#if role}
+            <Text class="role-badge" type="supporting">{role}</Text>
+            <span class="sep" aria-hidden="true">·</span>
+          {/if}
+          {@render time('time')}
+          {#if message.editedAt && !deleted}<Text type="supporting">(edited)</Text>{/if}
         </header>
       {/if}
 
       {#if deleted}
-        <p class="meta removed">This message was removed.</p>
+        <Text as="p" type="supporting" class="removed">This message was removed.</Text>
       {:else if editing}
         <div class="edit">
-          <label class="vh" for="edit-{message.id}">Edit message</label>
-          <textarea
-            id="edit-{message.id}"
-            class="textarea"
+          <TextArea
+            label="Edit message"
+            isLabelHidden
+            hasAutoFocus
             bind:value={draft}
-            rows="3"
+            rows={3}
             onkeydown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEdit();
               if (e.key === 'Escape') {
@@ -197,31 +236,35 @@
                 editing = false;
               }
             }}
-          ></textarea>
+          />
           <div class="edit-actions">
-            <button class="btn btn-sm" onclick={() => (editing = false)}>Cancel</button>
-            <button class="btn btn-sm btn-primary" disabled={saving} onclick={saveEdit}>Save</button>
-            <span class="meta">Editing changes the text only; anyone already asked keeps the original request.</span>
+            <Button label="Cancel" size="sm" onclick={() => (editing = false)} />
+            <Button label="Save" variant="primary" size="sm" isDisabled={saving} onclick={saveEdit} />
+            <Text type="supporting">Editing changes the text only; anyone already asked keeps the original request.</Text>
           </div>
         </div>
       {:else}
         <MessageBody {message} />
-        {#if message.editedAt && continuation}<span class="meta">(edited)</span>{/if}
+        {#if message.editedAt && continuation}<Text type="supporting">(edited)</Text>{/if}
         {#if answered}
-          <p class="answered meta"><Icon name="check" size={13} />Answers {app.engineerName(answered.askerId)}'s question — the work waiting on it resumed</p>
+          <Text as="p" type="supporting" class="answered">
+            <Icon icon={Check} size="xsm" />Answers {app.engineerName(answered.askerId)}'s question — the work waiting on it resumed
+          </Text>
         {/if}
 
         {#if message.kind === 'question'}
           <div class="question">
             {#if question?.status === 'answered'}
-              <span class="q-state tone-success"><Icon name="check" size={15} />Answered</span>
+              <span class="q-state done"><Icon icon={Check} size="sm" />Answered</span>
             {:else if question?.status === 'cancelled'}
-              <span class="q-state muted">No longer needed</span>
+              <span class="q-state">No longer needed</span>
             {:else}
               <span class="q-state">{asksMe ? `${app.actorName(author)} asked you` : 'Question'}</span>
             {/if}
             {#if onreply && !inThread && !settled && !(message.thread && message.thread.replyCount > 0)}
-              <button class="btn btn-sm" onclick={onreply}><Icon name="reply" size={15} />Reply in thread</button>
+              <Button label="Reply in thread" size="sm" onclick={onreply}>
+                {#snippet icon()}<Icon icon={MessageSquareReply} size="sm" />{/snippet}
+              </Button>
             {/if}
           </div>
         {/if}
@@ -236,46 +279,64 @@
         <Reactions {message} />
 
         {#if onreply && !inThread && message.thread && message.thread.replyCount > 0}
-          <button class="thread-summary" onclick={onreply}>
+          {@const replies = `${message.thread.replyCount} ${message.thread.replyCount === 1 ? 'reply' : 'replies'}`}
+          {@const last = `last reply ${relative(message.thread.lastReplyAt, app.now)}`}
+          <Button class="thread-summary" variant="ghost" size="sm" label="{replies} · {last}" onclick={onreply}>
             <span class="faces" aria-hidden="true">
-              {#each threadParticipants as p (p.kind + p.id)}<Avatar actor={p} size={20} />{/each}
+              <AvatarGroup size={20} shape="rounded">
+                {#each threadParticipants as p (p.kind + p.id)}<Avatar actor={p} size={20} />{/each}
+              </AvatarGroup>
             </span>
-            <strong>{message.thread.replyCount} {message.thread.replyCount === 1 ? 'reply' : 'replies'}</strong>
-            <span class="meta">· last reply {relative(message.thread.lastReplyAt, app.now)}</span>
-          </button>
+            <strong>{replies}</strong>
+            <span class="last">· {last}</span>
+          </Button>
         {/if}
       {/if}
     </div>
 
-    {#if !deleted && !editing}
+    {#if active && !deleted && !editing}
       <div class="actions" role="toolbar" aria-label="Message actions">
-        <div class="emoji-wrap">
-          <button bind:this={emojiBtn} class="icon-btn act" aria-label="Add reaction" aria-expanded={emojiOpen} onclick={() => (emojiOpen = !emojiOpen)}>
-            <Icon name="smile" size={17} />
-          </button>
-          {#if emojiOpen}
-            <div class="emoji-pop" role="group" aria-label="Reactions">
+        <Popover
+          label="Reactions"
+          class="emoji-pop"
+          alignment="end"
+          closeButtonLabel="Close reactions"
+          isOpen={emojiOpen}
+          onOpenChange={(open) => (emojiOpen = open)}
+        >
+          <IconButton class="pill-action" label="Add reaction" tooltip="Add reaction" variant="ghost" size="sm">
+            {#snippet icon()}<Icon icon={SmilePlus} size="sm" />{/snippet}
+          </IconButton>
+          {#snippet content()}
+            <div class="emoji-row">
               {#each QUICK as e (e)}
-                <button class="emoji" aria-label="React {e}" onclick={() => react(e)}>{e}</button>
+                <IconButton label="React {e}" variant="ghost" onclick={() => react(e)}>
+                  {#snippet icon()}<span class="emoji">{e}</span>{/snippet}
+                </IconButton>
               {/each}
             </div>
-          {/if}
-        </div>
+          {/snippet}
+        </Popover>
         {#if onreply && !inThread && !message.threadId}
-          <button class="icon-btn act" aria-label="Reply in thread" onclick={onreply}><Icon name="reply" size={17} /></button>
+          <IconButton class="pill-action" label="Reply in thread" tooltip="Reply in thread" variant="ghost" size="sm" onclick={onreply}>
+            {#snippet icon()}<Icon icon={MessageSquareReply} size="sm" />{/snippet}
+          </IconButton>
         {/if}
-        <button class="icon-btn act" aria-label="Copy link to message" onclick={copyLink}><Icon name="link" size={17} /></button>
+        <IconButton class="pill-action" label="Copy link to message" tooltip="Copy link to message" variant="ghost" size="sm" onclick={copyLink}>
+          {#snippet icon()}<Icon icon={LinkIcon} size="sm" />{/snippet}
+        </IconButton>
         {#if mine}
-          <Menu
-            label="More actions"
-            buttonClass="icon-btn act"
+          <!-- DropdownMenu rather than MoreMenu: only its `button` takes a class. -->
+          <DropdownMenu
+            button={{ label: 'More actions', tooltip: 'More actions', icon: moreIcon, isIconOnly: true, variant: 'ghost', size: 'sm', class: 'pill-action' }}
+            hasChevron={false}
+            alignment="end"
+            onOpenChange={(open) => (menuOpen = open)}
             items={[
-              { label: 'Edit', icon: 'pencil', onselect: startEdit },
-              { label: 'Remove', icon: 'trash', danger: true, onselect: remove },
+              { label: 'Edit', icon: editIcon, onClick: startEdit },
+              { label: 'Remove', icon: removeIcon, variant: 'destructive', onClick: remove },
             ]}
-          >
-            {#snippet trigger()}<Icon name="more" size={17} />{/snippet}
-          </Menu>
+          />
         {/if}
       </div>
     {/if}
@@ -283,62 +344,58 @@
 {/if}
 
 <style>
-  .answered {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin: 2px 0 0;
-    font-size: 12.5px;
-  }
   .msg {
     position: relative;
     display: grid;
     grid-template-columns: 36px minmax(0, 1fr);
     gap: 10px;
-    margin: 0 6px;
-    padding: 4px 10px 4px 8px;
-    border-radius: 16px;
-    transition: background-color 100ms var(--ease);
+    margin: 0 var(--spacing-1-5);
+    padding: var(--spacing-1) 10px var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-container);
+    transition: background-color var(--duration-fast) var(--ease-standard);
   }
   .msg:not(.continuation) {
-    margin-top: var(--group-gap);
+    margin-top: var(--yip-group-gap);
   }
   .msg:hover,
   .msg:focus-within,
   .status:hover {
-    background: color-mix(in srgb, var(--surface-subtle) 70%, transparent);
+    background: color-mix(in srgb, var(--color-background-muted) 70%, transparent);
   }
   .msg:focus-visible,
   .status:focus-visible {
-    outline: 2px solid var(--focus);
+    outline: 2px solid var(--color-accent);
     outline-offset: -2px;
   }
+  /* A question for you waits on a soft amber wash until it is answered. */
   .msg.asks-me {
-    background: color-mix(in srgb, var(--attention-subtle) 75%, transparent);
+    background: color-mix(in srgb, var(--color-warning-muted) 45%, transparent);
   }
   .msg.asks-me:hover,
   .msg.asks-me:focus-within {
-    background: var(--attention-subtle);
+    background: color-mix(in srgb, var(--color-warning-muted) 70%, transparent);
   }
   .highlight {
-    animation: flash 2.4s var(--ease);
+    animation: flash 2.4s var(--ease-standard);
   }
   @keyframes flash {
     0%,
     40% {
-      background: var(--accent-subtle);
+      background: var(--color-accent-muted);
     }
   }
   .gutter {
     display: flex;
     justify-content: center;
-    padding-top: 2px;
+    padding-top: var(--spacing-0-5);
   }
   .hover-time {
     opacity: 0;
-    font-size: 11px;
-    color: var(--ink-secondary);
+    font-size: var(--font-size-xs);
     line-height: 24px;
+    /* One line, centred on the avatar column even when it's a little wider. */
+    white-space: nowrap;
+    color: var(--color-text-secondary);
     font-variant-numeric: tabular-nums;
   }
   .msg:hover .hover-time,
@@ -352,79 +409,72 @@
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
-    gap: 2px 6px;
+    gap: var(--spacing-0-5) var(--spacing-1-5);
+    margin-bottom: var(--spacing-0-5);
     line-height: 16px;
-    margin-bottom: 2px;
   }
-  .name {
-    font-weight: 600;
-    font-size: 14px;
+  .header :global(.name) {
     line-height: 20px;
-    color: var(--ink);
+    letter-spacing: -0.015em;
   }
-  .linkish {
-    padding: 0;
-    border: 0;
-    background: none;
-    cursor: pointer;
-    font: inherit;
-    font-weight: 600;
-  }
-  .linkish:hover {
-    text-decoration: underline;
-  }
-  .role-badge + .time::before {
-    content: '·';
-    margin-right: 6px;
-    color: color-mix(in srgb, var(--ink) 40%, transparent);
+  .sep {
+    font-size: var(--font-size-sm);
+    color: color-mix(in srgb, var(--color-text-primary) 40%, transparent);
   }
   .time {
-    font-size: 12px;
-    color: color-mix(in srgb, var(--ink-secondary) 85%, transparent);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
     font-variant-numeric: tabular-nums;
   }
-  .removed {
+  .main :global(.removed) {
     font-style: italic;
+  }
+  .main :global(.answered) {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-1);
+    margin: var(--spacing-0-5) 0 0;
   }
   .question {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 10px;
-    margin-top: 8px;
+    margin-top: var(--spacing-2);
   }
   .q-state {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--ink-secondary);
+    gap: var(--spacing-1);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-secondary);
   }
-  .thread-summary {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 4px;
-    padding: 2px 10px 2px 3px;
-    border: 1px solid transparent;
-    border-radius: var(--r-pill);
-    background: none;
-    color: var(--ink);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
+  .q-state.done {
+    color: var(--color-success);
   }
-  .thread-summary:hover {
-    border-color: color-mix(in srgb, var(--line-strong) 70%, transparent);
-    background: var(--surface);
+  .main :global(.thread-summary) {
+    margin-top: var(--spacing-1);
+    padding-inline: 3px 10px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-sm);
+  }
+  .main :global(.thread-summary:hover) {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-border-emphasized) 70%, transparent);
+    background: var(--color-background-surface);
   }
   .faces {
     display: inline-flex;
+    vertical-align: middle;
+    margin-right: var(--spacing-1);
   }
-  .faces :global(.avatar + .avatar) {
-    margin-left: -5px;
-    box-shadow: 0 0 0 2px var(--surface);
+  strong {
+    font-weight: var(--font-weight-semibold);
+  }
+  .last {
+    margin-left: var(--spacing-1);
+    font-weight: var(--font-weight-normal);
+    color: var(--color-text-secondary);
   }
   .actions {
     position: absolute;
@@ -432,92 +482,69 @@
     right: 12px;
     display: none;
     align-items: center;
-    gap: 2px;
+    gap: var(--spacing-0-5);
     padding: 3px;
-    border-radius: var(--r-pill);
-    border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
-    background: color-mix(in srgb, var(--surface) 95%, transparent);
+    border-radius: var(--radius-full);
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasized) 70%, transparent);
+    background: color-mix(in srgb, var(--color-background-surface) 95%, transparent);
     backdrop-filter: blur(4px);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+    box-shadow: var(--shadow-low);
     z-index: 5;
   }
   .msg:hover .actions,
-  .msg:focus-within .actions {
+  .msg:focus-within .actions,
+  .msg.pinned .actions {
     display: flex;
   }
-  :global(.icon-btn.act) {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
+  /* The pill's own triggers only: the emoji palette renders inside .actions. */
+  .actions :global(.pill-action) {
+    border-radius: var(--radius-full);
   }
-  .emoji-wrap {
-    position: relative;
-  }
-  .emoji-pop {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
+  .emoji-row {
     display: flex;
-    gap: 2px;
-    padding: 4px;
-    border-radius: var(--r-pill);
-    border: 1px solid var(--line);
-    background: var(--surface);
-    box-shadow: var(--shadow-pop);
+    gap: var(--spacing-0-5);
   }
   .emoji {
-    width: 34px;
-    height: 34px;
-    border: 0;
-    border-radius: 50%;
-    background: none;
     font-size: 18px;
-    cursor: pointer;
-  }
-  .emoji:hover,
-  .emoji:focus-visible {
-    background: var(--hover);
+    line-height: 1;
   }
   .edit {
     display: grid;
-    gap: 8px;
-    margin-top: 4px;
+    gap: var(--spacing-2);
+    margin-top: var(--spacing-1);
   }
   .edit-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-2);
     flex-wrap: wrap;
   }
 
   .status {
     display: flex;
     justify-content: center;
-    margin: 12px 16px 4px;
-    padding: 2px 12px;
-    border-radius: 16px;
-    color: var(--ink-secondary);
-    font-size: 12px;
+    margin: var(--spacing-3) var(--spacing-4) var(--spacing-1);
+    padding: var(--spacing-0-5) var(--spacing-3);
+    border-radius: var(--radius-container);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
     text-align: center;
   }
   .status-body {
     max-width: 560px;
   }
-  .status-body :global(.prose) {
-    display: inline;
-    color: var(--ink-secondary);
-  }
+  .status-body :global(.prose),
   .status-body :global(.prose p) {
     display: inline;
   }
   .status-time {
-    margin-left: 6px;
+    margin-left: var(--spacing-1-5);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--ink-secondary) 80%, transparent);
+    color: color-mix(in srgb, var(--color-text-secondary) 80%, transparent);
   }
   .status-time::before {
     content: '·';
-    margin-right: 6px;
+    margin-right: var(--spacing-1-5);
   }
 
   @media (hover: none) {
@@ -527,20 +554,23 @@
       grid-column: 2;
       justify-self: start;
       box-shadow: none;
-      margin-top: 4px;
+      margin-top: var(--spacing-1);
     }
-    .msg:focus-within .actions {
+    .msg:focus-within .actions,
+    .msg.pinned .actions {
       display: flex;
     }
-    :global(.icon-btn.act) {
-      width: 40px;
-      height: 40px;
+  }
+  @media (pointer: coarse) {
+    .actions :global(.pill-action) {
+      width: 44px;
+      height: 44px;
     }
   }
-  @media (max-width: 760px) {
+  @media (max-width: 768px) {
     .msg {
-      margin: 0 4px;
-      padding-right: 6px;
+      margin: 0 var(--spacing-1);
+      padding-right: var(--spacing-1-5);
     }
   }
 </style>

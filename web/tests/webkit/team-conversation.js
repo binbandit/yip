@@ -2,7 +2,7 @@
 // requested changes, re-review, completion and recall in another permitted room.
 window.__journeys = (() => {
   const open = async (t, name) => {
-    await t.click(await t.waitFor(() => t.qa('nav a.row').find((a) => a.textContent.trim().startsWith(name)), name));
+    await t.click(await t.waitFor(() => t.qa('nav.side a').find((a) => a.textContent.trim().startsWith(name)), name));
     await t.waitFor(() => t.q('#room-title')?.textContent.includes(name), name + ' open');
   };
   const send = async (t, text, mentioned = false) => {

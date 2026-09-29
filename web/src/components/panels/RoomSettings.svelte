@@ -1,6 +1,7 @@
 <script lang="ts">
   // Room settings: name, purpose, privacy, reply mode, projects and members.
   // Adding a member first shows what history becomes visible to them.
+  import { Button, CheckboxInput, CheckboxList, CheckboxListItem, Divider, Heading, Link, RadioList, RadioListItem, Selector, Switch, Text, TextInput } from '@astryx-svelte/core';
   import { app } from '../../lib/state/app.svelte';
   import { api } from '../../lib/api/endpoints';
   import { ApiError, errorMessage } from '../../lib/api/client';
@@ -8,6 +9,7 @@
   import type { MembershipPreview, Room } from '../../lib/api/types.gen';
   import RightPanel, { type PanelMode } from '../RightPanel.svelte';
   import Avatar from '../Avatar.svelte';
+  import Notice from '../Notice.svelte';
   import ConfirmDialog from '../ConfirmDialog.svelte';
 
   interface Props {
@@ -40,6 +42,9 @@
       projectIds = [...r.projectIds];
     }
   });
+
+  // The room name is still checked by the browser before saving.
+  const requiredHint = { required: true };
 
   const members = $derived((room?.members ?? []).filter((m) => m.kind === 'engineer').map((m) => app.data.engineers[m.id]).filter(Boolean));
   const others = $derived(Object.values(app.data.engineers).filter((e) => !e.archived && !members.some((m) => m.id === e.id)));
@@ -140,58 +145,68 @@
 <RightPanel title="Room settings" {mode} onclose={() => app.closePanel()}>
   {#snippet subtitle()}{room?.name ?? ''}{/snippet}
   {#if !room}
-    <p class="pad meta">This room isn't available.</p>
+    <div class="pad"><Text as="p" type="supporting">This room isn't available.</Text></div>
   {:else}
     <div class="pad">
-      <label class="check mute">
-        <input type="checkbox" checked={app.isMuted(roomId)} onchange={() => app.toggleMute(roomId)} />
-        <span>Mute notifications<br /><span class="meta">Only for you. Questions and permission requests for you still notify; the work carries on.</span></span>
-      </label>
-      <section aria-labelledby="rs-members">
-        <h3 id="rs-members">Engineers in this room</h3>
+      <div class="mute">
+        <Switch
+          label="Mute notifications"
+          description="Only for you. Questions and permission requests for you still notify; the work carries on."
+          value={app.isMuted(roomId)}
+          onChange={() => app.toggleMute(roomId)}
+        />
+      </div>
+      <section class="group" aria-labelledby="rs-members">
+        <Heading level={3} id="rs-members">Engineers in this room</Heading>
         {#if members.length === 0}
-          <p class="meta">Bring a couple of engineers into this room, then tell them what you're working on.</p>
+          <Text as="p" type="supporting">Bring a couple of engineers into this room, then tell them what you're working on.</Text>
         {/if}
         <ul class="members">
           {#each members as e (e.id)}
             <li>
-              <Avatar actor={{ kind: 'engineer', id: e.id }} size={28} />
-              <span class="m-text"><strong>{e.name}</strong> <span class="meta">{e.role}</span></span>
+              <Avatar actor={{ kind: 'engineer', id: e.id }} size={32} />
+              <span class="m-text"><strong>{e.name}</strong> <Text type="supporting">{e.role}</Text></span>
               {#if room.kind !== 'dm'}
-                <button class="btn btn-sm btn-quiet" onclick={() => (removing = e.id)}>Remove</button>
+                <Button size="sm" variant="ghost" label="Remove" onclick={() => (removing = e.id)} />
               {/if}
             </li>
           {/each}
         </ul>
         {#if room.kind !== 'dm' && others.length}
           <div class="add">
-            <label class="field">
-              <span class="label">Add an engineer</span>
-              <select class="select" bind:value={addId} onchange={() => (preview = null)}>
-                <option value="">Choose…</option>
-                {#each others as e (e.id)}<option value={e.id}>{e.name} — {e.role}</option>{/each}
-              </select>
-            </label>
-            <button class="btn btn-sm" disabled={!addId || previewing} onclick={previewAdd}>{previewing ? 'Checking…' : 'Review access'}</button>
+            <div class="add-field">
+              <Selector
+                label="Add an engineer"
+                placeholder="Choose…"
+                width="100%"
+                value={addId}
+                options={others.map((e) => ({ value: e.id, label: `${e.name} — ${e.role}` }))}
+                onChange={(v: string) => {
+                  addId = v;
+                  preview = null;
+                }}
+              />
+            </div>
+            <Button label={previewing ? 'Checking…' : 'Review access'} isDisabled={!addId || previewing} onclick={previewAdd} />
           </div>
           {#if preview}
-            <div class="notice attention preview" role="status">
-              <div>
-                <p><strong>Before adding {app.engineerName(preview.engineerId)}</strong></p>
-                <p>{preview.explanation}</p>
-                <p class="meta">{preview.visibleMessageCount} {preview.visibleMessageCount === 1 ? 'message' : 'messages'} in this room become visible to them.</p>
+            <Notice tone="warning" role="status" title="Before adding {app.engineerName(preview.engineerId)}" description={preview.explanation}>
+              <div class="preview">
+                <Text as="p" type="supporting"
+                  >{preview.visibleMessageCount} {preview.visibleMessageCount === 1 ? 'message' : 'messages'} in this room become visible to them.</Text
+                >
                 <div class="row">
-                  <button class="btn btn-sm btn-primary" onclick={confirmAdd}>Add {app.engineerName(preview.engineerId)}</button>
-                  <button class="btn btn-sm" onclick={() => (preview = null)}>Cancel</button>
+                  <Button size="sm" variant="primary" label="Add {app.engineerName(preview.engineerId)}" onclick={confirmAdd} />
+                  <Button size="sm" label="Cancel" onclick={() => (preview = null)} />
                 </div>
               </div>
-            </div>
+            </Notice>
           {/if}
         {/if}
-        {#if memberError}<p class="form-error" role="alert">{memberError}</p>{/if}
+        {#if memberError}<Notice tone="danger" role="alert">{memberError}</Notice>{/if}
       </section>
 
-      <hr class="hairline" />
+      <Divider />
 
       <form
         class="form"
@@ -201,46 +216,58 @@
         }}
       >
         {#if room.kind === 'room'}
-          <label class="field"><span class="label">Name</span><input class="input" bind:value={name} required /></label>
-          <label class="field"><span class="label">Purpose</span><input class="input" bind:value={purpose} /></label>
-          <label class="check"><input type="checkbox" bind:checked={isPrivate} /><span>Private room<br /><span class="meta">History here isn't carried into other rooms, even by engineers who are in both.</span></span></label>
+          <TextInput label="Name" width="100%" {...requiredHint} bind:value={name} />
+          <TextInput label="Purpose" width="100%" bind:value={purpose} />
+          <CheckboxInput
+            label="Private room"
+            description="History here isn't carried into other rooms, even by engineers who are in both."
+            value={isPrivate}
+            onChange={(v) => (isPrivate = v)}
+          />
         {/if}
-        <fieldset class="fs">
-          <legend class="label">Who replies to unaddressed messages</legend>
-          <label class="check"><input type="radio" name="reply" value="quiet" bind:group={replyMode} /><span>Nobody — only engineers you mention reply</span></label>
-          <label class="check"><input type="radio" name="reply" value="steward" bind:group={replyMode} /><span>A steward engineer answers</span></label>
+        <div class="group">
+          <RadioList label="Who replies to unaddressed messages" value={replyMode} onChange={(v) => (replyMode = v)}>
+            <RadioListItem value="quiet" label="Nobody — only engineers you mention reply" />
+            <RadioListItem value="steward" label="A steward engineer answers" />
+          </RadioList>
           {#if replyMode === 'steward'}
-            <label class="field">
-              <span class="vh">Steward</span>
-              <select class="select" bind:value={stewardId}>
-                <option value="">Choose an engineer…</option>
-                {#each members as e (e.id)}<option value={e.id}>{e.name}</option>{/each}
-              </select>
-            </label>
+            <div class="steward">
+              <Selector
+                label="Steward"
+                isLabelHidden
+                placeholder="Choose an engineer…"
+                width="100%"
+                value={stewardId}
+                options={members.map((e) => ({ value: e.id, label: e.name }))}
+                onChange={(v: string) => (stewardId = v)}
+              />
+            </div>
           {/if}
-        </fieldset>
+        </div>
         {#if room.kind === 'room'}
-          <fieldset class="fs">
-            <legend class="label">Projects</legend>
-            {#if Object.keys(app.data.projects).length === 0}<p class="meta">No projects yet. <a href="/projects">Create one</a>.</p>{/if}
-            {#each Object.values(app.data.projects) as p (p.id)}
-              <label class="check">
-                <input type="checkbox" checked={projectIds.includes(p.id)} onchange={() => (projectIds = projectIds.includes(p.id) ? projectIds.filter((x) => x !== p.id) : [...projectIds, p.id])} />
-                <span>{p.name} <span class="meta">{p.description}</span></span>
-              </label>
-            {/each}
-          </fieldset>
+          {#if Object.keys(app.data.projects).length === 0}
+            <fieldset class="group">
+              <legend class="legend">Projects</legend>
+              <Text as="p" type="supporting">No projects yet. <Link href="/projects" type="inherit" hasUnderline>Create one</Link>.</Text>
+            </fieldset>
+          {:else}
+            <CheckboxList label="Projects" value={projectIds} onChange={(v) => (projectIds = v)}>
+              {#each Object.values(app.data.projects) as p (p.id)}
+                <CheckboxListItem value={p.id} label={p.name} description={p.description || undefined} />
+              {/each}
+            </CheckboxList>
+          {/if}
         {/if}
-        {#if error}<p class="form-error" role="alert">{error}</p>{/if}
+        {#if error}<Notice tone="danger" role="alert">{error}</Notice>{/if}
         <div class="row">
-          <button class="btn btn-primary btn-sm" type="submit" disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save changes'}</button>
-          {#if saved}<span class="meta" role="status">Saved.</span>{/if}
+          <Button size="sm" variant="primary" type="submit" label={saving ? 'Saving…' : 'Save changes'} isDisabled={!dirty || saving} />
+          {#if saved}<Text type="supporting" role="status">Saved.</Text>{/if}
         </div>
       </form>
 
       {#if room.kind === 'room'}
-        <hr class="hairline" />
-        <button class="btn btn-sm btn-danger archive" onclick={() => (confirmArchive = true)}>Archive room</button>
+        <Divider />
+        <div class="archive"><Button size="sm" variant="destructive" label="Archive room" onclick={() => (confirmArchive = true)} /></div>
       {/if}
     </div>
   {/if}
@@ -268,68 +295,67 @@
 {/if}
 
 <style>
-  .mute {
-    margin-bottom: 16px;
-  }
   .pad {
-    padding: 16px 18px 28px;
+    padding: var(--spacing-4) var(--spacing-4) var(--spacing-7);
     display: grid;
-    gap: 16px;
+    gap: var(--spacing-4);
     align-content: start;
   }
-  h3 {
-    font-size: 14px;
-    margin-bottom: 8px;
+  .mute {
+    margin-bottom: var(--spacing-1);
+  }
+  .group {
+    display: grid;
+    gap: var(--spacing-2);
+    min-width: 0;
+  }
+  /* Section titles in a drawer sit below its 17px title. */
+  .group :global(h3.astryx-heading) {
+    font-size: var(--text-heading-4-size);
+    line-height: var(--text-heading-4-leading);
   }
   .members {
-    list-style: none;
-    margin: 0;
-    padding: 0;
     display: grid;
-    gap: 6px;
+    gap: var(--spacing-1-5);
   }
   .members li {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--spacing-3);
   }
   .m-text {
     flex: 1;
     min-width: 0;
-    font-size: 14px;
   }
   .add {
     display: flex;
     align-items: flex-end;
-    gap: 8px;
-    margin-top: 10px;
+    gap: var(--spacing-2);
+    margin-top: var(--spacing-2);
     flex-wrap: wrap;
   }
-  .add .field {
+  .add-field {
     flex: 1;
     min-width: 180px;
   }
   .preview {
-    margin-top: 10px;
-  }
-  .preview > div {
     display: grid;
-    gap: 6px;
+    gap: var(--spacing-2);
   }
   .form {
     display: grid;
-    gap: 14px;
+    gap: var(--spacing-4);
   }
-  .fs {
-    border: 0;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 6px;
+  .steward {
+    padding-left: var(--spacing-6);
+  }
+  .legend {
+    margin-bottom: var(--spacing-1);
+    font-weight: var(--font-weight-medium);
   }
   .row {
     display: flex;
-    gap: 8px;
+    gap: var(--spacing-2);
     align-items: center;
   }
   .archive {

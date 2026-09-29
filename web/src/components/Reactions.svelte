@@ -1,5 +1,6 @@
 <script lang="ts">
   // Reactions are social only; they never approve or trigger anything.
+  import { ToggleButton } from '@astryx-svelte/core';
   import { api } from '../lib/api/endpoints';
   import { app } from '../lib/state/app.svelte';
   import { errorMessage } from '../lib/api/client';
@@ -25,16 +26,16 @@
   <ul class="reactions" aria-label="Reactions">
     {#each message.reactions as r (r.emoji)}
       <li>
-        <button
-          class="reaction"
-          class:mine={r.mine}
-          aria-pressed={r.mine}
-          aria-label="{r.emoji} {r.count}{r.mine ? ', including you' : ''}. {r.mine ? 'Remove your reaction' : 'React'}"
-          onclick={() => toggle(r.emoji, r.mine)}
+        <!-- The pressed state flips at once; the hub's answer settles it. -->
+        <ToggleButton
+          label="{r.emoji} {r.count}{r.mine ? ', including you' : ''}. {r.mine ? 'Remove your reaction' : 'React'}"
+          size="sm"
+          isPressed={r.mine}
+          pressedChangeAction={() => toggle(r.emoji, r.mine)}
         >
-          <span aria-hidden="true">{r.emoji}</span>
+          <span class="emoji" aria-hidden="true">{r.emoji}</span>
           <span class="n" aria-hidden="true">{r.count}</span>
-        </button>
+        </ToggleButton>
       </li>
     {/each}
   </ul>
@@ -44,41 +45,43 @@
   .reactions {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--spacing-1-5);
     list-style: none;
-    margin: 6px 0 0;
+    margin: var(--spacing-1-5) 0 0;
     padding: 0;
   }
-  .reaction {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
+  /* A full pill with a hairline edge; yours carries the accent. These replace
+     Astryx's own fills, so hover and press are tinted here too. Touch screens
+     get the app-wide 44px height. */
+  .reactions :global(.astryx-toggle-button) {
     height: 26px;
-    padding: 0 9px;
-    border-radius: var(--r-pill);
-    border: 1px solid var(--line);
-    background: var(--surface);
-    font-size: 13px;
-    cursor: pointer;
+    padding-inline: var(--spacing-2);
+    border-radius: var(--radius-full);
+    box-shadow: inset 0 0 0 1px var(--color-border);
+    background-color: var(--color-background-surface);
   }
-  .reaction:hover {
-    border-color: var(--control-edge);
+  .reactions :global(.astryx-toggle-button:hover) {
+    box-shadow: inset 0 0 0 1px var(--color-border-emphasized);
+    background-image: linear-gradient(var(--color-overlay-hover), var(--color-overlay-hover));
   }
-  .reaction.mine {
-    border-color: var(--accent);
-    background: var(--accent-subtle);
+  .reactions :global(.astryx-toggle-button:active) {
+    background-image: linear-gradient(var(--color-overlay-pressed), var(--color-overlay-pressed));
+  }
+  .reactions :global(.astryx-toggle-button[aria-pressed='true']) {
+    box-shadow: inset 0 0 0 1px var(--color-accent);
+    background-color: var(--color-accent-muted);
+  }
+  .emoji {
+    font-size: var(--font-size-base);
   }
   .n {
-    font-weight: 600;
+    margin-left: var(--spacing-1);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
     font-variant-numeric: tabular-nums;
-    color: var(--ink-secondary);
+    color: var(--color-text-secondary);
   }
-  .mine .n {
-    color: var(--accent);
-  }
-  @media (pointer: coarse) {
-    .reaction {
-      height: 36px;
-    }
+  .reactions :global([aria-pressed='true'] .n) {
+    color: var(--color-text-primary);
   }
 </style>

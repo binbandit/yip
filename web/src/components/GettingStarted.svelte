@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button, Heading, Link, Text } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
   import { providerLabel } from '../lib/util/labels';
   import { roomSettings, setupReadiness } from '../lib/util/setup';
@@ -97,37 +98,53 @@
 </script>
 
 {#if dismissed}
-  <button class="btn btn-sm btn-quiet restore" onclick={() => setDismissed(false)}>Show getting started</button>
+  <div class="restore">
+    <Button label="Show getting started" variant="ghost" size="sm" onclick={() => setDismissed(false)} />
+  </div>
 {:else}
   <section class="start" aria-labelledby="gs-title">
     <header>
-      <h2 id="gs-title" class="section-title">Getting started</h2>
-      <span class="meta">{steps.length - remaining} of {steps.length} done</span>
+      <Heading level={2} id="gs-title">Getting started</Heading>
+      <Text type="supporting">{steps.length - remaining} of {steps.length} done</Text>
       <div class="actions">
-        {#if hasRecordedWork}<button class="btn btn-sm btn-quiet" aria-expanded={showSteps} aria-controls="gs-steps" onclick={() => (expanded = !expanded)}>{showSteps ? 'Show less' : 'Show steps'}</button>{/if}
-        <button class="btn btn-sm btn-quiet" onclick={() => setDismissed(true)}>Hide</button>
+        {#if hasRecordedWork}
+          <Button
+            label={showSteps ? 'Show less' : 'Show steps'}
+            variant="ghost"
+            size="sm"
+            aria-expanded={showSteps}
+            aria-controls="gs-steps"
+            onclick={() => (expanded = !expanded)}
+          />
+        {/if}
+        <Button label="Hide" variant="ghost" size="sm" onclick={() => setDismissed(true)} />
       </div>
     </header>
     {#if setup.unavailable.length > 0}
-      <div class="availability meta">
+      <div class="availability">
         {#each setup.unavailable as issue (issue.engineer.id)}
-          <p><strong>{issue.engineer.name}:</strong> {issue.reason} <a href={issue.href}>{issue.action}</a></p>
+          <Text as="p" display="block" type="supporting">
+            <strong>{issue.engineer.name}:</strong> {issue.reason} <Link href={issue.href} type="inherit" hasUnderline>{issue.action}</Link>
+          </Text>
         {/each}
-        <p>Your completed setup stays in place.</p>
+        <Text as="p" display="block" type="supporting">Your completed setup stays in place.</Text>
       </div>
     {/if}
     <ol id="gs-steps" hidden={!showSteps}>
       {#each steps as s, i (s.title)}
         {@const next = !s.done && steps.slice(0, i).every((x) => x.done)}
-        <li class:done={s.done} class:next>
+        <li>
           <StateIcon shape={s.done ? 'check-filled' : 'circle'} tone={s.done ? 'success' : 'neutral'} size={15} />
           <div class="body">
-            <strong>{s.title}</strong>
-            <span class="meta">{s.detail}</span>
+            <Text weight={s.done ? 'medium' : 'semibold'} color={s.done ? 'secondary' : 'primary'}>{s.title}</Text>
+            <Text type="supporting">{s.detail}</Text>
           </div>
           {#if !s.done && s.action}
-            {#if s.href}<a class="btn btn-sm" class:btn-primary={next} href={s.href}>{s.action}</a>
-            {:else}<button class="btn btn-sm" class:btn-primary={next} onclick={() => (app.createRoom = { kind: 'room' })}>{s.action}</button>{/if}
+            {#if s.href}
+              <Button label={s.action} href={s.href} size="sm" variant={next ? 'primary' : 'secondary'} />
+            {:else}
+              <Button label={s.action} size="sm" variant={next ? 'primary' : 'secondary'} onclick={() => (app.createRoom = { kind: 'room' })} />
+            {/if}
           {/if}
         </li>
       {/each}
@@ -137,48 +154,47 @@
 
 <style>
   .restore {
-    margin-bottom: 20px;
-  }
-  .availability {
-    margin: 8px 0 12px;
-  }
-  .availability p {
-    margin: 4px 0;
+    margin-bottom: var(--spacing-5);
   }
   .start {
     container-type: inline-size;
-    margin-bottom: 28px;
-    padding: 14px 16px 10px;
-    border: 1px solid var(--line-strong);
-    border-radius: var(--r-artifact);
+    margin-bottom: var(--spacing-7);
+    padding: var(--spacing-3) var(--spacing-4) var(--spacing-2);
+    border: 1px solid var(--color-border-emphasized);
+    border-radius: var(--radius-container);
   }
   header {
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 6px;
+    gap: var(--spacing-2) var(--spacing-3);
+    margin-bottom: var(--spacing-1-5);
+  }
+  header :global(h2) {
+    font-size: var(--font-size-lg);
   }
   .actions {
     display: flex;
-    gap: 4px;
+    gap: var(--spacing-1);
     margin-left: auto;
+  }
+  .availability {
+    display: grid;
+    gap: var(--spacing-1);
+    margin: var(--spacing-2) 0 var(--spacing-3);
+  }
+  ol {
+    display: grid;
   }
   ol[hidden] {
     display: none;
   }
-  ol {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-  }
   li {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 0;
-    border-top: 1px solid var(--line-soft);
+    gap: var(--spacing-2);
+    padding: var(--spacing-2) 0;
+    border-top: 1px solid var(--color-border);
   }
   li:first-child {
     border-top: 0;
@@ -188,22 +204,22 @@
     flex: 1;
     min-width: 0;
   }
-  .done strong {
-    color: var(--ink-secondary);
-    font-weight: 500;
-  }
   @container (max-width: 440px) {
     li {
       display: grid;
       grid-template-columns: 15px minmax(0, 1fr);
       align-items: start;
-      row-gap: 6px;
+      row-gap: var(--spacing-1-5);
     }
-    li .btn {
+    /* Long actions ("Set up <room>") wrap rather than truncate; one line keeps the small button's height. */
+    li > :global(.astryx-button) {
       grid-column: 2;
       justify-self: start;
       max-width: 100%;
+      height: auto;
+      padding-block: var(--spacing-1);
       white-space: normal;
+      text-align: start;
     }
   }
 </style>

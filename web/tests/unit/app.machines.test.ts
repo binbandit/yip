@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
+import { choose } from './controls';
 import { demoHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
 import type { JobDetail, Node, ProviderInstallation, ProviderProfile, Run } from '../../src/lib/api/types.gen';
 
@@ -164,7 +165,6 @@ describe('the Machines list', () => {
     await waitFor(() => location.search.includes('panel=machine%3An-laptop'), 'details in the URL');
     const panel = await waitFor(() => document.querySelector<HTMLElement>('aside.panel'), 'the panel');
     expect(panel.querySelector('h2')!.textContent).toBe(LONG);
-    expect(panel.querySelector('h2')!.getAttribute('title')).toBe(LONG);
     expect(row(LONG).classList.contains('selected')).toBe(true);
     key(document.activeElement ?? document.body, 'Escape');
     await waitFor(() => !document.querySelector('aside.panel'), 'the panel to close');
@@ -181,7 +181,7 @@ describe('the Machines list', () => {
     try {
       app.go({ name: 'machines' });
       await waitFor(() => text().includes('No machines yet.'), 'the empty state');
-      expect([...document.querySelectorAll('main button')].filter((b) => b.textContent?.includes('Add machine')).length).toBe(1);
+      expect([...document.querySelectorAll('[role=main] button')].filter((b) => b.textContent?.includes('Add machine')).length).toBe(1);
     } finally {
       machines.push(...saved);
     }
@@ -197,7 +197,13 @@ describe('machine details', () => {
 
   it('has Overview, Connections, Storage and Diagnostics, with arrow keys between them', async () => {
     await open('n-laptop');
-    expect(tabs().map((t) => t.textContent!.replace(/\s*\(needs attention\)/, '').trim())).toEqual(['Overview', 'Connections', 'Storage', 'Diagnostics']);
+    // What a screen reader hears: the text, minus anything aria-hidden.
+    const spoken = (el: Element) => {
+      const copy = el.cloneNode(true) as Element;
+      for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+      return copy.textContent!.replace(/\s+/g, ' ').trim();
+    };
+    expect(tabs().map((t) => spoken(t).replace(/ \(needs attention\)$/, ''))).toEqual(['Overview', 'Connections', 'Storage', 'Diagnostics']);
     expect(tabs()[1].textContent).toContain('needs attention');
     expect(tabs()[2].textContent).toContain('needs attention');
     tabs()[0].focus();
@@ -207,7 +213,8 @@ describe('machine details', () => {
     expect(document.activeElement?.id).toBe('machinetab-connections');
     key(document.activeElement!, 'End');
     await waitFor(() => app.loc.tab === 'diagnostics', 'Diagnostics selected');
-    app.closePanel();
+    key(document.activeElement!, 'Escape');
+    await waitFor(() => !document.querySelector('aside.panel'), 'Escape on a tab to close the details');
   });
 
   it('Overview: honest connection, work, capacity, disk and how it runs, with its limits first', async () => {
@@ -254,9 +261,7 @@ describe('machine details', () => {
     expect(claude.textContent).toContain('not tested with yip (tested: 2.0.14)');
     expect(claude.textContent).toMatch(/allowance ran out\. Its work waits until .+, then carries on by itself/);
     expect(claude.textContent).toContain('Shared by every machine signed in to me@example.com');
-    const select = claude.querySelector<HTMLSelectElement>('select')!;
-    select.value = '3';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    choose(claude.querySelector<HTMLElement>('button[role=combobox]')!, '3');
     await waitFor(() => hub.last('PUT', /provider-profiles/), 'concurrency saved');
     expect(hub.last('PUT', /provider-profiles/)!.body).toEqual({ maxConcurrency: 3 });
     app.closePanel();
@@ -285,7 +290,7 @@ describe('machine details', () => {
     expect(p.textContent).toContain('Docker is not installed here');
     expect(p.textContent).toContain('Token usage is reported by Claude Code');
     expect(p.textContent).toContain(base.fingerprint);
-    const tools = [...p.querySelectorAll('.tools > div')].map((d) => [d.querySelector('dt')!.textContent, d.querySelector('dd')!.textContent]);
+    const tools = [...p.querySelectorAll('.tools dt')].map((dt) => [dt.textContent?.trim(), dt.nextElementSibling?.textContent?.trim()]);
     expect(tools[0]).toEqual(['git', base.toolchains.git]);
     expect(byText('#machinepanel button', 'Copy')).toBeTruthy();
     app.closePanel();
@@ -314,14 +319,14 @@ describe('consequential actions', () => {
     expect(said).toContain('Pause new work on Studio mini?');
     expect(said).toContain('finishes the work it\'s running now (1 running) and starts nothing new until you resume. Nothing is stopped.');
     expect(hub.last('POST', /\/drain$/)!.body).toEqual({ drain: true });
-    await waitFor(() => btn.textContent === 'Resume new work', 'the counterpart');
+    await waitFor(() => btn.textContent?.trim() === 'Resume new work', 'the counterpart');
     await waitFor(() => document.activeElement === btn, 'focus back on the button');
     expect(text()).toContain('Paused');
     btn.click();
     const again = await confirmWith('Resume new work');
     expect(again).toContain('starts taking new work again');
     expect(hub.last('POST', /\/drain$/)!.body).toEqual({ drain: false });
-    await waitFor(() => btn.textContent === 'Pause new work', 'back to pause');
+    await waitFor(() => btn.textContent?.trim() === 'Pause new work', 'back to pause');
     app.closePanel();
   });
 

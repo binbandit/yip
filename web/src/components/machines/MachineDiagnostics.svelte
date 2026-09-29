@@ -3,13 +3,14 @@
   // runner and provider versions, what each adapter supports and its full
   // notes, execution profiles, toolchains, the fingerprint to compare with
   // the machine, and its recent activity.
+  import { Button, Code, Heading, Icon, MetadataList, MetadataListItem, Text } from '@astryx-svelte/core';
+  import { Copy } from '@lucide/svelte';
   import type { Node, ProviderCapabilities } from '../../lib/api/types.gen';
   import { app } from '../../lib/state/app.svelte';
   import { runShape, runStateLabel, runTone } from '../../lib/util/labels';
   import { bytes, fullTime, relative } from '../../lib/util/time';
   import { osLabel, type ProviderStatus } from '../../lib/util/machines';
   import StateIcon from '../StateIcon.svelte';
-  import Icon from '../Icon.svelte';
 
   interface Props {
     node: Node;
@@ -53,45 +54,51 @@
 </script>
 
 <section class="block" aria-labelledby="md-runner">
-  <h3 id="md-runner">Runner</h3>
-  <dl class="kv">
-    <div><dt>Version</dt><dd>{n.runnerVersion || 'Not reported'}</dd></div>
-    <div><dt>Platform</dt><dd>{[osLabel(n.os), n.arch].filter(Boolean).join(' · ') || 'Not reported'}{n.hostname ? ` · ${n.hostname}` : ''}</dd></div>
-    {#if n.capacity.cpus}<div><dt>Hardware</dt><dd>{n.capacity.cpus} CPUs · {bytes(n.capacity.memMb * 1024 * 1024)} memory</dd></div>{/if}
-    <div><dt>Supervision</dt><dd>{n.serviceState || 'Not reported'}</dd></div>
-    <div><dt>Paired</dt><dd>{fullTime(n.createdAt)}</dd></div>
-    <div>
-      <dt>Fingerprint</dt>
-      <dd class="fp">
-        <code>{n.fingerprint}</code>
-        <button class="btn btn-sm" aria-label="Copy fingerprint" onclick={copyFingerprint}><Icon name="copy" size={14} />{copied ? 'Copied' : 'Copy'}</button>
-      </dd>
-    </div>
-  </dl>
-  <p class="meta">Compare the fingerprint with <code>yip doctor</code> on the machine.</p>
+  <Heading level={3} id="md-runner">Runner</Heading>
+  <div class="kv">
+    <MetadataList>
+      <MetadataListItem label="Version">{n.runnerVersion || 'Not reported'}</MetadataListItem>
+      <MetadataListItem label="Platform">{[osLabel(n.os), n.arch].filter(Boolean).join(' · ') || 'Not reported'}{n.hostname ? ` · ${n.hostname}` : ''}</MetadataListItem>
+      {#if n.capacity.cpus}<MetadataListItem label="Hardware">{n.capacity.cpus} CPUs · {bytes(n.capacity.memMb * 1024 * 1024)} memory</MetadataListItem>{/if}
+      <MetadataListItem label="Supervision">{n.serviceState || 'Not reported'}</MetadataListItem>
+      <MetadataListItem label="Paired">{fullTime(n.createdAt)}</MetadataListItem>
+      <MetadataListItem label="Fingerprint">
+        <span class="fp">
+          <Code>{n.fingerprint}</Code>
+          <Button label="Copy fingerprint" size="sm" onclick={copyFingerprint}>
+            {#snippet icon()}<Icon icon={Copy} size="sm" />{/snippet}
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+        </span>
+      </MetadataListItem>
+    </MetadataList>
+  </div>
+  <Text as="p" type="supporting" class="after-kv">Compare the fingerprint with <Code size="inherit">yip doctor</Code> on the machine.</Text>
 </section>
 
 <section class="block" aria-labelledby="md-providers">
-  <h3 id="md-providers">Providers</h3>
+  <Heading level={3} id="md-providers">Providers</Heading>
   {#if n.providers.length === 0}
-    <p class="meta">None reported.</p>
+    <Text as="p" type="supporting">None reported.</Text>
   {/if}
   {#each n.providers as p (p.provider)}
     {@const st = providers.find((x) => x.provider === p.provider)}
     <div class="prov">
-      <p class="prov-name"><strong>{st?.name ?? p.provider}</strong> <span class="meta">{st?.compat}</span></p>
-      <dl class="kv">
-        {#if p.path}<div><dt>Path</dt><dd class="mono">{p.path}</dd></div>{/if}
-        {#if p.profileId}<div><dt>Account pool</dt><dd class="mono">{p.profileId}</dd></div>{/if}
-        {#if p.authDetail}<div><dt>Sign-in detail</dt><dd>{p.authDetail}</dd></div>{/if}
-        {#if p.authState !== 'not_installed'}
-          <div><dt>Supports</dt><dd>{CAPS.filter(([k]) => p.capabilities?.[k]).map(([, l]) => l).join(', ') || 'Nothing reported'}</dd></div>
-          {#if CAPS.some(([k]) => !p.capabilities?.[k])}
-            <div><dt>Doesn’t support</dt><dd>{CAPS.filter(([k]) => !p.capabilities?.[k]).map(([, l]) => l).join(', ')}</dd></div>
+      <p class="prov-name"><strong>{st?.name ?? p.provider}</strong> <Text type="supporting">{st?.compat}</Text></p>
+      <div class="kv">
+        <MetadataList>
+          {#if p.path}<MetadataListItem label="Path"><Code>{p.path}</Code></MetadataListItem>{/if}
+          {#if p.profileId}<MetadataListItem label="Account pool"><Code>{p.profileId}</Code></MetadataListItem>{/if}
+          {#if p.authDetail}<MetadataListItem label="Sign-in detail">{p.authDetail}</MetadataListItem>{/if}
+          {#if p.authState !== 'not_installed'}
+            <MetadataListItem label="Supports">{CAPS.filter(([k]) => p.capabilities?.[k]).map(([, l]) => l).join(', ') || 'Nothing reported'}</MetadataListItem>
+            {#if CAPS.some(([k]) => !p.capabilities?.[k])}
+              <MetadataListItem label="Doesn’t support">{CAPS.filter(([k]) => !p.capabilities?.[k]).map(([, l]) => l).join(', ')}</MetadataListItem>
+            {/if}
+            {#if p.models?.length}<MetadataListItem label="Models">{p.models.map((m) => m.label || m.id).join(', ')}</MetadataListItem>{/if}
           {/if}
-          {#if p.models?.length}<div><dt>Models</dt><dd>{p.models.map((m) => m.label || m.id).join(', ')}</dd></div>{/if}
-        {/if}
-      </dl>
+        </MetadataList>
+      </div>
       {#if p.limitations?.length}
         <p class="sub">Adapter notes</p>
         <ul class="notes">{#each p.limitations as l (l)}<li>{l}</li>{/each}</ul>
@@ -101,15 +108,15 @@
 </section>
 
 <section class="block" aria-labelledby="md-profiles">
-  <h3 id="md-profiles">Execution profiles</h3>
-  {#if n.profiles.length === 0}<p class="meta">None reported.</p>{/if}
+  <Heading level={3} id="md-profiles">Execution profiles</Heading>
+  {#if n.profiles.length === 0}<Text as="p" type="supporting">None reported.</Text>{/if}
   <ul class="profiles">
     {#each n.profiles as pr (pr.name)}
       <li>
         <StateIcon shape={pr.available ? 'check-filled' : 'slash'} tone={pr.available ? 'success' : 'neutral'} size={14} />
         <div>
           <p><strong>{PROFILE_LABEL[pr.name] ?? pr.name}</strong> · {pr.available ? 'Available' : 'Unavailable'}</p>
-          <p class="meta">{pr.available ? pr.summary : pr.reason || 'No reason given.'}</p>
+          <Text as="p" type="supporting">{pr.available ? pr.summary : pr.reason || 'No reason given.'}</Text>
         </div>
       </li>
     {/each}
@@ -117,24 +124,28 @@
 </section>
 
 <section class="block" aria-labelledby="md-tools">
-  <h3 id="md-tools">Toolchains</h3>
+  <Heading level={3} id="md-tools">Toolchains</Heading>
   {#if toolchains.length === 0}
-    <p class="meta">None reported.</p>
+    <Text as="p" type="supporting">None reported.</Text>
   {:else}
-    <dl class="kv tools">
-      {#each toolchains as [name, version] (name)}
-        <div><dt>{name}</dt><dd class="mono">{version}</dd></div>
-      {/each}
-    </dl>
+    <div class="kv">
+      <MetadataList class="tools">
+        {#each toolchains as [name, version] (name)}
+          <MetadataListItem label={name}><Code>{version}</Code></MetadataListItem>
+        {/each}
+      </MetadataList>
+    </div>
   {/if}
 </section>
 
 <section class="block" aria-labelledby="md-activity">
-  <h3 id="md-activity">Activity</h3>
-  <dl class="kv">
-    <div><dt>Last heard</dt><dd>{n.lastSeenAt ? `${fullTime(n.lastSeenAt)} (${relative(n.lastSeenAt, app.now)})` : 'Never'}</dd></div>
-    {#if n.lastActivity}<div><dt>Last reported</dt><dd>{n.lastActivity}</dd></div>{/if}
-  </dl>
+  <Heading level={3} id="md-activity">Activity</Heading>
+  <div class="kv">
+    <MetadataList>
+      <MetadataListItem label="Last heard">{n.lastSeenAt ? `${fullTime(n.lastSeenAt)} (${relative(n.lastSeenAt, app.now)})` : 'Never'}</MetadataListItem>
+      {#if n.lastActivity}<MetadataListItem label="Last reported">{n.lastActivity}</MetadataListItem>{/if}
+    </MetadataList>
+  </div>
   {#if recent.length}
     <ul class="runs">
       {#each recent as r (r.id)}
@@ -142,82 +153,75 @@
         <li>
           <StateIcon shape={runShape(r.state)} tone={runTone(r.state)} size={13} />
           <span class="run-text">{runStateLabel(r.state)}{j ? ` · ${j.kind === 'reply' ? 'a reply' : j.title}` : ''}</span>
-          <span class="meta">{relative(r.startedAt ?? r.createdAt, app.now)}</span>
+          <Text type="supporting">{relative(r.startedAt ?? r.createdAt, app.now)}</Text>
         </li>
       {/each}
     </ul>
   {:else}
-    <p class="meta">No attempts on this machine since this page loaded.</p>
+    <Text as="p" type="supporting">No attempts on this machine since this page loaded.</Text>
   {/if}
 </section>
 
 <style>
   .block {
-    margin-bottom: 22px;
+    margin-bottom: var(--spacing-6);
   }
-  h3 {
-    font-size: var(--text-body);
-    font-weight: 600;
-    margin-bottom: 8px;
+  .block :global(h3) {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: var(--spacing-2);
   }
-  .kv {
-    margin: 0;
-    display: grid;
-    gap: 6px;
-  }
-  .kv > div {
-    display: grid;
+  .kv :global(dl) {
     grid-template-columns: 112px minmax(0, 1fr);
-    gap: 12px;
-    font-size: var(--text-body);
+    row-gap: var(--spacing-1-5);
   }
-  dt {
-    color: var(--ink-secondary);
+  .kv :global(dt) {
+    font-weight: var(--font-weight-normal);
     overflow-wrap: anywhere;
   }
-  dd {
-    margin: 0;
+  .kv :global(dd) {
     min-width: 0;
     overflow-wrap: anywhere;
-  }
-  .mono {
-    font-size: 12.5px;
-    line-height: 20px;
   }
   .fp {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-2);
+    min-width: 0;
   }
-  .fp code {
-    font-size: 13px;
+  .fp :global(code) {
+    min-width: 0;
+    overflow-wrap: anywhere;
     user-select: all;
   }
-  .kv + .meta {
-    margin-top: 6px;
+  .block :global(.after-kv) {
+    margin-top: var(--spacing-1-5);
   }
   .prov {
-    padding: 10px 0;
-    border-top: 1px solid var(--line);
+    padding: var(--spacing-3) 0;
+    border-top: 1px solid var(--color-border);
   }
   .prov-name {
-    margin-bottom: 6px;
+    margin-bottom: var(--spacing-1-5);
     overflow-wrap: anywhere;
   }
+  .prov-name strong {
+    font-weight: var(--font-weight-semibold);
+  }
   .sub {
-    margin: 8px 0 4px;
-    font-size: var(--text-meta);
-    font-weight: 600;
-    color: var(--ink-secondary);
+    margin: var(--spacing-2) 0 var(--spacing-1);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-secondary);
   }
   .notes {
     margin: 0;
-    padding-left: 18px;
+    padding-left: var(--spacing-4);
+    list-style: disc;
     display: grid;
-    gap: 3px;
-    font-size: var(--text-body);
-    color: var(--ink-secondary);
+    gap: var(--spacing-1);
+    color: var(--color-text-secondary);
     overflow-wrap: anywhere;
   }
   .profiles,
@@ -226,29 +230,27 @@
     margin: 0;
     padding: 0;
     display: grid;
-    gap: 8px;
+    gap: var(--spacing-2);
   }
   .profiles li {
     display: flex;
-    gap: 8px;
+    gap: var(--spacing-2);
     align-items: flex-start;
-  }
-  .profiles li :global(svg) {
-    margin-top: 3px;
-  }
-  .profiles .meta {
+    min-width: 0;
     overflow-wrap: anywhere;
   }
+  .profiles li > :global(svg) {
+    margin-top: 3px;
+  }
   .runs {
-    margin-top: 8px;
-    gap: 4px;
+    margin-top: var(--spacing-2);
+    gap: var(--spacing-1);
   }
   .runs li {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: var(--spacing-2);
     align-items: center;
-    font-size: var(--text-body);
   }
   .run-text {
     overflow: hidden;
@@ -256,9 +258,12 @@
     white-space: nowrap;
   }
   @container machinepanel (max-width: 440px) {
-    .kv > div {
+    .kv :global(dl) {
       grid-template-columns: minmax(0, 1fr);
-      gap: 0;
+      row-gap: 0;
+    }
+    .kv :global(dd:not(:last-child)) {
+      margin-bottom: var(--spacing-1-5);
     }
   }
 </style>

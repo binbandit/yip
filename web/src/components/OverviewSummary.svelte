@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { Button, Icon, Link, Text } from '@astryx-svelte/core';
+  import { RefreshCw } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
-  import Icon from './Icon.svelte';
 
   let { roomId }: { roomId: string } = $props();
   let sending = $state(false);
@@ -18,16 +19,27 @@
 </script>
 
 <div class="summary-actions">
-  <p class="meta">A snapshot of active work, recent results and open questions across your projects.</p>
+  <Text as="p" display="block" type="supporting">A snapshot of active work, recent results and open questions across your projects.</Text>
   <div class="actions">
-    <button class="btn btn-primary" disabled={sending || pending} aria-busy={sending} onclick={summarize}>
-      <Icon name="refresh" size={16} />{sending ? 'Gathering updates…' : 'Get a fresh summary'}
-    </button>
-    <a class="link-btn" href="/engineers">Talk with an engineer</a>
+    <Button label="Get a fresh summary" variant="primary" isLoading={sending} isDisabled={pending} onclick={summarize}>
+      {#snippet icon()}<Icon icon={RefreshCw} size="sm" />{/snippet}
+    </Button>
+    <Link href="/engineers" isStandalone hasUnderline>Talk with an engineer</Link>
   </div>
 </div>
 
 <style>
-  .summary-actions { flex: none; display: grid; gap: 12px; padding: 20px; border-top: 1px solid var(--line); }
-  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .summary-actions {
+    flex: none;
+    display: grid;
+    gap: var(--spacing-3);
+    padding: var(--spacing-5);
+    border-top: 1px solid var(--color-border);
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-3);
+  }
 </style>

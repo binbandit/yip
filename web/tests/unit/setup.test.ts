@@ -147,7 +147,7 @@ describe('setup next actions', () => {
     app.data.nodes[node.id].status = 'offline';
     flushSync();
     expect(document.querySelector('.hint')?.textContent).toContain('no machine is available');
-    expect(document.querySelector('option')?.textContent).toContain('not ready');
+    expect(document.querySelector('[role=combobox]')?.textContent).toContain('not ready');
     app.data.nodes[node.id].status = 'online';
     flushSync();
     expect(document.querySelector('.hint')?.textContent).toContain('Ready on');
@@ -169,7 +169,7 @@ describe('setup next actions', () => {
     app.data = team().data;
     component = mount(GettingStarted, { target: document.body });
     flushSync();
-    [...document.querySelectorAll('button')].find((b) => b.textContent === 'Hide')!.click();
+    [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Hide')!.click();
     flushSync();
     await unmount(component);
     component = mount(GettingStarted, { target: document.body });
@@ -189,8 +189,8 @@ describe('setup next actions', () => {
     component = mount(GettingStarted, { target: document.body });
     flushSync();
     const links = [...document.querySelectorAll('a')];
-    expect(links.find((a) => a.textContent === 'Choose access')?.getAttribute('href')).toBe(`/projects/${project.id}#p-access`);
-    expect(links.find((a) => a.textContent === 'Invite to room')?.getAttribute('href')).toBe(roomSettings(room));
+    expect(links.find((a) => a.textContent?.trim() === 'Choose access')?.getAttribute('href')).toBe(`/projects/${project.id}#p-access`);
+    expect(links.find((a) => a.textContent?.trim() === 'Invite to room')?.getAttribute('href')).toBe(roomSettings(room));
     expect(project.grants).toEqual([]);
   });
 

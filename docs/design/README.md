@@ -1,6 +1,6 @@
 # yip web client · Design system
 
-This describes the design system in `web/`, which implements the behaviour in `docs/spec/02-product-and-design.md`. The visual language follows **Buzz by Block** at the owner's direction ([ADR 0012](../decisions/0012-visual-direction.md)); it replaces the spec's aqua/petrol concept, which has been removed. No Buzz or Block assets, names or exact gradient values are used (see [Borrowed from Buzz](#borrowed-from-buzz-and-what-differs)).
+This describes the design system in `web/`, which implements the behaviour in `docs/spec/02-product-and-design.md`. Components come from **Astryx** through [astryx-svelte](https://github.com/devrohit06/astryx-svelte), a Svelte 5 port of Meta's design system ([ADR 0013](../decisions/0013-astryx-design-system.md)). The look is a yip theme over Astryx's neutral theme. Its composition follows **Buzz by Block** at the owner's direction ([ADR 0012](../decisions/0012-visual-direction.md)); no Buzz or Block assets, names or exact gradient values are used (see [Borrowed from Buzz](#borrowed-from-buzz-and-what-differs)).
 
 ## Principles in the interface
 
@@ -11,92 +11,82 @@ This describes the design system in `web/`, which implements the behaviour in `d
 - **Quiet by default.** Unread rooms are shown in heavier text rather than a different colour. Engineer activity stays out of the timeline: a quiet line sits by the composer, and tool logs are under Activity. Only meaningful events are announced to screen readers.
 - **A group chat, not a console.** Rooms read like a conversation between colleagues: names and messages, a typing line while someone composes a reply, and a compact card when work finishes. Engineers' intermediate output, tool calls and progress never stream into the conversation; a piece of work or a review is linked once, where it first comes up; and hub notices are single, human sentences with the technical detail kept in the work itself.
 
-## Tokens
+## Theme and tokens
 
-These are defined on `:root` in `web/src/app.css`. Night values apply under `prefers-color-scheme: dark` unless the owner picks Day, and always under `[data-theme="night"]`.
+The theme is `web/src/lib/theme.ts`: `defineTheme({ extends: neutralTheme })` with Inter and yip's own tokens (`web/src/lib/theme-tokens.ts`). `<Theme>` in `App.svelte` applies it and the owner's appearance (Match this device, Day or Night) as Astryx's `system`, `light` or `dark` mode. Every colour is a `[day, night]` pair resolved with `light-dark()`.
 
-| Token | Day | Night | Use |
-|---|---|---|---|
-| `canvas` | `#EBE9D8` | `#33311D` | Frame gradient, top (warm) |
-| `navigation` | `#D5DCE3` | `#0E1621` | Frame gradient, bottom (cool) |
-| `surface` | `#FFFFFF` | `#1A1A1B` | The work card, panels, dialogs |
-| `surface-subtle` | `#F4F4F5` | `#232325` | Hovered rows, code, card headers |
-| `ink` | `#1F2328` | `#E6E8EB` | Main text |
-| `ink-secondary` | `#59636E` | `#9BA3AD` | Metadata, secondary copy |
-| `accent` | `#1F2328` | `#EEF0F2` | Primary controls, count pills, focus ring — the ink colour (monochrome) |
-| `accent-ink` | `#FFFFFF` | `#151516` | Text on an accent fill |
-| `line` / `line-strong` | `#E4E5E7` / `#D3D6DA` | `#313235` / `#3D3F43` | Hairlines / outline buttons and chips |
-| `attention-fill` | `#D4A72C` | `#BB8009` | Amber markers (never text) |
-| `attention-ink` | `#7A4F00` | `#E3B341` | Text on amber surfaces |
-| `success` | `#1A7F37` | `#3FB950` | Confirmed success |
-| `danger` | `#CF222E` | `#F85149` | Failures, destructive actions |
-| `info` | `#0969DA` | `#4493F8` | Text selection only |
-
-Derived tokens:
+Components and app CSS use Astryx's tokens only (`cd web && npx @astryx-svelte/cli@0.5.2 docs tokens` lists them all). The ones yip leans on:
 
 | Token | Day | Night | Use |
 |---|---|---|---|
-| `accent-subtle` | `#EFF0F2` | `#2A2B2E` | Selected option, active search result |
-| `success-subtle` / `danger-subtle` / `attention-subtle` | `#E6F6EA` / `#FDEEEE` / `#FDF6D8` | `#15291D` / `#2F1719` / `#2B2411` | Diff lines, search matches, a question asked of you, a message that failed to send |
-| `control-edge` | `#858D97` | `#7A828C` | Borders of text inputs (3:1 against the surface) |
-| `hover` / `pressed` / `selected` | black 4% / 8% / 7% | white 6% / 10% / 13% | Row states: alpha washes, never a new hue |
-| `frame` | `canvas → navigation` | `canvas → navigation` | The two-stop vertical frame gradient |
+| `--yip-frame-top` / `--yip-frame-bottom` | `#EBE9D8` / `#D5DCE3` | `#33311D` / `#0E1621` | The frame gradient behind the sidebar and the card (yip's) |
+| `--color-background-surface` | `#FFFFFF` | `#262626` | The work card, panels, dialogs |
+| `--color-background-muted` | `#F1F1F1` | `#1B1B1B` | Code, quiet fills |
+| `--color-text-primary` / `--color-text-secondary` | `#171717` / `#525252` | `#FAFAFA` / `#A3A3A3` | Main text / metadata |
+| `--color-accent` / `--color-on-accent` | `#262626` / `#FFFFFF` | `#EBEBEB` / `#171717` | Primary controls, count pills: the ink colour |
+| `--color-border` / `--color-border-emphasized` | black 8% / `#D4D4D4` | white 10% / `#525252` | Hairlines / stronger separators |
+| `--yip-control-edge` | `#858585` | `#7A7A7A` | The edge of text fields, selects, file inputs, checkboxes and radios, and a switch's off track (yip's; the theme sets it as `--color-border-emphasized` inside those controls) |
+| `--color-success`, `--color-error`, `--color-warning` | `#007004`, `#A50C25`, `#745B00` | `#9FE59B`, `#FFC6C1`, `#FDCF4F` | Status text and shapes |
+| `--color-*-muted` | pastel washes | tinted washes | Diff lines, search matches, a question asked of you, a message that failed to send |
+| `--yip-attention-fill` | `#D4A72C` | `#BB8009` | Amber markers (never text) (yip's) |
+| `--color-overlay-hover` / `--color-overlay-pressed` | black 5% / 10% | white 5% / 10% | Row states: alpha washes, never a new hue |
 
-Engineers' avatars use `hsl(engineer.hue …)`: day 34% saturation and 91% lightness for the tint with a 27% initial; night a 26% tint with an 88% initial.
+Engineers' avatars tint Astryx's avatar fallback with `hsl(engineer.hue …)`: day 34% saturation and 91% lightness for the tint with a 27% initial; night a 26% tint with an 88% initial.
 
 ### Contrast checks (WCAG 2.2 AA)
 
-`node web/scripts/contrast.mjs` recomputes these. Every text pair we actually use passes 4.5:1.
+`node web/scripts/contrast.mjs` recomputes these from the theme's actual values. Every text pair we use passes 4.5:1.
 
 | Pair | Day | Night |
 |---|---|---|
-| ink on surface / canvas / navigation | 15.80 / 12.92 / 11.42 | 14.17 / 10.71 / 14.81 |
-| ink-secondary on surface / surface-subtle / canvas | 6.11 / 5.56 / 5.00 | 6.82 / 6.15 / 5.15 |
-| Sidebar text (ink at 72%) on the frame, top / bottom | 5.69 / **5.28** | 6.37 / 8.07 |
-| accent-ink on accent (buttons, count pills) | 15.80 | 15.97 |
-| attention-ink on attention-subtle | 6.57 | 7.92 |
-| success on surface | 5.08 | 6.85 |
-| danger on surface / surface-subtle | 5.36 / 4.87 | 5.19 / 4.68 |
+| Primary text on surface / muted / frame top / frame bottom | 17.93 / 15.87 / 14.67 / 12.96 | 14.50 / 16.50 / 12.59 / 17.41 |
+| Secondary text on surface / muted / frame top / frame bottom | 7.81 / 6.92 / 6.39 / **5.65** | 6.00 / 6.83 / **5.21** / 7.21 |
+| Read room names (ink at 82%) on the frame, top / bottom | 8.92 / 8.23 | 9.02 / 11.89 |
+| On-accent on accent (buttons, count pills) | 15.13 | 15.04 |
+| Success / error / warning on surface | 6.33 / 7.84 / 6.48 | 10.20 / 10.16 / 10.24 |
+| Status text on its own wash (success / error / warning) | **4.62** / 5.51 / 4.79 | 6.10 / 6.09 / 6.13 |
 | Avatar initial on its hue tint (worst hue) | 5.38 | 6.62 |
 
-Non-text contrast (3:1): the focus ring is ink (15.8:1 day, 15.2:1 night). Text-input borders measure 3.36 day and 4.47 night. Outline buttons and chips use the lighter `line-strong`, because their label identifies them. Hairlines only separate content that is already grouped.
+Non-text contrast (3:1): the accent (focus rings, primary controls) is 15.1:1 by day and 12.7:1 by night. Control edges are 3.69:1 on the surface by day (3.33:1 on muted) and 3.53:1 by night, so a text field or checkbox can be found by its outline. Hairlines only separate content that is already grouped. The script exits non-zero if a required pair drops below its minimum.
 
 ## Type
 
-- **Inter** (variable, self-hosted via `@fontsource-variable/inter`) for the whole UI, including the wordmark. Contextual ligatures are off and weights are never synthesised.
+- **Inter** (variable, self-hosted via `@fontsource-variable/inter`) for the whole UI, including the wordmark, set through the theme's `typography`. Contextual ligatures are off and weights are never synthesised.
 - The system monospace stack (`ui-monospace, SF Mono, Menlo…`) for commands, SHAs, paths and diffs.
-- Scale: 12px metadata and timestamps · 14px/20px messages, navigation and controls · 16px room titles · 24px screen titles. Uppercase labels are 11px with 0.04em tracking and repeat information found elsewhere. On touch devices editable fields are 16px.
-- Names and titles use 600 with tight tracking (−0.015 to −0.025em); pills and meta use 500; body text 400.
+- Astryx's scale (base 14, ratio 1.2): 12px supporting text and timestamps · 14px/20px messages, navigation and controls · 17px room, panel and section titles · 24px screen titles. On touch devices editable fields are 16px.
+- Names and titles use 600; pills and meta use 500; body text 400.
 
 Font licence: Inter is under the SIL Open Font License 1.1. The licence ships in `node_modules/@fontsource-variable/inter/LICENSE`, and the built woff2 files are the OFL font, unmodified.
 
 ## Space, radius, motion
 
-- Spacing is on a 4px base: 4px message row padding, 12px between message groups (6px when compact), 32px between major sections.
-- Radii: 8px for sidebar rows and small buttons, 10px for buttons and inputs, 12px for popovers and menus, 14px for artifacts (result cards), 16px for the work card, message hover washes, the composer, code blocks, dialogs and the search palette. Small interactive items (reactions, count pills, chips, the send button, the action bar) are full pills.
-- Motion lasts 100–240ms with `cubic-bezier(0.25, 1, 0.5, 1)` and responds to user actions: panels slide in, dialogs pop, the new-messages pill rises, and a linked message flashes. The only looping motion is the composer's "typing" dots while someone composes a reply. `prefers-reduced-motion` disables all motion.
+- Spacing is Astryx's 4px scale (`--spacing-*`): 4px message row padding, 12px between message groups (6px when compact, `--yip-group-gap`), 32px between major sections.
+- Radii are Astryx's: 10px (`--radius-element`) for buttons, inputs and sidebar rows, 12px (`--radius-container`) for the work card, cards, popovers and dialogs, and full pills for chips, counts, reactions and the send button.
+- Motion uses Astryx's durations and easing and responds to user actions: panels slide in, dialogs and menus open, the new-messages pill rises, and a linked message flashes. The only looping motion is the composer's "typing" dots while someone composes a reply. `prefers-reduced-motion` disables all motion.
 
 ## Layout
 
+The shell is Astryx's `AppShell` with a `SideNav`. yip draws the frame gradient behind it and insets the work card.
+
 | Width | Layout |
 |---|---|
-| ≥1200px | Sidebar 272px (240px below 1100px), the work card, and an **inline** right panel. The panel defaults to 380px and can be resized with a pointer or the keyboard (a separator with arrow keys, Home and End); the width is remembered. Detail drawers (job, review) are at least 480px wide. The Overview docks its workspace summary in a 400px column. |
-| 760–1199px | The right panel **overlays** the conversation instead of crushing it. It is modal: the rest of the page is inert and focus is trapped. |
-| <760px | One primary surface. A "Rooms and navigation" button opens the sidebar as a modal sheet. Threads and drawers are full-screen views with a Back button. The composer respects the bottom safe area, and there is no horizontal page scroll. |
+| ≥1200px | The sidebar, the work card, and an **inline** right panel. The panel defaults to 336px and can be resized with a pointer or the keyboard (Astryx's resize handle); the width is remembered. Detail drawers (job, review) are at least 480px wide. The Overview docks its workspace summary in a 400px column. |
+| 769–1199px | The right panel **overlays** the conversation instead of crushing it. It is modal: the rest of the page is inert and focus is trapped. |
+| ≤768px | One primary surface (AppShell's `md` breakpoint). A top bar holds the mark, search and a "Rooms and navigation" button that opens the sidebar in AppShell's drawer, which slides in from that button's side and opens on the current page. Threads and drawers are full-screen views with a Back button; while one is open the top bar steps aside. The chrome, drawer and composer respect the safe areas, and there is no horizontal page scroll. |
 
-The message column is capped at about 76ch plus the avatar gutter, and content stays left-aligned. There is no top bar on wide screens; pane headers inside the card are 52px. On phones a 52px bar holds the menu button, the mark and search.
+The message column is capped at about 76ch plus the avatar gutter, and content stays left-aligned. There is no top bar on wide screens; pane headers inside the card are 52px. Controls and rows have 44px targets on coarse pointers.
 
 ## Components and their states
 
-- **Sidebar** (on the frame, no box of its own): the monochrome branching-y mark and wordmark; a "Search everything ⌘K" launcher; Overview, Engineers, Projects and Machines; Rooms and Direct messages with sentence-case labels and a + to create; and a footer with machine health ("1 machine connected · work continues when you close this") and a profile card (name and workspace) whose menu has Settings, Day/Night appearance and Sign out. Room rows show:
-  - read rows at reduced opacity, unread rows in bold;
-  - mentions as a black count pill;
+- **Sidebar** (on the frame, no box of its own): the monochrome branching-y mark and wordmark; a "Search everything ⌘K" launcher; Overview, Engineers, Projects and Machines; Rooms and Direct messages with sentence-case labels and a + to create; and a footer with machine health ("1 machine connected · work runs on studio-mini, not in this window") and a profile card (name and workspace) whose menu has Settings, Day/Night appearance and Sign out. Room rows show:
+  - read rows in slightly quieter ink, unread rows in semibold;
+  - mentions as an ink count pill (an Astryx `Badge`);
   - a pencil when a draft is saved;
   - a quiet elapsed-time pill ("3m", "3m (2)") while engineers are working in the room, with the names in its tooltip (it does not animate);
   - a lock instead of # for private rooms.
 
-  Selection is a grey wash, never a colour. Every marker has a visually hidden text equivalent. The demo notice and any connection problem ("Reconnecting…") sit in a slim line above the card.
-- **Room header:** one 52px row — `# name` (a lock for private rooms) with the purpose in muted text, then outline buttons for linked projects, the reply mode ("Mentions only" or "Mira answers", with the full sentence in its tooltip and accessible name), and members — stacked squircles with the names of who can answer ("Oren, Mira"), falling back to a count when the room is narrow; roles are in the tooltip and accessible name — and a settings button.
+  The sidebar is an Astryx `SideNav`. Selection is a grey wash, never a colour. Every marker has a visually hidden text equivalent. Any connection problem ("Reconnecting…") sits in a slim line across the top of the window, above the sidebar and the card (AppShell's banner slot).
+- **Room header:** one 52px row: `# name` (a lock for private rooms) with the purpose in muted text, then outline buttons for linked projects, the reply mode ("Mentions only" or "Mira answers", with the full sentence in its tooltip and accessible name), and members (stacked avatars in an Astryx `AvatarGroup`, with the names of who can answer, "Oren, Mira", falling back to a count when the room is narrow; roles are in the tooltip and accessible name), and a settings button.
 - **Work strip:** one row per logical live or failed assignment (child work stays in its details) (finished work is announced by its result card in the conversation instead). Each row shows:
   - a state word plus shape: hollow circle for queued, bar for running, pause for waiting (the word is the waiting reason), neutral pause for In review, filled check for completed, triangle for failed;
   - the title;
@@ -107,11 +97,11 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
 
   Clicking a row opens the job drawer. "Add to this" scopes the composer to that job. The strip collapses to three rows plus "Show all N".
 - **Message row:**
-  - Engineers have **squircle** avatars and the human has a **circle**; shape is the only distinction.
+  - Engineers have **rounded-square** avatars and the human has a **circle**; shape is the only distinction.
   - The first message of a group shows the name, the engineer's role in quiet text ("Mira · Platform engineer"), and the time. Consecutive messages from the same author within 10 minutes compact, so the role appears once per group rather than on every message.
   - A question asked of you sits on a soft amber wash until it is answered.
   - A job, review, PR, decision or file is linked with a chip only on the first message that mentions it in the view; later messages about the same work stay plain.
-  - Full commit hashes in message text show as their short form, with the whole hash on hover.
+  - Message text renders through yip's own markdown-lite (`lib/util/markdown.ts`, which escapes all HTML), not Astryx `Markdown`: chat text needs `__tests__` in a path and `5 * 3` in a sentence to stay literal, which a full Markdown parser turns into emphasis. Only structured mentions are highlighted, full commit hashes show as their short form with the whole hash on hover, `#` headings are bold lines rather than page headings, links (http, https and mailto only) open in a new tab, and images are linked, never loaded.
   - Hovering or focusing a row shows an action pill (react, reply in thread, copy link, and edit or remove on your own messages).
   - A thread summary shows reply avatars and "N replies · last reply 5m ago".
   - Kinds are rendered distinctly: `question` is an ordinary message with "Pip asked you" or "Answered" (and Reply in thread until it has replies); `approval` is the inline exact-action card; `result` is the result card; `review` links the review once; one-line `status` messages are small centred notices, like a group chat's, while longer hub answers show as "yip · From the work ledger".
@@ -139,7 +129,7 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   - Tabs:
     - **Evidence:** a revision picker labelled with each revision's file and line counts (from `JobDetail.revisions`), the chosen revision's diff with per-file headers, line numbers and +/− lines, plus checks with inline logs, files, decisions, your updates with their receipts, questions and permissions, and related work.
     - **Review:** rounds in order, each giving the verdict on its exact Git revision or document hash, with a link to the reviewed document; findings with severity, file:line, evidence and author replies; superseded rounds marked; a stale approval explained; the PR shown as peer review / remote reviews / remote checks / merge.
-    - **Activity:** the job timeline, plus per-run tool logs in collapsed `<details>` that load on open.
+    - **Activity:** the job timeline, plus per-run tool logs in collapsed sections (Astryx `Collapsible`) that load on open.
     - **Runs:** each attempt with its state (unknown reads "Outcome not confirmed"), and the provider, model and billing — the only place these appear.
   - The tab bar keeps its height when the drawer contains a long diff, so Evidence, Review, Activity and Runs remain reachable.
 - **Overview:** "Since you were here" summarizes changed assignments from current ledger facts, with one entry per assignment and explicit open questions, permission requests and revision-bound review outcomes. Work events refresh the catch-up and accepted decisions during the visit. The first response's baseline is retained on later reads, so recording the visit does not erase its earlier entries. Evidence links preserve the original room, thread and message. Reading Overview never marks rooms read. Below catch-up are Recently completed, Active, Needs a look and Worth remembering. Normal peer-review waiting stays Active; genuine questions and failures retain their concrete explanation. Completed rows lead with the result summary and completion time. A row whose latest attempt's `runState` is `unknown` shows "Not confirmed". The visit is recorded (`POST /v1/overview/seen`) only after the page has rendered.
@@ -147,23 +137,24 @@ The message column is capped at about 76ch plus the avatar gutter, and content s
   - **Getting started** follows one connected engineer, room and project, including repository access and a distinct reviewer where required. Unrelated setup objects do not complete each other's steps. Saved setup and finished work remain checked when a machine goes offline; current availability has its own explanation. The guide names the missing connection and links to its room or project settings. Once work exists it folds into **Show steps**. **Hide** leaves **Show getting started**, so the guide can be restored later.
 - **Engineer profile:** role and versioned standing instructions, active and queued work, decisions they recorded, rooms, **projects they can work on** (from the projects' grants, in plain words: "Atlas · can change code · can push"), and provider preference. Empty room and access sections link to the relevant setup choices. Provider availability follows live machine reports, the selected account, allowed billing and required read-only capability; a previously signed-in provider on an offline or drained machine is not described as ready for new work.
 - **Review states:** "Changes requested" is an engineering state, not an alert: it uses the pause shape in neutral ink, like any other waiting state, and never red.
-- **Notices and form errors:** a sentence led by a 16px status shape (a circled i for information, a triangle for attention, a circled ! for danger), with no box, tint or edge stripe. The shape carries the hue, and danger text is red as well. Toasts and blocking review findings use the same shapes. Why work is in its state (why it failed, what it waits on) is the state's second line, not a separate notice, and missing evidence it already names is not repeated.
+- **Notices and form errors:** a sentence led by a 16px status shape (a circled i for information, a triangle for attention, a circled ! for danger), with no box, tint or edge stripe (yip's `Notice`, used in place of Astryx's `Banner`). The shape carries the hue, and danger text is red as well. Toasts and blocking review findings use the same shapes. Why work is in its state (why it failed, what it waits on) is the state's second line, not a separate notice, and missing evidence it already names is not repeated.
 - **Machines:** a compact list, then details on demand (see `docs/screenshots/machines-redesign/`).
-    - **List:** the 24px title, one purpose sentence and one primary **Add machine**, then aligned rows on the main surface (no nested cards). Each row has a device icon and the machine name (16px), its OS and architecture (12px), and three separate facts: **connection** in words and a shape with the last-confirmed time ("Offline · Last heard 3h ago", "Not responding"), **work** ("Idle", "2 running", linking to the work, or "New work paused"), and **providers and limits**: one line per provider ("Claude Code · Needs sign-in") plus only the limitations that change what the machine can do: low disk, sign-in required, an allowance pause, read-only reviews unavailable, an untested version, a missing execution profile, and a temporary session. A trailing **Details** button (in one aligned column) opens the machine. When the list is wider than 780px the row is a four-column grid under a quiet header; narrower, the facts stack under the name. Rows use 12–16px padding and restrained dividers.
+    - **List:** the 24px title, one purpose sentence and one primary **Add machine**, then aligned rows on the main surface (no nested cards). Each row has a device icon and the machine name (17px), its OS and architecture (12px), and three separate facts: **connection** in words and a shape with the last-confirmed time ("Offline · Last heard 3h ago", "Not responding"), **work** ("Idle", "2 running", linking to the work, or "New work paused"), and **providers and limits**: one line per provider ("Claude Code · Needs sign-in") plus only the limitations that change what the machine can do: low disk, sign-in required, an allowance pause, read-only reviews unavailable, an untested version, a missing execution profile, and a temporary session. A trailing **Details** button (in one aligned column) opens the machine. When the list is wider than 780px the row is a four-column grid under a quiet header; narrower, the facts stack under the name. Rows use 12–16px padding and restrained dividers.
     - **Details** open in the right panel (inline beside the list when there's room, overlaid otherwise), titled with the machine and its connection, and are organized by purpose in four tabs; a tab with something needing attention carries a small dot. Arrow keys move between tabs.
         - **Overview:** "What limits its work" (each limitation links to the tab that explains it), connection with its effect on work (an offline machine is never called asleep; yip says it can't tell why), current work, new work (**Pause new work** / **Resume new work**; the confirmation says current work finishes), capacity (machine slots, kept distinct from the per-account limit under Connections), free disk, and whether it runs as a background service or a temporary session that stops when its terminal closes (with the supported `yip service install runner` command), then the consequential actions: **Stop current work** and **Revoke access**, each its own confirmed action with its loss explained.
         - **Connections:** one concise row per provider (name, sign-in state, account, billing) that expands to its explanation, availability, read-only support, version compatibility and the account's shared concurrency setting. A sign-in command sits next to the provider that needs it, with **Check sign-in again** on a connected machine.
         - **Storage:** workspaces as left-aligned rows with the action in a trailing column: kind in words (working checkout, review snapshot, conversation scratch space), its work, size (measured, "at least" when the count stopped early, or "size unknown", never a false 0), in-use or protected state and unpublished or uncommitted changes. Cleanup lives only here, confirmed, and says what is lost.
         - **Diagnostics:** runner and provider versions, execution profiles with the reason one is unavailable, each adapter's full limitations, toolchains as a name/version list, and the fingerprint with a copy button.
-- **Dialogs:** these use native `<dialog>` with `showModal` (so the rest of the page is inert), a stacked focus trap, and Escape through the layer stack. Focus returns to the invoker. On phones they appear as bottom sheets.
+- **Dialogs:** Astryx `Dialog` (yip's `Dialog.svelte` adds the title, description and footer shape) and `AlertDialog` for confirmations, on native `<dialog>` with `showModal`, so the rest of the page is inert. Dialogs with input don't close on a backdrop click. Focus returns to the invoker.
+- **Toasts:** the store's toasts show through Astryx's toast viewport (`Toasts.svelte`).
 
 ## Interaction and accessibility
 
-- Landmarks are the navigation ("Workspace"), `main#main`, and on phones the header, and there is a skip link. The right panel is a `complementary` region when inline and a `dialog` otherwise.
-- The **layer stack** (`web/src/lib/ui/layers.ts`) means Escape closes only the topmost layer (a menu, emoji palette, dialog, drawer or sheet) and returns focus to the control that opened it. Focus traps stack, so a confirmation dialog over an overlaid drawer traps correctly.
+- Landmarks are the navigation ("Workspace"), AppShell's main region, and on phones its top bar, and AppShell provides the skip link. The right panel is a `complementary` region when inline and a `dialog` otherwise.
+- **Astryx's layer stack** means Escape closes only the topmost layer (a menu, emoji palette, dialog, drawer or the phone navigation) and returns focus to the control that opened it. A modal right panel joins it through `useFocusTrap`; an inline panel takes an Escape no layer claimed. Focus traps stack, so a confirmation dialog over an overlaid drawer traps correctly.
 - Message history is a labelled region. Up and Down (or j and k) move a roving focus between messages. Each message's actions become visible and reachable when it's focused, with no hover needed. "Load earlier messages" is a real button, and scrolling up also triggers it.
-- Live regions: a single polite announcer handles new messages from others in the room you're viewing, receipts and confirmations, and a polite toast region reports errors. Engineers' streamed text is never rendered, so there's no token-by-token speech.
-- The focus ring is 2px of ink with a 2px offset. Controls and rows have 44px effective targets on coarse pointers.
+- Live regions: a single polite announcer handles new messages from others in the room you're viewing, receipts and confirmations. Errors show as Astryx toasts, which Astryx announces assertively; a failure inside a dialog is shown in the dialog instead, since a toast would sit behind it. A `Notice` is a live region only when it should be: an error from an action is an alert and a notice that appears in response to one is a status, while a standing notice ("an earlier revision", "low on disk") is not announced each time a view opens. Engineers' streamed text is never rendered, so there's no token-by-token speech.
+- Focus rings come from Astryx and use the ink accent; yip's own links and buttons take the same ring (`app.css`). Controls and rows have 44px effective targets on coarse pointers (`app.css`).
 - State is never shown by colour alone. Shapes and words carry it, diff lines have +/− signs, and unread rooms also get visually hidden text.
 
 ## Borrowed from Buzz, and what differs
@@ -174,7 +165,7 @@ These cues were adopted from our study of the Buzz desktop client:
 2. **A monochrome accent**, with hue only for status, so an agent-heavy screen stays calm.
 3. **Search, navigation and the profile in the sidebar**; no top bar.
 4. **Unread shown by weight, not colour**, black count pills for mentions, and an elapsed-time "working" pill on room rows.
-5. **Squircle avatars for engineers and a circle for the human.** Almost every author here is an engineer, so the one human stands out by shape alone. The role takes the metadata slot after the name.
+5. **Rounded-square avatars for engineers and a circle for the human.** Almost every author here is an engineer, so the one human stands out by shape alone. The role takes the metadata slot after the name.
 6. **Message rows** with a soft 16px hover wash, a floating action pill, 10-minute grouping and a thread summary row.
 7. **A floating composer** (16px radius, translucent) with ghost toolbar buttons and a round send button.
 8. **One right-hand panel shell** for the thread and every detail drawer, resizable and inline or overlaid by width.
@@ -188,27 +179,28 @@ Where yip differs, and why:
 - **No "Needs you" inbox.** Questions stay in their rooms as ordinary messages. This is a product principle from the spec.
 - **Steering receipts and truthful delivery** have no Buzz equivalent. They come from spec journey D and acceptance test A08.
 - **Review truth:** revision-bound verdicts, superseded rounds, and PR facts kept separate (A38–A44).
-- **Accessibility first:** sidebar text is 72% ink rather than Buzz's 40% so it passes AA on the frame, and text inputs keep a 3:1 border.
+- **Accessibility first:** sidebar text is full or 82% ink rather than Buzz's 40% so it passes AA on the frame.
 - **No community rail, presence dots or theme gallery.** yip is one workspace with one human, and presence would imply a human is online.
 
 ## Files
 
-- `web/src/app.css`: tokens, base styles and shared primitives (buttons, fields, chips, notices, tabs, prose).
-- `web/src/components/`: the shell pieces, message rendering, the composer, cards and dialogs. `panels/` holds the right-panel views.
+- `web/src/lib/theme.ts`, `theme-tokens.ts`: the yip theme over Astryx's neutral theme.
+- `web/src/app.css`: loads Astryx's stylesheets and holds yip's few globals (the frame, layout measures, touch targets), all in the `product` cascade layer.
+- `web/src/components/`: yip's compositions of Astryx components: the sidebar, screen and panel chrome (`Screen`, `ScreenSection`, `RightPanel`), message rendering, the composer, cards and dialogs. `panels/` holds the right-panel views. Icons are Lucide (`@lucide/svelte`) through Astryx's `Icon`.
 - `web/src/screens/`: one component per route.
 - `web/src/lib/state/`: the pure event reducer (`data.ts`), the runes store (`app.svelte.ts`), the SSE client (`events.ts`), drafts (`drafts.ts`) and the detail cache.
   - On load the client reads `/v1/bootstrap`, then `GET /v1/runs` for active attempts. It opens the event stream at the bootstrap cursor, so there is no history replay.
   - A room loads `GET /v1/rooms/{id}/work?include=replies`. Live conversational replies feed the composer's activity line, and `runState` feeds the strip.
   - REST snapshots never turn a run that events have already finished back into a live one.
   - `message_delta` stream chunks are appended to the preview, which is replaced when the canonical `message.created` arrives.
-- `web/src/lib/util/`: markdown-lite (which escapes all HTML), mentions, diff parsing, labels and time.
+- `web/src/lib/util/`: message-text helpers, mentions, diff parsing, labels and time.
 - `web/scripts/contrast.mjs`: the contrast checks above.
 
 ## Running and verifying
 
 - `cd web && npm ci`, then `npm run dev`. This starts Vite on :5173 and proxies `/v1`, including the SSE stream, to `YIP_HUB` (default `http://127.0.0.1:7521`). Start the hub with `--allowed-origin http://localhost:5173` so state-changing requests from the dev origin pass the Origin check.
 - `npm run check` runs svelte-check over the app and the tests, and fails on warnings. `npm run build` writes `web/dist` (keeping `dist/.gitkeep`) for the hub to embed.
-- `npm test` runs the unit tests (reducer, mentions, markdown escaping, drafts, router, diff parsing) and the jsdom smoke suites. The smoke suites mount the real `App` against payloads captured from a demo hub (`tests/unit/fixtures`), including a full captured SSE stream.
+- `npm test` runs the unit tests (reducer, mentions, message rendering and escaping, drafts, router, diff parsing) and the jsdom smoke suites. The smoke suites mount the real `App` against payloads captured from a demo hub (`tests/unit/fixtures`), including a full captured SSE stream.
 - `npm run e2e` runs the Playwright journeys in `tests/e2e` against `bin/yip demo` (build it first with `make all`). They run only if a Playwright Chromium or a system Chrome or Edge is installed; the command never downloads a browser.
 - `node scripts/contrast.mjs` recomputes the contrast table.
 

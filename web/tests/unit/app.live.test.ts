@@ -108,8 +108,8 @@ describe('live updates from a captured stream', () => {
     await settle();
     expect(app.data.rooms[eng].unreadCount).toBe(1);
     expect(app.data.rooms[eng].mentionCount).toBe(1);
-    const row = [...document.querySelectorAll('nav a.row')].find((a) => a.textContent?.includes('Engineering'))!;
-    expect(row.classList.contains('unread')).toBe(true);
+    const row = [...document.querySelectorAll('nav.side a')].find((a) => a.textContent?.includes('Engineering'))!;
+    expect(row.closest('.yip-room')!.classList.contains('unread')).toBe(true);
     expect(row.textContent).toContain('1 mention');
   });
 

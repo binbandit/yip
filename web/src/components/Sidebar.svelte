@@ -2,19 +2,32 @@
   // Navigation over the tinted frame (no box of its own). Unread is shown by
   // weight, mentions by a count pill, and an engineer's active run by an
   // elapsed-time "working" pill. Selection is a grey wash, never a colour.
+  // Every marker has a visually hidden text equivalent.
+  import { Badge, DropdownMenu, Icon, IconButton, Kbd, SideNav, SideNavItem, SideNavSection, Text, Tooltip, VisuallyHidden, useSideNavRenderMode } from '@astryx-svelte/core';
+  import { BellOff, Folder, Hash, LayoutDashboard, Lock, LogOut, MessageSquare, Monitor, Moon, Pencil, Plus, Search, Settings, Sun, Users } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { roomsWithDrafts } from '../lib/state/drafts';
-  import Icon from './Icon.svelte';
   import Avatar from './Avatar.svelte';
   import StateIcon from './StateIcon.svelte';
   import Wordmark from './Wordmark.svelte';
-  import Menu from './Menu.svelte';
+
+  /** Set while a modal panel covers the work card. */
+  let { inert = false }: { inert?: boolean } = $props();
+
+  // AppShell renders this sidebar inline, or on phones twice: as the top bar
+  // (brand and a search icon) and inside the drawer (everything else).
+  const renderMode = useSideNavRenderMode();
+
+  // The drawer opens on the page you're on rather than on its own frame.
+  $effect(() => {
+    if (renderMode() !== 'drawer' || !app.sidebarOpen) return;
+    const frame = requestAnimationFrame(() => document.querySelector<HTMLElement>('dialog[open] [aria-current="page"]')?.focus());
+    return () => cancelAnimationFrame(frame);
+  });
 
   const route = $derived(app.loc.route);
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  const rooms = $derived(
-    app.rooms.filter((r) => r.kind === 'room').sort((a, b) => a.name.localeCompare(b.name)),
-  );
+  const rooms = $derived(app.rooms.filter((r) => r.kind === 'room').sort((a, b) => a.name.localeCompare(b.name)));
   const dms = $derived(app.rooms.filter((r) => r.kind === 'dm').sort((a, b) => a.name.localeCompare(b.name)));
   // Re-read drafts whenever the route changes (drafts are saved as you type).
   const drafts = $derived.by(() => {
@@ -72,332 +85,259 @@
   }
 </script>
 
-<div class="sidebar">
-  <div class="head">
-    <a class="brand" href="/overview" aria-label="yip — Overview" onclick={go}><Wordmark size={22} /></a>
-  </div>
+{#snippet header()}
+  <a class="brand" href="/overview" aria-label="yip — Overview" onclick={go}><Wordmark size={22} /></a>
+{/snippet}
+
+{#snippet search()}
   <button class="search" onclick={() => { go(); app.searchOpen = true; }} aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}>
-    <Icon name="search" size={15} />
+    <Icon icon={Search} size="sm" />
     <span class="search-text">Search everything</span>
-    <kbd aria-hidden="true">{isMac ? '⌘' : 'Ctrl'} K</kbd>
+    <span class="shortcut" aria-hidden="true"><Kbd keys="mod+k" /></span>
   </button>
+{/snippet}
 
-  <div class="scroll">
-    <ul class="list">
-      <li>
-        <a class="row nav" href="/overview" onclick={go} aria-current={route.name === 'overview' ? 'page' : undefined}>
-          <Icon name="overview" size={16} /><span class="label">Overview</span>
-        </a>
-      </li>
-      <li>
-        <a class="row nav" href="/engineers" onclick={go} aria-current={route.name === 'engineers' || route.name === 'engineer' ? 'page' : undefined}>
-          <Icon name="users" size={16} /><span class="label">Engineers</span>
-        </a>
-      </li>
-      <li>
-        <a class="row nav" href="/projects" onclick={go} aria-current={route.name === 'projects' || route.name === 'project' ? 'page' : undefined}>
-          <Icon name="folder" size={16} /><span class="label">Projects</span>
-        </a>
-      </li>
-      <li>
-        <a class="row nav" href="/machines" onclick={go} aria-current={route.name === 'machines' ? 'page' : undefined}>
-          <Icon name="machine" size={16} /><span class="label">Machines</span>
-        </a>
-      </li>
-    </ul>
+{#snippet searchIcon()}
+  <IconButton label="Search" variant="ghost" onclick={() => { go(); app.searchOpen = true; }}>
+    {#snippet icon()}<Icon icon={Search} size="sm" />{/snippet}
+  </IconButton>
+{/snippet}
 
-    <section aria-labelledby="nav-rooms">
-      <div class="section-row">
-        <h2 id="nav-rooms">Rooms</h2>
-        <button class="icon-btn add" aria-label="Create a room" onclick={() => { go(); app.createRoom = { kind: 'room' }; }}>
-          <Icon name="plus" size={15} />
-        </button>
-      </div>
-      {#if rooms.length === 0}
-        <p class="hint">No rooms yet. Create one and bring a couple of engineers in.</p>
-      {:else}
-        <ul class="list">
-          {#each rooms as r (r.id)}
-            {@const w = working(r.id)}
-            {@const unread = r.unreadCount > 0 && !isCurrentRoom(r.id)}
-            <li>
-              <a class="row" class:unread href="/rooms/{r.id}" onclick={go} aria-current={isCurrentRoom(r.id) ? 'page' : undefined}>
-                <span class="glyph" aria-hidden="true">{#if r.private}<Icon name="lock" size={14} />{:else}<Icon name="hash" size={15} />{/if}</span>
-                <span class="label truncate">{r.name}</span>
-                {#if r.private}<span class="vh">, private</span>{/if}
-                {#if app.isMuted(r.id)}<span class="muted-mark" title="Muted"><Icon name="bellOff" size={13} /><span class="vh">, muted</span></span>{/if}
-                {#if unread}<span class="vh">, {r.unreadCount} unread</span>{/if}
-                {#if drafts.has(r.id) && !isCurrentRoom(r.id)}
-                  <span class="draft" title="Draft saved"><Icon name="pencil" size={13} /><span class="vh">, draft saved</span></span>
-                {/if}
-                {#if w}
-                  <span class="working" title="{w.names.join(', ')} working">{w.elapsed}<span class="vh">, {w.names.join(' and ')} working</span></span>
-                {/if}
-                {#if r.mentionCount > 0 && !isCurrentRoom(r.id)}
-                  <span class="count-pill" aria-hidden="true">{r.mentionCount}</span>
-                  <span class="vh">, {r.mentionCount} {r.mentionCount === 1 ? 'mention' : 'mentions'}</span>
-                {/if}
-              </a>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
-
-    <section aria-labelledby="nav-dms">
-      <div class="section-row">
-        <h2 id="nav-dms">Direct messages</h2>
-        <button class="icon-btn add" aria-label="Message an engineer directly" onclick={() => { go(); app.createRoom = { kind: 'dm' }; }}>
-          <Icon name="plus" size={15} />
-        </button>
-      </div>
-      {#if dms.length === 0}
-        <p class="hint">Talk one-to-one with an engineer.</p>
-      {:else}
-        <ul class="list">
-          {#each dms as r (r.id)}
-            {@const eng = dmEngineer(r.id)}
-            {@const w = working(r.id)}
-            {@const unread = r.unreadCount > 0 && !isCurrentRoom(r.id)}
-            <li>
-              <a class="row" class:unread href="/rooms/{r.id}" onclick={go} aria-current={isCurrentRoom(r.id) ? 'page' : undefined}>
-                {#if eng}<Avatar actor={{ kind: 'engineer', id: eng.id }} size={22} />{:else}<span class="glyph"><Icon name="reply" size={15} /></span>{/if}
-                <span class="label truncate">{eng?.name ?? r.name}</span>
-                {#if unread}<span class="vh">, {r.unreadCount} unread</span>{/if}
-                {#if drafts.has(r.id) && !isCurrentRoom(r.id)}
-                  <span class="draft" title="Draft saved"><Icon name="pencil" size={13} /><span class="vh">, draft saved</span></span>
-                {/if}
-                {#if w}
-                  <span class="working" title="{w.names.join(', ')} working">{w.elapsed}<span class="vh">, working</span></span>
-                {/if}
-                {#if r.mentionCount > 0 && !isCurrentRoom(r.id)}
-                  <span class="count-pill" aria-hidden="true">{r.mentionCount}</span>
-                  <span class="vh">, {r.mentionCount} {r.mentionCount === 1 ? 'mention' : 'mentions'}</span>
-                {/if}
-              </a>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
-  </div>
-
+{#snippet footer()}
   <div class="foot">
     <a class="health" href="/machines" onclick={go}>
       <StateIcon shape={health.shape} tone={health.tone} size={13} />
       <span>{health.text}</span>
     </a>
-    <Menu
-      label="Your profile"
-      buttonClass="profile"
+    <DropdownMenu
+      button={{ label: 'Your profile', variant: 'ghost', size: 'lg', width: '100%', class: 'profile', children: profile }}
+      hasChevron={false}
       placement="above"
-      align="start"
+      alignment="start"
       items={[
-        { label: 'Settings', icon: 'settings', href: '/settings' },
+        { label: 'Settings', icon: settingsIcon, onClick: () => { go(); app.navigate('/settings'); } },
         {
           label: shown === 'night' ? 'Day appearance' : 'Night appearance',
-          icon: shown === 'night' ? 'sun' : 'moon',
-          onselect: () => void app.setPreferences({ theme: shown === 'night' ? 'day' : 'night' }),
+          icon: shown === 'night' ? sunIcon : moonIcon,
+          onClick: () => void app.setPreferences({ theme: shown === 'night' ? 'day' : 'night' }),
         },
-        { label: 'Sign out', icon: 'logout', onselect: () => void app.signOut() },
+        { label: 'Sign out', icon: signOutIcon, onClick: () => void app.signOut() },
       ]}
-    >
-      {#snippet trigger()}
-        {#if app.me}<Avatar actor={{ kind: 'user', id: app.me.id }} size={30} />{/if}
-        <span class="who">
-          <strong class="truncate">{app.me?.name ?? 'You'}</strong>
-          <span class="truncate">{app.data.org?.name ?? 'yip'}</span>
-        </span>
-      {/snippet}
-    </Menu>
+    />
   </div>
-</div>
+{/snippet}
+
+{#snippet profile()}
+  <span class="profile-content">
+    {#if app.me}<Avatar actor={{ kind: 'user', id: app.me.id }} size={32} />{/if}
+    <span class="who">
+      <strong>{app.me?.name ?? 'You'}</strong>
+      <span>{app.data.org?.name ?? 'yip'}</span>
+    </span>
+  </span>
+{/snippet}
+
+{#snippet settingsIcon()}<Icon icon={Settings} size="sm" />{/snippet}
+{#snippet sunIcon()}<Icon icon={Sun} size="sm" />{/snippet}
+{#snippet moonIcon()}<Icon icon={Moon} size="sm" />{/snippet}
+{#snippet signOutIcon()}<Icon icon={LogOut} size="sm" />{/snippet}
+{#snippet overviewIcon()}<Icon icon={LayoutDashboard} size="sm" color="secondary" />{/snippet}
+{#snippet engineersIcon()}<Icon icon={Users} size="sm" color="secondary" />{/snippet}
+{#snippet projectsIcon()}<Icon icon={Folder} size="sm" color="secondary" />{/snippet}
+{#snippet machinesIcon()}<Icon icon={Monitor} size="sm" color="secondary" />{/snippet}
+{#snippet roomIcon()}<Icon icon={Hash} size="sm" color="secondary" />{/snippet}
+{#snippet privateRoomIcon()}<Icon icon={Lock} size="sm" color="secondary" />{/snippet}
+{#snippet dmIcon()}<Icon icon={MessageSquare} size="sm" color="secondary" />{/snippet}
+
+{#snippet markers(r: (typeof app.rooms)[number], w: ReturnType<typeof working>, current: boolean, workingText: string)}
+  {#if r.private}<VisuallyHidden>, private</VisuallyHidden>{/if}
+  {#if app.isMuted(r.id)}
+    <Tooltip content="Muted"><span class="mark"><Icon icon={BellOff} size="xsm" /></span></Tooltip>
+    <VisuallyHidden>, muted</VisuallyHidden>
+  {/if}
+  {#if r.unreadCount > 0 && !current}<VisuallyHidden>, {r.unreadCount} unread</VisuallyHidden>{/if}
+  {#if drafts.has(r.id) && !current}
+    <Tooltip content="Draft saved"><span class="mark"><Icon icon={Pencil} size="xsm" /></span></Tooltip>
+    <VisuallyHidden>, draft saved</VisuallyHidden>
+  {/if}
+  {#if w}
+    <Tooltip content="{w.names.join(', ')} working"><span class="working" aria-hidden="true">{w.elapsed}</span></Tooltip>
+    <VisuallyHidden>, {workingText}</VisuallyHidden>
+  {/if}
+  {#if r.mentionCount > 0 && !current}
+    <span class="count" aria-hidden="true"><Badge label={String(r.mentionCount)} /></span>
+    <VisuallyHidden>, {r.mentionCount} {r.mentionCount === 1 ? 'mention' : 'mentions'}</VisuallyHidden>
+  {/if}
+{/snippet}
+
+<!--
+  On phones the header and footer icons form AppShell's top bar (brand, search,
+  menu); the drawer it opens shows the full search launcher instead.
+-->
+<SideNav
+  aria-label="Workspace"
+  class="side"
+  {inert}
+  {header}
+  topContent={search}
+  footerIcons={renderMode() === 'topbar' ? searchIcon : undefined}
+  {footer}
+>
+  <SideNavSection title="Pages" isHeaderHidden>
+    <SideNavItem label="Overview" icon={overviewIcon} href="/overview" onclick={go} isSelected={route.name === 'overview'} />
+    <SideNavItem label="Engineers" icon={engineersIcon} href="/engineers" onclick={go} isSelected={route.name === 'engineers' || route.name === 'engineer'} />
+    <SideNavItem label="Projects" icon={projectsIcon} href="/projects" onclick={go} isSelected={route.name === 'projects' || route.name === 'project'} />
+    <SideNavItem label="Machines" icon={machinesIcon} href="/machines" onclick={go} isSelected={route.name === 'machines'} />
+  </SideNavSection>
+
+  <SideNavSection title="Rooms">
+    {#snippet endContent()}
+      <IconButton label="Create a room" variant="ghost" size="sm" onclick={() => { go(); app.createRoom = { kind: 'room' }; }}>
+        {#snippet icon()}<Icon icon={Plus} size="sm" />{/snippet}
+      </IconButton>
+    {/snippet}
+    {#if rooms.length === 0}
+      <p class="hint"><Text type="supporting">No rooms yet. Create one and bring a couple of engineers in.</Text></p>
+    {:else}
+      {#each rooms as r (r.id)}
+        {@const w = working(r.id)}
+        {@const current = isCurrentRoom(r.id)}
+        <SideNavItem
+          label={r.name}
+          icon={r.private ? privateRoomIcon : roomIcon}
+          href="/rooms/{r.id}"
+          onclick={go}
+          isSelected={current}
+          class="yip-room {r.unreadCount > 0 && !current ? 'unread' : ''}"
+        >
+          {#snippet endContent()}{@render markers(r, w, current, `${w?.names.join(' and ')} working`)}{/snippet}
+        </SideNavItem>
+      {/each}
+    {/if}
+  </SideNavSection>
+
+  <SideNavSection title="Direct messages">
+    {#snippet endContent()}
+      <IconButton label="Message an engineer directly" variant="ghost" size="sm" onclick={() => { go(); app.createRoom = { kind: 'dm' }; }}>
+        {#snippet icon()}<Icon icon={Plus} size="sm" />{/snippet}
+      </IconButton>
+    {/snippet}
+    {#if dms.length === 0}
+      <p class="hint"><Text type="supporting">Talk one-to-one with an engineer.</Text></p>
+    {:else}
+      {#each dms as r (r.id)}
+        {@const eng = dmEngineer(r.id)}
+        {@const w = working(r.id)}
+        {@const current = isCurrentRoom(r.id)}
+        {#snippet avatarIcon()}{#if eng}<Avatar actor={{ kind: 'engineer', id: eng.id }} size={20} />{/if}{/snippet}
+        <SideNavItem
+          label={eng?.name ?? r.name}
+          icon={eng ? avatarIcon : dmIcon}
+          href="/rooms/{r.id}"
+          onclick={go}
+          isSelected={current}
+          class="yip-room {r.unreadCount > 0 && !current ? 'unread' : ''}"
+        >
+          {#snippet endContent()}{@render markers(r, w, current, 'working')}{/snippet}
+        </SideNavItem>
+      {/each}
+    {/if}
+  </SideNavSection>
+</SideNav>
 
 <style>
-  .sidebar {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-    padding: 10px 8px 8px 10px;
-  }
-  .head {
-    display: flex;
-    align-items: center;
-    height: 36px;
-    padding: 0 8px;
-  }
   .brand {
     display: inline-flex;
     align-items: center;
-    color: var(--ink);
+    padding: var(--spacing-1) var(--spacing-2);
+    color: var(--color-text-primary);
     text-decoration: none;
-    border-radius: 6px;
+    border-radius: var(--radius-inner);
   }
   .search {
     display: flex;
     align-items: center;
-    gap: 8px;
-    height: 32px;
-    margin: 6px 0 4px;
-    padding: 0 6px 0 10px;
-    border: 0;
-    border-radius: var(--r-row);
-    background: var(--hover);
-    color: color-mix(in srgb, var(--ink) 72%, transparent);
-    font-size: 13px;
-    cursor: pointer;
-    transition: background-color var(--t-fast) var(--ease);
+    gap: var(--spacing-2);
+    width: 100%;
+    height: var(--size-element-md);
+    padding: 0 var(--spacing-1-5) 0 var(--spacing-2);
+    border-radius: var(--radius-element);
+    background: var(--color-overlay-hover);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    transition: background-color var(--duration-fast) var(--ease-standard);
   }
   .search:hover {
-    background: var(--pressed);
+    background: var(--color-overlay-pressed);
   }
   .search-text {
     flex: 1;
-    text-align: left;
-  }
-  .scroll {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    padding: 4px 0 12px;
-    scrollbar-width: thin;
-  }
-  section {
-    margin-top: 14px;
-  }
-  .section-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 32px;
-    padding: 0 2px 0 8px;
-  }
-  h2 {
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0;
-    color: color-mix(in srgb, var(--ink) 72%, transparent);
-  }
-  .add {
-    width: 26px;
-    height: 26px;
-    color: color-mix(in srgb, var(--ink) 72%, transparent);
-  }
-  .list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 1px;
-  }
-  .row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 32px;
-    padding: 0 8px;
-    border-radius: var(--r-row);
-    color: var(--ink);
-    opacity: 0.82;
-    font-size: var(--text-nav);
-    font-weight: 400;
-    text-decoration: none;
-    transition:
-      background-color 100ms var(--ease),
-      opacity 100ms var(--ease);
-  }
-  .row:hover {
-    background: var(--hover);
-    opacity: 1;
-  }
-  .row[aria-current='page'] {
-    background: var(--selected);
-    opacity: 1;
-    font-weight: 500;
-  }
-  .row.unread {
-    opacity: 1;
-    font-weight: 650;
-  }
-  .row.nav {
-    opacity: 1;
-  }
-  .label {
-    flex: 1;
-    min-width: 0;
-  }
-  .glyph {
-    display: inline-grid;
-    place-items: center;
-    width: 18px;
-    color: color-mix(in srgb, var(--ink) 72%, transparent);
-  }
-  .muted-mark {
-    display: inline-flex;
-    color: var(--ink-tertiary, var(--ink-secondary));
-  }
-  .draft {
-    display: inline-flex;
-    align-items: center;
-    color: color-mix(in srgb, var(--ink) 55%, transparent);
-  }
-  .working {
-    padding: 1px 6px;
-    border-radius: var(--r-pill);
-    background: color-mix(in srgb, var(--ink) 9%, transparent);
-    color: var(--ink);
-    font-size: 11px;
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
+    text-align: start;
   }
   .hint {
-    padding: 2px 8px;
-    font-size: var(--text-meta);
-    color: color-mix(in srgb, var(--ink) 72%, transparent);
+    padding: var(--spacing-0-5) var(--spacing-2);
+  }
+  .mark {
+    display: inline-flex;
+    color: var(--color-icon-secondary);
+  }
+  .working {
+    padding: 1px var(--spacing-1-5);
+    border-radius: var(--radius-full);
+    background: var(--color-overlay-pressed);
+    color: var(--color-text-primary);
+    font-size: 11px;
+    font-weight: var(--font-weight-medium);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Mentions are a monochrome count pill: ink on the accent. */
+  .count :global(.astryx-badge) {
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Read rooms recede; unread rooms are heavier, never a different colour. */
+  :global(.yip-room a) {
+    color: color-mix(in srgb, var(--color-text-primary) 82%, transparent);
+  }
+  :global(.yip-room a[aria-current='page']),
+  :global(.yip-room a:hover) {
+    color: var(--color-text-primary);
+  }
+  :global(.yip-room.unread a) {
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-semibold);
   }
   .foot {
     display: grid;
-    gap: 2px;
-    padding-top: 6px;
+    gap: var(--spacing-0-5);
   }
   .health {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    min-height: 30px;
-    padding: 6px 8px;
+    gap: var(--spacing-2);
+    padding: var(--spacing-1-5) var(--spacing-2);
+    border-radius: var(--radius-element);
+    font-size: var(--font-size-sm);
     line-height: 1.35;
-    border-radius: var(--r-row);
-    font-size: 12px;
-    color: color-mix(in srgb, var(--ink) 72%, transparent);
+    color: var(--color-text-secondary);
     text-decoration: none;
   }
   .health:hover {
-    background: var(--hover);
-    color: var(--ink);
+    background: var(--color-overlay-hover);
+    color: var(--color-text-primary);
   }
   .health :global(svg) {
     flex: none;
     margin-top: 2px;
   }
-  :global(.profile) {
+  .profile-content {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--spacing-2);
     width: 100%;
-    min-height: 46px;
-    padding: 6px 8px;
-    border: 0;
-    border-radius: var(--r-control);
-    background: none;
-    color: var(--ink);
-    text-align: left;
-    cursor: pointer;
-  }
-  :global(.profile:hover),
-  :global(.profile[aria-expanded='true']) {
-    background: var(--hover);
+    min-width: 0;
+    text-align: start;
   }
   .who {
     display: grid;
@@ -405,22 +345,31 @@
     min-width: 0;
     line-height: 1.25;
   }
+  .who strong,
+  .who span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .who strong {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
   }
   .who span {
-    font-size: 12px;
-    color: color-mix(in srgb, var(--ink) 72%, transparent);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-normal);
+    color: var(--color-text-secondary);
+  }
+  :global(.profile.astryx-button) {
+    justify-content: flex-start;
   }
   @media (pointer: coarse) {
-    .row,
     .search {
       min-height: 44px;
     }
-    .add {
-      width: 44px;
-      height: 44px;
+    .shortcut {
+      display: none;
     }
   }
 </style>

@@ -31,7 +31,7 @@ window.__journeys = (() => {
   const fits = (t, where, root = document) => {
     t.expect(t.overflowX() <= 0, `${where} scrolls sideways by ${t.overflowX()}px at ${innerWidth}px`);
     const clipped = t
-      .qa('button, a.btn, input, select, [role=tab]', root)
+      .qa('button, a.astryx-button, input, select, [role=tab]', root)
       .filter((el) => el.offsetParent !== null && !el.closest('pre, table'))
       .find((el) => {
         const r = el.getBoundingClientRect();
@@ -73,7 +73,7 @@ window.__journeys = (() => {
     path: '/machines',
     run: async (t) => {
       await ready(t);
-      await theme(t, dark ? 'night' : 'day');
+      await theme(t, dark ? 'dark' : 'light');
       fits(t, 'the machine list');
       // Long machine names wrap inside their column.
       const name = row(t, LAPTOP).querySelector('h2');
@@ -82,9 +82,12 @@ window.__journeys = (() => {
       const p = panel(t);
       const mode = width >= 1200 ? 'complementary' : 'dialog';
       t.expect(p.getAttribute('role') === mode, `at ${width}px the details should be ${mode}, is ${p.getAttribute('role')}`);
-      if (width < 760) t.expect(p.querySelector('button[aria-label="Back"]'), 'on a phone the details have a Back button');
+      if (width <= 768) t.expect(p.querySelector('button[aria-label="Back"]'), 'on a phone the details have a Back button');
       const title = p.querySelector('h2');
-      t.expect(title.getAttribute('title') === LAPTOP, 'the full machine name is available on the truncated title');
+      t.expect(title.textContent.trim() === LAPTOP, 'the title is the full machine name');
+      if (title.scrollWidth > title.offsetWidth) {
+        await t.waitFor(() => title.getAttribute('title') === LAPTOP, 'the truncated title offers the full name on hover');
+      }
       const tabs = t.q('[role=tablist]');
       t.expect(tabs.scrollWidth <= tabs.clientWidth + 1, `the four sections should fit their bar (${tabs.scrollWidth} > ${tabs.clientWidth})`);
       for (const label of ['Overview', 'Connections', 'Storage', 'Diagnostics']) {
@@ -94,7 +97,7 @@ window.__journeys = (() => {
       }
       await closeDetails(t);
       t.expect(document.activeElement === b, `focus returns to Details at ${width}px`);
-      await theme(t, 'day');
+      await theme(t, 'light');
     },
   });
 
@@ -109,8 +112,8 @@ window.__journeys = (() => {
         // Title, purpose and one primary action.
         const h1 = t.q('h1[data-screen-title]');
         t.expect(h1.textContent === 'Machines' && px(h1, 'fontSize') === 24, `title 24px, is ${px(h1, 'fontSize')}`);
-        t.expect(t.qa('main .btn-primary').length === 1, 'one primary action');
-        t.expect(px(t.q('.machines-screen'), 'paddingLeft') === 24, 'desktop content padding is 24px');
+        t.expect(t.qa('[role=main] .astryx-button[data-variant=primary]').length === 1, 'one primary action');
+        t.expect(px(t.q('.machines-screen').firstElementChild, 'paddingLeft') === 32, 'desktop content padding is 32px');
         // Connection, work and providers are separate facts.
         const me = thisMachine(t);
         t.expect(/Connected/.test(me.textContent) && /Idle/.test(me.textContent), 'this machine: connected and idle');
@@ -131,7 +134,7 @@ window.__journeys = (() => {
         t.expect(new Set(lefts).size === 1, `connection column aligned: ${lefts}`);
         const rights = rows(t).map((r) => Math.round(detailsOf(r).getBoundingClientRect().right));
         t.expect(new Set(rights).size === 1, `Details aligned: ${rights}`);
-        t.expect(px(laptop.querySelector('h2'), 'fontSize') === 16, 'machine names are 16px');
+        t.expect(px(laptop.querySelector('h2'), 'fontSize') === 17, 'machine names are 17px (the large type step)');
         t.expect(px(laptop.querySelector('.state'), 'fontSize') === 14, 'states are 14px');
         t.expect(px(laptop.querySelector('.meta'), 'fontSize') === 12, 'metadata is 12px');
         const pad = px(laptop, 'paddingTop');
@@ -154,20 +157,32 @@ window.__journeys = (() => {
       path: '/machines',
       run: async (t) => {
         await ready(t);
-        t.q('main .btn-primary').focus();
+        t.q('[role=main] .astryx-button[data-variant=primary]').focus();
         let reached = null;
         for (let i = 0; i < 12 && !reached; i++) {
           await t.press('Tab');
           if (document.activeElement?.getAttribute('aria-label')?.startsWith('Details for')) reached = document.activeElement;
         }
         t.expect(reached, 'Tab should reach a Details button, got ' + document.activeElement?.outerHTML.slice(0, 80));
-        // The design system's ring (2px of ink) applies to keyboard focus; the
-        // synthetic key events here don't always count as keyboard use for
-        // :focus-visible, so check the rule rather than the computed style.
-        const ring = [...document.styleSheets].flatMap((s) => [...s.cssRules]).find((r) => r.selectorText === ':focus-visible');
-        // (The rule uses var(--focus), so read the shorthand: its longhands stay
-        // empty until the variable is substituted.)
-        t.expect(ring && /^2px solid\b/.test(ring.style.outline), `keyboard focus shows a 2px ring, got "${ring?.style.outline}"`);
+        // The synthetic key events here don't always count as keyboard use for
+        // :focus-visible, so find the :focus-visible rules that match the
+        // button and check that they draw Astryx's 2px ring.
+        const rules = [];
+        const walk = (list) => {
+          for (const r of list) {
+            if (r.cssRules) walk(r.cssRules);
+            if (!r.selectorText?.includes(':focus-visible')) continue;
+            try {
+              if (reached.matches(r.selectorText.replaceAll(':focus-visible', ''))) rules.push(r.style);
+            } catch {
+              /* a selector this engine can't match without the pseudo-class */
+            }
+          }
+        };
+        for (const sheet of document.styleSheets) walk(sheet.cssRules);
+        const resolve = (v) => v.replace(/var\((--[\w-]+)\)/g, (_, name) => getComputedStyle(reached).getPropertyValue(name).trim());
+        const drawn = rules.map((r) => resolve(`${r.getPropertyValue('outline-width') || r.getPropertyValue('outline')} ${r.getPropertyValue('outline-style')}`)).join(' ');
+        t.expect(/\b2px\b/.test(drawn) && /\bsolid\b/.test(drawn), `keyboard focus shows a 2px ring, got "${drawn}"`);
         await t.press('Enter');
         await t.waitFor(() => t.q('#machinepanel'), 'details by keyboard');
         await t.waitFor(() => panel(t).contains(document.activeElement), 'focus moves into the details');
@@ -215,17 +230,18 @@ window.__journeys = (() => {
         t.expect(/^Pause new work on .+\?$/.test(dlg.querySelector('h2').textContent), 'the confirmation names the action in plain words');
         t.expect(dlg.textContent.includes("finishes the work it's running now") && dlg.textContent.includes('Nothing is stopped.'), 'it explains that current work finishes');
         const r = dlg.getBoundingClientRect();
-        t.expect(r.left >= 0 && r.right <= innerWidth && px(dlg.querySelector('p'), 'fontSize') >= 14, 'the confirmation is fully visible and readable');
-        t.expect(document.activeElement?.hasAttribute('data-cancel'), 'Cancel is focused first');
+        const description = document.getElementById(dlg.getAttribute('aria-describedby'));
+        t.expect(r.left >= 0 && r.right <= innerWidth && px(description, 'fontSize') >= 14, 'the confirmation is fully visible and readable');
+        t.expect(document.activeElement?.textContent.trim() === 'Cancel', 'Cancel is focused first');
         await t.click(t.byText('dialog button', 'Pause new work'));
         await t.waitFor(() => !t.q('dialog[open]'), 'the confirmation to close');
-        await t.waitFor(() => pause.textContent === 'Resume new work', 'the counterpart');
+        await t.waitFor(() => pause.textContent.trim() === 'Resume new work', 'the counterpart');
         await t.waitFor(() => document.activeElement === pause, 'focus returns to the button');
         await t.waitFor(() => thisMachine(t).textContent.includes('New work paused'), 'the row says new work is paused');
         await t.click(pause);
         await t.waitFor(() => t.q('dialog[open]')?.textContent.includes('starts taking new work again'), 'the resume confirmation');
         await t.click(t.byText('dialog button', 'Resume new work'));
-        await t.waitFor(() => pause.textContent === 'Pause new work', 'taking work again');
+        await t.waitFor(() => pause.textContent.trim() === 'Pause new work', 'taking work again');
         await t.waitFor(() => document.activeElement === pause, 'focus returns again');
         // Stopping work is a separate action, disabled with nothing running.
         const stop = t.byText('#machinepanel button', 'Stop current work');
@@ -290,7 +306,7 @@ window.__journeys = (() => {
         t.expect(t.text().includes("It hasn't reported since") && t.text().includes('"not confirmed"'), 'not responding explains the effect on work');
         await tabTo(t, 'Diagnostics');
         t.expect(t.byText('#machinepanel button', 'Copy'), 'the fingerprint can be copied');
-        t.expect(t.qa('#machinepanel .tools dt').map((d) => d.textContent).join(',') === 'docker,git,go', 'toolchains as a name/version list');
+        t.expect(t.qa('#machinepanel .tools dt').map((d) => d.textContent.trim()).join(',') === 'docker,git,go', 'toolchains as a name/version list');
       },
     },
     {
@@ -300,7 +316,7 @@ window.__journeys = (() => {
       path: '/machines',
       run: async (t) => {
         await ready(t);
-        const add = t.q('main .btn-primary');
+        const add = t.q('[role=main] .astryx-button[data-variant=primary]');
         add.focus();
         await t.click(add);
         const dlg = await t.waitFor(() => t.q('dialog[open]'), 'the Add machine dialog');

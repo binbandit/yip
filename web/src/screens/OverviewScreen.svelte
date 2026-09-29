@@ -2,6 +2,9 @@
   // Cross-project catch-up and the factual work ledger. The visit is recorded
   // only after the page has rendered, and nothing here marks a room read.
   import { onMount, tick, untrack } from 'svelte';
+  import { Button, Heading, Icon, Link, List, ListItem, Spinner, Text } from '@astryx-svelte/core';
+  import { Book, MessageSquareText } from '@lucide/svelte';
+  import Notice from '../components/Notice.svelte';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
@@ -14,7 +17,8 @@
   import WorkRowItem from '../components/WorkRowItem.svelte';
   import MessageList from '../components/MessageList.svelte';
   import OverviewSummary from '../components/OverviewSummary.svelte';
-  import Icon from '../components/Icon.svelte';
+  import Screen from '../components/Screen.svelte';
+  import ScreenSection from '../components/ScreenSection.svelte';
   import GettingStarted from '../components/GettingStarted.svelte';
 
   let ov = $state<Overview | null>(null);
@@ -137,133 +141,131 @@
     if (r && wide && !app.data.timelines[r.id]?.loaded) untrack(() => void app.loadRoom(r.id).catch(() => {}));
   });
 
+  const subtitle = $derived(ov?.since ? `Since you were here ${atTime(ov.since)}` : 'Across your rooms and projects');
+
   function catchupHref(c: Overview['catchup'][number]): string | null {
     if (!c.roomId) return null;
     return conversationHref({ roomId: c.roomId, messageId: c.messageId, threadId: c.threadId });
   }
 </script>
 
+{#snippet summaryLink()}
+  {#if overviewRoom}
+    <Button label="Open workspace summary" href="/rooms/{overviewRoom.id}">
+      {#snippet icon()}<Icon icon={MessageSquareText} size="sm" />{/snippet}
+    </Button>
+  {/if}
+{/snippet}
+
+{#snippet emptyLine(text: string)}
+  <p class="empty-line">{text}</p>
+{/snippet}
+
 <div class="overview" class:wide>
-  <div class="screen main">
-    <div class="screen-inner">
-      <header class="screen-head">
-        <div>
-          <h1 class="screen-title" data-screen-title tabindex="-1">Overview</h1>
-          <p class="screen-sub">
-            {#if ov?.since}Since you were here {atTime(ov.since)}{:else}Across your rooms and projects{/if}
-          </p>
-        </div>
-        {#if overviewRoom && !wide}
-          <a class="btn" href="/rooms/{overviewRoom.id}"><Icon name="reply" size={16} />Open workspace summary</a>
+  <Screen title="Overview" {subtitle} actions={overviewRoom && !wide ? summaryLink : undefined} class="main">
+    <GettingStarted />
+
+    {#if error}
+      <div class="alert">
+        <Notice tone="danger" role="alert"><p>{error} <Link onclick={() => load(false)} type="inherit" color="inherit" hasUnderline>Retry</Link></p></Notice>
+      </div>
+    {/if}
+    {#if loading}
+      <!-- The text says what is happening; the spinner's own "Loading" status would repeat it. -->
+      <p class="loading" aria-busy="true"><Spinner size="sm" aria-hidden="true" /><Text type="supporting">Gathering what changed…</Text></p>
+    {:else if ov}
+      <ScreenSection title="Since you were here" id="ov-catchup" class="ov-first">
+        {#snippet end()}<Text type="supporting">What changed, with current open work below. Conversations stay unread.</Text>{/snippet}
+        {#if ov.catchup.length === 0}
+          {@render emptyLine('Nothing new since your last visit.')}
+        {:else}
+          <ul class="catchup">
+            {#each ov.catchup as c (c.eventSeq + c.kind)}
+              {@const h = catchupHref(c)}
+              <li>
+                <span class="kind tone-{catchupTone(c.kind)}"><StateIcon shape={catchupShape(c.kind)} tone={catchupTone(c.kind)} />{catchupKindLabel(c.kind)}</span>
+                <div class="c-body">
+                  <Text as="p" display="block" weight="semibold">{c.title}</Text>
+                  {#if c.detail}<Text as="p" display="block">{c.detail}</Text>{/if}
+                  <Text as="p" display="block" type="supporting">
+                    <time datetime={c.at} title={fullTime(c.at)}>{relative(c.at, app.now)}</time>
+                    {#if h && c.roomId}· <Link href={h} type="inherit" hasUnderline>in {app.data.rooms[c.roomId]?.name ?? 'the conversation'}</Link>{/if}
+                    {#each c.refs ?? [] as ref}
+                      {#if ref.kind === 'job' || ref.kind === 'review' || ref.kind === 'decision'}
+                        {' · '}<Link type="inherit" hasUnderline onclick={() => app.openPanel({ kind: ref.kind as 'job' | 'review' | 'decision', id: ref.id })}>{ref.kind === 'job' ? 'open the work' : `view ${ref.kind}`}</Link>
+                      {:else if ref.kind === 'question' && app.data.questions[ref.id]}
+                        {@const question = app.data.questions[ref.id]}
+                        {' · '}<Link href={conversationHref({ ...question.source, messageId: question.messageId })} type="inherit" hasUnderline>view question</Link>
+                      {:else if ref.kind === 'approval'}
+                        {@const work = c.refs?.find((r) => r.kind === 'job')}
+                        {#if work}{' · '}<Link type="inherit" hasUnderline onclick={() => app.openPanel({ kind: 'job', id: work.id })}>view permission request</Link>{/if}
+                      {/if}
+                    {/each}
+                  </Text>
+                </div>
+              </li>
+            {/each}
+          </ul>
         {/if}
-      </header>
+      </ScreenSection>
 
-      <GettingStarted />
+      <ScreenSection title="Recently completed" id="ov-done">
+        {#snippet end()}<Text type="supporting">last 7 days</Text>{/snippet}
+        {#if done.length === 0}
+          {@render emptyLine('Nothing completed recently.')}
+        {:else}
+          <ul class="rows">{#each done.slice(0, 12) as r (r.job.id)}<WorkRowItem {...r} />{/each}</ul>
+        {/if}
+      </ScreenSection>
 
-      {#if error}
-        <p class="notice danger" role="alert">{error} <button class="link-btn" onclick={() => load(false)}>Retry</button></p>
-      {/if}
-      {#if loading}
-        <p class="meta" aria-busy="true">Gathering what changed…</p>
-      {:else if ov}
-        <section class="section first" aria-labelledby="ov-catchup">
-          <div class="section-head">
-            <h2 class="section-title" id="ov-catchup">Since you were here</h2>
-            <span class="meta">What changed, with current open work below. Conversations stay unread.</span>
-          </div>
-          {#if ov.catchup.length === 0}
-            <p class="empty-line">Nothing new since your last visit.</p>
-          {:else}
-            <ul class="catchup">
-              {#each ov.catchup as c (c.eventSeq + c.kind)}
-                {@const h = catchupHref(c)}
-                <li>
-                  <span class="kind tone-{catchupTone(c.kind)}"><StateIcon shape={catchupShape(c.kind)} tone={catchupTone(c.kind)} />{catchupKindLabel(c.kind)}</span>
-                  <div class="c-body">
-                    <p class="c-title">{c.title}</p>
-                    {#if c.detail}<p class="c-detail">{c.detail}</p>{/if}
-                    <p class="meta">
-                      <time datetime={c.at} title={fullTime(c.at)}>{relative(c.at, app.now)}</time>
-                      {#if h && c.roomId}· <a href={h}>in {app.data.rooms[c.roomId]?.name ?? 'the conversation'}</a>{/if}
-                      {#each c.refs ?? [] as ref}
-                        {#if ref.kind === 'job' || ref.kind === 'review' || ref.kind === 'decision'}
-                          · <button class="link-btn" onclick={() => app.openPanel({ kind: ref.kind as 'job' | 'review' | 'decision', id: ref.id })}>{ref.kind === 'job' ? 'open the work' : `view ${ref.kind}`}</button>
-                        {:else if ref.kind === 'question' && app.data.questions[ref.id]}
-                          {@const question = app.data.questions[ref.id]}
-                          · <a href={conversationHref({ ...question.source, messageId: question.messageId })}>view question</a>
-                        {:else if ref.kind === 'approval'}
-                          {@const work = c.refs?.find((r) => r.kind === 'job')}
-                          {#if work}· <button class="link-btn" onclick={() => app.openPanel({ kind: 'job', id: work.id })}>view permission request</button>{/if}
-                        {/if}
-                      {/each}
-                    </p>
-                  </div>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </section>
+      <ScreenSection title="Active" id="ov-active">
+        {#snippet end()}<Text type="supporting">{active.length || ''}</Text>{/snippet}
+        {#if active.length === 0}
+          {@render emptyLine('No work in progress. Ask an engineer in a room to start something.')}
+        {:else}
+          <ul class="rows">{#each active as r (r.job.id)}<WorkRowItem {...r} />{/each}</ul>
+        {/if}
+      </ScreenSection>
 
-        <section class="section" aria-labelledby="ov-done">
-          <div class="section-head"><h2 class="section-title" id="ov-done">Recently completed</h2><span class="meta">last 7 days</span></div>
-          {#if done.length === 0}
-            <p class="empty-line">Nothing completed recently.</p>
-          {:else}
-            <ul class="rows">{#each done.slice(0, 12) as r (r.job.id)}<WorkRowItem {...r} />{/each}</ul>
-          {/if}
-        </section>
+      <ScreenSection title="Needs a look" id="ov-needs">
+        {#snippet end()}<Text type="supporting">{needs.length || ''}</Text>{/snippet}
+        {#if needs.length === 0}
+          {@render emptyLine('Nothing is blocked or failed.')}
+        {:else}
+          <ul class="rows">
+            {#each needs as r (r.job.id)}<WorkRowItem {...r} unknownOutcome={unknownJobs.has(r.job.id)} />{/each}
+          </ul>
+        {/if}
+      </ScreenSection>
 
-        <section class="section" aria-labelledby="ov-active">
-          <div class="section-head"><h2 class="section-title" id="ov-active">Active</h2><span class="meta">{active.length || ''}</span></div>
-          {#if active.length === 0}
-            <p class="empty-line">No work in progress. Ask an engineer in a room to start something.</p>
-          {:else}
-            <ul class="rows">{#each active as r (r.job.id)}<WorkRowItem {...r} />{/each}</ul>
-          {/if}
-        </section>
-
-        <section class="section" aria-labelledby="ov-needs">
-          <div class="section-head"><h2 class="section-title" id="ov-needs">Needs a look</h2><span class="meta">{needs.length || ''}</span></div>
-          {#if needs.length === 0}
-            <p class="empty-line">Nothing is blocked or failed.</p>
-          {:else}
-            <ul class="rows">
-              {#each needs as r (r.job.id)}<WorkRowItem {...r} unknownOutcome={unknownJobs.has(r.job.id)} />{/each}
-            </ul>
-          {/if}
-        </section>
-
-        <section class="section" aria-labelledby="ov-dec">
-          <div class="section-head"><h2 class="section-title" id="ov-dec">Worth remembering</h2></div>
-          {#if ov.decisions.length === 0}
-            <p class="empty-line">No accepted decisions yet. Engineers record them with their sources as work is reviewed.</p>
-          {:else}
-            <ul class="decisions">
-              {#each ov.decisions as d (d.id)}
-                <li>
-                  <button class="dec" onclick={() => app.openPanel({ kind: 'decision', id: d.id })}>
-                    <Icon name="book" size={16} />
-                    <span>
-                      <span class="d-title">{d.title}</span>
-                      <span class="meta">
-                        {d.scope.kind === 'project' ? app.data.projects[d.scope.id]?.name : d.scope.kind === 'room' ? app.data.rooms[d.scope.id]?.name : 'Workspace'} ·
-                        {d.sources.length} {d.sources.length === 1 ? 'source' : 'sources'} · {relative(d.acceptedAt ?? d.createdAt, app.now)}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </section>
-      {/if}
-    </div>
-  </div>
+      <ScreenSection title="Worth remembering" id="ov-dec">
+        {#if ov.decisions.length === 0}
+          {@render emptyLine('No accepted decisions yet. Engineers record them with their sources as work is reviewed.')}
+        {:else}
+          <List density="compact">
+            {#each ov.decisions as d (d.id)}
+              <!-- A snippet label wraps; a string label would be clipped to one line. -->
+              <ListItem onclick={() => app.openPanel({ kind: 'decision', id: d.id })}>
+                {#snippet label()}{d.title}{/snippet}
+                {#snippet startContent()}<Icon icon={Book} size="sm" color="secondary" />{/snippet}
+                {#snippet description()}
+                  <Text type="supporting">
+                    {d.scope.kind === 'project' ? app.data.projects[d.scope.id]?.name : d.scope.kind === 'room' ? app.data.rooms[d.scope.id]?.name : 'Workspace'} ·
+                    {d.sources.length} {d.sources.length === 1 ? 'source' : 'sources'} · {relative(d.acceptedAt ?? d.createdAt, app.now)}
+                  </Text>
+                {/snippet}
+              </ListItem>
+            {/each}
+          </List>
+        {/if}
+      </ScreenSection>
+    {/if}
+  </Screen>
 
   {#if wide && overviewRoom}
     <aside class="convo" aria-labelledby="ov-convo">
       <header class="convo-head">
-        <h2 id="ov-convo">Workspace summary</h2>
+        <Heading level={2} id="ov-convo">Workspace summary</Heading>
       </header>
       <MessageList
         label="Overview conversation"
@@ -286,33 +288,33 @@
     min-height: 0;
     display: flex;
   }
-  .main {
+  .overview > :global(.main) {
     flex: 1;
     min-width: 0;
     container-type: inline-size;
     container-name: overview-main;
   }
-  .first {
+  .overview :global(.ov-first) {
     margin-top: 0;
   }
-  .empty-line {
-    color: var(--ink-secondary);
-    font-size: 14px;
-    padding: 6px 0;
+  .alert {
+    margin-bottom: var(--spacing-6);
   }
-  .catchup,
-  .rows,
-  .decisions {
-    list-style: none;
-    margin: 0;
-    padding: 0;
+  .loading {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+  }
+  .empty-line {
+    color: var(--color-text-secondary);
+    padding: var(--spacing-1-5) 0;
   }
   .catchup li {
     display: grid;
     grid-template-columns: 140px minmax(0, 1fr);
-    gap: 12px;
-    padding: 10px 8px;
-    border-top: 1px solid var(--line-soft);
+    gap: var(--spacing-3);
+    padding: var(--spacing-2) var(--spacing-2);
+    border-top: 1px solid var(--color-border);
   }
   .catchup li:first-child {
     border-top: 0;
@@ -320,53 +322,15 @@
   .kind {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 650;
+    gap: var(--spacing-1-5);
     height: 22px;
-  }
-  .c-title {
-    font-weight: 600;
-    font-size: 14.5px;
-  }
-  .c-detail {
-    font-size: 14px;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
   }
   .rows {
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 2px 6px;
-  }
-  .decisions {
-    display: grid;
-    gap: 2px;
-  }
-  .dec {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    width: 100%;
-    padding: 8px;
-    border: 0;
-    border-radius: 10px;
-    background: none;
-    color: var(--ink);
-    text-align: left;
-    cursor: pointer;
-  }
-  .dec:hover {
-    background: var(--hover);
-  }
-  .dec :global(svg) {
-    margin-top: 3px;
-    color: var(--ink-secondary);
-  }
-  .dec > span {
-    display: grid;
-  }
-  .d-title {
-    font-weight: 600;
-    font-size: 14.5px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-container);
+    padding: var(--spacing-0-5) var(--spacing-1-5);
   }
   .convo {
     width: 400px;
@@ -374,19 +338,19 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border-left: 1px solid var(--line);
+    border-left: 1px solid var(--color-border);
   }
   .convo-head {
-    padding: 16px 18px 10px;
-    border-bottom: 1px solid var(--line);
+    padding: var(--spacing-4) var(--spacing-5) var(--spacing-2);
+    border-bottom: 1px solid var(--color-border);
   }
-  .convo-head h2 {
-    font-size: 16px;
+  .convo-head :global(h2) {
+    font-size: var(--font-size-lg);
   }
   @container overview-main (max-width: 560px) {
     .catchup li {
       grid-template-columns: 1fr;
-      gap: 2px;
+      gap: var(--spacing-0-5);
     }
   }
 </style>

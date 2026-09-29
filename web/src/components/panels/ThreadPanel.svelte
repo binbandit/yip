@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
+  import { Text } from '@astryx-svelte/core';
+  import Notice from '../Notice.svelte';
   import { app } from '../../lib/state/app.svelte';
   import { errorMessage } from '../../lib/api/client';
   import type { PendingMessage } from '../../lib/state/data';
@@ -45,9 +47,9 @@
 <RightPanel title="Thread" {mode} onclose={() => app.closePanel()}>
   {#snippet subtitle()}{room?.name ?? ''}{/snippet}
   {#if error}
-    <p class="notice danger err" role="alert">{error}</p>
+    <div class="err"><Notice tone="danger" role="alert">{error}</Notice></div>
   {:else if !root}
-    <p class="meta err">Loading the thread…</p>
+    <div class="err"><Text as="p" type="supporting">Loading the thread…</Text></div>
   {:else}
     <MessageList
       label="Replies"
@@ -61,8 +63,8 @@
       {#snippet top()}
         <div class="root">
           <MessageRow message={root} inThread tabindex={-1} />
-          <p class="count meta">
-            {replies.length === 0 ? 'No replies yet' : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
+          <p class="count">
+            <Text type="supporting">{replies.length === 0 ? 'No replies yet' : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}</Text>
           </p>
         </div>
       {/snippet}
@@ -75,17 +77,17 @@
 
 <style>
   .err {
-    margin: 16px;
+    margin: var(--spacing-4);
   }
   .root {
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--line);
-    margin-bottom: 4px;
+    padding-bottom: var(--spacing-2);
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: var(--spacing-1);
   }
   .root :global(.msg:not(.continuation)) {
-    margin-top: 8px;
+    margin-top: var(--spacing-2);
   }
   .count {
-    padding: 4px 20px 0;
+    padding: var(--spacing-1) var(--spacing-5) 0;
   }
 </style>

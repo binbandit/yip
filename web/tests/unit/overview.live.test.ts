@@ -121,7 +121,7 @@ describe('Overview during one live visit', () => {
     const workLink = [...document.querySelectorAll<HTMLAnchorElement>('.rows a.origin')].find((link) => link.pathname.endsWith(source.roomId))!;
     expect(new URL(workLink.href).searchParams.get('panel')).toBe(`thread:${source.threadId}`);
     expect(new URL(workLink.href).searchParams.get('msg')).toBe(source.messageId);
-    const questionLink = [...document.querySelectorAll<HTMLAnchorElement>('.catchup a')].find((link) => link.textContent === 'view question')!;
+    const questionLink = [...document.querySelectorAll<HTMLAnchorElement>('.catchup a')].find((link) => link.textContent?.trim() === 'view question')!;
     expect(new URL(questionLink.href).searchParams.get('panel')).toBe('thread:question-thread');
     expect(new URL(questionLink.href).searchParams.get('msg')).toBe(question.messageId);
     app.openPanel({ kind: 'review', id: review.id });
