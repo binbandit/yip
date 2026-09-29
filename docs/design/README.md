@@ -33,7 +33,7 @@ Components and app CSS use Astryx's tokens only (`cd web && npx @astryx-svelte/c
 
 Engineers' avatars tint Astryx's avatar fallback with `hsl(engineer.hue …)`: day 34% saturation and 91% lightness for the tint with a 27% initial; night a 26% tint with an 88% initial.
 
-A profile picture (the owner's from Settings, an engineer's from Edit profile) replaces the initial and keeps the avatar's shape, cropped to fill it. Animated GIFs play; when reduced motion is preferred, every picture shows its first frame instead (`lib/util/avatars.ts` draws it to a canvas).
+A profile picture (the owner's from Settings, an engineer's from Edit profile) replaces the initial and keeps the avatar's shape, cropped to fill it. Animated GIFs play; when reduced motion is preferred, every picture shows its first frame instead (`lib/util/avatars.ts` draws it to a canvas). See [ADR 0014](../decisions/0014-profile-pictures.md).
 
 ### Contrast checks (WCAG 2.2 AA)
 
