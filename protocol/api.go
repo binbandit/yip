@@ -66,11 +66,10 @@ type User struct {
 }
 
 type Preferences struct {
-	Theme      string `json:"theme"`      // system | day | night
-	Density    string `json:"density"`    // comfortable | compact
-	SendKey    string `json:"sendKey"`    // enter | mod-enter
-	Notify     string `json:"notify"`     // mentions | all | none
-	LastSeenAt string `json:"lastSeenAt"` // RFC3339 of last overview visit
+	Theme   string `json:"theme"`   // system | day | night
+	Density string `json:"density"` // comfortable | compact
+	SendKey string `json:"sendKey"` // enter | mod-enter
+	Notify  string `json:"notify"`  // mentions | all | none
 	// MutedRoomIDs are rooms whose notifications are silenced (execution is
 	// unaffected; a question or mention for you still notifies).
 	MutedRoomIDs []string `json:"mutedRoomIds,omitempty"`
@@ -150,7 +149,7 @@ type Room struct {
 	ID         string    `json:"id"`
 	OrgID      string    `json:"orgId"`
 	Name       string    `json:"name"`
-	Kind       string    `json:"kind"` // room | dm | overview
+	Kind       string    `json:"kind"` // room | dm
 	Purpose    string    `json:"purpose"`
 	Private    bool      `json:"private"`
 	ReplyMode  string    `json:"replyMode"` // steward | quiet
@@ -168,9 +167,8 @@ type Room struct {
 }
 
 const (
-	RoomKindRoom     = "room"
-	RoomKindDM       = "dm"
-	RoomKindOverview = "overview"
+	RoomKindRoom = "room"
+	RoomKindDM   = "dm"
 
 	ReplyModeSteward = "steward"
 	ReplyModeQuiet   = "quiet"
@@ -925,19 +923,6 @@ type ActivityItem struct {
 	Refs   []Ref     `json:"refs"`
 }
 
-type CatchupItem struct {
-	Kind      string    `json:"kind"` // completed | decision | blocker | question | started | failed | unknown
-	Title     string    `json:"title"`
-	Detail    string    `json:"detail"`
-	At        time.Time `json:"at"`
-	ActorID   string    `json:"actorId,omitempty"`
-	RoomID    string    `json:"roomId,omitempty"`
-	ThreadID  string    `json:"threadId,omitempty"`
-	MessageID string    `json:"messageId,omitempty"`
-	Refs      []Ref     `json:"refs"`
-	EventSeq  int64     `json:"eventSeq"`
-}
-
 type WorkRow struct {
 	Job             Job        `json:"job"`
 	ProjectName     string     `json:"projectName,omitempty"`
@@ -946,20 +931,9 @@ type WorkRow struct {
 	LastConfirmed   string     `json:"lastConfirmed"`
 	LastConfirmedAt *time.Time `json:"lastConfirmedAt,omitempty"`
 	Blocker         string     `json:"blocker,omitempty"`
-	// Questions needing this owner's answer, including questions from reviewers.
-	Questions []Question `json:"questions,omitempty"`
 	// RunState is the state of the latest attempt ("unknown" means its
 	// outcome is not confirmed).
 	RunState RunState `json:"runState,omitempty"`
-}
-
-type Overview struct {
-	Since     *time.Time    `json:"since,omitempty"`
-	Catchup   []CatchupItem `json:"catchup"`
-	Work      []WorkRow     `json:"work"`
-	Decisions []Decision    `json:"decisions"`
-	Questions []Question    `json:"questions"`
-	RoomID    string        `json:"roomId"` // the personal Overview conversation
 }
 
 type SearchResult struct {

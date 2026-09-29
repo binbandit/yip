@@ -100,6 +100,7 @@ type JobFilter struct {
 	ProjectID    string
 	RoomIDs      []string // restrict to jobs whose source room is in this set
 	ParentID     string
+	RootOnly     bool // top-level work: no reviews or delegated sub-jobs
 	IncludeReply bool
 	Since        *time.Time
 	Limit        int
@@ -127,6 +128,9 @@ func ListJobs(ctx context.Context, q Q, f JobFilter) ([]JobRow, error) {
 	if f.ParentID != "" {
 		where = append(where, "parent_id = ?")
 		args = append(args, f.ParentID)
+	}
+	if f.RootOnly {
+		where = append(where, "parent_id IS NULL AND kind <> 'review'")
 	}
 	if f.RoomIDs != nil {
 		if len(f.RoomIDs) == 0 {

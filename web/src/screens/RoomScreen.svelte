@@ -11,7 +11,6 @@
   import WorkStrip from '../components/WorkStrip.svelte';
   import MessageList from '../components/MessageList.svelte';
   import Composer from '../components/Composer.svelte';
-  import OverviewSummary from '../components/OverviewSummary.svelte';
 
   interface Props {
     roomId: string;
@@ -39,6 +38,7 @@
   }
 
   onMount(() => {
+    app.rememberRoom(roomId);
     void load();
   });
 
@@ -61,23 +61,17 @@
     composer?.restorePending(p);
   }
 
-  const placeholder = $derived(
-    room?.kind === 'overview'
-      ? 'Ask where things stand…'
-      : room?.kind === 'dm'
-        ? `Message ${app.engineerName(engineersHere[0]?.id)}`
-        : `Message ${room?.name ?? 'the room'}`,
-  );
+  const placeholder = $derived(room?.kind === 'dm' ? `Message ${app.engineerName(engineersHere[0]?.id)}` : `Message ${room?.name ?? 'the room'}`);
 </script>
 
 {#if !room}
   <Screen title="This room isn't available">
-    {#snippet subtitle()}It may have been archived, or you're no longer a member. <Link href={workspaceUrl('/overview')} hasUnderline>Go to Overview</Link>.{/snippet}
+    {#snippet subtitle()}It may have been archived, or you're no longer a member. <Link href={workspaceUrl('/')} hasUnderline>Go to your workspace</Link>.{/snippet}
   </Screen>
 {:else}
   <section class="room" aria-labelledby="room-title">
     <RoomHeader {room} />
-    {#if room.kind !== 'overview'}<WorkStrip {roomId} />{/if}
+    <WorkStrip {roomId} />
     {#if error}
       <div class="load-error">
         <Notice tone="danger" role="alert"><p>{error} <Link onclick={load} type="inherit" color="inherit" hasUnderline>Try again</Link></p></Notice>
@@ -92,16 +86,13 @@
       onloadolder={() => app.loadOlder(roomId)}
       {newAfterSeq}
       highlightId={app.loc.panel?.kind === 'thread' ? null : app.loc.msg}
-      onreply={room.kind === 'overview' ? undefined : (m) => app.openPanel({ kind: 'thread', id: m.id })}
+      onreply={(m) => app.openPanel({ kind: 'thread', id: m.id })}
       onbottomchange={onBottom}
-      oneditpending={room.kind === 'overview' ? undefined : editPending}
+      oneditpending={editPending}
     >
       {#snippet empty()}
         <div class="empty-room">
-          {#if room.kind === 'overview'}
-            <Text as="p"><strong>Your workspace at a glance.</strong></Text>
-            <Text as="p" color="secondary">Get a fresh summary to see what is moving, what finished and where a question is still open.</Text>
-          {:else if engineersHere.length === 0}
+          {#if engineersHere.length === 0}
             <Text as="p"><strong>Bring a couple of engineers into this room, then tell them what you're working on.</strong></Text>
             <Button label="Add engineers" variant="primary" size="sm" onclick={() => app.openPanel({ kind: 'room', id: roomId })} />
           {:else}
@@ -125,11 +116,7 @@
       {/snippet}
     </MessageList>
     <div class="room-composer">
-      {#if room.kind === 'overview'}
-        <OverviewSummary {roomId} />
-      {:else}
-        <Composer bind:this={composer} {roomId} {placeholder} />
-      {/if}
+      <Composer bind:this={composer} {roomId} {placeholder} />
     </div>
   </section>
 {/if}

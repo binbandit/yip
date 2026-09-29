@@ -3,8 +3,9 @@ import { href, parseLocation, parseRoute, routePath, safeNext, withPanel, type R
 
 describe('router', () => {
   it('parses every screen', () => {
-    expect(parseRoute('/')).toEqual({ name: 'overview' });
-    expect(parseRoute('/overview')).toEqual({ name: 'overview' });
+    expect(parseRoute('/')).toEqual({ name: 'home' });
+    expect(parseRoute('/start')).toEqual({ name: 'start' });
+    expect(parseRoute('/rooms')).toEqual({ name: 'home' });
     expect(parseRoute('/rooms/abc')).toEqual({ name: 'room', roomId: 'abc' });
     expect(parseRoute('/engineers')).toEqual({ name: 'engineers' });
     expect(parseRoute('/engineers/e1')).toEqual({ name: 'engineer', id: 'e1' });
@@ -20,7 +21,8 @@ describe('router', () => {
 
   it('round-trips routes through paths', () => {
     const routes: Route[] = [
-      { name: 'overview' },
+      { name: 'home' },
+      { name: 'start' },
       { name: 'room', roomId: 'a b' },
       { name: 'engineer', id: 'e1' },
       { name: 'project', id: 'p/1' },

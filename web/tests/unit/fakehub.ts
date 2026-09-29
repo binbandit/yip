@@ -114,19 +114,16 @@ export function demoHub(): FakeHub {
   const roomId = (name: string) => boot.rooms.find((r) => r.name === name)!.id;
   const sec = roomId('Security');
   const re = roomId('Reverse engineering');
-  const ov = roomId('Overview');
   const codeJob = fixture<{ job: { id: string } }>('job-code.json');
   const pipJob = fixture<{ job: { id: string } }>('job-pip.json');
   hub
     .json('GET', /^\/v1\/setup$/, fixture('setup.json'))
     .json('GET', /^\/v1\/bootstrap$/, boot)
     .json('GET', /^\/v1\/workspaces$/, [{ ...boot.org, path: '' }])
-    .json('GET', /^\/v1\/overview(\?|$)/, fixture('overview.json'))
     .json('GET', new RegExp(`^/v1/rooms/${sec}/messages`), fixture('security-messages.json'))
     .json('GET', new RegExp(`^/v1/rooms/${sec}/work`), fixture('security-work.json'))
     .json('GET', new RegExp(`^/v1/rooms/${re}/messages`), fixture('re-messages.json'))
     .json('GET', new RegExp(`^/v1/rooms/${re}/work`), fixture('re-work.json'))
-    .json('GET', new RegExp(`^/v1/rooms/${ov}/messages`), fixture('overview-messages.json'))
     .json('GET', /^\/v1\/rooms\/[^/]+\/messages/, { messages: [], hasMore: false })
     .json('GET', /^\/v1\/rooms\/[^/]+\/work/, [])
     .json('GET', new RegExp(`^/v1/jobs/${codeJob.job.id}$`), codeJob)
@@ -139,7 +136,6 @@ export function demoHub(): FakeHub {
     .json('GET', /^\/v1\/decisions/, fixture('decisions.json'))
     .json('GET', /^\/v1\/questions\/[^/]+$/, fixture('question.json'))
     .json('GET', /^\/v1\/runs$/, fixture('runs.json'))
-    .json('POST', /^\/v1\/overview\/seen$/, { ok: true })
     .json('GET', /^\/v1\/search/, fixture('search-expiry.json'))
     .json('GET', /^\/v1\/diagnostics$/, fixture('diagnostics.json'))
     .json('GET', /^\/v1\/nodes$/, fixture('nodes.json'))

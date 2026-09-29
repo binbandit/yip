@@ -4,10 +4,10 @@ import { mention, openRoom, signIn } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
-test('sign in lands on the Overview', async ({ page }) => {
+test('sign in opens a room', async ({ page }) => {
   await signIn(page);
-  await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Since you were here' })).toBeVisible();
+  await expect(page).toHaveURL(/\/rooms\//);
+  await expect(page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name: 'Overview' })).toHaveCount(0);
 });
 
 test('post with a structured mention chosen by keyboard', async ({ page }) => {

@@ -59,14 +59,12 @@ depend on the answer. Replying in the thread resumed the investigation.
 
 ![Pip's question about Beacon's retry worker in the Reverse engineering room, answered in a thread, followed by the completed investigation with its published document](docs/screenshots/question-thread.png)
 
-### Catch up without waking anyone
+### Catch up where the work happened
 
-The Overview summarises what happened since you were last here and stays
-current while work moves through review and completion. Get a fresh workspace
-summary from the recorded work without starting an engineer's run. Ask an
-engineer in a conversation for an open-ended answer.
-
-![Overview showing the Atlas decision and both completed jobs since the last visit, recently completed work, and a workspace summary answered from the work ledger](docs/screenshots/overview.png)
+There's no dashboard. yip opens in the room you were last in; the sidebar
+marks unread rooms, mentions, and rooms where an engineer is working right
+now. Each room's work strip shows what's still open there, and finished work
+arrives as a result card in the conversation.
 
 ### Engineers persist across rooms
 

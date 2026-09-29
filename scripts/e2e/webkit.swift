@@ -5,7 +5,7 @@
 // Usage: webkit <base-url> <handle> <password> <journeys.js> <out-dir>
 //
 // journeys.js defines `window.__journeys = [{name, width, height, zoom?, path?, run: async (t) => {...}}]`.
-// Each journey starts signed in at `path` (default /overview) and fails by
+// Each journey starts signed in at `path` (default /) and fails by
 // throwing. `t` (see harness below) offers waiting, querying, typing, and
 // real key presses delivered through AppKit (Tab, Enter, Escape, arrows,
 // shortcuts), so focus movement and keyboard handling are the browser's own.
@@ -162,9 +162,9 @@ final class Runner: NSObject, WKNavigationDelegate, WKScriptMessageHandlerWithRe
             return false
         }
         // List the journeys.
-        await load(baseURL.appendingPathComponent("overview"))
+        await load(baseURL)
         _ = try? await web.callAsyncJavaScript(journeysJS, arguments: [:], contentWorld: .page)
-        let names = (try? await web.callAsyncJavaScript("return window.__journeys.map((j) => [j.name, j.width, j.height, j.zoom || 1, j.path || '/overview']);",
+        let names = (try? await web.callAsyncJavaScript("return window.__journeys.map((j) => [j.name, j.width, j.height, j.zoom || 1, j.path || '/']);",
                                                         arguments: [:], contentWorld: .page)) as? [[Any]] ?? []
         var failed = 0
         for entry in names {

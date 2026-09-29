@@ -37,7 +37,7 @@
               <Text color="secondary">{app.bootError || 'The hub did not respond.'} Drafts you were writing are saved on this device.</Text>
               <Button label="Try again" variant="primary" onclick={() => app.boot()} />
               {#if workspaceBase()}
-                <Button label="Open main workspace" onclick={() => window.location.assign('/overview')} />
+                <Button label="Open main workspace" onclick={() => window.location.assign('/')} />
               {/if}
             </VStack>
           </Center>

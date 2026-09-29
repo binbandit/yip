@@ -84,22 +84,9 @@ help jobs remain available in its details. Review labels come from the
 current round on the current immutable result, never from job state alone.
 `review_ready` means In review, not approved.
 
-Overview derives catch-up from persisted event changes and current ledger
-facts. Each changed root assignment appears once with its current summary,
-open questions or permission requests, and the applicable review verdict.
-Links open the work, conversation, question, review or decision. Unconfirmed
-attempts remain unconfirmed. Older waits and old-version approvals are not
-reported as current; the live ledger below also includes unchanged open
-work. There is no new persisted status stream, and opening Overview does
-not mark rooms read.
-
-While Overview stays open, durable work and decision events trigger a
-coalesced refresh. The client pins the first response's `since` timestamp
-for that visit, independently of recording the visit as seen, so an update
-cannot erase earlier catch-up. Source links retain their thread and message.
-The optional summary is an explicit snapshot action; it does not claim to
-answer arbitrary questions or wake an engineer. Completed ledger rows show
-their result summary and completion time instead of the final tool activity.
+There is no cross-project dashboard ([0016](decisions/0016-no-overview.md)):
+catch-up is the sidebar's unread, mention and working markers, each room's
+work strip and result cards, and the engineer and project pages.
 
 Open questions addressed to the owner are attached to the root assignment,
 including questions raised by its reviewer or another child assignment.

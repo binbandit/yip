@@ -875,76 +875,6 @@ func (e *env) jobsWithReplies() []protocol.Job {
 	return out
 }
 
-// "Since you were here" reports each job's current state: an earlier wait
-// is history once the job is running again.
-func TestRegressionCatchupShowsCurrentState(t *testing.T) {
-	t.Parallel()
-	var attempts atomic.Int32
-	e := newEnv(t, envOptions{director: func(m *manifest.Manifest) json.RawMessage {
-		switch {
-		case replyTo(m, "Engineering", "plan"):
-			return script(toolStep("work_create", map[string]any{"title": "Plan migration", "objective": "plan", "kind": "investigation", "project": "Atlas"}, ""))
-		case m.Job.Title == "Plan migration":
-			if attempts.Add(1) > 1 {
-				return script(toolStep("room_post", map[string]any{"body": "migration resumed"}, ""), fake.Step{Sleep: "4s"},
-					toolStep("work_update", map[string]any{"state": "failed", "summary": "test done"}, ""))
-			}
-			return script(toolStep("human_ask", map[string]any{"question": "Which database first?", "missingFact": "database", "contextChecked": "docs"}, ""),
-				toolStep("work_wait", map[string]any{"reason": "missing_information"}, ""))
-		}
-		return nil
-	}})
-	e.post("Engineering", "@Mira plan the migration", []string{"mira"}, nil)
-	var q protocol.Message
-	e.waitFor("question", 30*time.Second, func() bool {
-		for _, m := range e.messages("Engineering") {
-			if m.Kind == protocol.MessageQuestion {
-				q = m
-				return true
-			}
-		}
-		return false
-	})
-	j := e.waitJob("Plan migration", protocol.JobWaiting)
-	var waiting protocol.Overview
-	e.c.must("GET", "/v1/overview", nil, &waiting)
-	count := 0
-	for _, c := range waiting.Catchup {
-		if strings.Contains(c.Title, "Plan migration") {
-			count++
-			if c.Kind != "blocker" || !strings.Contains(c.Detail, "Still open: database") || len(c.Refs) != 2 || c.Refs[1].Kind != "question" {
-				t.Fatalf("catch-up lost the open question or evidence: %+v", c)
-			}
-		}
-	}
-	if count != 1 {
-		t.Fatalf("want one catch-up per assignment, got %d: %+v", count, waiting.Catchup)
-	}
-	e.post("Engineering", "Postgres first.", nil, func(r *protocol.PostMessageRequest) { r.ThreadID = q.ID })
-	e.waitMessage("Engineering", "migration resumed")
-	var ov protocol.Overview
-	e.c.must("GET", "/v1/overview", nil, &ov)
-	for _, c := range ov.Catchup {
-		if strings.Contains(c.Title, "Plan migration") && (c.Kind != "active" || strings.Contains(c.Detail, "Still open:") || len(c.Refs) != 1) {
-			t.Fatalf("resumed work retained an old blocker: %+v", c)
-		}
-	}
-	// Project an unconfirmed latest attempt conservatively, even if the
-	// assignment itself still says running. This mutates only this test hub.
-	if err := e.hub.Store().Tx(e.ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(e.ctx, "UPDATE runs SET state = 'unknown' WHERE id = (SELECT current_run_id FROM jobs WHERE id = ?)", j.ID)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	e.c.must("GET", "/v1/overview", nil, &ov)
-	for _, c := range ov.Catchup {
-		if strings.Contains(c.Title, "Plan migration") && (c.Kind != "unknown" || !strings.Contains(c.Detail, "not reported a confirmed outcome")) {
-			t.Fatalf("catch-up guessed the attempt's outcome: %+v", c)
-		}
-	}
-}
-
 // Search finds work by its short ID, and a project filter narrows results
 // to that project before ranking.
 func TestRegressionSearchByWorkIDAndProject(t *testing.T) {
@@ -1005,42 +935,6 @@ func TestRegressionSoloEngineerOwnerReviews(t *testing.T) {
 	e.c.must("POST", "/v1/jobs/"+j.ID+"/accept", protocol.AcceptJobRequest{Revision: j.Revision.Head, Version: j.Version}, &done)
 	if done.State != protocol.JobCompleted {
 		t.Fatalf("accept should complete: %s", done.State)
-	}
-}
-
-// Asking the Overview where things stand covers every project the user's
-// rooms reach, naming quiet ones, and what waits on the user.
-func TestRegressionOverviewStatusCoversAllProjects(t *testing.T) {
-	t.Parallel()
-	e := newEnv(t, envOptions{})
-	e.post("Engineering", "@Pip can you investigate Beacon's request flow?", []string{"pip"}, nil)
-	e.waitJob("Document Beacon", protocol.JobRunning, protocol.JobWaiting, protocol.JobReviewReady, protocol.JobCompleted)
-	var rooms []protocol.Room
-	e.c.must("GET", "/v1/rooms", nil, &rooms)
-	overview := ""
-	for _, r := range rooms {
-		if r.Kind == protocol.RoomKindOverview {
-			overview = r.ID
-		}
-	}
-	e.c.must("POST", "/v1/rooms/"+overview+"/messages", protocol.PostMessageRequest{Body: "Where are we with everything?", ClientKey: "status-1"}, nil)
-	var answer string
-	e.waitFor("the ledger answer", 10*time.Second, func() bool {
-		var page protocol.MessagePage
-		e.c.must("GET", "/v1/rooms/"+overview+"/messages?limit=50", nil, &page)
-		for _, m := range page.Messages {
-			if m.Kind == protocol.MessageStatus {
-				answer = m.Body
-				return true
-			}
-		}
-		return false
-	})
-	if !strings.Contains(answer, "**Beacon**") {
-		t.Errorf("active project missing:\n%s", answer)
-	}
-	if !strings.Contains(answer, "Quiet: Atlas") {
-		t.Errorf("a quiet project should be named:\n%s", answer)
 	}
 }
 
@@ -1843,21 +1737,6 @@ func TestRegressionTeamConversation(t *testing.T) {
 	rounds := d.Reviews[0].Rounds
 	if rounds[0].State != protocol.ReviewChangesRequested || rounds[1].State != protocol.ReviewApproved || rounds[1].Target.Head != j.Revision.Head {
 		t.Fatalf("verdicts: %+v", rounds)
-	}
-	var ov protocol.Overview
-	e.c.must("GET", "/v1/overview", nil, &ov)
-	catchups := 0
-	for _, c := range ov.Catchup {
-		if len(c.Refs) == 0 || c.Refs[0].Kind != "job" || c.Refs[0].ID != j.ID {
-			continue
-		}
-		catchups++
-		if c.Kind != "completed" || !strings.Contains(c.Detail, "approved the updated result after re-review") || len(c.Refs) != 2 || c.Refs[1].ID != d.Reviews[0].ID || c.RoomID != j.Source.RoomID {
-			t.Fatalf("catch-up lost completed work or its review evidence: %+v", c)
-		}
-	}
-	if catchups != 1 {
-		t.Fatalf("want one completed assignment in catch-up, got %d", catchups)
 	}
 	owner, results, questions := 0, 0, 0
 	for _, m := range e.messages("Security") {

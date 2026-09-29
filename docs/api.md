@@ -79,7 +79,6 @@ new workspace's Machines enrollment command.
 | `GET /v1/rooms/{id}/work[?include=replies]` | → `WorkRow[]` (work strip; `include=replies` adds queued/running conversational replies; `runState` is the latest attempt's state) |
 | `GET /v1/runs` | → `Run[]` attempts queued or executing in your rooms (for "working" indicators) |
 | `GET /v1/questions/{id}`, `GET /v1/decisions/{id}` | → `Question` / `Decision` |
-| `POST /v1/overview/seen` | records the visit used by "Since you were here" |
 | `GET /v1/threads/{rootMessageId}` | → `MessagePage` (root first, then replies) |
 | `POST /v1/messages/{id}/reactions` | `ReactRequest` → `Message` |
 | `PATCH/DELETE /v1/messages/{id}` | `{body}` → `Message` / redact own message |
@@ -89,7 +88,7 @@ new workspace's Machines enrollment command.
 | `PUT /v1/projects/{id}/repos/{repoId\|new}` | `PutRepoRequest` → `Project`. `remoteUrl` may be just a GitHub `owner/name` (or any github.com URL): the hub fills in the HTTPS clone URL, `forge: github` with that `owner/name`, the name, and — when `defaultBranch` is empty — the default branch GitHub reports, asking through the hub machine's `gh` sign-in first (so private repositories work), then the REST API. A repository GitHub doesn't show is refused (400) unless a `defaultBranch` is given. Other remotes: name from the URL's last segment, branch `main`, forge `none` |
 | `POST /v1/projects/{id}/repos/import?name=&branch=&repo=` | raw body: a git bundle (`git bundle create <file> --all`, up to 512 MB) → `Project`. For code with no remote the machines can reach: they build their copy from the bundle (`Repo.sourceBundleId`, `importedAt`); nothing can be pushed from it. `repo=` replaces an imported repository's bundle with a newer one. Partial bundles (with prerequisites) are refused |
 | `PUT /v1/projects/{id}/grants/{engineerId}` | `PutGrantRequest` (`access`: read/write/none; `actions`: push, open_pr, publish_review, merge) |
-| `GET /v1/jobs?state=a,b&project=&owner=` | → `Job[]` (work ledger; excludes conversational replies) |
+| `GET /v1/jobs?state=a,b&project=&owner=&root=1&limit=` | → `Job[]` (work ledger, newest first, up to `limit` (default 200); excludes conversational replies; `root=1` leaves out reviews and delegated sub-jobs) |
 | `GET /v1/jobs/{id}` | → `JobDetail` (runs, checks, artifacts, reviews with rounds/findings, questions, approvals, PRs, children, decisions, activity, inputs, `missing` evidence, `revisions` with file/line counts, `followUps`). A job started from a request in the thread of finished work carries `followsId`, the work it follows up. `quarantined` lists output a machine sent under an old lease epoch (events, final reports, tool calls; redacted, recorded once); it never changes the work |
 | `GET /v1/jobs/{id}/runs/{runId}/activity` | → `RunActivity[]` (tool log) |
 | `POST /v1/jobs/{id}/input` | `JobInputRequest` → `JobInputResponse` (steering; `input.delivery` is `pending` → later `immediate` or `queued`) |
@@ -108,12 +107,11 @@ new workspace's Machines enrollment command.
 | `GET /v1/provider-profiles`, `PUT /v1/provider-profiles/{id}` | → `ProviderProfile[]` / `ProviderProfileRequest` (`maxConcurrency` 1–16; default 1 — runs on one account share its allowance). `pausedUntil` is set while the account's allowance is exhausted; its queued work waits until then |
 | `GET /v1/decisions?status=`, `POST /v1/decisions`, `POST /v1/decisions/{id}` | `DecisionRequest` / `DecisionActionRequest` |
 | `GET /v1/engineers/{id}/notes`, `POST /v1/engineers/{id}/notes`, `POST /v1/notes/{id}` | → `EngineerNote[]` / `NoteRequest` (an owner-written note, kept at once; `supersedesId` corrects one, keeping its scope and visibility) / `NoteActionRequest` (`accept`, `reject`, `renew`, `remove`, with `version`). Engineers keep notes with the `note_record` tool. Live changes arrive as `note.updated` (owner only) |
-| `GET /v1/overview?seen=1` | → `Overview` (catch-up since last visit, work rows, decisions, open questions, `roomId` of the personal Overview conversation). `seen=1` records the visit. |
 | `GET /v1/search?q=&room=&project=` | → `SearchResult[]` (kinds: room, engineer, project, job, message, decision). `project` narrows to rooms linked to it, its work and its decisions, before ranking. A work ID (whole, `#`-prefixed, or six or more characters from either end; the UI shows the last six) finds that work directly |
 | `GET /v1/artifacts/{id}[?download=1]` | artifact bytes; text types render as plain text, never HTML |
 | `GET /v1/diagnostics` | → `Diagnostics` |
 | `GET /v1/diagnostics/bundle` | → `DiagnosticBundle`: the opt-in troubleshooting export (counts, health, versions, redacted recent failures; no messages, prompts, code, account names or credentials) |
-| `GET /v1/export` | zip of rooms, messages, jobs, decisions, artifacts (profile pictures included, as `avatar` artifacts) |
+| `GET /v1/export` | zip of rooms (archived ones included), messages, jobs, decisions, artifacts (profile pictures included, as `avatar` artifacts) |
 | `GET /v1/events` | SSE (below) |
 
 ## Event stream

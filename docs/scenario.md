@@ -76,8 +76,8 @@ Open an engineer (**Engineers → Mira**) and set:
   you mean to pay per token. With it off, an API-billed installation is never
   used for this engineer, and the work says why it's waiting.
 
-The **Getting started** checklist on Overview follows these steps and ticks
-them off from live state.
+The **Getting started** checklist, where a new workspace opens, follows these
+steps and ticks them off from live state.
 
 ## 5. A room, a project, a first task
 
@@ -137,7 +137,7 @@ not impressions:
 | 1 | Familiarity | Engineer profiles, and whether you'd predict who answers |
 | 2 | No messenger work | Help and review requests between engineers in the room |
 | 3 | Natural interruption | The receipt under your message while work runs |
-| 4 | Truthful catch-up | Overview → Since you were here, and "Where are we with everything?" |
+| 4 | Truthful catch-up | The sidebar's unread and working markers, and each room's work strip, after time away |
 | 5 | Continuity | Decisions with sources; a private room's decision staying private |
 | 6 | Trust | Work state words, checks bound to revisions, *Not confirmed* |
 | 7 | Useful quiet | An idle room staying idle; no acknowledgement chatter |

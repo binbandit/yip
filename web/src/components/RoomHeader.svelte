@@ -16,17 +16,13 @@
   const engineers = $derived(room.members.filter((m) => m.kind === 'engineer').map((m) => app.data.engineers[m.id]).filter(Boolean));
   const projects = $derived(room.projectIds.map((id) => app.data.projects[id]).filter(Boolean));
   const replyText = $derived(
-    room.kind === 'overview'
-      ? 'Summaries use recorded work and confirmed outcomes'
-      : room.replyMode === 'steward' && room.stewardId
-        ? `${app.engineerName(room.stewardId)} answers unaddressed messages`
-        : 'Quiet — only mentioned engineers reply',
+    room.replyMode === 'steward' && room.stewardId
+      ? `${app.engineerName(room.stewardId)} answers unaddressed messages`
+      : 'Quiet — only mentioned engineers reply',
   );
-  const replyShort = $derived(
-    room.kind === 'overview' ? 'Recorded updates' : room.replyMode === 'steward' && room.stewardId ? `${app.engineerName(room.stewardId)} answers` : 'Mentions only',
-  );
+  const replyShort = $derived(room.replyMode === 'steward' && room.stewardId ? `${app.engineerName(room.stewardId)} answers` : 'Mentions only');
   const membersLabel = $derived(engineers.map((e) => `${e.name}, ${e.role}`).join('; '));
-  const title = $derived(room.kind === 'dm' && engineers[0] ? engineers[0].name : room.kind === 'overview' ? 'Workspace summary' : room.name);
+  const title = $derived(room.kind === 'dm' && engineers[0] ? engineers[0].name : room.name);
 </script>
 
 <header class="room-head">
@@ -34,9 +30,9 @@
     <h1 id="room-title" data-screen-title tabindex="-1">
       {#if room.kind === 'room'}<span class="hash" aria-hidden="true">{#if room.private}<Icon icon={Lock} size="sm" />{:else}#{/if}</span>{/if}{title}
     </h1>
-    {#if room.private && room.kind !== 'overview'}<VisuallyHidden>, private</VisuallyHidden>{/if}
+    {#if room.private}<VisuallyHidden>, private</VisuallyHidden>{/if}
     <Text as="p" type="supporting" maxLines={1} class="purpose">
-      {#if room.kind === 'dm' && engineers[0]}{engineers[0].role}{:else if room.kind === 'overview'}Across your rooms and projects{:else}{room.purpose}{/if}
+      {#if room.kind === 'dm' && engineers[0]}{engineers[0].role}{:else}{room.purpose}{/if}
     </Text>
   </div>
 
@@ -72,11 +68,9 @@
         </span>
       </Button>
     {/if}
-    {#if room.kind !== 'overview'}
-      <IconButton label="Room settings" tooltip="Room settings" variant="ghost" size="sm" onclick={() => app.openPanel({ kind: 'room', id: room.id })}>
-        {#snippet icon()}<Icon icon={Settings} size="sm" />{/snippet}
-      </IconButton>
-    {/if}
+    <IconButton label="Room settings" tooltip="Room settings" variant="ghost" size="sm" onclick={() => app.openPanel({ kind: 'room', id: room.id })}>
+      {#snippet icon()}<Icon icon={Settings} size="sm" />{/snippet}
+    </IconButton>
   </div>
 </header>
 
