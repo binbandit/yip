@@ -206,7 +206,10 @@ func (r *Runner) toolRunCheck(ctx context.Context, ar *activeRun, raw json.RawMe
 	if a.TimeoutSeconds > 0 {
 		timeout = time.Duration(a.TimeoutSeconds) * time.Second
 	}
-	head, dirty, _, _ := ar.ws.Head(ctx)
+	head, dirty, _, err := ar.ws.Head(ctx)
+	if err != nil {
+		return nil, apiErr("internal", "Reading the workspace failed: %s", err.Error())
+	}
 	revision := head
 	if dirty {
 		revision = head + "+uncommitted"
@@ -219,6 +222,13 @@ func (r *Runner) toolRunCheck(ctx context.Context, ar *activeRun, raw json.RawMe
 		Summary: "Run check: " + truncate(a.Command, 200), Target: revision}, raw)
 	if d.Decision != "allow" {
 		return nil, apiErr("forbidden", "Not permitted to run this check: %s", firstNonEmpty(d.Reason, "the request was declined"))
+	}
+	currentHead, currentDirty, _, err := ar.ws.Head(ctx)
+	if err != nil {
+		return nil, apiErr("internal", "Reading the workspace failed: %s", err.Error())
+	}
+	if currentHead != head || currentDirty != dirty {
+		return nil, apiErr("conflict", "The workspace changed while this check was awaiting permission. Run the check again on the current revision.")
 	}
 	cmd := exec.Command("/bin/sh", "-c", a.Command)
 	var checkContainer *dockerContainer
@@ -260,12 +270,13 @@ func (r *Runner) toolRunCheck(ctx context.Context, ar *activeRun, raw json.RawMe
 		return nil, apiErr("internal", "Could not start the check: %s", err.Error())
 	}
 	var stopOnce sync.Once
+	exitConfirmed := false
 	stop := func() {
 		stopOnce.Do(func() {
 			if checkContainer != nil {
 				checkContainer.remove()
 			}
-			proc.Terminate(5 * time.Second)
+			exitConfirmed = proc.Terminate(5 * time.Second)
 		})
 	}
 	// The check runs in its own process group. It is stopped as a group on
@@ -296,6 +307,10 @@ wait:
 			}
 		}
 	}
+	// The shell can exit while redirected background children remain alive.
+	// Stop and confirm its owned process group before inspecting the final
+	// tree. This also joins any timeout/cancellation cleanup already running.
+	stop()
 	if checkContainer != nil && !checkContainer.remove() {
 		r.dockerUncertain()
 		return nil, apiErr("internal", "Could not confirm check container removal; runner drained: %s", checkContainer.name)
@@ -308,6 +323,24 @@ wait:
 		out.WriteString("\n[yip] check timed out after " + timeout.String() + "; its process group was stopped\n")
 	} else if stopped != "" {
 		out.WriteString("\n[yip] check stopped because " + stopped + "\n")
+	}
+	note := ""
+	if dirty {
+		note = "This ran on uncommitted changes, so it does not count as evidence for a published revision. Publish with work_publish_revision, then run checks again."
+	}
+	// A check (or another tool running beside it) can edit or commit files.
+	// Its exit status remains useful, but it must not certify the clean head
+	// sampled before it ran if the workspace no longer matches that head.
+	endHead, endDirty, _, headErr := ar.ws.Head(ctx)
+	if headErr != nil || endHead != head || endDirty != dirty {
+		revision = head + "+changed-during-check"
+		note = "The workspace changed during this check, or its final revision could not be verified. This does not count as evidence for a published revision. Publish the current work, then run checks again."
+		out.WriteString("\n[yip] " + note + "\n")
+	}
+	if !exitConfirmed || timedOut || stopped != "" || ctx.Err() != nil || !ar.admit.Load() {
+		revision = head + "+interrupted-check"
+		note = "This check was interrupted or its process group could not be confirmed stopped. It does not count as evidence for a published revision. Run checks again after the workspace is ready."
+		out.WriteString("\n[yip] " + note + "\n")
 	}
 	name := firstNonEmpty(a.Name, a.Command)
 	logText := Redact(out.String())
@@ -331,8 +364,8 @@ wait:
 	}
 	r.emit(ar.m.RunID, ar.epoch, protocol.RunEvent{Kind: protocol.RunEvToolFinished, Tool: bridge.WorkRunCheck, Text: name + ": " + status})
 	res := map[string]any{"exitCode": exit, "passed": exit == 0, "revision": revision, "durationMs": dur.Milliseconds(), "outputTail": tail}
-	if dirty {
-		res["note"] = "This ran on uncommitted changes, so it does not count as evidence for a published revision. Publish with work_publish_revision, then run checks again."
+	if note != "" {
+		res["note"] = note
 	}
 	return res, nil
 }

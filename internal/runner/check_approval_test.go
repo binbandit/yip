@@ -28,8 +28,12 @@ type checkResult struct {
 // runner's half of that gate.
 func TestRunCheckAsksBeforeRunning(t *testing.T) {
 	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, args := range [][]string{
 		{"init", "--quiet"},
+		{"add", "tracked.txt"},
 		{"-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "--allow-empty", "-m", "base"},
 	} {
 		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
@@ -62,9 +66,10 @@ func TestRunCheckAsksBeforeRunning(t *testing.T) {
 	ar := &activeRun{m: protocol.ExecutionManifest{RunID: "run-1", Provider: "codex", Mode: protocol.ModeEdit}, epoch: 1,
 		ws: &Workspace{Dir: repo}, done: make(chan struct{})}
 	ar.admit.Store(true)
+	timeoutSeconds := 0
 	check := func(command string) <-chan checkResult {
 		out := make(chan checkResult, 1)
-		raw, _ := json.Marshal(bridge.WorkRunCheckArgs{Command: command})
+		raw, _ := json.Marshal(bridge.WorkRunCheckArgs{Command: command, TimeoutSeconds: timeoutSeconds})
 		go func() {
 			res, e := r.toolRunCheck(ctx, ar, raw)
 			out <- checkResult{res, e}
@@ -120,24 +125,137 @@ func TestRunCheckAsksBeforeRunning(t *testing.T) {
 		t.Fatal("a denied check ran anyway")
 	}
 
-	// An allowed check runs and is recorded with the same command.
-	done = check("touch checked")
-	resolve(approvalFor(), "allow", "")
-	call := nextOfType(t, frames, protocol.EvToolCall)
-	var tc protocol.ToolCall
-	_ = json.Unmarshal(call.Payload, &tc)
-	var rec protocol.CheckRecord
-	_ = json.Unmarshal(tc.Args, &rec)
-	if tc.Tool != bridge.RecordCheck || rec.Command != "touch checked" || rec.ExitCode != 0 || !ran("checked") {
-		t.Fatalf("an allowed check should run and be recorded: %s %+v", tc.Tool, rec)
+	// An allowed check keeps its command and exit status, but only a stable
+	// clean workspace may certify a published revision.
+	afterApproval := func() {}
+	allowed := func(command string, wantExit ...int) protocol.CheckRecord {
+		t.Helper()
+		expectedExit := 0
+		if len(wantExit) > 0 {
+			expectedExit = wantExit[0]
+		}
+		done := check(command)
+		resolve(approvalFor(), "allow", "")
+		afterApproval()
+		call := nextOfType(t, frames, protocol.EvToolCall)
+		var tc protocol.ToolCall
+		_ = json.Unmarshal(call.Payload, &tc)
+		var rec protocol.CheckRecord
+		_ = json.Unmarshal(tc.Args, &rec)
+		if tc.Tool != bridge.RecordCheck || rec.Command != command || rec.ExitCode != expectedExit {
+			t.Fatalf("an allowed check should run and be recorded: %s %+v", tc.Tool, rec)
+		}
+		b, _ := json.Marshal(protocol.ToolResult{CallID: tc.CallID, OK: true, Result: json.RawMessage(`{}`)})
+		if err := r.handle(ctx, c, protocol.Frame{Type: protocol.CmdToolResult, ID: "result:" + tc.CallID, Payload: b}); err != nil {
+			t.Fatal(err)
+		}
+		got := result(done)
+		if got.err != nil {
+			t.Fatalf("the allowed check failed: %+v", got.err)
+		}
+		res := got.res.(map[string]any)
+		if res["revision"] != rec.Revision || res["passed"] != (expectedExit == 0) {
+			t.Fatalf("tool result and recorded evidence disagree: %+v, %+v", res, rec)
+		}
+		if rec.Revision != head && res["note"] == nil {
+			t.Fatal("unverified evidence needs an explanation")
+		}
+		return rec
 	}
-	b, _ := json.Marshal(protocol.ToolResult{CallID: tc.CallID, OK: true, Result: json.RawMessage(`{}`)})
-	if err := r.handle(ctx, c, protocol.Frame{Type: protocol.CmdToolResult, ID: "result:" + tc.CallID, Payload: b}); err != nil {
+	if rec := allowed("true"); rec.Revision != head {
+		t.Fatalf("clean check lost its revision: %+v", rec)
+	}
+	if rec := allowed("touch checked"); rec.Revision == head || !ran("checked") {
+		t.Fatalf("a check that changes the workspace must not certify the original clean revision: %+v", rec)
+	}
+	if rec := allowed("true"); rec.Revision != head+"+uncommitted" {
+		t.Fatalf("dirty check should remain uncommitted: %+v", rec)
+	}
+	if rec := allowed("rm checked"); rec.Revision == head {
+		t.Fatalf("removing initial uncommitted changes must not certify the clean revision: %+v", rec)
+	}
+	if rec := allowed("printf changed > tracked.txt"); rec.Revision == head {
+		t.Fatalf("editing tracked content must not certify the original revision: %+v", rec)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("original"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := result(done); got.err != nil {
-		t.Fatalf("the allowed check failed: %+v", got.err)
+
+	if rec := allowed("git -c user.name=t -c user.email=t@example.com commit --quiet --allow-empty -m check"); rec.Revision == head {
+		t.Fatalf("a moved HEAD must not certify the original revision: %+v", rec)
 	}
+	head, err = git(ctx, repo, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := allowed("mv .git .git-away"); rec.Revision == head {
+		t.Fatalf("an unreadable final revision must not certify the original revision: %+v", rec)
+	}
+	if err := os.Rename(filepath.Join(repo, ".git-away"), filepath.Join(repo, ".git")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Finishing the shell must also stop its owned background children.
+	allowed("(sleep 0.3; touch late-child) >/dev/null 2>&1 &")
+	time.Sleep(400 * time.Millisecond)
+	if ran("late-child") {
+		t.Error("a check left a background child modifying the workspace after it returned")
+	}
+
+	// A process that handles cancellation with exit 0 still did not finish
+	// the requested check, and cannot certify its starting revision.
+	timeoutSeconds = 1
+	if rec := allowed("trap 'exit 0' TERM; while :; do sleep 1; done", 124); rec.Revision == head {
+		t.Fatalf("a timed-out check must not certify the original revision: %+v", rec)
+	}
+	timeoutSeconds = 0
+
+	afterApproval = func() {
+		ready := filepath.Join(r.scratchDir(ar.m.RunID), "home", "ready")
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			if _, err := os.Stat(ready); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("cancellation check never became ready")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		ar.admit.Store(false)
+	}
+	if rec := allowed(`trap 'exit 0' TERM; touch "$HOME/ready"; while :; do sleep 1; done`); rec.Revision == head {
+		t.Fatalf("a stopped check that exits zero must not certify the original revision: %+v", rec)
+	}
+	ar.admit.Store(true)
+	afterApproval = func() {}
+
+	// Investigation workspaces have no repository; checks still run there,
+	// with an empty revision that cannot satisfy a code completion gate.
+	savedWorkspace, savedHead := ar.ws, head
+	ar.ws, head = &Workspace{Dir: t.TempDir(), Scratch: true}, ""
+	if rec := allowed("true"); rec.Revision != "" {
+		t.Fatalf("scratch check should have no revision: %+v", rec)
+	}
+	ar.ws, head = savedWorkspace, savedHead
+
+	// Permission for an earlier clean revision cannot run after that tree changes.
+	done = check("touch stale-approval")
+	req = approvalFor()
+	if err := os.WriteFile(filepath.Join(repo, "intervening-edit"), []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolve(req, "allow", "")
+	if got := result(done); got.err == nil || got.err.Code != "conflict" || ran("stale-approval") {
+		t.Fatalf("stale permission must run nothing: %+v", got)
+	}
+
+	// An unreadable starting revision must fail before requesting permission.
+	ar.ws.Dir = filepath.Join(repo, "missing")
+	if got := result(check("touch unknown-head")); got.err == nil || got.err.Code != "internal" {
+		t.Fatalf("unknown starting revision must be rejected: %+v", got)
+	}
+	ar.ws.Dir = repo
 
 	// A run that has stopped admitting work runs nothing, without asking.
 	ar.admit.Store(false)
