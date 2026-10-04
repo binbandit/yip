@@ -93,25 +93,36 @@ func (h *Hub) toolNoteRecord(ctx context.Context, t *txn, env toolEnv, a bridge.
 	if err != nil {
 		return nil, err
 	}
+	var previous protocol.EngineerNote
 	if a.Supersedes != "" {
 		prev, err := store.GetNote(ctx, t.tx, a.Supersedes)
 		if err != nil || prev.EngineerID != env.eng.ID || !noteVisibleIn(prev, env.room) {
 			return nil, domain.Invalid("Note %s isn't one of your notes visible here.", a.Supersedes)
 		}
-	}
-	var current int
-	_ = t.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM engineer_notes WHERE engineer_id = ? AND kind = 'note' AND status IN ('proposed','accepted')`, env.eng.ID).Scan(&current)
-	if current >= notesPerEngineer {
-		return nil, domain.Limit("You already keep %d notes. Supersede an outdated one instead of adding another.", current)
+		if prev.Status != "accepted" && prev.Status != "proposed" {
+			return nil, domain.Conflict("That note is already %s.", prev.Status)
+		}
+		previous = prev
 	}
 	now := h.now()
 	n := protocol.EngineerNote{ID: domain.NewID(), EngineerID: env.eng.ID, Scope: scope, Body: body, Status: "proposed", SupersedesID: a.Supersedes,
 		CreatedBy: env.me, Sources: sources, VisibleRoomIDs: visible, ReviewAfter: now.Add(noteReviewAfter), CreatedAt: now}
+	autoAccept := h.ownFinishedWorkOnly(ctx, t.tx, n)
+	var current int
+	if err := t.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM engineer_notes WHERE engineer_id = ? AND kind = 'note' AND status IN ('proposed','accepted')`, env.eng.ID).Scan(&current); err != nil {
+		return nil, err
+	}
+	// Only an immediately accepted replacement frees a current note's slot
+	// in this transaction. A proposal still occupies a slot beside its source.
+	replacesCurrent := autoAccept && previous.Kind == "note"
+	if current >= notesPerEngineer && !replacesCurrent {
+		return nil, domain.Limit("You already keep %d notes. Supersede an outdated one with an automatically kept correction, or ask the owner to remove one.", current)
+	}
 	if err := store.InsertNote(ctx, t.tx, n); err != nil {
 		return nil, err
 	}
 	status, msg := "proposed", "Saved as a suggestion the owner can keep; no need to mention this in the conversation. (Notes citing finished work you did or reviewed, its result, or the owner's own words are kept automatically. Finished work is also recorded for you without a note.)"
-	if h.ownFinishedWorkOnly(ctx, t.tx, n) {
+	if autoAccept {
 		if err := h.acceptNote(ctx, t, n, protocol.Actor{Kind: protocol.ActorSystem, ID: "policy:auto-accept"}); err != nil {
 			return nil, err
 		}
@@ -131,8 +142,9 @@ func (h *Hub) ownFinishedWorkOnly(ctx context.Context, q store.Q, n protocol.Eng
 		return false
 	}
 	if n.SupersedesID != "" {
-		if prev, err := store.GetNote(ctx, q, n.SupersedesID); err == nil && prev.CreatedBy.Kind == protocol.ActorUser {
-			return false // correcting the owner's note stays a proposal
+		prev, err := store.GetNote(ctx, q, n.SupersedesID)
+		if err != nil || prev.CreatedBy.Kind == protocol.ActorUser || (prev.Status != "accepted" && prev.Status != "proposed") {
+			return false // owner corrections and stale proposals need the owner
 		}
 	}
 	ownerID, _ := h.ownerID(ctx, q)
@@ -196,6 +208,15 @@ func (h *Hub) autoAcceptNotes(ctx context.Context, t *txn, job store.JobRow) err
 }
 
 func (h *Hub) acceptNote(ctx context.Context, t *txn, n protocol.EngineerNote, by protocol.Actor) error {
+	if n.SupersedesID != "" {
+		prev, err := store.GetNote(ctx, t.tx, n.SupersedesID)
+		if err != nil {
+			return err
+		}
+		if prev.Status != "accepted" && prev.Status != "proposed" {
+			return domain.Conflict("The note being corrected is already %s.", prev.Status)
+		}
+	}
 	if _, err := store.SetNoteStatus(ctx, t.tx, n.ID, 0, "accepted", &by, ""); err != nil {
 		return err
 	}
