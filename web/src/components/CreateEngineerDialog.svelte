@@ -1,11 +1,12 @@
 <script lang="ts">
   // New engineer from an editable role starting point. No invented biography
   // or claimed experience — just a role, what they're for, and instructions.
-  import { Button, FieldLabel, RadioList, RadioListItem, Text, TextArea, TextInput } from '@astryx-svelte/core';
+  import { Button, FieldLabel, Selector, Text, TextArea, TextInput } from '@astryx-svelte/core';
   import Notice from './Notice.svelte';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
+  import { engineerPresets } from '../lib/engineer-presets';
   import Dialog from './Dialog.svelte';
   import ProviderSelect from './ProviderSelect.svelte';
 
@@ -14,48 +15,14 @@
   }
   let { onclose }: Props = $props();
 
-  const STARTS = [
-    {
-      role: 'Platform engineer',
-      description: 'Builds and maintains backend services and shared foundations.',
-      tags: 'backend, infrastructure, reliability',
-      instructions: 'Preserve established contracts. Prefer small, well-tested changes. Get an independent review for security-sensitive code.',
-    },
-    {
-      role: 'Security engineer',
-      description: 'Reviews changes for security defects and checks the evidence behind claims.',
-      tags: 'security, review, auth',
-      instructions: 'Review the actual revision and the surrounding code. Distinguish blocking defects from suggestions. Never approve what you could not check.',
-    },
-    {
-      role: 'Frontend engineer',
-      description: 'Works on user interfaces, accessibility and client code.',
-      tags: 'ui, accessibility, typescript',
-      instructions: 'Match the existing design system. Check keyboard and screen-reader behaviour. Include evidence for visual changes.',
-    },
-    {
-      role: 'Test engineer',
-      description: 'Reproduces problems and makes sure fixes stay fixed.',
-      tags: 'testing, ci, regression',
-      instructions: 'Reproduce the problem first. Add a regression test for every fix. Report exactly which commands ran and their results.',
-    },
-    {
-      role: 'Reverse engineer',
-      description: 'Makes unfamiliar systems understandable from their code.',
-      tags: 'tracing, documentation',
-      instructions: 'Map behaviour from the code itself and cite source locations. Ask only for what you genuinely cannot find.',
-    },
-    { role: '', description: '', tags: '', instructions: '' },
-  ];
-
-  let start = $state(0);
+  let preset = $state(engineerPresets[0].id);
   let name = $state('');
   let handle = $state('');
   let handleTouched = $state(false);
-  let role = $state(STARTS[0].role);
-  let description = $state(STARTS[0].description);
-  let tags = $state(STARTS[0].tags);
-  let instructions = $state(STARTS[0].instructions);
+  let role = $state(engineerPresets[0].role);
+  let description = $state(engineerPresets[0].description);
+  let tags = $state(engineerPresets[0].tags);
+  let instructions = $state(engineerPresets[0].instructions);
   const readyProvider = app.data.providers.find((p) => p.readyNodes.length);
   let provider = $state(readyProvider?.provider ?? 'claude');
   let busy = $state(false);
@@ -63,12 +30,25 @@
   // Input hints TextInput forwards to its <input> but doesn't type.
   const handleHints = { autocapitalize: 'none', spellcheck: false };
 
-  function pick(i: number) {
-    start = i;
-    role = STARTS[i].role;
-    description = STARTS[i].description;
-    tags = STARTS[i].tags;
-    instructions = STARTS[i].instructions;
+  function pickPreset(id: string) {
+    const selected = engineerPresets.find((p) => p.id === id);
+    if (!selected) return;
+    const previous = engineerPresets.find((p) => p.id === preset)!;
+    if (role === previous.role) role = selected.role;
+    if (description === previous.description) description = selected.description;
+    if (tags === previous.tags) tags = selected.tags;
+    if (instructions === previous.instructions) instructions = selected.instructions;
+    preset = id;
+  }
+
+  const selectedPreset = $derived(engineerPresets.find((p) => p.id === preset)!);
+  const fieldsEdited = $derived(role !== selectedPreset.role || description !== selectedPreset.description || tags !== selectedPreset.tags || instructions !== selectedPreset.instructions);
+
+  function resetPreset() {
+    role = selectedPreset.role;
+    description = selectedPreset.description;
+    tags = selectedPreset.tags;
+    instructions = selectedPreset.instructions;
   }
 
   $effect(() => {
@@ -111,15 +91,8 @@
   }
 </script>
 
-<Dialog title="New engineer" description="Start from a role and edit anything. Engineers are identified as AI engineers in their profile." {onclose} width={620} purpose="form">
+<Dialog title="New engineer" description="Choose a premade engineer, give them a name and edit any detail. Engineers are identified as AI engineers in their profile." {onclose} width={620} purpose="form">
   <form id="new-eng" class="form" onsubmit={create} novalidate>
-    <div class="starts">
-      <RadioList label="Starting point" orientation="horizontal" value={String(start)} onChange={(v) => pick(Number(v))} htmlName="start">
-        {#each STARTS as s, i (i)}
-          <RadioListItem label={s.role || 'Blank'} value={String(i)} />
-        {/each}
-      </RadioList>
-    </div>
     <div class="two">
       <TextInput label="Name" bind:value={name} placeholder="e.g. Ada" width="100%" hasAutoFocus />
       <!-- The mention preview sits under the field, so Name and Handle line up. -->
@@ -127,6 +100,13 @@
         <TextInput label="Handle" {...handleHints} bind:value={handle} onChange={() => (handleTouched = true)} width="100%" />
         <Text as="p" type="supporting">Mention them as @{handle || 'handle'}</Text>
       </div>
+    </div>
+    <div class="presets">
+      <Selector label="Starting point" description="Presets fill the details below. Your edits are kept when you switch." width="100%" options={engineerPresets.map((p) => ({ value: p.id, label: p.label }))} value={preset} onChange={pickPreset} />
+      <Text as="p" type="supporting">{selectedPreset.summary}</Text>
+      {#if fieldsEdited}
+        <div><Button label={preset === 'custom' ? 'Clear custom fields' : 'Reset to preset'} onclick={resetPreset} /></div>
+      {/if}
     </div>
     <TextInput label="Role" bind:value={role} placeholder="e.g. Platform engineer" width="100%" />
     <TextInput label="What they're for" bind:value={description} width="100%" />
@@ -155,12 +135,7 @@
     gap: var(--spacing-3);
     align-items: start;
   }
-  /* Six starting points wrap onto a second line rather than overflow. */
-  .starts :global([role='radiogroup']) {
-    flex-wrap: wrap;
-    column-gap: var(--spacing-4);
-    row-gap: var(--spacing-1);
-  }
+  .presets,
   .handle,
   .provider {
     display: grid;
