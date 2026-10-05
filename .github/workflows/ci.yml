@@ -52,7 +52,7 @@ jobs:
             // The tracked files each check reads, as groups of git pathspecs.
             // Everything counts unless excluded, so new files are never missed.
             const unread = [
-              // No check reads these.
+              // Excluded from broad input groups; individual checks opt in below.
               ':!.github', ':!.mergify.yml', ':!docs', ':!packaging', ':!.dockerignore', ':!.gitignore', ':!README.md', ':!agents.md', ':!CLAUDE.md',
               // Local tooling: WebKit journeys, screenshots, simulations, LAN serving.
               ':!scripts/e2e', ':!scripts/screenshots', ':!scripts/simulation', ':!scripts/lan-dev.sh', ':!web/tests/webkit',
@@ -61,6 +61,8 @@ jobs:
               ['.', ...unread, ':!web', ':!scripts', ':!.air.toml'],
               // The package embedding the web build, and the types `just schema` checks.
               ['web/embed.go', 'web/dist', 'web/src/lib/api/types.gen.ts'],
+              // The Go check also builds and starts the packaged hub.
+              ['packaging/container/Dockerfile.hub', 'packaging/container/compose.hub.yml', '.dockerignore', 'web', 'scripts/docker-smoke.sh'],
             ];
             const checks = [
               { job: 'go', name: 'Go', inputs: go },
@@ -161,6 +163,8 @@ jobs:
             || { echo "::error::Run 'just schema' and commit the result."; exit 1; }
       - name: Test (unit + integration)
         run: just test
+      - name: Build and start the Docker hub
+        run: sh scripts/docker-smoke.sh
       # Lets later runs of this pull request skip the check (see plan).
       - name: Record the pass
         if: needs.plan.outputs.go-key != ''

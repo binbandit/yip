@@ -68,8 +68,9 @@ lint:
     go vet ./...
 
 # run the hub and web client in Docker on localhost:7420 (arguments go to docker compose, e.g. `just docker down`)
-docker *args="up --build":
-    YIP_VERSION="{{ version }}" YIP_RUNNER_URL="${YIP_RUNNER_URL:-https://$(uname -n):7443}" docker compose -f packaging/container/compose.hub.yml {{ args }}
+[positional-arguments]
+docker *args:
+    if [ "$#" -eq 0 ]; then set -- up --build; fi; YIP_VERSION="{{ version }}" YIP_RUNNER_URL="${YIP_RUNNER_URL:-https://$(uname -n):7443}" docker compose -f packaging/container/compose.hub.yml "$@"
 
 # cross-compile release binaries and their checksums into dist/
 release:
