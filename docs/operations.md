@@ -45,11 +45,36 @@ Useful flags:
 
 ### In Docker
 
-The hub can also run in a container, which needs only Docker (and just for
-the shortcuts below).
-`packaging/container/Dockerfile.hub` builds it with the web client embedded,
-and `compose.hub.yml` runs it as a non-root user with no capabilities, keeping
-the workspace in the `hub-data` volume.
+Build once on your machine, then reuse the image:
+
+```sh
+just docker-build             # build web + Linux binary locally; package yip-hub:local
+just docker-run               # run the existing image; no compilation or image pull
+just docker-run -d            # or in the background
+just docker down              # stop it; the volume keeps your workspace
+```
+
+The build needs local Go (the version in `go.mod` or newer), Node 20.19+ or
+22.12+, npm, just and Docker. It uses your normal local Go configuration,
+including exported `GOPROXY`, `GOPRIVATE`, `GONOPROXY`, `GONOSUMDB`, `GOSUMDB`
+and settings saved with `go env -w`. Nothing needs exporting again if your
+local Go build already works. Go settings, module caches and credentials
+are not copied into the image or passed as Docker build arguments.
+
+`docker-build` embeds the freshly built web assets and cross-compiles with
+`GOOS=linux CGO_ENABLED=0`; it never copies your native Mac executable. It
+selects amd64 or arm64 from the active Docker daemon (including a remote
+daemon). Set `DOCKER_DEFAULT_PLATFORM=linux/amd64` or `linux/arm64` to choose
+explicitly; running a different architecture requires Docker's emulation
+support. Docker still needs to fetch the Debian runtime image and packages
+on its first build. A failed local build stops; it does not fall back to a
+container build or replace the previous image.
+
+Repeat `just docker-build` after source updates, then `just docker-run -d`
+to use the new image. Ordinary starts need neither Go nor Node. If the local
+image is missing, `docker-run` fails until you build it.
+
+Alternatively, build entirely inside Docker with only Docker and just:
 
 ```sh
 just docker                   # build and run it; prints the one-time setup code
@@ -58,6 +83,10 @@ just docker down              # stop it; the volume keeps your workspace
 ```
 
 Without just, run `docker compose -f packaging/container/compose.hub.yml up --build`.
+This uses `Dockerfile.hub` and the separate `yip-hub` image; its Go compiler
+runs inside Docker and does not inherit the host's Go configuration. Both
+workflows use the same Compose service and persistent `hub-data` volume,
+running as a non-root user with no capabilities.
 
 - The web client is at `http://localhost:7420`, published on this machine's
   loopback only. A container's own loopback can't be published, so inside it
@@ -77,7 +106,8 @@ Without just, run `docker compose -f packaging/container/compose.hub.yml up --bu
   `just docker exec hub yip backup --out /var/lib/yip/backup.yipenc --encrypt`
   followed by `just docker cp hub:/var/lib/yip/backup.yipenc .` to copy it out.
 - To upgrade, take a backup, update the checkout, and run
-  `just docker up --build -d`; migrations run on start.
+  `just docker-build && just docker-run -d` (or `just docker up --build -d`
+  for the container build); migrations run on start.
 
 ## Add machines
 
