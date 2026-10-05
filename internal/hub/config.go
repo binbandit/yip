@@ -82,6 +82,9 @@ func (h *Hub) CreateEngineer(ctx context.Context, userID string, req protocol.Cr
 	}
 	var e protocol.Engineer
 	err := h.do(ctx, func(t *txn) error {
+		if err := h.requireWorkspaceOwner(ctx, t.tx, userID); err != nil {
+			return err
+		}
 		if _, err := store.GetEngineerByHandle(ctx, t.tx, handle); err == nil {
 			return domain.Conflict("Another engineer already uses @%s.", handle)
 		}
@@ -108,6 +111,9 @@ func (h *Hub) CreateEngineer(ctx context.Context, userID string, req protocol.Cr
 func (h *Hub) UpdateEngineer(ctx context.Context, userID, id string, req protocol.UpdateEngineerRequest) (protocol.Engineer, error) {
 	var e protocol.Engineer
 	err := h.do(ctx, func(t *txn) error {
+		if err := h.requireWorkspaceOwner(ctx, t.tx, userID); err != nil {
+			return err
+		}
 		cur, err := store.GetEngineer(ctx, t.tx, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return domain.NotFound("That engineer doesn't exist.")

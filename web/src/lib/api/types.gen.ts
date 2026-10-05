@@ -101,6 +101,7 @@ export interface Bootstrap {
   serverTime: string;
   version: string;
   providers: ProviderSummary[];
+  canManageWorkspace: boolean;
 }
 
 export interface CancelJobRequest {

@@ -110,6 +110,10 @@ class AppState {
   private readTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private toastId = 1;
   private started = false;
+  /** A screen may protect an explicit, unsaved settings form. */
+  beforeNavigate: (() => boolean) | null = null;
+  private historyIndex = 0;
+  private acceptedUrl = '';
 
   // ---- derived ----
 
@@ -166,7 +170,18 @@ class AppState {
     this.loc = currentLocation();
     this.viewport = window.innerWidth;
     onUnauthorized(() => this.sessionExpired());
+    this.historyIndex = history.state?.yipIndex ?? 0;
+    this.acceptedUrl = window.location.href;
+    history.replaceState({ ...history.state, yipIndex: this.historyIndex }, '');
     window.addEventListener('popstate', () => {
+      const nextIndex = history.state?.yipIndex;
+      if (window.location.pathname !== new URL(this.acceptedUrl).pathname && this.beforeNavigate && !this.beforeNavigate()) {
+        if (typeof nextIndex === 'number' && nextIndex !== this.historyIndex) history.go(this.historyIndex - nextIndex);
+        else history.pushState({ yipIndex: this.historyIndex }, '', this.acceptedUrl);
+        return;
+      }
+      this.historyIndex = nextIndex ?? this.historyIndex;
+      this.acceptedUrl = window.location.href;
       this.loc = currentLocation();
     });
     window.addEventListener('pageshow', (event) => {
@@ -280,6 +295,8 @@ class AppState {
   }
 
   private leaveWorkspace(url: string): void {
+    if (this.beforeNavigate && !this.beforeNavigate()) return;
+    this.beforeNavigate = null;
     // Flush the final keystroke before navigating, even inside the draft debounce.
     window.dispatchEvent(new Event('yip:before-workspace-switch'));
     this.stream?.stop();
@@ -431,6 +448,8 @@ class AppState {
   }
 
   async signOut(): Promise<void> {
+    if (this.beforeNavigate && !this.beforeNavigate()) return;
+    this.beforeNavigate = null;
     try {
       await api.signOut();
     } catch {
@@ -453,11 +472,14 @@ class AppState {
       this.leaveWorkspace(url);
       return;
     }
-    const current = window.location.pathname + window.location.search;
+    const current = window.location.pathname + window.location.search + window.location.hash;
     if (url !== current) {
-      if (opts.replace) history.replaceState(null, '', url);
-      else history.pushState(null, '', url);
+      if (this.phase === 'ready' && new URL(url, window.location.origin).pathname !== window.location.pathname && this.beforeNavigate && !this.beforeNavigate()) return;
+      if (!opts.replace) this.historyIndex++;
+      if (opts.replace) history.replaceState({ yipIndex: this.historyIndex }, '', url);
+      else history.pushState({ yipIndex: this.historyIndex }, '', url);
     }
+    this.acceptedUrl = window.location.href;
     this.loc = currentLocation();
     this.sidebarOpen = false;
   }

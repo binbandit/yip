@@ -161,7 +161,7 @@
                   <p>This runner has not reported {guide.label}. Make sure it is enabled in the runner’s provider list, then check again.</p>
                 {/if}
                 {#if signedIn && installation?.billing === 'api'}
-                  <p>{harness ? 'This harness has API-billed accounts configured, possibly alongside subscriptions. yip requires explicit API billing permission for this connection.' : 'This is an API-billed sign-in, not a subscription connection.'} Sign in with your subscription account instead, or explicitly allow API billing in the engineer’s provider settings.</p>
+                  <p>{harness ? 'This harness has API-billed accounts configured, possibly alongside subscriptions. yip requires explicit API billing permission for this connection.' : 'This is an API-billed sign-in, not a subscription connection.'} Sign in with your subscription account instead, or review <Link hasUnderline href={workspaceUrl('/settings/workspace#api-billing')}>API billing permissions in Workspace settings</Link> and opt in for the engineer you want to use.</p>
                 {:else if signedIn && installation?.billing === 'unknown'}
                   <p>The provider has not confirmed how this account is billed. Check your plan with the provider before starting work; yip cannot guarantee subscription usage.</p>
                 {/if}
@@ -240,7 +240,7 @@
     </div>
     <details class="billing">
       <summary>Will this use my subscription or charge an API account?</summary>
-      <p>That depends on how the tool is signed in on your machine. Each connection shows the billing mode reported by that tool: subscription, API, or unknown. API-billed accounts require explicit permission in an engineer’s settings. Unknown billing is not a guarantee of subscription usage.</p>
+      <p>That depends on how the tool is signed in on your machine. Each connection shows the billing mode reported by that tool: subscription, API, or unknown. API-billed accounts require <Link hasUnderline href={workspaceUrl('/settings/workspace#api-billing')}>explicit permission for each engineer in Workspace settings</Link>. Unknown billing is not a guarantee of subscription usage.</p>
     </details>
   {/if}
 </Screen>

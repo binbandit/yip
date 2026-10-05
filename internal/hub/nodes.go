@@ -176,6 +176,9 @@ func (h *Hub) SetProviderConcurrency(ctx context.Context, userID, profileID stri
 		return out, domain.Invalid("Choose between 1 and 16 runs at once.")
 	}
 	err := h.do(ctx, func(t *txn) error {
+		if err := h.requireWorkspaceOwner(ctx, t.tx, userID); err != nil {
+			return err
+		}
 		res, err := t.tx.ExecContext(ctx, `UPDATE provider_profiles SET max_concurrency = ? WHERE id = ?`, max, profileID)
 		if err != nil {
 			return err
@@ -187,8 +190,11 @@ func (h *Hub) SetProviderConcurrency(ctx context.Context, userID, profileID stri
 			return err
 		}
 		t.kickAfter()
-		return t.tx.QueryRowContext(ctx, `SELECT id, provider, label, billing, max_concurrency FROM provider_profiles WHERE id = ?`, profileID).
-			Scan(&out.ID, &out.Provider, &out.Label, &out.Billing, &out.MaxConcurrency)
+		if err := t.tx.QueryRowContext(ctx, `SELECT id, provider, label, billing, max_concurrency FROM provider_profiles WHERE id = ?`, profileID).
+			Scan(&out.ID, &out.Provider, &out.Label, &out.Billing, &out.MaxConcurrency); err != nil {
+			return err
+		}
+		return t.emit(ev{Type: "provider_profile.updated", Actor: userActor(userID), Payload: out})
 	})
 	return out, err
 }
