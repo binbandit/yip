@@ -154,6 +154,7 @@ export const api = {
   setProviderConcurrency: (id: string, maxConcurrency: number) => put<ProviderProfile>(`/v1/provider-profiles/${q(id)}`, { maxConcurrency }),
   stopNodeWork: (id: string) => post<{ ok: boolean }>(`/v1/nodes/${q(id)}/stop`),
   revokeNode: (id: string) => del<{ ok: boolean }>(`/v1/nodes/${q(id)}/credential`),
+  removeNode: (id: string) => del<{ ok: boolean }>(`/v1/nodes/${q(id)}`),
 
   // knowledge, search
   decisions: (status?: string) => get<Decision[]>(`/v1/decisions${status ? `?status=${q(status)}` : ''}`),

@@ -311,6 +311,12 @@
           },
           "type": "array"
         },
+        "nodeNames": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "nodes": {
           "items": {
             "$ref": "#/$defs/Node"
@@ -2264,6 +2270,17 @@
             "$ref": "#/$defs/ProviderInstallation"
           },
           "type": "array"
+        },
+        "removedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "revokedAt": {
           "anyOf": [

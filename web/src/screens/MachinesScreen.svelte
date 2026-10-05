@@ -7,6 +7,7 @@
   import { Button, EmptyState, Icon } from '@astryx-svelte/core';
   import { Plus } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
+  import { replaceNodes } from '../lib/state/data';
   import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
   import { nodesDigest, providerProfiles } from '../lib/state/profiles.svelte';
@@ -17,12 +18,16 @@
   let adding = $state(false);
 
   onMount(() => {
+    let alive = true;
+    const data = app.data;
+    const requestedAt = data.lastSeq;
     api
       .nodes()
       .then((ns) => {
-        for (const n of ns ?? []) app.data.nodes[n.id] = n;
+        if (alive && app.data === data) replaceNodes(data, ns, requestedAt);
       })
       .catch(() => {});
+    return () => { alive = false; };
   });
 
   const nodes = $derived(

@@ -4,11 +4,12 @@
   // consequential actions), Connections (provider sign-in, accounts and
   // their shared concurrency), Storage (workspaces and cleanup) and
   // Diagnostics (versions, profiles, toolchains, fingerprint, activity).
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { Tab, TabList, Text, VisuallyHidden } from '@astryx-svelte/core';
   import type { NodeWorkspace } from '../../lib/api/types.gen';
   import { api } from '../../lib/api/endpoints';
   import { app } from '../../lib/state/app.svelte';
+  import { mergeNode, removeNode, replaceNodes } from '../../lib/state/data';
   import { nodesDigest, providerProfiles } from '../../lib/state/profiles.svelte';
   import { connectionSummary, currentWork, machineFacts, providerStatuses, workspaceKind, workspaceLoss, workspaceSize, workspaceTitle } from '../../lib/util/machines';
   import RightPanel, { type PanelMode } from '../RightPanel.svelte';
@@ -33,14 +34,19 @@
   const n = $derived(app.data.nodes[nodeId]);
   let missing = $state(false);
   onMount(() => {
+    let alive = true;
+    const data = app.data;
+    const requestedAt = data.lastSeq;
     if (!app.data.nodes[nodeId])
       api
         .nodes()
         .then((ns) => {
-          for (const x of ns ?? []) app.data.nodes[x.id] = x;
+          if (!alive) return;
+          if (app.data === data) replaceNodes(data, ns, requestedAt);
           missing = !app.data.nodes[nodeId];
         })
-        .catch(() => (missing = true));
+        .catch(() => { if (alive) missing = true; });
+    return () => { alive = false; };
   });
   const digest = $derived(n ? nodesDigest([n]) : '');
   $effect(() => {
@@ -70,30 +76,51 @@
 
   // ---- consequential actions, each confirmed ----
 
-  type Kind = 'drain' | 'undrain' | 'stop' | 'revoke' | 'workspace';
-  let confirm = $state<null | { kind: Kind; ws?: NodeWorkspace; invoker: HTMLElement | null; fallback?: string }>(null);
+  type Kind = 'drain' | 'undrain' | 'stop' | 'revoke' | 'remove' | 'workspace';
+  let confirm = $state<null | { kind: Kind; id: string; name: string; ws?: NodeWorkspace; invoker: HTMLElement | null; fallback?: string }>(null);
 
   function request(kind: Kind, ws?: NodeWorkspace) {
+    if (!n) return;
     const invoker = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    confirm = { kind, ws, invoker, fallback: kind === 'workspace' ? '#machine-storage-heading' : undefined };
+    confirm = { kind, id: n.id, name: n.name, ws, invoker, fallback: kind === 'workspace' ? '#machine-storage-heading' : undefined };
   }
 
   async function run() {
-    if (!confirm || !n) return;
-    const { kind, ws } = confirm;
-    const name = n.name;
+    if (!confirm) return;
+    const data = app.data;
+    const { kind, id, name, ws } = confirm;
+    if (kind === 'remove') {
+      await api.removeNode(id);
+      if (app.data !== data) return;
+      removeNode(data, id);
+      app.announce(`Removed ${name} from Machines. Its history and files are preserved.`);
+      if (app.loc.panel?.kind === 'machine' && app.loc.panel.id === id) {
+        app.closePanel();
+        await tick();
+        document.querySelector<HTMLElement>('[data-screen-title]')?.focus();
+      }
+      return;
+    }
+    if (!n || n.id !== id) throw new Error('This machine is no longer available. Close this dialog and refresh Machines.');
     if (kind === 'drain' || kind === 'undrain') {
-      app.data.nodes[n.id] = await api.drainNode(n.id, kind === 'drain');
+      const node = await api.drainNode(id, kind === 'drain');
+      if (app.data !== data) return;
+      mergeNode(data, node);
       app.announce(kind === 'drain' ? `${name} will finish its current work and start nothing new.` : `${name} takes new work again.`);
     } else if (kind === 'workspace' && ws) {
-      app.data.nodes[n.id] = await api.removeWorkspace(n.id, ws.name, { confirm: ws.name, force: !ws.published });
+      const node = await api.removeWorkspace(id, ws.name, { confirm: ws.name, force: !ws.published });
+      if (app.data !== data) return;
+      mergeNode(data, node);
       app.announce(`Deleted ${ws.name} from ${name}.`);
     } else if (kind === 'stop') {
       await api.stopNodeWork(n.id);
+      if (app.data !== data) return;
       app.announce(`Stopping the work running on ${name}.`);
     } else if (kind === 'revoke') {
-      await api.revokeNode(n.id);
-      app.data.nodes[n.id] = { ...n, status: 'revoked', revokedAt: new Date().toISOString() };
+      const node = n;
+      await api.revokeNode(id);
+      if (app.data !== data) return;
+      mergeNode(data, { ...node, status: 'revoked', revokedAt: new Date().toISOString() });
       app.announce(`${name}'s access is revoked.`);
     }
   }
@@ -122,9 +149,9 @@
   }
 
   const copy = $derived.by(() => {
-    if (!confirm || !n) return null;
-    const name = n.name;
-    const k = n.activeRunIds.length;
+    if (!confirm) return null;
+    const name = confirm.name;
+    const k = n?.activeRunIds.length ?? 0;
     switch (confirm.kind) {
       case 'drain':
         return {
@@ -149,6 +176,13 @@
           label: 'Revoke access',
           danger: true,
         };
+      case 'remove':
+        return {
+          title: `Remove ${name} from Machines?`,
+          body: `${name} disappears from the machine list. Its runs, work history and reported workspaces stay on the hub, and its local files stay on the machine. Its access stays revoked. To use it again, pair it as a new machine.`,
+          label: 'Remove machine',
+          danger: true,
+        };
       case 'workspace': {
         const w = confirm.ws!;
         const kind = workspaceKind(w).label;
@@ -170,7 +204,7 @@
 <RightPanel title={n?.name ?? 'Machine'} {mode} wide onclose={() => app.closePanel()}>
   {#snippet subtitle()}{#if conn}{conn.label}{conn.meta ? ` · ${conn.meta}` : ''}{/if}{/snippet}
   {#if !n}
-    <div class="pad"><Text as="p" color="secondary">{missing ? 'This machine isn’t available.' : 'Loading…'}</Text></div>
+    <div class="pad"><Text as="p" color="secondary">{missing || app.data.removedNodeIds[nodeId] || app.data.nodeNames[nodeId] ? 'This machine isn’t available.' : 'Loading…'}</Text></div>
   {:else}
     <div class="tabs">
       <TabList value={tab} onChange={(v) => isTab(v) && app.setTab(v)} role="tablist" aria-label="Machine details" size="sm" hasDivider onfocusin={onTabFocus}>

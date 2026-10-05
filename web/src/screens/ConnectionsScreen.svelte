@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { Button, Code, CodeBlock, Heading, Link, Selector, Text } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
+  import { replaceNodes } from '../lib/state/data';
   import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
@@ -40,9 +41,11 @@
 
   onMount(() => {
     let alive = true;
+    const data = app.data;
+    const requestedAt = data.lastSeq;
     api.nodes().then((ns) => {
-      if (alive) for (const n of ns ?? []) app.data.nodes[n.id] = n;
-    }).catch((err) => { if (alive) loadError = errorMessage(err); });
+      if (alive && app.data === data) replaceNodes(data, ns, requestedAt);
+    }).catch((err) => { if (alive && app.data === data) loadError = errorMessage(err); });
     return () => { alive = false; };
   });
 
