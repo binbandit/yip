@@ -85,9 +85,12 @@ test('tablet and phone room settings close and reopen through their actual contr
 test('late Machines responses and rapid room clicks leave the selected conversation on screen', async ({ app: page }) => {
   let release!: () => void;
   const held = new Promise<void>((resolve) => { release = resolve; });
-  await page.route('**/v1/nodes', async (route) => { await held; await route.continue(); });
+  let intercepted!: () => void;
+  const requested = new Promise<void>((resolve) => { intercepted = resolve; });
+  await page.route('**/v1/nodes', async (route) => { intercepted(); await held; await route.continue(); });
   await sidebar(page).getByRole('link', { name: 'Machines', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Machines', level: 1 })).toBeVisible();
+  await requested;
   await page.evaluate(() => {
     for (const name of ['Security', 'Engineering', 'Reverse engineering', 'Security']) {
       const link = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Workspace"] a')].find((a) => a.textContent?.trim() === name);
@@ -95,7 +98,11 @@ test('late Machines responses and rapid room clicks leave the selected conversat
     }
   });
   await expect(page.locator('#room-title')).toHaveText('#Security');
+  const response = page.waitForResponse('**/v1/nodes');
   release();
+  expect(await (await response).finished()).toBeNull();
+  await expect(page.locator('#room-title')).toHaveText('#Security');
+  await expect(sidebar(page).getByRole('link', { name: 'Security', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { name: 'Machines', level: 1 })).toBeHidden();
   await page.getByRole('button', { name: 'Room settings', exact: true }).click();
   await expect(panelTitle(page)).toHaveText('Room settings');
