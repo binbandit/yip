@@ -456,3 +456,201 @@ func TestEngineerDraftCancelBeforeOfferAck(t *testing.T) {
 		t.Fatalf("unstarted cancellation blocked explicit retry: %v", err)
 	}
 }
+
+func draftNodeSnapshot(t *testing.T, h *Hub, nodeID string, after int64) protocol.Node {
+	t.Helper()
+	events, err := store.EventsAfter(context.Background(), h.st.R(), after, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var latest protocol.Node
+	for _, event := range events {
+		if event.Type != "node.updated" {
+			continue
+		}
+		var node protocol.Node
+		if err := json.Unmarshal(event.Payload, &node); err != nil {
+			t.Fatal(err)
+		}
+		if node.ID == nodeID {
+			latest = node
+		}
+	}
+	if latest.ID == "" {
+		t.Fatal("no live machine snapshot was published")
+	}
+	return latest
+}
+
+func TestEngineerDraftPublishesOccupancy(t *testing.T) {
+	for _, finish := range []string{"success", "cancel offer", "cancel running", "expiry", "timeout", "revoke", "reconciliation"} {
+		t.Run(finish, func(t *testing.T) {
+			ctx := context.Background()
+			h, owner, conn, req := draftTestEnv(t)
+			before, _ := store.MaxEventSeq(ctx, h.st.R())
+			draft, err := h.CreateEngineerDraft(ctx, owner.ID, req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snapshot := draftNodeSnapshot(t, h, conn.NodeID, before)
+			if len(snapshot.ActiveRunIDs) != 1 || snapshot.ActiveRunIDs[0] != draft.ID {
+				t.Fatalf("admission snapshot: %+v", snapshot.ActiveRunIDs)
+			}
+			before, _ = store.MaxEventSeq(ctx, h.st.R())
+			term := protocol.RunTerminal{Outcome: protocol.OutcomeSucceeded, FinalText: validDraft, ExitConfirmed: true}
+			if finish != "cancel offer" {
+				draftSend(t, h, conn, draft.ID, protocol.EvRunAck, protocol.RunAck{CommandID: "offer:" + draft.ID + ":1", Accepted: true})
+			}
+			switch finish {
+			case "cancel offer", "cancel running":
+				if _, err := h.CancelEngineerDraft(ctx, owner.ID, draft.ID); err != nil {
+					t.Fatal(err)
+				}
+				if finish == "cancel running" {
+					snapshot = draftNodeSnapshot(t, h, conn.NodeID, before)
+					if len(snapshot.ActiveRunIDs) != 1 {
+						t.Fatal("stopping draft released its slot before exit")
+					}
+					before, _ = store.MaxEventSeq(ctx, h.st.R())
+					term.Outcome = protocol.OutcomeCancelled
+					draftSend(t, h, conn, draft.ID, protocol.EvRunTerminal, term)
+				}
+			case "expiry":
+				if err := h.do(ctx, func(tx *txn) error {
+					_, err := tx.tx.ExecContext(ctx, `UPDATE engineer_drafts SET lease_expires_at = ? WHERE id = ?`, store.TS(h.now().Add(-time.Second)), draft.ID)
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
+				h.expireEngineerDrafts(ctx)
+			case "timeout":
+				if err := h.do(ctx, func(tx *txn) error {
+					_, err := tx.tx.ExecContext(ctx, `UPDATE engineer_drafts SET deadline_at = ? WHERE id = ?`, store.TS(h.now().Add(-time.Second)), draft.ID)
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
+				h.expireEngineerDrafts(ctx)
+				if snapshot := draftNodeSnapshot(t, h, conn.NodeID, before); len(snapshot.ActiveRunIDs) != 1 {
+					t.Fatal("timeout released slot before exit")
+				}
+				before, _ = store.MaxEventSeq(ctx, h.st.R())
+				term.Outcome = protocol.OutcomeCancelled
+				draftSend(t, h, conn, draft.ID, protocol.EvRunTerminal, term)
+			case "revoke":
+				if err := h.RevokeNode(ctx, owner.ID, conn.NodeID); err != nil {
+					t.Fatal(err)
+				}
+			case "reconciliation":
+				if err := h.do(ctx, func(tx *txn) error {
+					return h.reconcileJournal(ctx, tx, conn.NodeID, []protocol.JournalRunState{{RunID: draft.ID, LeaseEpoch: 1, Terminal: &term}})
+				}); err != nil {
+					t.Fatal(err)
+				}
+			default:
+				draftSend(t, h, conn, draft.ID, protocol.EvRunTerminal, term)
+			}
+			snapshot = draftNodeSnapshot(t, h, conn.NodeID, before)
+			if len(snapshot.ActiveRunIDs) != 0 {
+				t.Fatalf("terminal snapshot retained draft: %+v", snapshot.ActiveRunIDs)
+			}
+		})
+	}
+}
+
+func TestEngineerDraftAuthFailureInvalidatesSelectedInstallation(t *testing.T) {
+	ctx := context.Background()
+	h, owner, conn, req := draftTestEnv(t)
+	node, err := store.GetNode(ctx, h.st.R(), conn.NodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps := protocol.RunnerCapabilities{Slots: 2, Profiles: node.Profiles, Providers: append([]protocol.ProviderInstallation{}, node.Providers...)}
+	other := caps.Providers[0]
+	other.Provider, other.ProfileID = "pi", "pi:other"
+	caps.Providers = append(caps.Providers, other)
+	if err := h.onCapabilities(ctx, conn.NodeID, caps); err != nil {
+		t.Fatal(err)
+	}
+	otherNodeID := domain.NewID()
+	if err := h.do(ctx, func(tx *txn) error {
+		if err := store.InsertNode(ctx, tx.tx, h.Org().ID, store.NodeRow{Node: protocol.Node{ID: otherNodeID, Name: "Other machine", CreatedAt: h.now()}}); err != nil {
+			return err
+		}
+		return store.SetNodeCapabilities(ctx, tx.tx, otherNodeID, caps, "", "")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := h.CreateEngineerDraft(ctx, owner.ID, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draftSend(t, h, conn, draft.ID, protocol.EvRunAck, protocol.RunAck{CommandID: "offer:" + draft.ID + ":1", Accepted: true})
+	before, _ := store.MaxEventSeq(ctx, h.st.R())
+	draftSend(t, h, conn, draft.ID, protocol.EvRunTerminal, protocol.RunTerminal{Outcome: protocol.OutcomeAuthRequired, ExitConfirmed: true})
+	node, err = store.GetNode(ctx, h.st.R(), conn.NodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range node.Providers {
+		want := protocol.AuthReady
+		if provider.Provider == req.Provider.Provider {
+			want = protocol.AuthNeedsSignIn
+		}
+		if provider.AuthState != want {
+			t.Fatalf("provider readiness: %+v", provider)
+		}
+	}
+	otherNode, err := store.GetNode(ctx, h.st.R(), otherNodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range otherNode.Providers {
+		if provider.AuthState != protocol.AuthReady {
+			t.Fatalf("another machine's auth changed: %+v", provider)
+		}
+	}
+	snapshot := draftNodeSnapshot(t, h, conn.NodeID, before)
+	if snapshot.Providers[0].AuthState != protocol.AuthNeedsSignIn {
+		t.Fatalf("stale live auth: %+v", snapshot.Providers)
+	}
+	if _, err := h.CreateEngineerDraft(ctx, owner.ID, req); err == nil {
+		t.Fatal("draft accepted after authentication failure")
+	}
+	run := store.RunRow{Run: protocol.Run{Provider: req.Provider.Provider, ProfileID: req.Provider.ProfileID, Mode: protocol.ModeConversation}, ExecutionProfile: "native"}
+	counts, _ := h.counts(ctx)
+	if placed, why, _ := h.place(ctx, run, store.JobRow{}, []store.NodeRow{node}, counts); placed != nil || !strings.Contains(why, "sign-in") {
+		t.Fatalf("ordinary work admitted after auth failure: %+v %s", placed, why)
+	}
+	if err := h.onCapabilities(ctx, conn.NodeID, caps); err != nil {
+		t.Fatal(err)
+	}
+	node, _ = store.GetNode(ctx, h.st.R(), conn.NodeID)
+	if placed, why, _ := h.place(ctx, run, store.JobRow{}, []store.NodeRow{node}, counts); placed == nil {
+		t.Fatalf("restored ordinary placement blocked: %s", why)
+	}
+	if _, err := h.CreateEngineerDraft(ctx, owner.ID, req); err != nil {
+		t.Fatalf("restored draft blocked: %v", err)
+	}
+}
+
+func TestEngineerDraftAuthFailurePreservesReplacementProfile(t *testing.T) {
+	ctx := context.Background()
+	h, owner, conn, req := draftTestEnv(t)
+	draft, err := h.CreateEngineerDraft(ctx, owner.ID, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draftSend(t, h, conn, draft.ID, protocol.EvRunAck, protocol.RunAck{CommandID: "offer:" + draft.ID + ":1", Accepted: true})
+	if err := h.do(ctx, func(tx *txn) error {
+		_, err := tx.tx.ExecContext(ctx, `UPDATE provider_installations SET profile_id = 'replacement' WHERE node_id = ? AND provider = ?`, conn.NodeID, req.Provider.Provider)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	draftSend(t, h, conn, draft.ID, protocol.EvRunTerminal, protocol.RunTerminal{Outcome: protocol.OutcomeAuthRequired, ExitConfirmed: true})
+	node, err := store.GetNode(ctx, h.st.R(), conn.NodeID)
+	if err != nil || node.Providers[0].AuthState != protocol.AuthReady {
+		t.Fatalf("replacement account invalidated: %+v %v", node.Providers, err)
+	}
+}

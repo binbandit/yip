@@ -100,6 +100,9 @@ func (h *Hub) CreateEngineerDraft(ctx context.Context, userID string, req protoc
 			return err
 		}
 		out = d.EngineerDraft
+		if err := h.emitNode(ctx, t, n.ID); err != nil {
+			return err
+		}
 		return t.audit(userActor(userID), "owner", "engineer.draft", d.ID, "started", n.ID+"/"+req.Provider.Provider)
 	})
 	return out, err
@@ -151,7 +154,10 @@ func (h *Hub) stopEngineerDraft(ctx context.Context, t *txn, d *store.EngineerDr
 	if err := store.CancelOutboxForRun(ctx, t.tx, d.ID, "start:"); err != nil {
 		return err
 	}
-	return h.queueCommand(ctx, t, d.NodeID, d.ID, 1, protocol.CmdCancelRun, "cancel:"+d.ID, protocol.CancelRun{Reason: reason, GraceMs: 0})
+	if err := h.queueCommand(ctx, t, d.NodeID, d.ID, 1, protocol.CmdCancelRun, "cancel:"+d.ID, protocol.CancelRun{Reason: reason, GraceMs: 0}); err != nil {
+		return err
+	}
+	return h.emitNode(ctx, t, d.NodeID)
 }
 
 func validateDraftFields(text string) (*protocol.EngineerDraftFields, error) {
@@ -225,6 +231,12 @@ func (h *Hub) finishEngineerDraft(ctx context.Context, t *txn, d *store.Engineer
 			return err
 		}
 	}
+	if term.Outcome == protocol.OutcomeAuthRequired {
+		if _, err := t.tx.ExecContext(ctx, `UPDATE provider_installations SET auth_state = 'needs_signin', auth_detail = ? WHERE node_id = ? AND provider = ? AND profile_id = ?`,
+			"Authentication failed during drafting. Check this provider’s local configuration.", d.NodeID, d.Provider.Provider, d.Provider.ProfileID); err != nil {
+			return err
+		}
+	}
 	if term.Usage != nil {
 		if err := store.InsertUsage(ctx, t.tx, domain.NewID(), d.ID, d.Provider.Provider, *term.Usage); err != nil {
 			return err
@@ -237,7 +249,10 @@ func (h *Hub) finishEngineerDraft(ctx context.Context, t *txn, d *store.Engineer
 		return err
 	}
 	t.kickAfter()
-	return store.UpdateEngineerDraft(ctx, t.tx, *d)
+	if err := store.UpdateEngineerDraft(ctx, t.tx, *d); err != nil {
+		return err
+	}
+	return h.emitNode(ctx, t, d.NodeID)
 }
 
 // draftFrame consumes only frames belonging to a persisted draft. The normal
