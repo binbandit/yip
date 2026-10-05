@@ -94,6 +94,36 @@ The product documents that specify yip live in [`docs/spec/`](docs/spec/README.m
 
 ## Quick start
 
+To install this checkout's native CLI and web client on your machine:
+
+```sh
+just install
+# Optional: choose a destination, including paths with spaces.
+just install --bin-dir "$HOME/.local/bin"
+```
+
+This builds the current checkout, replaces the existing verified `yip` binary
+on `PATH`, or installs to `~/.local/bin` if none exists. Add that directory to
+`PATH` if prompted. Run as your normal user; the installer does not use sudo.
+An existing destination must be a YIP Go binary owned by you. Symlinks and
+files writable by other users are refused; choose `--bin-dir` to install
+elsewhere.
+
+On macOS, installation also refreshes existing `dev.getyip.hub` and
+`dev.getyip.runner` XML plists in your `~/Library/LaunchAgents`. Their roles,
+arguments, data/state paths, environment, and log settings are preserved;
+only their executable paths change. Previously loaded services are stopped
+and restarted. Unloaded or disabled definitions stay inactive. Replacements
+are staged before stopping services, and a failed upgrade restores the old
+files and services when possible, reporting any recovery failure. Log in to
+the Mac's GUI session before upgrading an existing LaunchAgent.
+
+A first install leaves the role up to you: run `yip hub`, or follow
+`yip runner pair --help`. For background operation, use
+`yip service install hub` or `yip service install runner` and follow the
+printed activation instructions. On Linux, `just install` replaces the CLI;
+restart an existing systemd user service yourself.
+
 From a source checkout, `just start` builds the web client and binary, then
 runs the real hub at **http://127.0.0.1:7420**. The first run prints a one-time
 setup code; data persists in `~/.yip/hub` (or `YIP_DATA`). Hub flags pass

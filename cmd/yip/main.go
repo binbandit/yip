@@ -23,6 +23,7 @@ Usage:
   yip restore --from DIR       Restore a backup into a new data directory
   yip owner reset-password     Reset the owner's password (revokes sessions)
   yip forge github add         Store a GitHub credential for PR integration (--from-gh reuses the gh sign-in)
+  yip install [--bin-dir DIR]  Install this CLI and refresh existing macOS user services
   yip service install hub|runner  Write a launchd/systemd service definition
   yip schema --out DIR         Generate JSON schemas and TypeScript types
   yip version                  Print the version
@@ -71,6 +72,8 @@ func main() {
 		err = runForge(args)
 	case "service":
 		err = runService(args)
+	case "install":
+		err = runInstall(args)
 	case "schema":
 		err = runSchema(args)
 	case "version", "--version", "-v":
