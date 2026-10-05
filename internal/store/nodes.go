@@ -18,18 +18,19 @@ type NodeRow struct {
 }
 
 const nodeCols = `id, name, hostname, os, arch, fingerprint, cert_serial, status, draining, revoked_at, last_seen_at, capacity, profiles,
-	toolchains, runner_version, service_state, last_activity, created_at, workspaces`
+	toolchains, runner_version, service_state, last_activity, created_at, workspaces, removed_at`
 
 func scanNode(s scanner) (NodeRow, error) {
 	var n NodeRow
 	var draining int
-	var revoked, seen sql.NullString
+	var revoked, seen, removed sql.NullString
 	var capacity, profiles, toolchains, created, workspaces string
 	err := s.Scan(&n.ID, &n.Name, &n.Hostname, &n.OS, &n.Arch, &n.Fingerprint, &n.CertSerial, &n.Status, &draining, &revoked, &seen,
-		&capacity, &profiles, &toolchains, &n.RunnerVersion, &n.ServiceState, &n.LastActivity, &created, &workspaces)
+		&capacity, &profiles, &toolchains, &n.RunnerVersion, &n.ServiceState, &n.LastActivity, &created, &workspaces, &removed)
 	unjs(workspaces, &n.RawWorkspaces)
 	n.Draining = draining == 1
 	n.RevokedAt, n.LastSeenAt = parseTSP(revoked), parseTSP(seen)
+	n.RemovedAt = parseTSP(removed)
 	unjs(capacity, &n.Capacity)
 	unjs(profiles, &n.Profiles)
 	unjs(toolchains, &n.Toolchains)
@@ -59,7 +60,7 @@ func GetNode(ctx context.Context, q Q, id string) (NodeRow, error) {
 }
 
 func ListNodes(ctx context.Context, q Q) ([]NodeRow, error) {
-	ns, err := list(ctx, q, scanNode, `SELECT `+nodeCols+` FROM nodes ORDER BY created_at`)
+	ns, err := list(ctx, q, scanNode, `SELECT `+nodeCols+` FROM nodes WHERE removed_at IS NULL ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -187,6 +188,12 @@ func SetNodeDraining(ctx context.Context, q Q, id string, draining bool) error {
 
 func RevokeNode(ctx context.Context, q Q, id string) error {
 	_, err := q.ExecContext(ctx, `UPDATE nodes SET revoked_at = ?, status = 'revoked' WHERE id = ? AND revoked_at IS NULL`, ts(nowUTC()), id)
+	return err
+}
+
+// RemoveNode hides a revoked machine without deleting its history or identity.
+func RemoveNode(ctx context.Context, q Q, id string, at time.Time) error {
+	_, err := q.ExecContext(ctx, `UPDATE nodes SET removed_at = ? WHERE id = ? AND revoked_at IS NOT NULL AND removed_at IS NULL`, ts(at), id)
 	return err
 }
 

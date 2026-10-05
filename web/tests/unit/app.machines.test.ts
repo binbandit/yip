@@ -5,12 +5,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
+import { mergeNode } from '../../src/lib/state/data';
 import { choose } from './controls';
 import { fixtureHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
 import type { JobDetail, Node, ProviderInstallation, ProviderProfile, Run } from '../../src/lib/api/types.gen';
 
 let hub: FakeHub;
 let component: ReturnType<typeof mount>;
+let removalError = '';
+let hiddenNodeIds = new Set<string>();
 const codeDetail = fixture<JobDetail>('job-code.json');
 const base = fixture<Node[]>('nodes.json')[0];
 const MB = 1024 * 1024;
@@ -91,7 +94,7 @@ function load() {
 
 beforeAll(async () => {
   hub = fixtureHub();
-  hub.override('GET', /^\/v1\/nodes$/, () => ({ body: Object.values(app.data.nodes) }));
+  hub.override('GET', /^\/v1\/nodes$/, () => ({ body: Object.values(app.data.nodes).filter((n) => !hiddenNodeIds.has(n.id)) }));
   hub.override('GET', /^\/v1\/provider-profiles$/, () => ({ body: profiles }));
   hub.override('POST', /^\/v1\/nodes\/[^/]+\/drain$/, (c) => {
     const id = c.path.split('/')[3];
@@ -99,6 +102,9 @@ beforeAll(async () => {
   });
   hub.override('POST', /^\/v1\/nodes\/[^/]+\/stop$/, () => ({ body: { ok: true } }));
   hub.override('DELETE', /^\/v1\/nodes\/[^/]+\/credential$/, () => ({ body: { ok: true } }));
+  hub.override('DELETE', /^\/v1\/nodes\/[^/]+$/, () => removalError
+    ? { status: 409, body: { code: 'conflict', message: removalError, recoverable: true } }
+    : { body: { ok: true } });
   hub.override('PUT', /^\/v1\/provider-profiles\//, (c) => ({ body: { ...profiles[0], maxConcurrency: (c.body as { maxConcurrency: number }).maxConcurrency, pausedUntil: undefined } }));
   hub.override('POST', /^\/v1\/nodes\/[^/]+\/probe$/, () => ({ body: { ok: true } }));
   hub.install();
@@ -114,6 +120,9 @@ afterAll(() => unmount(component));
 beforeEach(async () => {
   app.go({ name: 'engineers' });
   await settle();
+  removalError = '';
+  hiddenNodeIds = new Set();
+  app.data.removedNodeIds = {};
   load();
   app.go({ name: 'machines' });
   await waitFor(() => document.querySelectorAll('li.row').length === 4, 'four machines');
@@ -350,10 +359,11 @@ describe('consequential actions', () => {
     expect(r).toContain("Revoke Studio mini's access?");
     expect(r).toContain('Work it\'s running becomes “not confirmed”');
     expect(hub.last('DELETE', /\/credential$/)).toBeTruthy();
-    // The revoked machine has no actions left; focus stays in the panel.
+    // Revocation offers a separate removal action; focus stays in the panel.
     await waitFor(() => text().includes('Access revoked'), 'revoked');
     await waitFor(() => document.getElementById('machinepanel')?.contains(document.activeElement) || document.activeElement?.id === 'machinepanel', 'focus kept in the panel');
     expect(byText('#machinepanel button', 'Revoke access')).toBeUndefined();
+    expect(byText('#machinepanel button', 'Remove machine')).toBeTruthy();
     app.closePanel();
   });
 
@@ -367,5 +377,75 @@ describe('consequential actions', () => {
     expect(hub.calls.slice(before).filter((c) => c.method !== 'GET' && c.path.startsWith('/v1/nodes'))).toEqual([]);
     await waitFor(() => document.activeElement === btn, 'focus back');
     app.closePanel();
+  });
+
+  async function revokedOverview() {
+    app.data.nodes['n-laptop'] = { ...app.data.nodes['n-laptop'], status: 'revoked', revokedAt: ago(2) };
+    await overview('n-laptop');
+    return byText('#machinepanel button', 'Remove machine') as HTMLButtonElement;
+  }
+
+  it('offers removal only after revocation and cancel preserves the row and its files', async () => {
+    await overview('n-laptop');
+    expect(byText('#machinepanel button', 'Remove machine')).toBeUndefined();
+    app.closePanel();
+    await settle();
+    const btn = await revokedOverview();
+    const before = hub.calls.length;
+    btn.focus();
+    btn.click();
+    const said = await confirmWith('Cancel');
+    expect(said).toContain(`Remove ${LONG} from Machines?`);
+    expect(said).toContain('Its runs, work history and reported workspaces stay on the hub');
+    expect(said).toContain('its local files stay on the machine');
+    expect(said).toContain('Its access stays revoked');
+    expect(hub.calls.slice(before).filter((c) => c.method === 'DELETE')).toEqual([]);
+    expect(row(LONG)).toBeTruthy();
+    await waitFor(() => document.activeElement === btn, 'focus after cancelling removal');
+    app.closePanel();
+  });
+
+  it('confirms removal, closes the drawer and leaves history intact', async () => {
+    (await revokedOverview()).click();
+    const job = app.data.jobs[codeDetail.job.id];
+    await confirmWith('Remove machine');
+    await waitFor(() => !row(LONG) && !document.querySelector('aside.panel'), 'row and drawer removed');
+    expect(hub.last('DELETE', /^\/v1\/nodes\/n-laptop$/)).toBeTruthy();
+    expect(app.data.jobs[codeDetail.job.id]).toEqual(job);
+    expect(app.data.nodes['n-studio']).toBeDefined();
+    await waitFor(() => document.activeElement?.hasAttribute('data-screen-title'), 'focus on Machines heading');
+  });
+
+  it('keeps removal errors in the confirmation and allows retry', async () => {
+    removalError = 'Revoke this machine’s access before removing it.';
+    (await revokedOverview()).click();
+    await waitFor(() => document.querySelector('dialog[open]'), 'confirmation');
+    byText('dialog button', 'Remove machine')!.click();
+    await waitFor(() => document.querySelector('dialog [role=alert]')?.textContent?.includes(removalError), 'error in dialog');
+    expect(row(LONG)).toBeTruthy();
+    removalError = '';
+    await confirmWith('Remove machine');
+    await waitFor(() => !row(LONG), 'successful retry');
+  });
+
+  it('can confirm an already-removed machine from a stale open dialog', async () => {
+    (await revokedOverview()).click();
+    await waitFor(() => document.querySelector('dialog[open]'), 'confirmation');
+    mergeNode(app.data, { ...app.data.nodes['n-laptop'], removedAt: ago(0) });
+    await waitFor(() => text().includes('This machine isn’t available.'), 'remote removal');
+    expect(document.querySelector('dialog[open]')).toBeTruthy();
+    await confirmWith('Remove machine');
+    expect(hub.last('DELETE', /^\/v1\/nodes\/n-laptop$/)).toBeTruthy();
+    expect(row(LONG)).toBeUndefined();
+  });
+
+  it('refreshing Machines discards a record removed while the view was away', async () => {
+    app.go({ name: 'engineers' });
+    await settle();
+    hiddenNodeIds.add('n-laptop');
+    app.go({ name: 'machines' });
+    await waitFor(() => row('Studio mini') && !row(LONG) && !app.data.nodes['n-laptop'], 'stale row discarded');
+    expect(app.data.nodes['n-laptop']).toBeUndefined();
+    expect(row('Studio mini')).toBeTruthy();
   });
 });

@@ -572,6 +572,7 @@ export interface Node {
   lastActivity?: string;
   createdAt: string;
   revokedAt?: string | null;
+  removedAt?: string | null;
   workspaces: NodeWorkspace[];
 }
 

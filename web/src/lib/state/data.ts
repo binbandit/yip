@@ -85,6 +85,8 @@ export interface DataState {
   engineers: Record<string, Engineer>;
   projects: Record<string, Project>;
   nodes: Record<string, Node>;
+  /** Removed identities cannot return through a delayed list or action response. */
+  removedNodeIds: Record<string, true>;
   /** Last capabilities-report event per machine, including reports with no providers. */
   nodeReportSeq: Record<string, number>;
   jobs: Record<string, Job>;
@@ -130,6 +132,7 @@ export function emptyState(): DataState {
     engineers: {},
     projects: {},
     nodes: {},
+    removedNodeIds: {},
     nodeReportSeq: {},
     jobs: {},
     runs: {},
@@ -168,13 +171,30 @@ export function applyBootstrap(s: DataState, b: Bootstrap): void {
   s.rooms = byId(b.rooms);
   s.engineers = byId(b.engineers);
   s.projects = byId(b.projects);
-  s.nodes = byId(b.nodes);
+  replaceNodes(s, b.nodes);
   s.bootCursor = b.cursor;
   s.lastSeq = Math.max(s.lastSeq, b.cursor);
 }
 
 export function newer(existing: { version: number } | undefined, incoming: { version: number }): boolean {
   return !existing || incoming.version >= existing.version;
+}
+
+export function removeNode(s: DataState, id: string): void {
+  s.removedNodeIds[id] = true;
+  delete s.nodes[id];
+  delete s.nodeReportSeq[id];
+}
+
+export function mergeNode(s: DataState, node: Node): void {
+  if (node.removedAt) removeNode(s, node.id);
+  else if (!s.removedNodeIds[node.id]) s.nodes[node.id] = node;
+}
+
+/** Full list snapshots also discard records removed while this view was away. */
+export function replaceNodes(s: DataState, nodes: Node[]): void {
+  s.nodes = {};
+  for (const node of nodes ?? []) mergeNode(s, node);
 }
 
 function bump(map: Record<string, number>, id: string | undefined): void {
@@ -469,8 +489,8 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
     }
     case 'node.updated': {
       const n = asPayload<Node & { capabilitiesReported?: boolean }>(ev);
-      s.nodes[n.id] = n;
-      if (n.capabilitiesReported) s.nodeReportSeq[n.id] = ev.sequence;
+      mergeNode(s, n);
+      if (n.capabilitiesReported && !s.removedNodeIds[n.id]) s.nodeReportSeq[n.id] = ev.sequence;
       break;
     }
     case 'pr.updated': {
