@@ -91,7 +91,9 @@ export class EventStream {
     this.h.onState(this.attempts ? 'reconnecting' : 'connecting');
     const es = new EventSource(workspaceUrl(`/v1/events?cursor=${this.h.cursor()}`), { withCredentials: true });
     this.es = es;
+    const current = () => !this.stopped && this.es === es;
     const parse = (e: MessageEvent) => {
+      if (!current()) return null;
       try {
         return JSON.parse(e.data);
       } catch {
@@ -99,16 +101,19 @@ export class EventStream {
       }
     };
     es.addEventListener('ready', () => {
+      if (!current()) return;
       this.attempts = 0;
       this.h.onState('live');
     });
     es.addEventListener('reset', (e) => {
+      if (!current()) return;
       const d = parse(e as MessageEvent) ?? {};
       this.h.onReset(Number(d.cursor) || 0, String(d.reason ?? ''));
     });
     es.addEventListener('slow', () => {
+      if (!current()) return;
       this.h.onState('reconnecting');
-      setTimeout(() => this.reconnect(), 250);
+      setTimeout(() => { if (current()) this.reconnect(); }, 250);
     });
     es.addEventListener('transient', (e) => {
       const d = parse(e as MessageEvent);
@@ -121,6 +126,7 @@ export class EventStream {
       });
     }
     es.onopen = () => {
+      if (!current()) return;
       this.h.onState('live');
     };
     es.onerror = () => {

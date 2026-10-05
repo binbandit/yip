@@ -67,6 +67,8 @@ export interface StreamPreview {
   text: string;
   status?: string;
   at: string;
+  /** Timestamp of the latest incremental response, never a persisted presence. */
+  writingAt?: number;
 }
 
 export interface DataState {
@@ -301,6 +303,7 @@ export function mergeRuns(s: DataState, runs: Run[] | null | undefined): void {
     const cur = s.runs[r.id];
     if (cur && isFinalRun(cur.state) && !isFinalRun(r.state)) continue;
     s.runs[r.id] = r;
+    if (isTerminalRun(r.state) || r.state === 'stopping' || r.state === 'awaiting_input') delete s.streams[r.id];
   }
 }
 
@@ -437,7 +440,10 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
     case 'run.updated': {
       const r = asPayload<Run>(ev);
       s.runs[r.id] = r;
-      if (isTerminalRun(r.state)) delete s.streams[r.id];
+      // Durable updates and buffered transients may arrive out of order, and
+      // their timestamps can come from different clocks. Keep accepted writing
+      // until its short expiry or an authoritative stop/wait/response boundary.
+      if (isTerminalRun(r.state) || r.state === 'stopping' || r.state === 'awaiting_input') delete s.streams[r.id];
       bump(s.touched.jobs, r.jobId);
       break;
     }
@@ -546,7 +552,7 @@ function applyMessageCreated(s: DataState, raw: Message, viewingBottomRoomId: st
   const known = !!s.messages[m.id];
   upsertMessage(s, m);
   reconcilePending(s, m);
-  if (m.runId && s.streams[m.runId]) delete s.streams[m.runId];
+  if (m.runId && isCommittedResponse(m)) delete s.streams[m.runId];
 
   if (m.threadId) {
     const th = s.threads[m.threadId];
@@ -572,6 +578,11 @@ function applyMessageCreated(s: DataState, raw: Message, viewingBottomRoomId: st
 
 // ---- transient streaming ----
 
+/** Questions, permissions and progress messages can precede more output. */
+export function isCommittedResponse(m: Message): boolean {
+  return m.author.kind === 'engineer' && (m.kind === 'text' || m.kind === 'result');
+}
+
 export interface TransientStream {
   type: string;
   roomId?: string;
@@ -585,8 +596,16 @@ export interface TransientStream {
 /** Applies a transient run.stream update as a provisional, coalesced preview. */
 export function applyTransient(s: DataState, t: TransientStream): void {
   if (t.type !== 'run.stream' || !t.runId || !t.roomId) return;
+  const run = s.runs[t.runId];
+  if (run && (isTerminalRun(run.state) || run.state === 'stopping' || run.state === 'awaiting_input')) return;
+  if (run && (run.destination.roomId !== t.roomId || (run.destination.threadId ?? '') !== (t.threadId ?? '') || run.engineerId !== t.engineerId || run.jobId !== t.jobId)) return;
+  if (Object.values(s.messages).some((m) => m.runId === t.runId && isCommittedResponse(m))) return;
   const kind = t.payload?.kind ?? '';
   const text = t.payload?.text ?? '';
+  const now = Date.now();
+  const at = t.payload?.at ? Date.parse(t.payload.at) : now;
+  if (!Number.isFinite(at) || at < now - 10_000 || at > now + 5_000) return;
+  if (s.streams[t.runId] && at < Date.parse(s.streams[t.runId].at)) return;
   const cur = s.streams[t.runId] ?? {
     runId: t.runId,
     roomId: t.roomId,
@@ -599,7 +618,8 @@ export function applyTransient(s: DataState, t: TransientStream): void {
   if (kind === 'message_delta') cur.text = (cur.text + text).slice(-4000);
   else if (kind === 'message') cur.text = text.slice(-4000);
   else if (text) cur.status = text.slice(0, 160);
-  cur.at = t.payload?.at ?? cur.at;
+  cur.at = new Date(at).toISOString();
+  cur.writingAt = kind === 'message_delta' && text ? Math.min(at, now) : undefined;
   s.streams[t.runId] = cur;
 }
 
