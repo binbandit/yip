@@ -115,7 +115,7 @@ no account-backed gateway or model request was made.
 2. **Session**, asynchronous. Failures here become a `Result` with a typed outcome:
    1. `account/read {refreshToken: false}`.
       - If there is no account and `requiresOpenaiAuth` is true, the result is `auth_required` and no thread is started.
-      - The account also sets `Usage.Billing`.
+      - The account and selected provider configuration set `Usage.Billing`.
    2. `hooks/list {cwds: [Workdir]}`. Start is refused if any enabled, trusted, non-managed hook remains.
    3. `thread/start`, or `thread/resume {threadId: ResumeSessionID, cwd: Workdir}`. Both send:
       - `model` (omitted when empty, so Codex uses its default);
@@ -219,14 +219,15 @@ Every `tool_*` event carries `Data = {"itemId", "type", "status", "exitCode"?}`.
 
 ### Usage
 
-`Usage.InputTokens` and `Usage.OutputTokens` are Codex's `total.inputTokens` and `total.outputTokens`. They are **cumulative for this attempt**; each `usage` event carries the running total. On resume, Codex replays the stored thread's usage right after `thread/resume`. The adapter records that replay as a baseline and subtracts it, so only the attempt's own tokens are reported. `CostUSD` is never set. `Billing` comes from `account/read`:
+`Usage.InputTokens` and `Usage.OutputTokens` are Codex's `total.inputTokens` and `total.outputTokens`. They are **cumulative for this attempt**; each `usage` event carries the running total. On resume, Codex replays the stored thread's usage right after `thread/resume`. The adapter records that replay as a baseline and subtracts it, so only the attempt's own tokens are reported. `CostUSD` is never set. `Billing` comes from `account/read` and the selected provider configuration:
 
 | `account/read` result | `Billing` |
 |---|---|
 | ChatGPT sign-in | `subscription` |
 | API key | `api` |
 | Amazon Bedrock | `api` |
-| No account needed (custom model provider) | `unknown` |
+| Custom model provider with environment credential references | `api` (requires engineer permission; pricing unverified) |
+| No account needed, no environment credential references | `unknown` |
 
 ## Approvals
 
