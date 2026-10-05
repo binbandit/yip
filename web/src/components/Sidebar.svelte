@@ -3,14 +3,17 @@
   // weight, mentions by a count pill, and an engineer's active run by an
   // elapsed-time "working" pill. Selection is a grey wash, never a colour.
   // Every marker has a visually hidden text equivalent.
-  import { Badge, DropdownMenu, Icon, IconButton, Kbd, SideNav, SideNavItem, SideNavSection, Text, Tooltip, VisuallyHidden, useSideNavRenderMode } from '@astryx-svelte/core';
-  import { BellOff, Folder, Hash, ListChecks, Lock, LogOut, MessageSquare, Monitor, Moon, Pencil, Plug, Plus, Search, Settings, Sun, Users } from '@lucide/svelte';
+  import { Badge, ContextMenu, DropdownMenu, Icon, IconButton, Kbd, SideNav, SideNavItem, SideNavSection, Text, Tooltip, VisuallyHidden, useSideNavRenderMode, type DropdownMenuOption } from '@astryx-svelte/core';
+  import { BellOff, Ellipsis, Folder, Hash, ListChecks, Lock, LogOut, MessageSquare, Monitor, Moon, Pencil, Plug, Plus, Search, Settings, Sun, Users } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { roomsWithDrafts } from '../lib/state/drafts';
   import { workspaceUrl } from '../lib/workspace';
   import Avatar from './Avatar.svelte';
   import StateIcon from './StateIcon.svelte';
   import WorkspaceSwitcher from './WorkspaceSwitcher.svelte';
+  import RenameRoomDialog from './RenameRoomDialog.svelte';
+  import ArchiveRoomDialog from './ArchiveRoomDialog.svelte';
+  import type { Room } from '../lib/api/types.gen';
 
   /** Set while a modal panel covers the work card. */
   let { inert = false }: { inert?: boolean } = $props();
@@ -82,6 +85,19 @@
   function go() {
     app.sidebarOpen = false;
   }
+
+  let renaming = $state<Room | null>(null);
+  let archiving = $state<Room | null>(null);
+
+  function roomActions(room: Room): DropdownMenuOption[] {
+    return [
+      { label: 'Rename…', onClick: () => { renaming = room; } },
+      { label: 'Room settings', onClick: () => { go(); app.openPanel({ kind: 'room', id: room.id }); } },
+      { label: app.isMuted(room.id) ? 'Unmute notifications' : 'Mute notifications', onClick: () => app.toggleMute(room.id) },
+      { type: 'divider' },
+      { label: 'Archive…', variant: 'destructive', onClick: () => { archiving = room; } },
+    ];
+  }
 </script>
 
 {#snippet header()}
@@ -149,6 +165,7 @@
 {#snippet roomIcon()}<Icon icon={Hash} size="sm" color="secondary" />{/snippet}
 {#snippet privateRoomIcon()}<Icon icon={Lock} size="sm" color="secondary" />{/snippet}
 {#snippet dmIcon()}<Icon icon={MessageSquare} size="sm" color="secondary" />{/snippet}
+{#snippet moreIcon()}<Icon icon={Ellipsis} size="sm" />{/snippet}
 
 {#snippet markers(r: (typeof app.rooms)[number], w: ReturnType<typeof working>, current: boolean, workingText: string)}
   {#if r.private}<VisuallyHidden>, private</VisuallyHidden>{/if}
@@ -204,16 +221,27 @@
       {#each rooms as r (r.id)}
         {@const w = working(r.id)}
         {@const current = isCurrentRoom(r.id)}
-        <SideNavItem
-          label={r.name}
-          icon={r.private ? privateRoomIcon : roomIcon}
-          href={workspaceUrl(`/rooms/${r.id}`)}
-          onclick={go}
-          isSelected={current}
-          class="yip-room {r.unreadCount > 0 && !current ? 'unread' : ''}"
-        >
-          {#snippet endContent()}{@render markers(r, w, current, `${w?.names.join(' and ')} working`)}{/snippet}
-        </SideNavItem>
+        {@const items = roomActions(r)}
+        <ContextMenu {items} label="Actions for {r.name}" menuWidth={220}>
+          <SideNavItem
+            label={r.name}
+            icon={r.private ? privateRoomIcon : roomIcon}
+            href={workspaceUrl(`/rooms/${r.id}`)}
+            onclick={go}
+            isSelected={current}
+            class="yip-room {r.unreadCount > 0 && !current ? 'unread' : ''}"
+          >
+            {#snippet endContent()}{@render markers(r, w, current, `${w?.names.join(' and ')} working`)}{/snippet}
+            {#snippet actions()}
+              <DropdownMenu
+                {items}
+                button={{ label: `Actions for ${r.name}`, icon: moreIcon, isIconOnly: true, variant: 'ghost', size: 'sm' }}
+                hasChevron={false}
+                menuWidth={220}
+              />
+            {/snippet}
+          </SideNavItem>
+        </ContextMenu>
       {/each}
     {/if}
   </SideNavSection>
@@ -246,6 +274,9 @@
     {/if}
   </SideNavSection>
 </SideNav>
+
+{#if renaming}<RenameRoomDialog room={renaming} onclose={() => { renaming = null; }} />{/if}
+{#if archiving}<ArchiveRoomDialog room={archiving} onclose={() => { archiving = null; }} />{/if}
 
 <style>
   .search {

@@ -139,6 +139,9 @@ func (h *Hub) UpdateRoom(ctx context.Context, userID, roomID string, req protoco
 		}
 		if req.Name != nil {
 			r.Name = strings.TrimSpace(*req.Name)
+			if r.Kind == protocol.RoomKindRoom && r.Name == "" {
+				return domain.Invalid("Give the room a name.")
+			}
 		}
 		if req.Purpose != nil {
 			r.Purpose = strings.TrimSpace(*req.Purpose)
