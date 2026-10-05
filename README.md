@@ -111,7 +111,9 @@ yip runner --providers codex,claude,cursor,opencode,pi
 yip service install runner       # launchd (macOS) or systemd (Linux)
 ```
 
-To run the hub and web client in Docker instead, use `just docker` (web on
+To build locally with your Go settings and run in Docker, use
+`just docker-build` once, then `just docker-run` whenever you want to start it.
+To build entirely inside Docker instead, use `just docker` (web on
 `http://localhost:7420`, runners pair on `:7443`); see
 [Install the hub → In Docker](docs/operations.md#in-docker).
 

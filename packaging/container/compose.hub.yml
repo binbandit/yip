@@ -24,7 +24,7 @@ services:
       dockerfile: packaging/container/Dockerfile.hub
       args:
         VERSION: ${YIP_VERSION:-0.1.0-dev}
-    image: yip-hub
+    image: ${YIP_HUB_IMAGE:-yip-hub}
     user: "10001:10001"
     volumes:
       - hub-data:/var/lib/yip
