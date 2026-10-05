@@ -814,6 +814,8 @@ type Bootstrap struct {
 
 	// CanManageWorkspace is advisory; configuration mutations also check ownership.
 	CanManageWorkspace bool `json:"canManageWorkspace"`
+	// NodeNames includes removed machines for attribution in historical work.
+	NodeNames map[string]string `json:"nodeNames,omitempty"`
 }
 
 // ProviderSummary aggregates provider readiness across machines.

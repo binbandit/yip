@@ -351,12 +351,8 @@ func (h *Hub) RevokeNode(ctx context.Context, userID, nodeID string) error {
 // reported workspaces and credential so history and revocation remain intact.
 func (h *Hub) RemoveNode(ctx context.Context, userID, nodeID string) error {
 	return h.do(ctx, func(t *txn) error {
-		ownerID, err := h.ownerID(ctx, t.tx)
-		if err != nil {
+		if err := h.requireWorkspaceOwner(ctx, t.tx, userID); err != nil {
 			return err
-		}
-		if userID != ownerID {
-			return domain.Forbidden("Only the workspace owner can remove machines.")
 		}
 		n, err := store.GetNode(ctx, t.tx, nodeID)
 		if err != nil {

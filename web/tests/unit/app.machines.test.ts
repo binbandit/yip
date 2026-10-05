@@ -5,10 +5,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
-import { mergeNode } from '../../src/lib/state/data';
+import { applyBootstrap, applyEvent, mergeNode } from '../../src/lib/state/data';
+import { details } from '../../src/lib/state/details.svelte';
 import { choose } from './controls';
 import { fixtureHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
-import type { JobDetail, Node, ProviderInstallation, ProviderProfile, Run } from '../../src/lib/api/types.gen';
+import type { Bootstrap, Event, JobDetail, Node, ProviderInstallation, ProviderProfile, Run } from '../../src/lib/api/types.gen';
 
 let hub: FakeHub;
 let component: ReturnType<typeof mount>;
@@ -193,6 +194,38 @@ describe('the Machines list', () => {
       expect([...document.querySelectorAll('[role=main] button')].filter((b) => b.textContent?.includes('Add machine')).length).toBe(1);
     } finally {
       machines.push(...saved);
+    }
+  });
+
+  it('keeps a live pairing when an earlier list request finally resolves', async () => {
+    app.go({ name: 'engineers' });
+    await settle();
+    const snapshot = structuredClone(machines);
+    const fetch = globalThis.fetch;
+    let resolve!: (response: Response) => void;
+    let requested = false;
+    const response = new Promise<Response>((r) => { resolve = r; });
+    globalThis.fetch = ((input, init) => {
+      const path = new URL(String(input), 'http://localhost').pathname;
+      if (path === '/v1/nodes' && (!init?.method || init.method === 'GET')) {
+        requested = true;
+        return response;
+      }
+      return fetch(input, init);
+    }) as typeof globalThis.fetch;
+    try {
+      app.go({ name: 'machines' });
+      await waitFor(() => requested, 'deferred list request');
+      applyEvent(app.data, { type: 'node.updated', sequence: app.data.lastSeq + 1,
+        payload: { ...base, id: 'new-pairing', name: 'New pairing' } } as Event);
+      await waitFor(() => row('New pairing'), 'live pairing');
+      resolve(new Response(JSON.stringify(snapshot), { headers: { 'content-type': 'application/json' } }));
+      await settle();
+      expect(row('New pairing')).toBeTruthy();
+      expect(Object.keys(app.data.nodes)).toHaveLength(5);
+    } finally {
+      resolve(new Response('[]', { headers: { 'content-type': 'application/json' } }));
+      globalThis.fetch = fetch;
     }
   });
 });
@@ -447,5 +480,25 @@ describe('consequential actions', () => {
     await waitFor(() => row('Studio mini') && !row(LONG) && !app.data.nodes['n-laptop'], 'stale row discarded');
     expect(app.data.nodes['n-laptop']).toBeUndefined();
     expect(row('Studio mini')).toBeTruthy();
+  });
+
+  it('keeps the historical run machine label after removal and a fresh bootstrap', async () => {
+    const historical = structuredClone(codeDetail);
+    historical.runs = historical.runs.map((run) => ({ ...run, nodeId: 'n-laptop' }));
+    details.jobs[historical.job.id] = { data: historical, loading: false, touch: app.data.touched.jobs[historical.job.id] ?? 0 };
+    app.openPanel({ kind: 'job', id: historical.job.id }, 'runs');
+    await waitFor(() => byText('.runs .run', LONG), 'historical machine before removal');
+    mergeNode(app.data, { ...app.data.nodes['n-laptop'], status: 'revoked', revokedAt: ago(1), removedAt: ago(0) });
+    await settle();
+    expect(byText('.runs .run', LONG)).toBeTruthy();
+    expect(app.nodeName('n-laptop')).toBe(LONG);
+    expect(app.actorName({ kind: 'node', id: 'n-laptop' })).toBe(LONG);
+    app.data.nodeNames = {};
+    applyBootstrap(app.data, { ...fixture<Bootstrap>('bootstrap.json'), nodes: [], nodeNames: { 'n-laptop': LONG } });
+    await settle();
+    expect(app.data.nodes['n-laptop']).toBeUndefined();
+    expect(byText('.runs .run', LONG)).toBeTruthy();
+    expect(document.querySelector('.runs')?.textContent).not.toContain('Not assigned');
+    app.closePanel();
   });
 });

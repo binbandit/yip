@@ -102,6 +102,7 @@ export interface Bootstrap {
   version: string;
   providers: ProviderSummary[];
   canManageWorkspace: boolean;
+  nodeNames?: Record<string, string>;
 }
 
 export interface CancelJobRequest {

@@ -1,7 +1,9 @@
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { expect, test, YIP_BIN } from './fixtures';
+import type { JobDetail } from '../../src/lib/api/types.gen';
 
 test('remove a revoked machine with confirmation, errors and live updates', async ({ app, api, context, hub }) => {
   // Pair a separate idle identity: the scripted harness exits when its own
@@ -57,5 +59,19 @@ test('remove a revoked machine with confirmation, errors and live updates', asyn
   await app.reload();
   await expect(app.getByRole('heading', { name: 'Machines', exact: true })).toBeVisible();
   await expect(app.getByRole('button', { name: `Details for ${node.name}`, exact: true })).toHaveCount(0);
+
+  // Recorded job detail isolates historical label rendering from execution.
+  // The removed identity and its bootstrap name lookup come from the real hub.
+  const historical: JobDetail = JSON.parse(readFileSync(new URL('../unit/fixtures/job-code.json', import.meta.url), 'utf8'));
+  historical.job.nodeId = node.id;
+  historical.runs = historical.runs.map((run) => ({ ...run, nodeId: node.id }));
+  await app.route(`**/v1/jobs/${historical.job.id}`, (route) => route.fulfill({ json: historical }));
+  await app.goto(`/machines?panel=job%3A${historical.job.id}&tab=runs`);
+  await expect(app.locator('.runs .run').first()).toContainText(node.name);
+  await app.reload();
+  await expect(app.locator('.runs .run').first()).toContainText(node.name);
+  const screenshot = test.info().outputPath('retained-machine-attribution.png');
+  await app.screenshot({ path: screenshot, fullPage: true });
+  await test.info().attach('Historical machine attribution after removal and reload', { path: screenshot, contentType: 'image/png' });
   await other.close();
 });

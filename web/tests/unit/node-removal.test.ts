@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyEvent, emptyState, mergeNode, removeNode, replaceNodes } from '../../src/lib/state/data';
-import type { Event, Node } from '../../src/lib/api/types.gen';
+import { applyBootstrap, applyEvent, emptyState, mergeNode, removeNode, replaceNodes } from '../../src/lib/state/data';
+import type { Bootstrap, Event, Node } from '../../src/lib/api/types.gen';
 import { fixture } from './fakehub';
 
 const node = fixture<Node[]>('nodes.json')[0];
@@ -32,5 +32,29 @@ describe('removed machine state', () => {
     removeNode(s, node.id);
     mergeNode(s, revoked);
     expect(s.nodes[node.id]).toBeUndefined();
+  });
+
+  it('preserves pairing and updates received while a list request was in flight', () => {
+    const s = emptyState();
+    replaceNodes(s, [node, { ...node, id: 'removed-while-away' }]);
+    const requestedAt = s.lastSeq;
+    applyEvent(s, { type: 'node.updated', sequence: 1, payload: { ...node, id: 'paired-during-request' } } as Event);
+    applyEvent(s, { type: 'node.updated', sequence: 2, payload: { ...node, status: 'revoked', revokedAt: '2026-10-05T00:00:00Z' } } as Event);
+    replaceNodes(s, [node], requestedAt);
+    expect(s.nodes['paired-during-request']).toBeDefined();
+    expect(s.nodes[node.id].status).toBe('revoked');
+    expect(s.nodes['removed-while-away']).toBeUndefined();
+    expect(s.lastSeq).toBe(2);
+  });
+
+  it('preserves historical machine names after removal and fresh bootstrap', () => {
+    const s = emptyState();
+    mergeNode(s, node);
+    removeNode(s, node.id);
+    expect(s.nodeNames[node.id]).toBe(node.name);
+    const fresh = emptyState();
+    applyBootstrap(fresh, { ...fixture<Bootstrap>('bootstrap.json'), nodes: [], nodeNames: { [node.id]: node.name } });
+    expect(fresh.nodes[node.id]).toBeUndefined();
+    expect(fresh.nodeNames[node.id]).toBe(node.name);
   });
 });

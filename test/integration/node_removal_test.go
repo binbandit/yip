@@ -148,6 +148,9 @@ func TestRemoveRevokedMachine(t *testing.T) {
 		if len(visible) != 0 || len(boot.Nodes) != 0 {
 			t.Fatal("removed node returned to list or bootstrap")
 		}
+		if boot.NodeNames[n.id] != before.Name {
+			t.Fatalf("historical machine attribution was lost: %+v", boot.NodeNames)
+		}
 		e.c.must("DELETE", path, nil, nil)
 		stored, err := store.GetNode(e.ctx, e.hub.Store().R(), n.id)
 		if err != nil || stored.RemovedAt == nil || !stored.RemovedAt.Equal(removedAt) {

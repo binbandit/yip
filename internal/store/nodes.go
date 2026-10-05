@@ -72,6 +72,20 @@ func ListNodes(ctx context.Context, q Q) ([]NodeRow, error) {
 	return ns, nil
 }
 
+// NodeNames retains attribution for historical runs, including removed machines.
+func NodeNames(ctx context.Context, q Q) (map[string]string, error) {
+	names := map[string]string{}
+	err := each(ctx, q, func(rows scanner) error {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return err
+		}
+		names[id] = name
+		return nil
+	}, `SELECT id, name FROM nodes`)
+	return names, err
+}
+
 func fillNode(ctx context.Context, q Q, n *NodeRow) error {
 	var err error
 	if n.Providers, err = ListInstallations(ctx, q, n.ID); err != nil {

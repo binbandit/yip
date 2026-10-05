@@ -41,8 +41,9 @@
 
   onMount(() => {
     let alive = true;
+    const requestedAt = app.data.lastSeq;
     api.nodes().then((ns) => {
-      if (alive) replaceNodes(app.data, ns);
+      if (alive) replaceNodes(app.data, ns, requestedAt);
     }).catch((err) => { if (alive) loadError = errorMessage(err); });
     return () => { alive = false; };
   });

@@ -35,12 +35,13 @@
   let missing = $state(false);
   onMount(() => {
     let alive = true;
+    const requestedAt = app.data.lastSeq;
     if (!app.data.nodes[nodeId])
       api
         .nodes()
         .then((ns) => {
           if (!alive) return;
-          replaceNodes(app.data, ns);
+          replaceNodes(app.data, ns, requestedAt);
           missing = !app.data.nodes[nodeId];
         })
         .catch(() => { if (alive) missing = true; });
