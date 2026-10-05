@@ -9,6 +9,9 @@ bring the same engineers (Mira, Oren, Pip — or whoever you configure) into
 different conversations, and ask them to investigate, build, review, and
 explain. Work runs on machines you choose; closing the laptop doesn't stop it.
 
+Every engineer has the pinned [bin-stack skills](docs/bundled-skills.md)
+available through yip: arena, babysit-pr, bro, and file-pr.
+
 Prefer not to run agents directly on your host? The opt-in
 [ephemeral Docker runtime](docs/ephemeral-agents.md) isolates each attempt and
 imports supported harness authentication, skills and MCP configuration.
