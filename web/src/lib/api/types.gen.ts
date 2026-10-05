@@ -103,6 +103,7 @@ export interface Bootstrap {
   providers: ProviderSummary[];
   canManageWorkspace: boolean;
   nodeNames?: Record<string, string>;
+  roomOrder?: RoomOrder | null;
 }
 
 export interface CancelJobRequest {
@@ -956,6 +957,21 @@ export interface Room {
   mentionCount: number;
 }
 
+export interface RoomOrder {
+  rooms: RoomOrderSection;
+  dms: RoomOrderSection;
+}
+
+export interface RoomOrderSection {
+  version: number;
+  roomIds: string[];
+}
+
+export interface RoomOrderUpdated {
+  kind: string;
+  order: RoomOrderSection;
+}
+
 export interface Run {
   id: string;
   jobId: string;
@@ -1057,6 +1073,11 @@ export interface UpdateProjectRequest {
   description?: string | null;
   instructions?: string | null;
   policy?: ProjectPolicy | null;
+}
+
+export interface UpdateRoomOrderRequest {
+  version: number;
+  roomIds: string[];
 }
 
 export interface UpdateRoomRequest {

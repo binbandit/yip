@@ -264,6 +264,11 @@ type PreferencesRequest struct {
 	Preferences Preferences `json:"preferences"`
 }
 
+type UpdateRoomOrderRequest struct {
+	Version int64    `json:"version"`
+	RoomIDs []string `json:"roomIds"`
+}
+
 // ProfileRequest changes how the owner appears. The handle stays fixed: it
 // signs in and is how engineers mention the owner.
 type ProfileRequest struct {

@@ -29,6 +29,8 @@ import type {
   Review,
   RevisionRecord,
   Room,
+  RoomOrder,
+  RoomOrderUpdated,
   Run,
   RunState,
   User,
@@ -77,6 +79,7 @@ export interface DataState {
   version: string;
   providers: ProviderSummary[];
   preferences: Preferences;
+  roomOrder: RoomOrder | null;
   /** Highest committed event sequence applied. */
   lastSeq: number;
   /** Cursor returned by the bootstrap snapshot; the event stream resumes after it. */
@@ -131,6 +134,7 @@ export function emptyState(): DataState {
     version: '',
     providers: [],
     preferences: { ...defaultPreferences },
+    roomOrder: null,
     lastSeq: 0,
     bootCursor: 0,
     workRunState: {},
@@ -176,6 +180,7 @@ export function applyBootstrap(s: DataState, b: Bootstrap): void {
   s.version = b.version;
   s.providers = b.providers ?? [];
   s.preferences = { ...defaultPreferences, ...b.preferences };
+  s.roomOrder = b.roomOrder ?? null;
   s.rooms = byId(b.rooms);
   s.engineers = byId(b.engineers);
   s.projects = byId(b.projects);
@@ -187,6 +192,12 @@ export function applyBootstrap(s: DataState, b: Bootstrap): void {
 
 export function newer(existing: { version: number } | undefined, incoming: { version: number }): boolean {
   return !existing || incoming.version >= existing.version;
+}
+
+export function mergeRoomOrder(s: DataState, update: RoomOrderUpdated): void {
+  if (!s.roomOrder || (update.kind !== 'room' && update.kind !== 'dm')) return;
+  const key = update.kind === 'room' ? 'rooms' : 'dms';
+  if (update.order.version >= s.roomOrder[key].version) s.roomOrder[key] = update.order;
 }
 
 export function removeNode(s: DataState, id: string): void {
@@ -369,6 +380,9 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
   bump(s.touched.rooms, ev.roomId);
   const res: ApplyResult = { applied: true };
   switch (ev.type) {
+    case 'room_order.updated':
+      mergeRoomOrder(s, asPayload<RoomOrderUpdated>(ev));
+      break;
     case 'message.created':
       applyMessageCreated(s, asPayload<Message>(ev), ctx.viewingBottomRoomId ?? null);
       break;

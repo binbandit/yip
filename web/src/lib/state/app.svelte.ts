@@ -13,6 +13,7 @@ import {
   emptyState,
   failPending,
   mergeRoomPage,
+  mergeRoomOrder,
   mergeRuns,
   mergeThread,
   mergeWorkRows,
@@ -28,6 +29,7 @@ import { href, parseLocation, safeNext, withPanel, type Location, type Panel, ty
 import { plainText } from '../util/markdown';
 import { recalledWorkspaceLocation, rememberWorkspaceLocation, workspaceBase, workspaceLocalPath, workspaceStoragePrefix, workspaceUrl, type WorkspaceSummary } from '../workspace';
 import { setupReadiness } from '../util/setup';
+import { orderedRooms, roomOrderKey, type RoomOrderKind } from '../util/room-order';
 
 export type Phase = 'loading' | 'setup' | 'signin' | 'ready' | 'error';
 
@@ -90,6 +92,7 @@ class AppState {
   resetEpoch = $state(0);
   toasts = $state<Toast[]>([]);
   announcement = $state('');
+  private roomOrderSaves = $state<Partial<Record<RoomOrderKind, { data: DataState; ids: string[] }>>>({});
   /** Selected work per room/thread: live input or a follow-up when it ends. */
   steer = $state<Record<string, string | null>>({});
   /** Latest delivery receipt per composer key (input id). */
@@ -714,6 +717,55 @@ class AppState {
   }
 
   // ---- preferences & appearance ----
+
+  roomOrderSaving(kind: RoomOrderKind): boolean {
+    return this.roomOrderSaves[kind]?.data === this.data;
+  }
+
+  orderedRooms(kind: RoomOrderKind): Room[] {
+    const pending = this.roomOrderSaves[kind];
+    const ids = pending?.data === this.data ? pending.ids : this.data.roomOrder?.[roomOrderKey(kind)].roomIds ?? [];
+    return orderedRooms(this.rooms, kind, ids, (room) => {
+      if (kind === 'room') return room.name;
+      const engineer = room.members.find((m) => m.kind === 'engineer');
+      return (engineer && this.data.engineers[engineer.id]?.name) || room.name;
+    });
+  }
+
+  async saveRoomOrder(kind: RoomOrderKind, ids: string[]): Promise<void> {
+    const data = this.data;
+    const section = data.roomOrder?.[roomOrderKey(kind)];
+    if (!section || this.roomOrderSaving(kind)) return;
+    const base = workspaceBase();
+    this.roomOrderSaves[kind] = { data, ids };
+    const pending = this.roomOrderSaves[kind];
+    const current = () => this.data === data && workspaceBase() === base && this.roomOrderSaves[kind] === pending;
+    try {
+      const order = await api.putRoomOrder(kind, { version: section.version, roomIds: ids });
+      if (!current()) return;
+      mergeRoomOrder(data, { kind, order });
+      this.announcement = `${kind === 'room' ? 'Room' : 'Direct message'} order saved.`;
+    } catch (err) {
+      if (!current()) return;
+      // A lost response may still have committed. Recover the canonical order;
+      // version checks retain any newer event received while this was in flight.
+      let refreshed = false;
+      try {
+        const latest = await api.roomOrder();
+        if (!current()) return;
+        mergeRoomOrder(data, { kind, order: latest[roomOrderKey(kind)] });
+        refreshed = true;
+      } catch { /* Retain the last confirmed order if the hub is unreachable. */ }
+      if (!current()) return;
+      this.toast(err instanceof ApiError && err.conflict
+        ? refreshed
+          ? 'Your order changed in another view. The latest order is shown; try your move again.'
+          : "Your order changed in another view, but couldn't be reloaded. The last confirmed order is shown; try again when connected."
+        : `Couldn't save the order: ${errorMessage(err)}`, 'error');
+    } finally {
+      if (this.roomOrderSaves[kind] === pending) delete this.roomOrderSaves[kind];
+    }
+  }
 
   isMuted(roomId: string): boolean {
     return (this.data.preferences.mutedRoomIds ?? []).includes(roomId);

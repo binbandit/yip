@@ -11,6 +11,7 @@ export const COMMITTED_TYPES = [
   'message.updated',
   'room.created',
   'room.updated',
+  'room_order.updated',
   'room.member_added',
   'room.member_removed',
   'read.updated',

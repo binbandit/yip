@@ -32,6 +32,11 @@ func (h *Hub) Bootstrap(ctx context.Context, u store.UserRow, s store.Session) (
 	if b.Rooms, err = store.ListRoomsForUser(ctx, q, u.ID); err != nil {
 		return b, err
 	}
+	order, err := h.roomOrderForRooms(ctx, q, u.ID, b.Rooms)
+	if err != nil {
+		return b, err
+	}
+	b.RoomOrder = &order
 	if b.Engineers, err = store.ListEngineers(ctx, q); err != nil {
 		return b, err
 	}

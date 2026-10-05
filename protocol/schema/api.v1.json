@@ -341,6 +341,16 @@
           },
           "type": "array"
         },
+        "roomOrder": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RoomOrder"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "rooms": {
           "items": {
             "$ref": "#/$defs/Room"
@@ -3806,6 +3816,57 @@
       ],
       "type": "object"
     },
+    "RoomOrder": {
+      "additionalProperties": false,
+      "properties": {
+        "dms": {
+          "$ref": "#/$defs/RoomOrderSection"
+        },
+        "rooms": {
+          "$ref": "#/$defs/RoomOrderSection"
+        }
+      },
+      "required": [
+        "rooms",
+        "dms"
+      ],
+      "type": "object"
+    },
+    "RoomOrderSection": {
+      "additionalProperties": false,
+      "properties": {
+        "roomIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "roomIds"
+      ],
+      "type": "object"
+    },
+    "RoomOrderUpdated": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "order": {
+          "$ref": "#/$defs/RoomOrderSection"
+        }
+      },
+      "required": [
+        "kind",
+        "order"
+      ],
+      "type": "object"
+    },
     "Run": {
       "additionalProperties": false,
       "properties": {
@@ -4291,6 +4352,25 @@
       },
       "required": [
         "version"
+      ],
+      "type": "object"
+    },
+    "UpdateRoomOrderRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "roomIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "roomIds"
       ],
       "type": "object"
     },
