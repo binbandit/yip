@@ -34,7 +34,7 @@ func selectedProvider(cfg configReadResponse) (modelProviderConfig, bool) {
 		config.Provider = "openai"
 	}
 	p := config.Providers[config.Provider]
-	return p, config.Provider != "openai" || p.BaseURL != "" || config.BaseURL != ""
+	return p, (config.Provider != "openai" && config.Provider != "amazon-bedrock") || p.BaseURL != "" || config.BaseURL != ""
 }
 
 var environmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -129,8 +129,14 @@ func classifyConfiguredAccount(account getAccountResponse, cfg configReadRespons
 		// The configured credential takes precedence over account sign-in.
 		state, detail, label, billing = protocol.AuthReady, "Model provider environment credential configured locally; not remotely verified.", "", protocol.BillingAPI
 	}
-	if custom && state == protocol.AuthReady {
-		return state, "Model gateway configured locally. Credential validity, model access and gateway reachability have not been verified.", "", protocol.BillingUnknown
+	if custom && state == protocol.AuthReady && (account.Account == nil || account.Account.Type != accountBedrock) {
+		billing = protocol.BillingUnknown
+		if p.EnvKey != "" || len(p.EnvHTTPHeaders) > 0 {
+			// Environment-backed API access requires the existing API opt-in;
+			// an unknown invoice price must not bypass that permission.
+			billing = protocol.BillingAPI
+		}
+		return state, "Model gateway configured locally. Credential validity, model access, pricing and gateway reachability have not been verified.", "", billing
 	}
 	return
 }

@@ -47,7 +47,11 @@ func TestGatewayClassification(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			state, detail, account, billing := classifyConfiguredAccount(getAccountResponse{RequiresOpenaiAuth: true}, cfg, test.env)
-			if state != test.state || billing != protocol.BillingUnknown || account != "" {
+			wantBilling := protocol.BillingUnknown
+			if test.state == protocol.AuthReady {
+				wantBilling = protocol.BillingAPI
+			}
+			if state != test.state || billing != wantBilling || account != "" {
 				t.Fatalf("classification: %s, %s, %s", state, billing, account)
 			}
 			for _, secret := range []string{"synthetic-key", "private-endpoint", "private-query", "example.invalid"} {
@@ -59,6 +63,29 @@ func TestGatewayClassification(t *testing.T) {
 	}
 }
 
+func TestGatewayHeaderReferencesRequireAPIPermission(t *testing.T) {
+	cfg := configReadResponse{Config: json.RawMessage(`{"model_provider":"work","model_providers":{"work":{"env_http_headers":{"Authorization":"WORK_TOKEN"}}}}`)}
+	state, _, _, billing := classifyConfiguredAccount(getAccountResponse{}, cfg, []string{"WORK_TOKEN=synthetic-token"})
+	if state != protocol.AuthReady || billing != protocol.BillingAPI {
+		t.Fatalf("header credential lost API permission: %s %s", state, billing)
+	}
+}
+
+func TestBuiltInCloudProviderPreservesAPIBilling(t *testing.T) {
+	for _, config := range []string{
+		`{"model_provider":"amazon-bedrock","model_providers":{}}`,
+		`{"model_provider":"amazon-bedrock","openai_base_url":"https://unselected.example.invalid"}`,
+	} {
+		cfg := configReadResponse{Config: json.RawMessage(config)}
+		state, detail, label, billing := classifyConfiguredAccount(getAccountResponse{
+			Account: &account{Type: accountBedrock},
+		}, cfg, nil)
+		if state != protocol.AuthReady || billing != protocol.BillingAPI || label != "" || !strings.Contains(detail, "Bedrock") {
+			t.Fatalf("built-in provider lost API billing: %s %s %s %s", state, detail, label, billing)
+		}
+	}
+}
+
 func TestGatewayProbeAndStartShareEffectiveEnvironment(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -67,7 +94,7 @@ func TestGatewayProbeAndStartShareEffectiveEnvironment(t *testing.T) {
 	t.Setenv("UNRELATED_KEY", "must-not-forward")
 	h := newHarness(t, "probe-gateway", "YIP_CODEX_FAKE_GATEWAY_CONFIG="+gatewayConfig)
 	inst := h.adapter.Probe(context.Background())
-	if inst.AuthState != protocol.AuthReady || !strings.Contains(inst.AuthDetail, "not been verified") {
+	if inst.AuthState != protocol.AuthReady || inst.Billing != protocol.BillingAPI || !strings.Contains(inst.AuthDetail, "not been verified") {
 		t.Fatalf("probe: %+v", inst)
 	}
 	raw, err := os.ReadFile(h.logPath)

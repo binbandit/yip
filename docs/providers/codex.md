@@ -75,9 +75,12 @@ configuration visible inside that home.
 An installed executable is not proof of configuration. A selected provider whose
 required `env_key` is absent or blank is reported as needing configuration, and
 a run stops before starting a thread. Locally configured gateways are available
-for selection, with unknown billing and an explicit unverified status: neither
+for selection, with an explicit unverified status: neither
 credential validity, model access nor gateway reachability is established by a
-probe or a model catalogue. The engineer's API billing permission remains in force.
+probe or a model catalogue. Gateways using environment credential references are
+classified as API-backed so the engineer's API billing permission remains in
+force; this does not establish the gateway's pricing. Providers with no such
+references retain their existing billing classification.
 Configuration values, endpoint URLs, headers and keys are not exposed as
 installation metadata.
 
