@@ -7,6 +7,15 @@ ldflags := "-s -w -X github.com/binbandit/yip/internal/buildinfo.Version=" + ver
 # build the web client and the yip binary
 all: web build
 
+# install this checkout's CLI and refresh existing macOS user services
+[positional-arguments]
+install *args: web
+    sh scripts/install.sh "{{ ldflags }}" "$@"
+
+# verify install builds safely before any installed binary is replaced
+test-install:
+    node --test scripts/install.test.mjs
+
 # compile the yip binary (embeds web/dist if built)
 build:
     go build -trimpath -ldflags "{{ ldflags }}" -o bin/yip ./cmd/yip
