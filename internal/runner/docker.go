@@ -176,6 +176,11 @@ func (r *Runner) dockerArgs(name, workspace, imports string, readonly bool) ([]s
 func (r *Runner) createDocker(ctx context.Context, workspace string, readonly bool, snapshot agentconfig.Snapshot, command []string) (*dockerContainer, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	// Keep durable evidence of Docker usage even for probes with no imports,
+	// so re-pairing cannot bypass orphan cleanup by switching profiles.
+	if _, err := r.dockerStaging(); err != nil {
+		return nil, err
+	}
 	c := &dockerContainer{name: "yip-agent-" + domain.NewID()}
 	args, err := r.dockerArgs(c.name, workspace, snapshot.Dir, readonly)
 	if err != nil {
@@ -325,18 +330,43 @@ func (r *Runner) dockerToolchains(ctx context.Context) (tools map[string]string)
 	return tools
 }
 
-// reapDocker removes only containers owned by this paired runner. It runs
+// reapDocker removes only containers owned by this state root's identities. It runs
 // before accepting leases after a restart; --rm also covers normal worker exit.
 func (r *Runner) reapDocker(ctx context.Context) error {
-	out, err := dockerCommand(ctx, "container", "ls", "--all", "--quiet", "--filter", "label=dev.yip.runner="+r.id.NodeID).Output()
-	if err != nil {
-		return errors.New("could not inspect orphaned agent containers")
-	}
-	for _, id := range strings.Fields(string(out)) {
-		if err := dockerCommand(ctx, "rm", "--force", id).Run(); err != nil {
-			return errors.New("could not remove an orphaned agent container")
+	seen := map[string]bool{}
+	for _, node := range append([]string{r.id.NodeID}, r.id.PreviousNodeIDs...) {
+		if node == "" || seen[node] {
+			continue
+		}
+		seen[node] = true
+		args := []string{"container", "ls", "--all", "--quiet", "--filter", "label=dev.yip.runner=" + node}
+		out, err := dockerCommand(ctx, args...).Output()
+		if err != nil {
+			return errors.New("could not inspect orphaned agent containers")
+		}
+		for _, id := range strings.Fields(string(out)) {
+			if err := dockerCommand(ctx, "rm", "--force", id).Run(); err != nil {
+				return errors.New("could not remove an orphaned agent container")
+			}
+		}
+		out, err = dockerCommand(ctx, args...).Output()
+		if err != nil || strings.TrimSpace(string(out)) != "" {
+			return errors.New("could not confirm removal of orphaned agent containers")
 		}
 	}
-	// Reap sensitive staged imports only after old containers are gone.
+	// Reap sensitive staged imports only after every owned container is gone.
+	// These are disposable copies; credentials, journals and workspaces stay.
+	for _, state := range r.id.PreviousStateDirs {
+		dir, err := identityStateDir(r.opts.StateDir, Identity{StateDir: state})
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := os.RemoveAll(filepath.Join(dir, "container-imports")); err != nil {
+			return err
+		}
+	}
 	return os.RemoveAll(filepath.Join(r.paths.Dir, "container-imports"))
 }

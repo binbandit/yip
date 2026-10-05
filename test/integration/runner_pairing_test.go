@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -108,6 +109,9 @@ func TestRevokedRunnerPairingHasExplicitRecovery(t *testing.T) {
 	if paired.NodeID == id.NodeID || paired.StateDir == "" {
 		t.Fatalf("replacement must create a distinct identity: %+v", paired)
 	}
+	if !slices.Equal(paired.PreviousNodeIDs, []string{id.NodeID}) || !slices.Equal(paired.PreviousStateDirs, []string{""}) {
+		t.Fatalf("replacement lost previous container ownership: %+v", paired)
+	}
 	unchanged(false)
 	active, err := runner.ActiveStateDir(dir)
 	if err != nil || active != filepath.Join(dir, paired.StateDir) {
@@ -140,6 +144,9 @@ func TestRevokedRunnerPairingHasExplicitRecovery(t *testing.T) {
 	if _, found := newJournal.CommandAck("old-command"); found {
 		t.Fatal("new identity must not replay old journal commands")
 	}
+	if err := newJournal.AcceptRun("keep-command", protocol.ExecutionManifest{RunID: "keep-run"}, 1, protocol.RunAck{}); err != nil {
+		t.Fatal(err)
+	}
 	newJournal.Close()
 	if files, err := os.ReadDir(filepath.Join(active, "work")); err != nil || len(files) != 0 {
 		t.Fatalf("new identity must not expose previous workspaces: %v, %v", files, err)
@@ -170,11 +177,29 @@ func TestRevokedRunnerPairingHasExplicitRecovery(t *testing.T) {
 	if _, err := runner.New(runner.Options{StateDir: dir}); err == nil || !strings.Contains(err.Error(), "in use") {
 		t.Fatalf("must refuse concurrent runner startup: %v", err)
 	}
+	if _, err := runner.New(runner.Options{StateDir: active}); err == nil {
+		t.Fatal("generated identity directory must not bypass the owning state root")
+	}
+	checkJournal, err := runner.OpenJournal(filepath.Join(active, "journal.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jr, found := checkJournal.Run("keep-run")
+	checkJournal.Close()
+	if !found || jr.State != "accepted" || jr.Terminal != nil {
+		t.Fatal("refused child startup must not recover the live journal")
+	}
 	still, err := runner.LoadIdentity(dir)
 	if err != nil || still.NodeID != paired.NodeID {
 		t.Fatal("refused replacement changed the active identity")
 	}
 	stop()
+	if _, err := runner.New(runner.Options{StateDir: active}); err == nil {
+		t.Fatal("identity storage is not an independent runner root even when stopped")
+	}
+	if _, err := runner.RePair(e.ctx, active, srv.URL, next.HubFingerprint, next.Token, "Work Mac"); err == nil {
+		t.Fatal("must refuse pairing inside generated identity storage")
+	}
 	// A runner constructed just before replacement must not start later with
 	// cached credentials and replay the previous identity's journal.
 	stale, err := runner.New(runner.Options{StateDir: dir, Logger: quietLogger()})
@@ -185,9 +210,18 @@ func TestRevokedRunnerPairingHasExplicitRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	previousGeneration := read(filepath.Join(active, "node.json"))
+	if err := os.Mkdir(filepath.Join(active, "container-imports"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	newer, err := runner.RePair(e.ctx, dir, srv.URL, next.HubFingerprint, next.Token, "Work Mac")
 	if err != nil || newer.NodeID == paired.NodeID || newer.StateDir == paired.StateDir {
 		t.Fatalf("repeat replacement after stopping runner: %+v, %v", newer, err)
+	}
+	if !slices.Equal(newer.PreviousNodeIDs, []string{id.NodeID, paired.NodeID}) || !slices.Equal(newer.PreviousStateDirs, []string{"", paired.StateDir}) {
+		t.Fatalf("repeat replacement lost previous container ownership: %+v", newer)
+	}
+	if !newer.DockerCleanupRequired {
+		t.Fatal("replacement must retain the previous identity's Docker cleanup obligation")
 	}
 	if !bytes.Equal(previousGeneration, read(filepath.Join(active, "node.json"))) {
 		t.Fatal("repeat replacement changed the previous generation")
@@ -196,5 +230,12 @@ func TestRevokedRunnerPairingHasExplicitRecovery(t *testing.T) {
 	defer stopStart()
 	if err := stale.Run(startCtx); err == nil || !strings.Contains(err.Error(), "pairing changed") {
 		t.Fatalf("stale runner must reload before it can start: %v", err)
+	}
+	// Replacing again without starting must carry the cleanup requirement,
+	// even though the newest storage has not created any containers itself.
+	another := enroll()
+	latest, err := runner.RePair(e.ctx, dir, srv.URL, another.HubFingerprint, another.Token, "Work Mac")
+	if err != nil || !latest.DockerCleanupRequired || !slices.Equal(latest.PreviousNodeIDs, []string{id.NodeID, paired.NodeID, newer.NodeID}) {
+		t.Fatalf("repeated replacement lost pending Docker cleanup: %+v, %v", latest, err)
 	}
 }

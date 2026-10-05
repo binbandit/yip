@@ -233,18 +233,29 @@ func (r *Runner) Run(ctx context.Context) error {
 	if current.NodeID != r.id.NodeID {
 		return errors.New("runner pairing changed during startup; start the runner again")
 	}
-	if r.opts.ExecutionProfile == "docker" {
+	if r.opts.ExecutionProfile == "docker" || r.id.DockerCleanupRequired {
 		cctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		err := dockerEngineReady(cctx)
 		if err == nil {
 			err = r.reapDocker(cctx)
 		}
-		if err == nil {
+		if err == nil && r.opts.ExecutionProfile == "docker" {
 			err = r.dockerReady(cctx)
 		}
 		cancel()
 		if err != nil {
 			return err
+		}
+		// Clear predecessor ownership only after all matching containers are
+		// confirmed absent. A failed write leaves recovery blocked and retryable.
+		if len(r.id.PreviousNodeIDs) != 0 || r.id.DockerCleanupRequired {
+			clean := r.id
+			clean.PreviousNodeIDs = nil
+			clean.PreviousStateDirs = nil
+			clean.DockerCleanupRequired = false
+			if err := writeIdentity((Paths{r.opts.StateDir}).identity(), clean); err != nil {
+				return err
+			}
 		}
 	}
 	ln, err := r.listenBridge()

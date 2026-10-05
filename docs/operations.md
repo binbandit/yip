@@ -166,6 +166,16 @@ Invalid tokens, a wrong hub fingerprint or invalid returned credentials leave
 the active pairing unchanged. Replacement is refused while the runner is
 active; keep the service stopped until pairing finishes.
 
+Keep using the original state directory when starting the runner; generated
+`identity-*` directories are storage, not independent runner roots. If the old
+identity used Docker agents, startup first removes containers carrying its
+node label, including across repeated replacements. Keep the local Docker
+engine available for this cleanup even when switching to native execution.
+If inspection or removal cannot be confirmed, startup stops before accepting
+work. Other runners' containers and unpublished workspace files stay intact.
+Disposable `container-imports` copies from previous identities are removed
+only after their containers are confirmed gone.
+
 ## Connections
 
 Open **Connections** (`/connections`) and choose a tool. Its guide (for

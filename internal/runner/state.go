@@ -41,6 +41,13 @@ type Identity struct {
 	// StateDir selects a fresh identity's storage without moving old worktrees.
 	// Empty is the original layout, whose files live alongside node.json.
 	StateDir string `json:"stateDir,omitempty"`
+	// StateRoot marks generated storage as belonging to its parent root. It
+	// must never be opened as an independent runner or pairing destination.
+	StateRoot string `json:"stateRoot,omitempty"`
+	// Prior labels remain discoverable until startup confirms Docker cleanup.
+	PreviousNodeIDs       []string `json:"previousNodeIds,omitempty"`
+	PreviousStateDirs     []string `json:"previousStateDirs,omitempty"`
+	DockerCleanupRequired bool     `json:"dockerCleanupRequired,omitempty"`
 }
 
 // Paths lays out a runner state directory.
@@ -74,7 +81,13 @@ func LoadIdentity(dir string) (Identity, error) {
 		}
 		return id, err
 	}
-	return id, json.Unmarshal(b, &id)
+	if err := json.Unmarshal(b, &id); err != nil {
+		return id, err
+	}
+	if id.StateRoot != "" {
+		return id, errors.New("this is generated identity storage; use the owning runner state directory, not an identity-* subdirectory")
+	}
+	return id, nil
 }
 
 // ActiveStateDir returns the active identity's credentials, journal and work
@@ -108,6 +121,13 @@ func identityStateDir(dir string, id Identity) (string, error) {
 // The lock is never unlinked: all runner and pairing processes must lock the
 // same inode. Closing it releases the lock, including after a process crash.
 func lockState(dir string) (*os.File, error) {
+	if _, err := os.Stat((Paths{dir}).identity()); err == nil {
+		if _, err := LoadIdentity(dir); err != nil {
+			return nil, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
 	f, err := os.OpenFile(filepath.Join(dir, ".runner.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
@@ -207,6 +227,25 @@ func pair(ctx context.Context, dir, hubURL, fingerprint, token, name string, rep
 	if previous == nil {
 		return saveIdentity(p, id, keyPEM, []byte(pr.CertPEM), []byte(pr.CAPEM))
 	}
+	var old Identity
+	if err := json.Unmarshal(previous, &old); err != nil {
+		return Identity{}, err
+	}
+	id.PreviousNodeIDs = append(old.PreviousNodeIDs, old.NodeID)
+	id.PreviousStateDirs = append(old.PreviousStateDirs, old.StateDir)
+	id.DockerCleanupRequired = old.DockerCleanupRequired
+	active, err := identityStateDir(dir, old)
+	if err != nil {
+		return Identity{}, err
+	}
+	// Docker providers and shell checks stage imports before creating their
+	// containers. Preserve that cleanup obligation even if the new runner
+	// selects a native execution profile or is replaced again before startup.
+	if _, err := os.Stat(filepath.Join(active, "container-imports")); err == nil {
+		id.DockerCleanupRequired = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Identity{}, err
+	}
 	// Prepare a complete fresh identity before atomically switching node.json.
 	// Old paths stay stable, including Git worktree links and unpublished files.
 	fresh, err := os.MkdirTemp(dir, "identity-")
@@ -219,7 +258,9 @@ func pair(ctx context.Context, dir, hubURL, fingerprint, token, name string, rep
 			_ = os.RemoveAll(fresh)
 		}
 	}()
-	if _, err := saveIdentity(Paths{fresh}, id, keyPEM, []byte(pr.CertPEM), []byte(pr.CAPEM)); err != nil {
+	child := id
+	child.StateRoot = ".."
+	if _, err := saveIdentity(Paths{fresh}, child, keyPEM, []byte(pr.CertPEM), []byte(pr.CAPEM)); err != nil {
 		return Identity{}, err
 	}
 	if err := os.WriteFile(filepath.Join(fresh, "previous-node.json"), previous, 0o600); err != nil {
