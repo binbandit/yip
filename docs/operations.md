@@ -144,6 +144,47 @@ available on the machine as `yip runner workspaces` / `yip runner cleanup`.
 Revoke a machine from Machines. It can't regain authority by replaying its
 queue; its in-flight runs are marked unknown until reconciled.
 
+### Reconnect a revoked machine
+
+Revocation intentionally leaves the runner's local files intact. To reconnect:
+
+1. Stop the runner process or its service. For the standard macOS LaunchAgent,
+   use `launchctl bootout gui/$(id -u)/dev.getyip.runner`.
+2. In **Machines → Add machine**, create a fresh enrollment token and copy its
+   pairing command. Add `--replace`, retaining the same `--state` directory if
+   you use one: `yip runner pair --replace --hub … --fingerprint … --token …`.
+3. Start the runner again with its usual command. For the standard macOS
+   LaunchAgent, use `launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/dev.getyip.runner.plist"`.
+
+This enrolls a new machine identity; it does not re-enable the revoked one.
+The fresh identity uses its own `identity-*` directory beneath the existing
+state directory. Previous credentials, journal, replicas and workspaces stay
+at their original paths, preserving unpublished work and Git worktree links.
+They are not replayed or exposed through the new identity. The previous
+identity metadata is saved as `previous-node.json` in the new directory.
+Invalid tokens, a wrong hub fingerprint or invalid returned credentials leave
+the active pairing unchanged. Replacement is refused while the runner is
+active; keep the service stopped until pairing finishes.
+
+Keep using the original state directory when starting the runner; generated
+`identity-*` directories are storage, not independent runner roots. If the old
+identity used Docker agents, or Docker is discoverable during replacement or
+startup, startup first removes containers carrying its node label, including
+across repeated replacements. Keep the local Docker
+engine available for this cleanup even when switching to native execution.
+If inspection or removal cannot be confirmed, startup stops before accepting
+work. Other runners' containers and unpublished workspace files stay intact.
+Disposable `container-imports` copies from previous identities are removed
+only after their containers are confirmed gone.
+
+For pre-upgrade Docker runners, keep `docker` on the pairing or service PATH:
+older toolchain-only probes did not leave a local usage marker, so their
+containers cannot be detected if Docker is absent from both environments.
+Preserved historical work remains inspectable with `yip runner workspaces
+--state <old identity directory>` and removable with `yip runner cleanup
+--state <old identity directory> --workspace <name> --confirm <name>`. These
+commands do not start that identity or replay its journal.
+
 ## Connections
 
 Open **Connections** (`/connections`) and choose a tool. Its guide (for
