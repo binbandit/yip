@@ -296,6 +296,9 @@
     "Bootstrap": {
       "additionalProperties": false,
       "properties": {
+        "canManageWorkspace": {
+          "type": "boolean"
+        },
         "csrfToken": {
           "type": "string"
         },
@@ -361,7 +364,8 @@
         "preferences",
         "serverTime",
         "version",
-        "providers"
+        "providers",
+        "canManageWorkspace"
       ],
       "type": "object"
     },

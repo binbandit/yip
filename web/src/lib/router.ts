@@ -17,6 +17,7 @@ export type Route =
   | { name: 'machines' }
   | { name: 'connections'; provider?: string }
   | { name: 'settings' }
+  | { name: 'workspace-settings' }
   | { name: 'notfound'; path: string };
 
 const PANEL_KINDS = ['thread', 'job', 'review', 'pr', 'engineer', 'decision', 'room', 'machine'] as const;
@@ -71,7 +72,7 @@ export function parseRoute(pathname: string): Route {
     case 'connections':
       return b ? { name: 'connections', provider: b } : { name: 'connections' };
     case 'settings':
-      return b ? { name: 'notfound', path: pathname } : { name: 'settings' };
+      return b === 'workspace' ? { name: 'workspace-settings' } : b ? { name: 'notfound', path: pathname } : { name: 'settings' };
     default:
       return { name: 'notfound', path: pathname };
   }
@@ -129,6 +130,8 @@ function localRoutePath(r: Route): string {
       return r.provider ? `/connections/${e(r.provider)}` : '/connections';
     case 'settings':
       return '/settings';
+    case 'workspace-settings':
+      return '/settings/workspace';
     case 'notfound':
       return r.path;
   }

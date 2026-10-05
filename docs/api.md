@@ -57,6 +57,19 @@ New workspaces contain only the owner and an Overview conversation. Existing
 root machines and data are not copied: pair a runner explicitly using the
 new workspace's Machines enrollment command.
 
+## Workspace settings
+
+The browser's **Workspace settings** page exposes existing per-engineer API
+billing permissions and provider-account concurrency limits. There is no global
+API-billing switch or spending cap. API usage can incur provider charges separate
+from subscriptions; saving an opt-in may release queued work. Active runs retain
+the configuration snapshot they started with.
+
+`Bootstrap.canManageWorkspace` reports whether the signed-in user is the local
+workspace owner. Engineer creation/updates and provider concurrency updates also
+check that ownership on the server, including child workspaces. The page uses the
+existing version-checked engineer PATCH and provider-profile PUT endpoints.
+
 ## Endpoints
 
 | Method / path | Body → response |
@@ -155,6 +168,7 @@ Committed event types and their `payload`:
 | `permission.auto` | `{action, decision, reason}` (policy applied an existing grant) |
 | `decision.created`, `decision.updated` | `Decision` |
 | `node.updated` | `Node` |
+| `provider_profile.updated` | `ProviderProfile` (account concurrency changed; refresh the account list) |
 | `pr.updated` | `PullRequest` |
 | `run.stale_report` | diagnostic only |
 

@@ -2,7 +2,7 @@
   // An engineer's profile: role and instructions (versioned), capabilities,
   // provider preference with readiness, rooms, active work, and decisions.
   import { onMount } from 'svelte';
-  import { Button, Card, Collapsible, Link, List, ListItem, Selector, Switch, Text, TextArea, TextInput, Token } from '@astryx-svelte/core';
+  import { Button, Card, Collapsible, Link, List, ListItem, Selector, Text, TextArea, TextInput, Token } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
   import { workspaceUrl } from '../lib/workspace';
   import { api } from '../lib/api/endpoints';
@@ -416,12 +416,8 @@
                   }}
                 />
               </div>
-              <Switch
-                label="Allow runs billed to an API key"
-                description="Off: accounts known to use API billing are blocked, including harnesses with mixed API and subscription accounts. Unknown billing is not a guarantee of subscription usage."
-                value={!!e.provider.allowApiBilling}
-                onChange={(on) => patch({ provider: { ...e.provider, allowApiBilling: on } }, () => {})}
-              />
+              <Text as="p" type="supporting">API billing is {e.provider.allowApiBilling ? 'allowed' : 'blocked'} for this engineer. API usage may incur charges separate from a subscription.</Text>
+              <Link hasUnderline href={workspaceUrl(`/settings/workspace#billing-${e.id}`)}>Manage API billing permission</Link>
             <Text as="p" type="supporting">Which model ran a job is shown in the job's run details, not in conversation.</Text>
           </div>
         </ScreenSection>

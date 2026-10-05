@@ -188,6 +188,7 @@
     <SideNavItem label="Engineers" icon={engineersIcon} href={workspaceUrl('/engineers')} onclick={go} isSelected={route.name === 'engineers' || route.name === 'engineer'} />
     <SideNavItem label="Projects" icon={projectsIcon} href={workspaceUrl('/projects')} onclick={go} isSelected={route.name === 'projects' || route.name === 'project'} />
     <SideNavItem label="Machines" icon={machinesIcon} href={workspaceUrl('/machines')} onclick={go} isSelected={route.name === 'machines'} />
+    <SideNavItem label="Workspace settings" icon={settingsIcon} href={workspaceUrl('/settings/workspace')} onclick={go} isSelected={route.name === 'workspace-settings'} />
     <SideNavItem label="Connections" icon={connectionsIcon} href={workspaceUrl('/connections')} onclick={go} isSelected={route.name === 'connections'} />
   </SideNavSection>
 

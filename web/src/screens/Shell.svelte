@@ -21,6 +21,7 @@
   import ProjectScreen from './ProjectScreen.svelte';
   import MachinesScreen from './MachinesScreen.svelte';
   import ConnectionsScreen from './ConnectionsScreen.svelte';
+  import WorkspaceSettingsScreen from './WorkspaceSettingsScreen.svelte';
   import SettingsScreen from './SettingsScreen.svelte';
   import Screen from '../components/Screen.svelte';
   import type { PanelMode } from '../components/RightPanel.svelte';
@@ -91,6 +92,8 @@
           return 'Connections';
         case 'settings':
           return 'Settings';
+        case 'workspace-settings':
+          return 'Workspace settings';
       }
       return org;
     };
@@ -143,6 +146,8 @@
         <MachinesScreen />
       {:else if route.name === 'connections'}
         <ConnectionsScreen provider={route.provider} />
+      {:else if route.name === 'workspace-settings'}
+        <WorkspaceSettingsScreen />
       {:else if route.name === 'settings'}
         <SettingsScreen />
       {:else if route.name !== 'home'}
