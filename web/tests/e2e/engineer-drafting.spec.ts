@@ -116,3 +116,24 @@ test('unavailable machine blocks generation and leaves editable creation usable'
   await expect(dialog.getByRole('button', { name: 'Generate draft' })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Create engineer' })).toBeEnabled();
 });
+
+test('a failed stop request still discards the completed result and permits retry', async ({ app: page }) => {
+  const dialog = await openDraft(page);
+  await selectFixture(page);
+  await dialog.getByLabel('Describe the engineer').fill('[slow draft] Cancellation failure');
+  const started = page.waitForResponse((r) => r.url().endsWith('/v1/engineer-drafts') && r.request().method() === 'POST');
+  await dialog.getByRole('button', { name: 'Generate draft' }).click();
+  await started;
+  await page.route('**/v1/engineer-drafts/*', async (route) => {
+    if (route.request().method() === 'DELETE') {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { code: 'unavailable', message: 'Temporary connection failure' } }) });
+    } else await route.continue();
+  });
+  await dialog.getByRole('button', { name: 'Stop drafting' }).click();
+  await expect(dialog.getByRole('button', { name: 'Generate draft' })).toBeEnabled();
+  await expect(dialog.getByLabel('Role', { exact: true })).toHaveValue('Generalist engineer');
+  await page.unroute('**/v1/engineer-drafts/*');
+  await dialog.getByLabel('Describe the engineer').fill('An accessibility specialist');
+  await dialog.getByRole('button', { name: 'Generate draft' }).click();
+  await expect(dialog.getByLabel('Role', { exact: true })).toHaveValue('Accessibility engineer');
+});

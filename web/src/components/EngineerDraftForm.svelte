@@ -57,6 +57,7 @@
       activeID = '';
       setBusy(false);
       if (!stopping && draft.state === 'succeeded' && draft.fields) onapply(draft.fields, before);
+      else if (stopping && draft.state === 'succeeded') status = 'Draft finished. Its result was discarded; your editable fields are unchanged.';
       else if (draft.state !== 'cancelled') error = draft.detail;
       stopping = false;
     } catch (err) {
@@ -77,7 +78,7 @@
         provider: { provider: selected.provider.provider, profileId: selected.provider.profileId, model, allowApiBilling } });
       if (!current(token)) { await del(`${endpoint}/${draft.id}`); return; }
       activeID = draft.id;
-      if (stopping) await del(`${endpoint}/${draft.id}`);
+      if (stopping) await requestStop(draft.id, token);
       await poll(draft.id, token, before);
     } catch (err) {
       if (!current(token)) return;
@@ -89,8 +90,14 @@
     stopping = true;
     status = 'Stopping draft…';
     if (!activeID) return; // A pending create is cancelled as soon as it returns.
-    try { await del(`${endpoint}/${activeID}`); }
-    catch (err) { if (!destroyed) { error = errorMessage(err); stopping = false; } }
+    await requestStop(activeID, generation);
+  }
+
+  async function requestStop(id: string, token: number) {
+    try { await del(`${endpoint}/${id}`); }
+    catch (err) {
+      if (current(token)) error = `${errorMessage(err)} Cancellation is not confirmed. Checking the draft; its result will be discarded.`;
+    }
   }
 
   onDestroy(() => {
