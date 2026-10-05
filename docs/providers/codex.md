@@ -77,7 +77,7 @@ required `env_key` is absent or blank is reported as needing configuration, and
 a run stops before starting a thread. Locally configured gateways are available
 for selection, with unknown billing and an explicit unverified status: neither
 credential validity, model access nor gateway reachability is established by a
-probe or a model catalogue. The workspace's API billing policy remains in force.
+probe or a model catalogue. The engineer's API billing permission remains in force.
 Configuration values, endpoint URLs, headers and keys are not exposed as
 installation metadata.
 
