@@ -527,7 +527,7 @@ export function isTerminalRun(state: string): boolean {
   return state === 'succeeded' || state === 'failed' || state === 'cancelled' || state === 'unknown';
 }
 
-function mergeRoom(s: DataState, incoming: Room): void {
+export function mergeRoom(s: DataState, incoming: Room): void {
   const cur = s.rooms[incoming.id];
   if (cur && incoming.version < cur.version) return;
   // Per-viewer read state is not part of shared room events; keep ours.

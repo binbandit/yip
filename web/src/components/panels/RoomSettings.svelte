@@ -12,6 +12,7 @@
   import Avatar from '../Avatar.svelte';
   import Notice from '../Notice.svelte';
   import ConfirmDialog from '../ConfirmDialog.svelte';
+  import ArchiveRoomDialog from '../ArchiveRoomDialog.svelte';
 
   interface Props {
     roomId: string;
@@ -135,12 +136,6 @@
   }
 
   let confirmArchive = $state(false);
-  async function archive() {
-    if (!room) return;
-    await api.updateRoom(room.id, { version: room.version, archived: true });
-    app.data.rooms[room.id] = { ...room, archived: true };
-    app.navigate('/');
-  }
 </script>
 
 <RightPanel title="Room settings" {mode} onclose={() => app.closePanel()}>
@@ -284,15 +279,8 @@
     onclose={() => (removing = null)}
   />
 {/if}
-{#if confirmArchive}
-  <ConfirmDialog
-    title="Archive {room?.name}?"
-    body="The room leaves your sidebar. Its history, work and decisions are kept and still searchable."
-    confirmLabel="Archive"
-    danger
-    onconfirm={archive}
-    onclose={() => (confirmArchive = false)}
-  />
+{#if confirmArchive && room}
+  <ArchiveRoomDialog {room} onclose={() => (confirmArchive = false)} />
 {/if}
 
 <style>
