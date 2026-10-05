@@ -139,6 +139,7 @@ func Capabilities() protocol.ProviderCapabilities {
 		Sandbox:          false,
 		ModelEnumeration: false,
 		ReadOnly:         true,
+		EngineerDrafts:   true,
 		MCPTools:         true,
 	}
 }

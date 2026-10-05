@@ -403,6 +403,9 @@ func lastLines(s string, n int) string {
 // is running and initialized; thread and turn setup continue in the session
 // and failures there are reported through Wait with a typed outcome.
 func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (providers.Session, error) {
+	if spec.EngineerDraft {
+		return nil, fmt.Errorf("%w: tool-free drafting is unavailable for this adapter", providers.ErrUnsupported)
+	}
 	if !filepath.IsAbs(spec.Workdir) {
 		return nil, fmt.Errorf("codex: workdir must be absolute, got %q", spec.Workdir)
 	}

@@ -754,6 +754,10 @@ func (r *Runner) onOffer(c *websocket.Conn, f protocol.Frame) error {
 	_, exists := r.runs[m.RunID]
 	r.mu.Unlock()
 	switch {
+	case m.EngineerDraft && (m.Mode != protocol.ModeConversation || m.ExecutionProfile != "native" || m.Repo != nil || len(m.Tools) != 0 || m.TimeoutMs <= 0 || m.TimeoutMs > (2*time.Minute).Milliseconds()):
+		return reject("invalid engineer draft execution scope")
+	case m.EngineerDraft && !r.draftProviderAvailable(m.Provider, m.ProfileID):
+		return reject("the selected provider does not support tool-free drafting")
 	case exists:
 		return reject("this attempt is already active here under another epoch")
 	case draining || r.uncertain.Load():
@@ -777,6 +781,13 @@ func (r *Runner) onOffer(c *websocket.Conn, f protocol.Frame) error {
 	r.runs[m.RunID] = ar
 	r.mu.Unlock()
 	return r.writeFrame(c, protocol.EvRunAck, f.RunID, f.LeaseEpoch, ack)
+}
+
+func (r *Runner) draftProviderAvailable(provider, profile string) bool {
+	caps, ok := r.caps.Load().(protocol.RunnerCapabilities)
+	return ok && slices.ContainsFunc(caps.Providers, func(p protocol.ProviderInstallation) bool {
+		return p.Provider == provider && p.ProfileID == profile && p.AuthState == protocol.AuthReady && p.Capabilities.EngineerDrafts
+	})
 }
 
 func (r *Runner) onStart(ctx context.Context, c *websocket.Conn, f protocol.Frame) error {

@@ -247,6 +247,12 @@ func (h *Hub) emitNode(ctx context.Context, t *txn, nodeID string) error {
 
 // RunnerFrame handles one frame from a connected runner.
 func (h *Hub) RunnerFrame(ctx context.Context, conn *NodeConn, f protocol.Frame) {
+	if handled, err := h.draftFrame(ctx, conn, f); handled {
+		if err != nil {
+			h.log.Warn("draft frame rejected", "node", conn.NodeID, "run", f.RunID, "err", err)
+		}
+		return
+	}
 	var err error
 	switch f.Type {
 	case protocol.EvCapabilities:
@@ -410,6 +416,13 @@ func (h *Hub) onHeartbeat(ctx context.Context, conn *NodeConn, hb protocol.Heart
 			_ = store.SetNodeDiskFree(ctx, t.tx, conn.NodeID, hb.DiskFreeMB)
 		}
 		for _, ar := range hb.ActiveRuns {
+			if lease, found, err := h.renewDraftLease(ctx, t, conn.NodeID, ar.RunID, ar.LeaseEpoch); found {
+				if err != nil {
+					return err
+				}
+				renewal.Leases = append(renewal.Leases, lease)
+				continue
+			}
 			run, err := store.GetRun(ctx, t.tx, ar.RunID)
 			lease := protocol.Lease{RunID: ar.RunID, LeaseEpoch: ar.LeaseEpoch}
 			switch {
@@ -1147,6 +1160,19 @@ func (h *Hub) expireLeases(ctx context.Context) {
 func (h *Hub) reconcileJournal(ctx context.Context, t *txn, nodeID string, runs []protocol.JournalRunState) error {
 	var reconcile protocol.Reconcile
 	for _, jr := range runs {
+		if d, err := store.GetEngineerDraft(ctx, t.tx, jr.RunID); err == nil {
+			if jr.Terminal != nil && d.NodeID == nodeID && jr.LeaseEpoch == 1 {
+				if err := h.finishEngineerDraft(ctx, t, &d, *jr.Terminal); err != nil {
+					return err
+				}
+			}
+			lease, _, err := h.renewDraftLease(ctx, t, nodeID, jr.RunID, jr.LeaseEpoch)
+			if err != nil {
+				return err
+			}
+			reconcile.Runs = append(reconcile.Runs, lease)
+			continue
+		}
 		run, err := store.GetRun(ctx, t.tx, jr.RunID)
 		if err != nil || run.NodeID != nodeID || run.LeaseEpoch != jr.LeaseEpoch {
 			reconcile.Runs = append(reconcile.Runs, protocol.Lease{RunID: jr.RunID, LeaseEpoch: jr.LeaseEpoch, Revoked: true, Reason: "not the current attempt"})

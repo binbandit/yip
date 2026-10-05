@@ -13,6 +13,7 @@ import (
 // apiRoots are the browser-facing resources and request bodies.
 var apiRoots = []any{
 	protocol.Workspace{}, protocol.CreateWorkspaceRequest{},
+	protocol.EngineerDraft{}, protocol.CreateEngineerDraftRequest{},
 	protocol.Bootstrap{}, protocol.SetupStatus{}, protocol.SetupRequest{}, protocol.SignInRequest{}, protocol.APIError{},
 	protocol.Room{}, protocol.CreateRoomRequest{}, protocol.UpdateRoomRequest{}, protocol.MembershipPreview{},
 	protocol.Message{}, protocol.MessagePage{}, protocol.PostMessageRequest{}, protocol.PostMessageResponse{}, protocol.ReactRequest{},

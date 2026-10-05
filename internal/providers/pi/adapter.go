@@ -50,7 +50,7 @@ func (*Adapter) Label() string { return "Pi Agent Harness" }
 func Capabilities() protocol.ProviderCapabilities {
 	return protocol.ProviderCapabilities{
 		StructuredEvents: true, ToolApprovals: true, ActiveSteering: true,
-		UsageTelemetry: true, ModelEnumeration: true, ReadOnly: true, MCPTools: true,
+		UsageTelemetry: true, ModelEnumeration: true, ReadOnly: true, MCPTools: true, EngineerDrafts: true,
 	}
 }
 func Limitations() []string {
@@ -241,6 +241,9 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 }
 
 func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (providers.Session, error) {
+	if spec.EngineerDraft && (spec.Mode != protocol.ModeConversation || spec.ResumeSessionID != "" || spec.InheritUserConfig) {
+		return nil, fmt.Errorf("%w: invalid engineer draft scope", providers.ErrUnsupported)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

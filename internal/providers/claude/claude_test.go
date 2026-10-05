@@ -893,3 +893,33 @@ func TestBundledSkillsThroughLaunchConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestEngineerDraftLaunchExposesNoTools(t *testing.T) {
+	spec := testSpec(t, protocol.ModeConversation)
+	spec.EngineerDraft = true
+	plan, err := buildLaunch(spec, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(plan.TempDir)
+	for _, flag := range []string{"--tools", "--allowedTools"} {
+		if value, ok := argValue(plan.Args, flag); !ok || value != "" {
+			t.Fatalf("%s = %q, present=%v", flag, value, ok)
+		}
+	}
+	if value, _ := argValue(plan.Args, "--permission-mode"); value != "dontAsk" {
+		t.Fatalf("permission mode: %q", value)
+	}
+	data, err := os.ReadFile(plan.MCPPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg mcpConfigFile
+	if err := json.Unmarshal(data, &cfg); err != nil || len(cfg.MCPServers) != 0 {
+		t.Fatalf("MCP config: %s, %v", data, err)
+	}
+	spec.InheritUserConfig = true
+	if _, err := buildLaunch(spec, t.TempDir()); !errors.Is(err, providers.ErrUnsupported) {
+		t.Fatalf("imported draft accepted: %v", err)
+	}
+}

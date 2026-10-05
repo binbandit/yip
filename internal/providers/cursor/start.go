@@ -148,6 +148,9 @@ func modeNote(mode string) string {
 // returned session: its events carry the failure and Wait returns the
 // matching outcome (auth_required, rate_limited, failed).
 func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (providers.Session, error) {
+	if spec.EngineerDraft {
+		return nil, fmt.Errorf("%w: tool-free drafting is unavailable for this adapter", providers.ErrUnsupported)
+	}
 	switch spec.Mode {
 	case protocol.ModeEdit, protocol.ModeReadOnly, protocol.ModeConversation:
 	default:

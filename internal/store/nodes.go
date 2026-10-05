@@ -91,7 +91,8 @@ func fillNode(ctx context.Context, q Q, n *NodeRow) error {
 	if n.Providers, err = ListInstallations(ctx, q, n.ID); err != nil {
 		return err
 	}
-	n.ActiveRunIDs, err = stringsCol(ctx, q, `SELECT id FROM runs WHERE node_id = ? AND state IN ('offered','preparing','running','awaiting_input','stopping')`, n.ID)
+	n.ActiveRunIDs, err = stringsCol(ctx, q, `SELECT id FROM runs WHERE node_id = ? AND state IN ('offered','preparing','running','awaiting_input','stopping')
+		UNION ALL SELECT id FROM engineer_drafts WHERE node_id = ? AND state IN ('offered','preparing','running','stopping')`, n.ID, n.ID)
 	if err != nil {
 		return err
 	}

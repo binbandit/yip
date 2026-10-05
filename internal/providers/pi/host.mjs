@@ -260,9 +260,9 @@ async function main() {
       approvals.set(id, resolve);
       send({ type: "approval", id, tool, args });
     });
-    const bridge = await connectBridge(spec.MCP);
+    const bridge = spec.EngineerDraft ? { tools: [], close: async () => {} } : await connectBridge(spec.MCP);
     const customTools = bridge.tools;
-    const native = nativeTools(sdk, spec.Workdir, spec.Mode, approve, fatal);
+    const native = spec.EngineerDraft ? [] : nativeTools(sdk, spec.Workdir, spec.Mode, approve, fatal);
     const allTools = [...native, ...customTools];
     const created = await sdk.createAgentSession({
       cwd: spec.Workdir, ...sessionOptions, model,

@@ -146,7 +146,7 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 		p.Version = ""
 	}
 	p.Capabilities = protocol.ProviderCapabilities{
-		StructuredEvents: true, ToolApprovals: true, UsageTelemetry: true, ReadOnly: true, MCPTools: true,
+		StructuredEvents: true, ToolApprovals: true, UsageTelemetry: true, ReadOnly: true, MCPTools: true, EngineerDrafts: true,
 	}
 	text, err := command(ctx, exe, env, "auth", "list")
 	if err != nil {
@@ -248,7 +248,7 @@ func checkHomeExtensions(dir string) error {
 	return nil
 }
 
-func launchEnv(env []string, dir, mode string) []string {
+func launchEnv(env []string, dir, mode string, engineerDraft bool) []string {
 	permission := map[string]string{
 		"*": "deny", "read": "allow", "glob": "allow", "grep": "allow",
 		"bash": "deny", "shell": "deny", "execute": "deny", "batch": "deny",
@@ -263,6 +263,9 @@ func launchEnv(env []string, dir, mode string) []string {
 	// through its supervised checks, never OpenCode's detached native shell.
 	for _, name := range bridge.NamesForMode(mode) {
 		permission["yip_"+name] = "allow"
+	}
+	if engineerDraft {
+		permission = map[string]string{"*": "deny"}
 	}
 	config := map[string]any{
 		"default_agent": "yip",

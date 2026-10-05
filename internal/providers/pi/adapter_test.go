@@ -129,6 +129,15 @@ func TestExecutionBridgeAndUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestEngineerDraftExposesNoTools(t *testing.T) {
+	a, spec := fixture(t, "oauth")
+	spec.EngineerDraft, spec.Mode, spec.Prompt = true, protocol.ModeConversation, "no-tools"
+	result, _ := run(t, a, spec)
+	if result.Outcome != protocol.OutcomeSucceeded || result.FinalText != "tool-free draft" || !result.ExitConfirmed {
+		t.Fatalf("%+v", result)
+	}
+}
 func TestFailures(t *testing.T) {
 	for _, prompt := range []string{"error", "crash"} {
 		t.Run(prompt, func(t *testing.T) {

@@ -73,6 +73,15 @@ arrives as a result card in the conversation.
 An engineer is one identity with versioned standing instructions, a provider
 preference, the rooms they're in, and the decisions they've recorded.
 
+In **New engineer**, choose a starting point or open **Draft from a description**.
+For a generated draft, describe the role and explicitly choose a configured
+provider on an online machine. Drafting uses that machine's existing account
+and allowance, with a separate opt-in for API billing. It currently requires a
+native runner and a provider that reports tool-free drafting support. Unsupported
+providers cannot generate drafts. Review and edit the suggested
+role, purpose, capabilities and standing instructions, then supply a name and
+click **Create engineer**. Generating a draft never creates an engineer by itself.
+
 ![Mira's profile: role, capability tags, standing instructions (version 1), recent work, rooms, and provider preference](docs/screenshots/engineer.png)
 
 ### Work runs on your machines
