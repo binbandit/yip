@@ -1,0 +1,16 @@
+# Runtime for the Linux binary produced by `just docker-build`.
+# Its build context contains only this Dockerfile and the compiled executable.
+FROM debian:bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates tini \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --uid 10001 --create-home --home-dir /home/yip --shell /usr/sbin/nologin yip \
+ && mkdir -p /var/lib/yip && chown yip:yip /var/lib/yip
+COPY yip /usr/local/bin/yip
+USER yip
+ENV YIP_DATA=/var/lib/yip/hub \
+    HOME=/home/yip
+VOLUME ["/var/lib/yip"]
+EXPOSE 7420 7443
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/yip"]
+CMD ["hub", "--listen", ":7420", "--insecure-http"]

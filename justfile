@@ -72,6 +72,15 @@ lint:
 docker *args:
     if [ "$#" -eq 0 ]; then set -- up --build; fi; YIP_VERSION="{{ version }}" YIP_RUNNER_URL="${YIP_RUNNER_URL:-https://$(uname -n):7443}" docker compose -f packaging/container/compose.hub.yml "$@"
 
+# build locally with your Go/npm settings, then package a Linux hub image
+docker-build:
+    sh scripts/docker-build.sh "{{ version }}"
+
+# run the locally packaged image without rebuilding or pulling (e.g. -d)
+[positional-arguments]
+docker-run *args:
+    YIP_HUB_IMAGE=yip-hub:local just docker up --no-build --pull never "$@"
+
 # cross-compile release binaries and their checksums into dist/
 release:
     GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "{{ ldflags }}" -o dist/yip-darwin-arm64 ./cmd/yip
