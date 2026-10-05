@@ -1,63 +1,67 @@
 import { test, expect } from './fixtures';
 
 for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) {
-  test(`create an edited preset engineer at ${viewport.width}px`, async ({ app: page, api }, testInfo) => {
+  test(`choose, customize and save an engineer preset at ${viewport.width}px`, async ({ app: page, api }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.goto('/engineers');
     await page.getByRole('main').getByRole('button', { name: 'New engineer' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'New engineer' });
     await expect(dialog.getByLabel('Name', { exact: true })).toBeFocused();
-    await dialog.getByLabel('Name', { exact: true }).fill('Ada Example');
-    await expect(dialog.getByLabel('Handle', { exact: true })).toHaveValue('ada-example');
-    await dialog.getByLabel('Handle', { exact: true }).fill('ada-interface');
-
     const startingPoint = dialog.getByRole('combobox', { name: 'Starting point' });
-    await expect(startingPoint).toContainText('Generalist');
-    await expect(startingPoint).toHaveAccessibleDescription(/Your edits are kept when you switch/);
+    await expect(startingPoint).toHaveText('Generalist');
+    await expect(dialog.getByLabel('Role', { exact: true })).toHaveValue('Generalist engineer');
+    await dialog.getByLabel('Name', { exact: true }).fill('Ellis');
+    await expect(dialog.getByLabel('Handle', { exact: true })).toHaveValue('ellis');
+    await dialog.getByLabel('Handle', { exact: true }).fill('ellis-team');
+    const provider = dialog.getByRole('combobox', { name: 'Provider preference' });
+    const providerBefore = await provider.textContent();
+
     await startingPoint.focus();
-    await startingPoint.press('Enter');
+    await page.keyboard.press('Enter');
     const options = page.getByRole('listbox').getByRole('option');
     await expect(options).toHaveText(['Generalist', 'Frontend', 'Backend', 'Platform', 'QA', 'Security', 'Reviewer', 'Custom']);
-    await testInfo.attach('engineer-preset-options', { body: await page.screenshot(), contentType: 'image/png' });
-    await page.keyboard.press('Home');
-    await page.keyboard.press('ArrowDown');
+    await testInfo.attach('preset-dropdown', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.keyboard.press('End');
+    await page.keyboard.press('ArrowUp');
     await page.keyboard.press('Enter');
-    await expect(startingPoint).toContainText('Frontend');
-    await expect(dialog.getByLabel('Role', { exact: true })).toHaveValue('Frontend engineer');
-    await expect(dialog.getByLabel('Capabilities', { exact: true })).toHaveValue('ui, accessibility, typescript');
-    await dialog.getByLabel('Standing instructions', { exact: true }).fill('Check the dashboard with keyboard navigation.');
+    await expect(startingPoint).toHaveText('Reviewer');
+    await expect(dialog.getByLabel('Role', { exact: true })).toHaveValue('Code reviewer');
+    await expect(dialog.getByLabel('Standing instructions')).toHaveValue(/final revision before approving/);
 
+    await dialog.getByLabel('Standing instructions').fill('Check keyboard access and cite the changed source.');
     await startingPoint.click();
     await page.getByRole('option', { name: 'QA', exact: true }).click();
     await expect(dialog.getByLabel('Role', { exact: true })).toHaveValue('QA engineer');
-    await expect(dialog.getByLabel('Standing instructions', { exact: true })).toHaveValue('Check the dashboard with keyboard navigation.');
-    await dialog.getByRole('button', { name: 'Reset to preset', exact: true }).click();
-    await expect(dialog.getByLabel('Standing instructions', { exact: true })).toHaveValue(/Reproduce the problem first/);
-    await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Ada Example');
-    await expect(dialog.getByLabel('Handle', { exact: true })).toHaveValue('ada-interface');
+    await expect(dialog.getByLabel('Standing instructions')).toHaveValue('Check keyboard access and cite the changed source.');
+    await dialog.getByRole('button', { name: 'Reset to preset' }).click();
+    await expect(dialog.getByLabel('Standing instructions')).toHaveValue(/Reproduce the problem first/);
 
     await startingPoint.click();
     await page.getByRole('option', { name: 'Custom', exact: true }).click();
     await expect(dialog.getByLabel('Role', { exact: true })).toHaveValue('');
-    await dialog.getByRole('button', { name: 'Create engineer', exact: true }).click();
-    await expect(dialog.getByRole('alert')).toContainText('Give the engineer a name and a role.');
+    await expect(dialog.getByLabel('Standing instructions')).toHaveValue('');
     await startingPoint.click();
-    await page.getByRole('option', { name: 'Reviewer', exact: true }).click();
-    await dialog.getByLabel('Role', { exact: true }).fill('Release reviewer');
-    await dialog.getByLabel('Capabilities', { exact: true }).fill('review, releases');
-    await dialog.getByLabel('Standing instructions', { exact: true }).fill('Review the exact release revision.');
-    await startingPoint.scrollIntoViewIfNeeded();
-    expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.getByRole('option', { name: 'Frontend', exact: true }).click();
+    await dialog.getByLabel('Role', { exact: true }).fill('Accessibility engineer');
+    await dialog.getByLabel("What they're for").fill('Checks our interface for keyboard access.');
+    await dialog.getByLabel('Capabilities').fill('ui, accessibility, keyboard');
+    await dialog.getByLabel('Standing instructions').fill('Check keyboard access and cite the changed source.');
+    await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Ellis');
+    await expect(dialog.getByLabel('Handle', { exact: true })).toHaveValue('ellis-team');
+    await expect(provider).toHaveText(providerBefore!);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await testInfo.attach('customized-engineer', { body: await page.screenshot(), contentType: 'image/png' });
 
-    await dialog.getByRole('button', { name: 'Create engineer', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Ada Example', level: 1 })).toBeVisible();
-    await page.reload();
-    await expect(page.getByRole('heading', { name: 'Ada Example', level: 1 })).toBeVisible();
-    await api.refresh();
-    expect(api.engineer('Ada Example')).toMatchObject({
-      handle: 'ada-interface', role: 'Release reviewer',
-      description: 'Independently reviews changes for correctness, regressions and maintainability.',
-      capabilityTags: ['review', 'releases'], instructions: 'Review the exact release revision.',
+    await dialog.getByRole('button', { name: 'Create engineer' }).click();
+    await expect(page.getByRole('heading', { name: 'Ellis', level: 1 })).toBeVisible();
+    const saved = (await api.refresh()).engineers.find((e: { name: string }) => e.name === 'Ellis');
+    expect(saved).toMatchObject({
+      name: 'Ellis', handle: 'ellis-team', role: 'Accessibility engineer',
+      description: 'Checks our interface for keyboard access.', capabilityTags: ['ui', 'accessibility', 'keyboard'],
+      instructions: 'Check keyboard access and cite the changed source.',
     });
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Ellis', level: 1 })).toBeVisible();
+    await expect(page.getByRole('main')).toContainText('Accessibility engineer');
   });
 }
