@@ -4,7 +4,7 @@
   // card are split by hairlines; the right panel is the one contextual drawer
   // (inline at ≥1200px, overlaid below, full screen on phones). Below the
   // AppShell breakpoint the sidebar moves into its drawer behind a top bar.
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { AppShell, Button, Icon, Link } from '@astryx-svelte/core';
   import { RefreshCw, WifiOff } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
@@ -13,6 +13,9 @@
   import PanelHost from '../components/PanelHost.svelte';
   import SearchDialog from '../components/SearchDialog.svelte';
   import CreateRoomDialog from '../components/CreateRoomDialog.svelte';
+  import RenameRoomDialog from '../components/RenameRoomDialog.svelte';
+  import ArchiveRoomDialog from '../components/ArchiveRoomDialog.svelte';
+  import type { Room } from '../lib/api/types.gen';
   import StartScreen from './StartScreen.svelte';
   import RoomScreen from './RoomScreen.svelte';
   import EngineersScreen from './EngineersScreen.svelte';
@@ -25,6 +28,17 @@
   import SettingsScreen from './SettingsScreen.svelte';
   import Screen from '../components/Screen.svelte';
   import type { PanelMode } from '../components/RightPanel.svelte';
+
+  // The sidebar remounts across responsive layouts; active room actions and
+  // their drafts belong to the stable shell, just like the create dialog.
+  let renaming = $state<Room | null>(null);
+  let archiving = $state<Room | null>(null);
+
+  $effect(() => {
+    // A new data snapshot invalidates old room actions; a layout change does not.
+    void app.data;
+    return () => { renaming = null; archiving = null; };
+  });
 
   const route = $derived(app.loc.route);
   const panel = $derived(app.loc.panel);
@@ -58,6 +72,11 @@
 
   // Move focus to the new screen after navigation (not on panel/tab changes).
   let workEl: HTMLElement | undefined = $state();
+  async function focusAfterRoomAction() {
+    await tick();
+    // The invoker may have left the DOM during a resize or after archiving.
+    if (document.activeElement === document.body) workEl?.querySelector<HTMLElement>('[data-screen-title]')?.focus({ preventScroll: true });
+  }
   let lastPath = '';
   $effect(() => {
     const path = JSON.stringify(route);
@@ -108,7 +127,7 @@
   aside so the panel's Back button is the one way out.
 -->
 {#snippet sideNav()}
-  <Sidebar inert={modal && !app.narrow} />
+  <Sidebar inert={modal && !app.narrow} onRenameRoom={(room) => { renaming = room; }} onArchiveRoom={(room) => { archiving = room; }} />
 {/snippet}
 
 {#snippet banner()}
@@ -169,6 +188,12 @@
 {/if}
 {#if app.createRoom}
   <CreateRoomDialog kind={app.createRoom.kind} onclose={() => (app.createRoom = null)} />
+{/if}
+{#if renaming}
+  {#key renaming.id}<RenameRoomDialog room={renaming} onclose={() => { renaming = null; void focusAfterRoomAction(); }} />{/key}
+{/if}
+{#if archiving}
+  {#key archiving.id}<ArchiveRoomDialog room={archiving} onclose={() => { archiving = null; void focusAfterRoomAction(); }} />{/key}
 {/if}
 
 <style>

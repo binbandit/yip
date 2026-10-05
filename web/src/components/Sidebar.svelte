@@ -11,12 +11,14 @@
   import Avatar from './Avatar.svelte';
   import StateIcon from './StateIcon.svelte';
   import WorkspaceSwitcher from './WorkspaceSwitcher.svelte';
-  import RenameRoomDialog from './RenameRoomDialog.svelte';
-  import ArchiveRoomDialog from './ArchiveRoomDialog.svelte';
   import type { Room } from '../lib/api/types.gen';
 
   /** Set while a modal panel covers the work card. */
-  let { inert = false }: { inert?: boolean } = $props();
+  let { inert = false, onRenameRoom, onArchiveRoom }: {
+    inert?: boolean;
+    onRenameRoom: (room: Room) => void;
+    onArchiveRoom: (room: Room) => void;
+  } = $props();
 
   // AppShell renders this sidebar inline, or on phones twice: as the top bar
   // (brand and a search icon) and inside the drawer (everything else).
@@ -86,16 +88,13 @@
     app.sidebarOpen = false;
   }
 
-  let renaming = $state<Room | null>(null);
-  let archiving = $state<Room | null>(null);
-
   function roomActions(room: Room): DropdownMenuOption[] {
     return [
-      { label: 'Rename…', onClick: () => { renaming = room; } },
+      { label: 'Rename…', onClick: () => onRenameRoom(room) },
       { label: 'Room settings', onClick: () => { go(); app.openPanel({ kind: 'room', id: room.id }); } },
       { label: app.isMuted(room.id) ? 'Unmute notifications' : 'Mute notifications', onClick: () => app.toggleMute(room.id) },
       { type: 'divider' },
-      { label: 'Archive…', variant: 'destructive', onClick: () => { archiving = room; } },
+      { label: 'Archive…', variant: 'destructive', onClick: () => onArchiveRoom(room) },
     ];
   }
 </script>
@@ -274,9 +273,6 @@
     {/if}
   </SideNavSection>
 </SideNav>
-
-{#if renaming}<RenameRoomDialog room={renaming} onclose={() => { renaming = null; }} />{/if}
-{#if archiving}<ArchiveRoomDialog room={archiving} onclose={() => { archiving = null; }} />{/if}
 
 <style>
   .search {

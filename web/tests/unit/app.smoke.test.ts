@@ -5,6 +5,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
 import { fixtureHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
+import { setViewport } from './setup';
 
 let hub: FakeHub;
 let component: ReturnType<typeof mount>;
@@ -68,6 +69,35 @@ afterAll(() => {
 });
 
 describe('app smoke (jsdom, recorded fixtures)', () => {
+  it('keeps a room rename draft through responsive sidebar replacement', async () => {
+    setViewport(1440);
+    app.go({ name: 'room', roomId: roomId('Security') });
+    await settle();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Actions for Security"]')!.click();
+    await waitFor(() => byText('[role="menuitem"]', 'Rename…'), 'rename menu item');
+    byText('[role="menuitem"]', 'Rename…')!.click();
+    await waitFor(() => document.querySelector<HTMLInputElement>('dialog[open] input'), 'rename input');
+    type(document.querySelector<HTMLInputElement>('dialog[open] input')!, 'Unsaved across layouts');
+    try {
+      setViewport(390);
+      await settle();
+      expect(document.querySelector<HTMLInputElement>('dialog[open] input')?.value).toBe('Unsaved across layouts');
+      setViewport(1440);
+      await settle();
+      expect(document.querySelector<HTMLInputElement>('dialog[open] input')?.value).toBe('Unsaved across layouts');
+      const epoch = app.resetEpoch;
+      FakeEventSource.latest().emit('reset', { cursor: bootCursor, reason: 'test reset' });
+      await waitFor(() => app.resetEpoch > epoch, 'replacement workspace snapshot');
+      await settle();
+      expect(document.querySelector('dialog[open] input')).toBeNull();
+    } finally {
+      setViewport(1440);
+      byText('dialog[open] button', 'Cancel')?.click();
+      app.go({ name: 'room', roomId: roomId('Engineering') });
+      await settle();
+    }
+  });
+
   it('opens in a room rather than a dashboard', async () => {
     await waitFor(() => location.pathname.startsWith('/rooms/') && document.querySelector('#room-title'), 'a room');
     expect(location.pathname).toBe(`/rooms/${roomId('Engineering')}`);

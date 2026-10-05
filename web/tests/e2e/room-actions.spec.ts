@@ -173,3 +173,40 @@ test('phone sidebar offers visible actions with a usable rename dialog', async (
   await expect(dialog).toBeHidden();
   await expect(drawer.getByRole('link', { name: /^Phone rename/ })).toBeVisible();
 });
+
+test('room action drafts and pending confirmations survive the navigation breakpoint', async ({ app: page, api }) => {
+  await openRoom(page, 'Security');
+  await sidebar(page).getByRole('button', { name: 'Actions for Security', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Rename…' }).click();
+  const rename = page.getByRole('dialog', { name: 'Rename room' });
+  await rename.getByRole('textbox', { name: 'Name', exact: true }).fill('Draft across layouts');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(rename.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Draft across layouts');
+  await expect(rename.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await expect(rename.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Draft across layouts');
+  await rename.getByRole('button', { name: 'Cancel' }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const focused = document.activeElement;
+    return focused?.getAttribute('aria-label') === 'Actions for Security' || focused?.id === 'room-title';
+  })).toBe(true);
+
+  const roomId = api.room('Security').id;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(`**/v1/rooms/${roomId}`, async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    await held;
+    await route.continue();
+  });
+  await sidebar(page).getByRole('button', { name: 'Actions for Security', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Archive…' }).click();
+  const archive = page.getByRole('alertdialog', { name: 'Archive Security?' });
+  await archive.getByRole('button', { name: 'Archive', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(archive).toBeVisible();
+  release();
+  await expect(archive).toBeHidden();
+  await expect(page).not.toHaveURL(new RegExp(`/rooms/${roomId}$`));
+  expect((await api.req('GET', `/v1/rooms/${roomId}`)).archived).toBe(true);
+});
