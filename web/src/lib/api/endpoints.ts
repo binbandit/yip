@@ -126,8 +126,8 @@ export const api = {
     const qs = s.toString();
     return get<Job[]>(`/v1/jobs${qs ? `?${qs}` : ''}`);
   },
-  job: (id: string) => get<JobDetail>(`/v1/jobs/${q(id)}`),
-  runActivity: (jobId: string, runId: string) => get<RunActivity[]>(`/v1/jobs/${q(jobId)}/runs/${q(runId)}/activity`),
+  job: (id: string, signal?: AbortSignal) => get<JobDetail>(`/v1/jobs/${q(id)}`, { signal }),
+  runActivity: (jobId: string, runId: string, signal?: AbortSignal) => get<RunActivity[]>(`/v1/jobs/${q(jobId)}/runs/${q(runId)}/activity`, { signal }),
   jobInput: (jobId: string, req: JobInputRequest) => post<JobInputResponse>(`/v1/jobs/${q(jobId)}/input`, req),
   cancelJob: (jobId: string, req: CancelJobRequest) => post<Job>(`/v1/jobs/${q(jobId)}/cancel`, req),
   restartJob: (jobId: string) => post<Job>(`/v1/jobs/${q(jobId)}/restart`, {}),
