@@ -9,6 +9,7 @@
   import MessageList from '../MessageList.svelte';
   import MessageRow from '../MessageRow.svelte';
   import Composer from '../Composer.svelte';
+  import ConversationActivity from '../ConversationActivity.svelte';
 
   interface Props {
     rootId: string;
@@ -51,6 +52,7 @@
   {:else if !root}
     <div class="err"><Text as="p" type="supporting">Loading the thread…</Text></div>
   {:else}
+    <ConversationActivity {roomId} threadId={rootId} />
     <MessageList
       label="Replies"
       items={replies}

@@ -9,6 +9,7 @@
   import RoomHeader from '../components/RoomHeader.svelte';
   import Screen from '../components/Screen.svelte';
   import WorkStrip from '../components/WorkStrip.svelte';
+  import ConversationActivity from '../components/ConversationActivity.svelte';
   import MessageList from '../components/MessageList.svelte';
   import Composer from '../components/Composer.svelte';
 
@@ -72,6 +73,7 @@
   <section class="room" aria-labelledby="room-title">
     <RoomHeader {room} />
     <WorkStrip {roomId} />
+    <ConversationActivity {roomId} />
     {#if error}
       <div class="load-error">
         <Notice tone="danger" role="alert"><p>{error} <Link onclick={load} type="inherit" color="inherit" hasUnderline>Try again</Link></p></Notice>
