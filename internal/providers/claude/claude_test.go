@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/binbandit/yip/internal/providers"
+	"github.com/binbandit/yip/internal/skilltest"
 	"github.com/binbandit/yip/protocol"
 )
 
@@ -840,5 +841,35 @@ func TestToolSummary(t *testing.T) {
 		if got := toolSummary(c[0], json.RawMessage(c[1])); got != want {
 			t.Errorf("toolSummary(%s) = %q, want %q", c[0], got, want)
 		}
+	}
+}
+
+func TestBundledSkillsThroughLaunchConfig(t *testing.T) {
+	for _, mode := range []string{"edit", "readonly", "conversation"} {
+		t.Run(mode, func(t *testing.T) {
+			spec := testSpec(t, mode)
+			spec.MCP = skilltest.New(t, mode)
+			plan, err := buildLaunch(spec, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(plan.TempDir)
+			allowed, _ := argValue(plan.Args, "--allowedTools")
+			if !contains(splitList(allowed), "mcp__yip") {
+				t.Fatal("bridge tools disallowed")
+			}
+			raw, err := os.ReadFile(plan.MCPPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var cfg mcpConfigFile
+			if err := json.Unmarshal(raw, &cfg); err != nil {
+				t.Fatal(err)
+			}
+			server := cfg.MCPServers["yip"]
+			if err := skilltest.Verify(providers.MCPServer{Command: server.Command, Args: server.Args, Env: server.Env}); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

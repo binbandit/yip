@@ -74,3 +74,14 @@ func TestReadOnlyInstructionsExplainVerificationWithinScope(t *testing.T) {
 		t.Fatal("review-only restrictions were applied to an author's edit run")
 	}
 }
+
+func TestEveryManifestAdvertisesBundledSkills(t *testing.T) {
+	for _, mode := range []string{"conversation", "readonly", "edit"} {
+		instructions := (&Manifest{Mode: mode}).Instructions()
+		for _, text := range []string{"skill_read", "arena", "babysit-pr", "bro", "file-pr", "do not grant permissions"} {
+			if !strings.Contains(instructions, text) {
+				t.Errorf("%s manifest lacks %q", mode, text)
+			}
+		}
+	}
+}

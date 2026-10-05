@@ -15,6 +15,7 @@ import (
 	"github.com/binbandit/yip/internal/bridge"
 	"github.com/binbandit/yip/internal/providers"
 	"github.com/binbandit/yip/internal/providers/acp"
+	"github.com/binbandit/yip/internal/skilltest"
 	"github.com/binbandit/yip/protocol"
 )
 
@@ -104,8 +105,19 @@ func fakeCLI() int {
 		case acp.MethodSessionNew:
 			var params acp.NewSessionParams
 			_ = json.Unmarshal(msg.Params, &params)
-			if len(params.MCPServers) != 1 || params.MCPServers[0].Name != "yip" || len(params.MCPServers[0].Env) != 1 {
+			if len(params.MCPServers) != 1 || params.MCPServers[0].Name != "yip" || (scenario != "skills" && len(params.MCPServers[0].Env) != 1) {
 				return 6
+			}
+			if scenario == "skills" {
+				server := params.MCPServers[0]
+				env := map[string]string{}
+				for _, kv := range server.Env {
+					env[kv.Name] = kv.Value
+				}
+				if err := skilltest.Verify(providers.MCPServer{Command: server.Command, Args: server.Args, Env: env}); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 10
+				}
 			}
 			reply(msg.ID, map[string]any{"sessionId": "oc-1", "configOptions": options()})
 		case acp.MethodSessionSetConfig:
@@ -125,6 +137,11 @@ func fakeCLI() int {
 			}
 		case acp.MethodSessionPrompt:
 			promptID = msg.ID
+			if scenario == "skills" {
+				update(map[string]any{"sessionUpdate": "agent_message_chunk", "content": acp.TextBlock("skills verified")})
+				reply(msg.ID, acp.PromptResult{StopReason: acp.StopEndTurn})
+				continue
+			}
 			if scenario == "disconnect" {
 				return 7
 			}
@@ -384,6 +401,25 @@ func TestCancellationAndFailures(t *testing.T) {
 			}
 			if (scenario == "mode-change" || scenario == "disconnect") && r.Outcome != protocol.OutcomeFailed {
 				t.Fatal(r)
+			}
+		})
+	}
+}
+
+func TestBundledSkillsThroughSession(t *testing.T) {
+	for _, mode := range []string{"edit", "readonly", "conversation"} {
+		t.Run(mode, func(t *testing.T) {
+			a, spec, _ := fixture(t, "skills", mode)
+			spec.MCP = skilltest.New(t, mode)
+			s, err := a.Start(context.Background(), spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range s.Events() {
+			}
+			result := s.Wait()
+			if result.Outcome != protocol.OutcomeSucceeded || result.FinalText != "skills verified" {
+				t.Fatalf("%+v", result)
 			}
 		})
 	}

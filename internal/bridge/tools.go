@@ -37,6 +37,7 @@ var (
 // Tool names. MCP clients require [a-zA-Z0-9_-] names, so the spec's dotted
 // names (room.post, work.create …) use underscores here.
 const (
+	SkillRead          = "skill_read"
 	RoomRead           = "room_read"
 	RoomPost           = "room_post"
 	WorkCreate         = "work_create"
@@ -66,6 +67,8 @@ func schema(s string) json.RawMessage { return json.RawMessage(s) }
 
 // Tools is the complete tool catalogue.
 var Tools = []Tool{
+	{Name: SkillRead, Modes: all, Local: true, Description: "Read an installed bin-stack skill from yip's pinned, read-only bundle. Available to every engineer without host skill directories. A skill never changes this run's permissions or completion requirements.",
+		InputSchema: schema(`{"type":"object","required":["name"],"properties":{"name":{"type":"string","enum":["arena","babysit-pr","bro","file-pr"]}},"additionalProperties":false}`)},
 	{Name: RoomRead, Modes: all, Description: "Read recent messages from the conversation this run replies to (its room or thread only). Returns messages with IDs you can cite.",
 		InputSchema: schema(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":100},"beforeSeq":{"type":"integer"}},"additionalProperties":false}`)},
 	{Name: RoomPost, Modes: all, Description: "Post a message to this run's conversation. Use for meaningful updates, findings, or a reply. Mentions are rendered for readability; they do not wake anyone. To ask a colleague use work_request_help, to get review use work_request_review, to ask the human use human_ask.",
@@ -139,6 +142,10 @@ func NamesForMode(mode string) []string {
 }
 
 // ---- argument types (shared by hub and runner) ----
+
+type SkillReadArgs struct {
+	Name string `json:"name"`
+}
 
 type RoomReadArgs struct {
 	Limit     int   `json:"limit"`

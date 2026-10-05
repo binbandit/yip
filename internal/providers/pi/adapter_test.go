@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/binbandit/yip/internal/providers"
+	"github.com/binbandit/yip/internal/skills"
+	"github.com/binbandit/yip/internal/skilltest"
 	"github.com/binbandit/yip/protocol"
 )
 
@@ -563,6 +565,30 @@ func TestBlockedStartupWriteCanBeCancelled(t *testing.T) {
 				}
 			case <-time.After(5 * time.Second):
 				t.Fatal("startup write ignored cancellation")
+			}
+		})
+	}
+}
+
+func TestBundledSkillsThroughSDKHost(t *testing.T) {
+	for _, mode := range []string{"edit", "readonly", "conversation"} {
+		t.Run(mode, func(t *testing.T) {
+			a, spec := fixture(t, "oauth")
+			spec.Mode, spec.Prompt, spec.Instructions = mode, "skills", skills.Instructions()
+			spec.MCP = skilltest.New(t, mode)
+			result, _ := run(t, a, spec)
+			var docs []skills.Document
+			if result.Outcome != protocol.OutcomeSucceeded || json.Unmarshal([]byte(result.FinalText), &docs) != nil {
+				t.Fatalf("%+v", result)
+			}
+			if len(docs) != len(skills.Catalog()) {
+				t.Fatal("missing skills")
+			}
+			for _, doc := range docs {
+				want, _ := skills.Read(doc.Name)
+				if doc != want {
+					t.Fatalf("skill %s changed in transit", doc.Name)
+				}
 			}
 		})
 	}
