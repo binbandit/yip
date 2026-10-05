@@ -700,6 +700,25 @@ func TestStartValidation(t *testing.T) {
 	}
 }
 
+func TestProbeOtherVersions(t *testing.T) {
+	for _, version := range []string{"999.0.0", "unknown"} {
+		t.Run(version, func(t *testing.T) {
+			h := newHarness(t, "probe", "YIP_TEST_VERSION="+version)
+			inst := h.adapter.Probe(context.Background())
+			wantVersion := version
+			if version == "unknown" {
+				wantVersion = ""
+			}
+			if inst.Version != wantVersion || inst.Tested || inst.TestedVersion != TestedVersion || inst.AuthState != protocol.AuthReady || !inst.Capabilities.ReadOnly {
+				t.Fatalf("probe: %+v", inst)
+			}
+			if strings.Contains(strings.Join(inst.Limitations, " "), "tested version") {
+				t.Fatalf("version warning: %v", inst.Limitations)
+			}
+		})
+	}
+}
+
 func TestProbe(t *testing.T) {
 	h := newHarness(t, "probe")
 	inst := h.adapter.Probe(context.Background())

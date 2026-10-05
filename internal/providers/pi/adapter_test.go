@@ -324,24 +324,76 @@ func TestPublishedNPMProbe(t *testing.T) {
 	}
 }
 
-func TestVersionAndEnvironmentSafety(t *testing.T) {
+func TestOtherVersionsKeepMetadataAndRun(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		for _, version := range []string{"999.0.0", ""} {
+			t.Run(strconv.FormatBool(legacy)+"/"+version, func(t *testing.T) {
+				a, spec := installationFixture(t, "oauth", legacy, false)
+				path := filepath.Join(spec.Workdir, "package.json")
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				tested := TestedVersion
+				if legacy {
+					tested = LegacyTestedVersion
+				}
+				if err := os.WriteFile(path, []byte(strings.ReplaceAll(string(raw), tested, version)), 0600); err != nil {
+					t.Fatal(err)
+				}
+				got := a.Probe(context.Background())
+				if got.AuthState != protocol.AuthReady || got.Tested || got.TestedVersion != tested || got.Version != version || !got.Capabilities.ReadOnly {
+					t.Fatalf("probe: %+v", got)
+				}
+				result, _ := run(t, a, spec)
+				if result.Outcome != protocol.OutcomeSucceeded || !result.ExitConfirmed {
+					t.Fatalf("%+v", result)
+				}
+			})
+		}
+	}
+}
+
+func TestIncompatibleSDKFails(t *testing.T) {
 	a, spec := fixture(t, "oauth")
+	if err := os.WriteFile(filepath.Join(spec.Workdir, "dist/index.js"), []byte(`export const ModelRuntime = {};`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Probe(context.Background()); got.AuthState == protocol.AuthReady || got.Capabilities.ReadOnly || got.AuthDetail == "" {
+		t.Fatalf("probe: %+v", got)
+	}
+	result, _ := run(t, a, spec)
+	if result.Outcome != protocol.OutcomeFailed || result.Error == "" {
+		t.Fatalf("%+v", result)
+	}
+}
+
+func TestIncompatibleToolAllowlistFailsBeforePrompt(t *testing.T) {
+	a, spec := fixture(t, "oauth")
+	a.opts.Env = append(a.opts.Env, "PI_TEST_EXTRA_TOOL=1")
+	result, events := run(t, a, spec)
+	if result.Outcome != protocol.OutcomeFailed || !strings.Contains(result.Error, "required tool allowlist") {
+		t.Fatalf("%+v", result)
+	}
+	for _, event := range events {
+		if event.Kind == providers.EventMessageDelta || event.Kind == providers.EventToolStarted {
+			t.Fatalf("prompt ran despite incompatible tool allowlist: %+v", event)
+		}
+	}
+}
+
+func TestEnvironmentSafety(t *testing.T) {
+	a, _ := fixture(t, "oauth")
 	env := a.env([]string{"HOME=/safe", "NODE_OPTIONS=--import=unsafe", "NODE_PATH=/unsafe"})
 	if len(env) != 1 || env[0] != "HOME=/safe" {
 		t.Fatalf("%v", env)
-	}
-	if err := os.WriteFile(filepath.Join(spec.Workdir, "package.json"), []byte(`{"name":"@earendil-works/pi-coding-agent","version":"999.0.0"}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.Start(context.Background(), spec); err == nil {
-		t.Fatal("untested SDK version accepted")
 	}
 }
 
 func TestNPMInstallationBoundaries(t *testing.T) {
 	for _, scenario := range []string{
 		"unrelated-manifest", "malformed-manifest", "manifest-directory",
-		"missing-manifest", "wrong-name", "swapped-version", "unsafe-main",
+		"missing-manifest", "wrong-name", "unsafe-main",
 		"wrong-bin", "missing-sdk", "sdk-directory", "sdk-escape", "too-deep",
 	} {
 		t.Run(scenario, func(t *testing.T) {
@@ -370,15 +422,13 @@ func TestNPMInstallationBoundaries(t *testing.T) {
 				}
 			case "missing-manifest":
 				remove("package.json")
-			case "wrong-name", "swapped-version", "unsafe-main", "wrong-bin":
+			case "wrong-name", "unsafe-main", "wrong-bin":
 				b, err := os.ReadFile(filepath.Join(root, "package.json"))
 				if err != nil {
 					t.Fatal(err)
 				}
 				old, replacement := "@earendil-works/pi-coding-agent", "unrelated"
 				switch scenario {
-				case "swapped-version":
-					old, replacement = TestedVersion, LegacyTestedVersion
 				case "unsafe-main":
 					old, replacement = "./dist/index.js", "../index.js"
 				case "wrong-bin":

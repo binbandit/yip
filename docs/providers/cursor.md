@@ -3,7 +3,7 @@
 Package: `internal/providers/cursor` (adapter) and `internal/providers/acp` (reusable ACP JSON-RPC client).
 Constructor: `cursor.New(opts ...cursor.Option) providers.Adapter`.
 
-> **Status: not tested against a real Cursor installation.** No Cursor CLI was installed on the build machine (`agent` and `cursor-agent` were not on PATH). Everything below comes from Cursor's and ACP's public documentation. It has been checked only against a fake ACP agent that the test suite builds from those documents. `Probe` always reports `Tested=false`, `TestedVersion=""`, plus a limitation that says so. Run the gated smoke tests (see [Testing](#testing)) on a signed-in machine before marking the adapter as tested.
+> **Status: not tested against a real Cursor installation.** No Cursor CLI was installed on the build machine (`agent` and `cursor-agent` were not on PATH). Everything below comes from Cursor's and ACP's public documentation. It has been checked only against a fake ACP agent that the test suite builds from those documents. `Probe` always reports `Tested=false`, `TestedVersion=""` in diagnostic metadata. Run the gated smoke tests (see [Testing](#testing)) on a signed-in machine before marking the adapter as tested.
 
 ## Sources (read 2026-09-25)
 

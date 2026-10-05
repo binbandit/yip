@@ -144,7 +144,7 @@ export interface ProviderStatus {
   name: string;
   /** The main state: "Ready", "Needs sign-in", "Allowance paused until 3:40 pm"… */
   word: string;
-  /** Short qualifiers that limit it: "No read-only reviews", "Untested version". */
+  /** Short qualifiers that limit it: "No read-only reviews", "API-billed". */
   limits: string[];
   shape: Shape;
   tone: Tone;
@@ -176,9 +176,7 @@ export function billingText(b: string | undefined): string {
 }
 
 export function compatText(p: ProviderInstallation): string {
-  const v = p.version ? `Version ${p.version}` : 'Version unknown';
-  if (p.tested) return `${v} · tested with yip`;
-  return `${v} · not tested with yip${p.testedVersion ? ` (tested: ${p.testedVersion})` : ''}`;
+  return p.version ? `Version ${p.version}` : 'Version unknown';
 }
 
 export function providerStatus(p: ProviderInstallation, profile: ProviderProfile | undefined, n: Pick<Node, 'profiles'>, now = Date.now()): ProviderStatus {
@@ -190,14 +188,12 @@ export function providerStatus(p: ProviderInstallation, profile: ProviderProfile
   const limits: string[] = [];
   if (p.authState === 'ready') {
     if (!readOnly) limits.push('No read-only reviews');
-    if (!p.tested) limits.push('Untested version');
     // The hub never falls back to paid API usage unless an engineer allows it.
     if (p.billing === 'api') limits.push('API-billed');
     if (paused)
       return { ...base, word: `Allowance paused until ${clock(profile!.pausedUntil)}`, limits, shape: 'pause', tone: 'attention', usable: false, pausedUntil: profile!.pausedUntil ?? undefined };
     return { ...base, word: 'Ready', limits, shape: 'check-filled', tone: 'success', usable: true };
   }
-  if (!p.tested && p.authState !== 'not_installed') limits.push('Untested version');
   switch (p.authState) {
     case 'needs_signin':
       return { ...base, word: 'Needs sign-in', limits, shape: 'pause', tone: 'attention', usable: false, signIn: SIGN_IN_COMMANDS[p.provider] };
@@ -257,7 +253,7 @@ function names(list: string[]): string {
  * The limitations worth seeing without opening the machine, most pressing
  * first: sign-in needed, too little disk, a paused allowance, work it can't
  * take, a runner that stops with its terminal. Provider-level qualifiers
- * (read-only, untested) stay on each provider's line.
+ * (read-only, billing) stay on each provider's line.
  */
 export function machineFacts(n: Node, providers: ProviderStatus[], projects: Project[]): Fact[] {
   if (n.status === 'revoked') return [];

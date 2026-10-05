@@ -301,22 +301,14 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 	inst.Path = exe
 
 	out, err := runCommand(ctx, exe, env, "--version")
-	if err != nil {
-		inst.AuthState = protocol.AuthError
-		inst.AuthDetail = "claude --version failed: " + err.Error()
-		inst.Capabilities = protocol.ProviderCapabilities{}
-		return inst
-	}
-	if m := versionRE.FindStringSubmatch(out); m != nil {
-		inst.Version = m[1]
-	} else {
-		inst.Version = out
+	if err == nil {
+		if m := versionRE.FindStringSubmatch(out); m != nil {
+			inst.Version = m[1]
+		} else {
+			inst.Version = out
+		}
 	}
 	inst.Tested = inst.Version == TestedVersion
-	if !inst.Tested {
-		inst.Limitations = append(inst.Limitations,
-			"Installed version "+inst.Version+" differs from the tested version "+TestedVersion+"; behaviour is unverified.")
-	}
 
 	help, herr := runCommand(ctx, exe, env, "--help")
 	var missing []string

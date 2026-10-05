@@ -171,6 +171,13 @@ func successResult(session, text string, answered []string, extra map[string]any
 func runFake(scenario string) int {
 	args := os.Args[1:]
 	if len(args) == 1 && args[0] == "--version" {
+		if version := os.Getenv("YIP_TEST_VERSION"); version != "" {
+			if version == "unknown" {
+				return 1
+			}
+			fmt.Println(version)
+			return 0
+		}
 		fmt.Println("2.1.282 (Claude Code)")
 		return 0
 	}

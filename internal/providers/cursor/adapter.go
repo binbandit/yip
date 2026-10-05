@@ -29,10 +29,6 @@ import (
 const (
 	providerName  = "cursor"
 	providerLabel = "Cursor"
-
-	// untestedLimitation is always reported: no real Cursor CLI was available
-	// when this adapter was written.
-	untestedLimitation = "Not yet exercised against a real Cursor CLI installation; behaviour is verified only against a fake ACP agent built from Cursor's and ACP's documentation."
 )
 
 // executableNames are resolved in order. `agent` is the documented binary
@@ -149,7 +145,6 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 		TestedVersion: "",
 		Tested:        false,
 		Models:        []protocol.Model{},
-		Limitations:   []string{untestedLimitation},
 		UpdatedAt:     time.Now().UTC(),
 	}
 	exe, err := a.resolve("")

@@ -824,15 +824,6 @@ func TestProbe(t *testing.T) {
 	if len(inst.Models) != 3 || inst.Models[0].ID != "auto" || !inst.Models[0].Default || inst.Models[2].Label != "Claude Sonnet 4 Thinking" {
 		t.Errorf("models = %+v", inst.Models)
 	}
-	found := false
-	for _, l := range inst.Limitations {
-		if strings.Contains(l, "Not yet exercised against a real Cursor") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("limitations = %v", inst.Limitations)
-	}
 	// Probe must not create a session or send a prompt.
 	log := readLog(t, logPath)
 	if len(requests(log, "initialize")) != 1 || len(requests(log, "session/new")) != 0 || len(requests(log, "session/prompt")) != 0 || len(requests(log, "authenticate")) != 0 {
@@ -866,7 +857,7 @@ func TestProbeNotInstalled(t *testing.T) {
 	if inst.AuthState != protocol.AuthNotInstalled || !strings.Contains(inst.AuthDetail, "cursor.com/install") {
 		t.Errorf("inst = %+v", inst)
 	}
-	if inst.Tested || len(inst.Limitations) == 0 {
+	if inst.Tested || len(inst.Limitations) != 0 {
 		t.Errorf("tested/limitations = %v %v", inst.Tested, inst.Limitations)
 	}
 }

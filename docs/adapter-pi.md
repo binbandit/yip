@@ -21,9 +21,9 @@ does not load Pi settings. An omitted yip model selects the reported default
 
 The current upstream package is `@earendil-works/pi-coding-agent`. Existing
 `@mariozechner/pi-coding-agent@0.73.1` installations are also supported through
-their verified legacy SDK boundary. Other versions, wrappers that obscure the
-npm installation, and standalone Pi binaries are refused rather than silently
-relaxing tool restrictions.
+their legacy SDK boundary. Other versions can run through the same SDK and tool
+restrictions. Wrappers that obscure the npm installation and standalone Pi
+binaries are refused.
 `Options.Executable`/`StartSpec.Executable` select the installed Pi CLI entry
 point; `Options.NodeExecutable` selects Node. A normal npm symlink is supported.
 
