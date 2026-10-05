@@ -4,10 +4,13 @@
   // elapsed-time "working" pill. Selection is a grey wash, never a colour.
   // Every marker has a visually hidden text equivalent.
   import { Badge, ContextMenu, DropdownMenu, Icon, IconButton, Kbd, SideNav, SideNavItem, SideNavSection, Text, Tooltip, VisuallyHidden, useSideNavRenderMode, type DropdownMenuOption } from '@astryx-svelte/core';
-  import { BellOff, Ellipsis, Folder, Hash, ListChecks, Lock, LogOut, MessageSquare, Monitor, Moon, Pencil, Plug, Plus, Search, Settings, Sun, Users } from '@lucide/svelte';
+  import { tick } from 'svelte';
+  import { BellOff, Ellipsis, Folder, GripVertical, Hash, ListChecks, Lock, LogOut, MessageSquare, Monitor, Moon, Pencil, Plug, Plus, Search, Settings, Sun, Users } from '@lucide/svelte';
   import { app } from '../lib/state/app.svelte';
   import { roomsWithDrafts } from '../lib/state/drafts';
-  import { workspaceUrl } from '../lib/workspace';
+  import { workspaceBase, workspaceUrl } from '../lib/workspace';
+  import { moveRoom, type RoomOrderKind } from '../lib/util/room-order';
+  import type { DataState } from '../lib/state/data';
   import Avatar from './Avatar.svelte';
   import StateIcon from './StateIcon.svelte';
   import WorkspaceSwitcher from './WorkspaceSwitcher.svelte';
@@ -33,8 +36,24 @@
 
   const route = $derived(app.loc.route);
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  const rooms = $derived(app.rooms.filter((r) => r.kind === 'room').sort((a, b) => a.name.localeCompare(b.name)));
-  const dms = $derived(app.rooms.filter((r) => r.kind === 'dm').sort((a, b) => a.name.localeCompare(b.name)));
+  const rooms = $derived(app.orderedRooms('room'));
+  const dms = $derived(app.orderedRooms('dm'));
+  const instanceId = $props.id();
+  const orderHelp = `${instanceId}-order-help`;
+  let dragging = $state<{ id: string; kind: RoomOrderKind; data: DataState; base: string } | null>(null);
+  let dropTarget = $state<{ id: string; after: boolean } | null>(null);
+  // Moving a keyed row can blur its handle while the same DOM node is moved.
+  // Restore only that focused handle, never a different control or workspace.
+  $effect.pre(() => {
+    void rooms; void dms;
+    const data = app.data;
+    const base = workspaceBase();
+    const focused = document.activeElement;
+    if (!(focused instanceof HTMLElement) || !focused.matches('.drag-handle') || focused.getAttribute('aria-describedby') !== orderHelp) return;
+    void tick().then(() => {
+      if (data === app.data && base === workspaceBase() && focused.isConnected && document.activeElement === document.body) focused.focus({ preventScroll: true });
+    });
+  });
   // Re-read drafts whenever the route changes (drafts are saved as you type).
   const drafts = $derived.by(() => {
     void app.loc;
@@ -93,11 +112,76 @@
       { label: 'Rename…', onClick: () => onRenameRoom(room) },
       { label: 'Room settings', onClick: () => { go(); app.openPanel({ kind: 'room', id: room.id }); } },
       { label: app.isMuted(room.id) ? 'Unmute notifications' : 'Mute notifications', onClick: () => app.toggleMute(room.id) },
+      ...orderActions(room),
       { type: 'divider' },
       { label: 'Archive…', variant: 'destructive', onClick: () => onArchiveRoom(room) },
     ];
   }
+
+  function orderActions(room: Room): DropdownMenuOption[] {
+    if (!app.data.roomOrder) return [];
+    const kind = room.kind as RoomOrderKind;
+    const list = kind === 'room' ? rooms : dms;
+    const index = list.findIndex((r) => r.id === room.id);
+    const saving = app.roomOrderSaving(kind);
+    return [
+      { label: 'Move up', isDisabled: saving || index <= 0, onClick: () => stepRoom(room, -1) },
+      { label: 'Move down', isDisabled: saving || index < 0 || index >= list.length - 1, onClick: () => stepRoom(room, 1) },
+    ];
+  }
+
+  function stepRoom(room: Room, direction: -1 | 1) {
+    const kind = room.kind as RoomOrderKind;
+    const ids = (kind === 'room' ? rooms : dms).map((r) => r.id);
+    const index = ids.indexOf(room.id);
+    if (index < 0) return;
+    const target = ids[index + direction];
+    if (target) void app.saveRoomOrder(kind, moveRoom(ids, room.id, target, direction === 1));
+  }
+
+  function startDrag(event: DragEvent, room: Room) {
+    const kind = room.kind as RoomOrderKind;
+    if (!app.data.roomOrder || app.roomOrderSaving(kind) || !event.dataTransfer) { event.preventDefault(); return; }
+    dragging = { id: room.id, kind, data: app.data, base: workspaceBase() };
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', room.id);
+  }
+
+  function canDrop(room: Room): boolean {
+    return !!dragging && dragging.data === app.data && dragging.base === workspaceBase()
+      && dragging.kind === room.kind && dragging.id !== room.id && !app.roomOrderSaving(dragging.kind);
+  }
+
+  function dragOver(event: DragEvent, room: Room) {
+    if (!canDrop(room)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    dropTarget = { id: room.id, after: event.clientY >= rect.top + rect.height / 2 };
+  }
+
+  function dropRoom(event: DragEvent, room: Room) {
+    if (canDrop(room) && dragging && dropTarget?.id === room.id) {
+      event.preventDefault();
+      const ids = (dragging.kind === 'room' ? rooms : dms).map((r) => r.id);
+      void app.saveRoomOrder(dragging.kind, moveRoom(ids, dragging.id, room.id, dropTarget.after));
+    }
+    dragging = null;
+    dropTarget = null;
+  }
 </script>
+
+{#snippet dragHandle(room: Room, name: string)}
+  {#if app.data.roomOrder}
+    <button class="drag-handle" aria-label="Reorder {name}" aria-describedby={orderHelp}
+      aria-disabled={app.roomOrderSaving(room.kind as RoomOrderKind)} draggable={!app.roomOrderSaving(room.kind as RoomOrderKind)}
+      ondragstart={(e) => startDrag(e, room)} ondragend={() => { dragging = null; dropTarget = null; }}
+      onclick={() => { app.announcement = 'Drag to reorder, use the up and down arrow keys, or choose Move up or Move down in Actions.'; }}
+      onkeydown={(e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepRoom(room, e.key === 'ArrowUp' ? -1 : 1); } }}>
+      <Icon icon={GripVertical} size="sm" />
+    </button>
+  {/if}
+{/snippet}
 
 {#snippet header()}
   <WorkspaceSwitcher compact={renderMode() === 'topbar'} />
@@ -200,6 +284,7 @@
   footerIcons={renderMode() === 'topbar' ? searchIcon : undefined}
   {footer}
 >
+  <VisuallyHidden id={orderHelp}>Drag to reorder, or use the up and down arrow keys. Move up and Move down are also in Actions.</VisuallyHidden>
   <SideNavSection title="Pages" isHeaderHidden>
     <SideNavItem label="Engineers" icon={engineersIcon} href={workspaceUrl('/engineers')} onclick={go} isSelected={route.name === 'engineers' || route.name === 'engineer'} />
     <SideNavItem label="Projects" icon={projectsIcon} href={workspaceUrl('/projects')} onclick={go} isSelected={route.name === 'projects' || route.name === 'project'} />
@@ -221,6 +306,8 @@
         {@const w = working(r.id)}
         {@const current = isCurrentRoom(r.id)}
         {@const items = roomActions(r)}
+        <div role="group" class="order-row" class:drop-before={dropTarget?.id === r.id && !dropTarget.after} class:drop-after={dropTarget?.id === r.id && dropTarget.after}
+          ondragover={(e) => dragOver(e, r)} ondrop={(e) => dropRoom(e, r)}>
         <ContextMenu {items} label="Actions for {r.name}" menuWidth={220}>
           <SideNavItem
             label={r.name}
@@ -232,6 +319,7 @@
           >
             {#snippet endContent()}{@render markers(r, w, current, `${w?.names.join(' and ')} working`)}{/snippet}
             {#snippet actions()}
+              {@render dragHandle(r, r.name)}
               <DropdownMenu
                 {items}
                 button={{ label: `Actions for ${r.name}`, icon: moreIcon, isIconOnly: true, variant: 'ghost', size: 'sm' }}
@@ -241,6 +329,7 @@
             {/snippet}
           </SideNavItem>
         </ContextMenu>
+        </div>
       {/each}
     {/if}
   </SideNavSection>
@@ -258,9 +347,14 @@
         {@const eng = dmEngineer(r.id)}
         {@const w = working(r.id)}
         {@const current = isCurrentRoom(r.id)}
+        {@const items = orderActions(r)}
+        {@const label = eng?.name ?? r.name}
         {#snippet avatarIcon()}{#if eng}<Avatar actor={{ kind: 'engineer', id: eng.id }} size={20} />{/if}{/snippet}
+        <div role="group" class="order-row" class:drop-before={dropTarget?.id === r.id && !dropTarget.after} class:drop-after={dropTarget?.id === r.id && dropTarget.after}
+          ondragover={(e) => dragOver(e, r)} ondrop={(e) => dropRoom(e, r)}>
+        <ContextMenu {items} label="Actions for {label}" menuWidth={220} isDisabled={!app.data.roomOrder}>
         <SideNavItem
-          label={eng?.name ?? r.name}
+          {label}
           icon={eng ? avatarIcon : dmIcon}
           href={workspaceUrl(`/rooms/${r.id}`)}
           onclick={go}
@@ -268,13 +362,37 @@
           class="yip-room {r.unreadCount > 0 && !current ? 'unread' : ''}"
         >
           {#snippet endContent()}{@render markers(r, w, current, 'working')}{/snippet}
+          {#snippet actions()}
+            {@render dragHandle(r, label)}
+            {#if app.data.roomOrder}
+              <DropdownMenu {items} button={{ label: `Actions for ${label}`, icon: moreIcon, isIconOnly: true, variant: 'ghost', size: 'sm' }} hasChevron={false} menuWidth={220} />
+            {/if}
+          {/snippet}
         </SideNavItem>
+        </ContextMenu>
+        </div>
       {/each}
     {/if}
   </SideNavSection>
 </SideNav>
 
 <style>
+  .order-row { position: relative; }
+  .drop-before::before, .drop-after::after {
+    content: ''; position: absolute; inset-inline: var(--spacing-2); height: 2px;
+    background: var(--color-text-primary); pointer-events: none; z-index: 1;
+  }
+  .drop-before::before { top: 0; }
+  .drop-after::after { bottom: 0; }
+  .drag-handle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--size-element-sm); height: var(--size-element-sm);
+    color: var(--color-icon-secondary); border-radius: var(--radius-element); cursor: grab;
+  }
+  .drag-handle:hover { background: var(--color-overlay-hover); }
+  .drag-handle:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: -2px; }
+  .drag-handle:active { cursor: grabbing; }
+  .drag-handle[aria-disabled='true'] { cursor: wait; opacity: .5; }
   .search {
     display: flex;
     align-items: center;

@@ -44,6 +44,8 @@ import type {
   RetryJobRequest,
   Review,
   Room,
+  RoomOrder,
+  RoomOrderSection,
   Run,
   RunActivity,
   SearchResult,
@@ -52,6 +54,7 @@ import type {
   UpdateEngineerRequest,
   UpdateProjectRequest,
   UpdateRoomRequest,
+  UpdateRoomOrderRequest,
   User,
   WorkRow,
 } from './types.gen';
@@ -74,6 +77,8 @@ export const api = {
 
   // rooms & messages
   rooms: () => get<Room[]>('/v1/rooms'),
+  roomOrder: () => get<RoomOrder>('/v1/room-order'),
+  putRoomOrder: (kind: 'room' | 'dm', req: UpdateRoomOrderRequest) => put<RoomOrderSection>(`/v1/room-order/${kind}`, req),
   room: (id: string) => get<Room>(`/v1/rooms/${q(id)}`),
   createRoom: (req: CreateRoomRequest) => post<Room>('/v1/rooms', req),
   updateRoom: (id: string, req: UpdateRoomRequest) => patch<Room>(`/v1/rooms/${q(id)}`, req),

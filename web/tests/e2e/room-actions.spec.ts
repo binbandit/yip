@@ -9,7 +9,7 @@ test('room actions have pointer and keyboard entry without navigating the room',
   await room.click({ button: 'right' });
   const menu = page.getByRole('menu', { name: 'Actions for Security' });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole('menuitem')).toHaveText(['Rename…', 'Room settings', 'Mute notifications', 'Archive…']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Rename…', 'Room settings', 'Mute notifications', 'Move up', 'Move down', 'Archive…']);
   await expect(page).toHaveURL(original);
   await page.screenshot({ path: testInfo.outputPath('room-context-menu.png'), animations: 'disabled' });
   await page.keyboard.press('Escape');

@@ -26,6 +26,8 @@ func (s *Server) routes() {
 	a("DELETE /v1/session", s.deleteSession)
 	a("GET /v1/bootstrap", s.getBootstrap)
 	a("PUT /v1/preferences", s.putPreferences)
+	a("GET /v1/room-order", s.getRoomOrder)
+	a("PUT /v1/room-order/{kind}", s.putRoomOrder)
 	a("PATCH /v1/profile", s.patchProfile)
 	a("PUT /v1/profile/avatar", s.setProfileAvatar)
 	a("DELETE /v1/profile/avatar", s.setProfileAvatar)
@@ -195,6 +197,28 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, req.Preferences)
+}
+
+func (s *Server) getRoomOrder(w http.ResponseWriter, r *http.Request) {
+	order, err := s.hub.GetRoomOrder(r.Context(), userFrom(r).ID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, 200, order)
+}
+
+func (s *Server) putRoomOrder(w http.ResponseWriter, r *http.Request) {
+	req, ok := decodeJSON[protocol.UpdateRoomOrderRequest](s, w, r)
+	if !ok {
+		return
+	}
+	order, err := s.hub.SetRoomOrder(r.Context(), userFrom(r).ID, r.PathValue("kind"), req)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, 200, order)
 }
 
 func (s *Server) patchProfile(w http.ResponseWriter, r *http.Request) {
