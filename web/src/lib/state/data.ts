@@ -97,6 +97,8 @@ export interface DataState {
   nodeReportSeq: Record<string, number>;
   jobs: Record<string, Job>;
   runs: Record<string, Run>;
+  /** Latest run event, used to preserve updates received during a detail or list fetch. */
+  runUpdateSeq: Record<string, number>;
   reviews: Record<string, Review>;
   approvals: Record<string, Approval>;
   questions: Record<string, Question>;
@@ -144,6 +146,7 @@ export function emptyState(): DataState {
     nodeReportSeq: {},
     jobs: {},
     runs: {},
+    runUpdateSeq: {},
     reviews: {},
     approvals: {},
     questions: {},
@@ -295,11 +298,12 @@ export function isFinalRun(state: string): boolean {
 
 /**
  * Merges runs from a REST snapshot (GET /v1/runs, job detail). Events are
- * applied in sequence order and always win; a snapshot never turns a run that
- * events already finished back into a live one.
+ * applied in sequence order; retain updates received after the request began.
+ * A snapshot never turns a finished run back into a live one.
  */
-export function mergeRuns(s: DataState, runs: Run[] | null | undefined): void {
+export function mergeRuns(s: DataState, runs: Run[] | null | undefined, requestedAt = s.lastSeq): void {
   for (const r of runs ?? []) {
+    if ((s.runUpdateSeq[r.id] ?? 0) > requestedAt) continue;
     const cur = s.runs[r.id];
     if (cur && isFinalRun(cur.state) && !isFinalRun(r.state)) continue;
     s.runs[r.id] = r;
@@ -439,6 +443,7 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
     case 'run.created':
     case 'run.updated': {
       const r = asPayload<Run>(ev);
+      s.runUpdateSeq[r.id] = ev.sequence;
       s.runs[r.id] = r;
       // Durable updates and buffered transients may arrive out of order, and
       // their timestamps can come from different clocks. Keep accepted writing
