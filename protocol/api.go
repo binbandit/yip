@@ -586,6 +586,7 @@ type ProviderCapabilities struct {
 	Sandbox          bool `json:"sandbox"`
 	ModelEnumeration bool `json:"modelEnumeration"`
 	ReadOnly         bool `json:"readOnly"`
+	EngineerDrafts   bool `json:"engineerDrafts,omitempty"`
 	MCPTools         bool `json:"mcpTools"`
 }
 
@@ -626,10 +627,11 @@ const (
 )
 
 type ExecutionProfile struct {
-	Name      string `json:"name"` // native | container | readonly
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
-	Summary   string `json:"summary"`
+	EngineerDrafts bool   `json:"engineerDrafts,omitempty"` // runner enforces tool-free draft attempts
+	Name           string `json:"name"`                     // native | container | readonly
+	Available      bool   `json:"available"`
+	Reason         string `json:"reason,omitempty"`
+	Summary        string `json:"summary"`
 }
 
 type NodeCapacity struct {

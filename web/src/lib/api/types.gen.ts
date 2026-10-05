@@ -139,6 +139,12 @@ export interface CleanupWorkspaceRequest {
   force: boolean;
 }
 
+export interface CreateEngineerDraftRequest {
+  description: string;
+  nodeId: string;
+  provider: ProviderPreference;
+}
+
 export interface CreateEngineerRequest {
   name: string;
   handle: string;
@@ -297,6 +303,23 @@ export interface Engineer {
   updatedAt: string;
 }
 
+export interface EngineerDraft {
+  id: string;
+  nodeId: string;
+  provider: ProviderPreference;
+  state: RunState;
+  detail: string;
+  fields?: EngineerDraftFields | null;
+  createdAt: string;
+}
+
+export interface EngineerDraftFields {
+  role: string;
+  description: string;
+  capabilityTags: string[];
+  instructions: string;
+}
+
 export interface EngineerNote {
   id: string;
   engineerId: string;
@@ -358,6 +381,7 @@ export interface Event {
 }
 
 export interface ExecutionProfile {
+  engineerDrafts?: boolean;
   name: string;
   available: boolean;
   reason?: string;
@@ -695,6 +719,7 @@ export interface ProviderCapabilities {
   sandbox: boolean;
   modelEnumeration: boolean;
   readOnly: boolean;
+  engineerDrafts?: boolean;
   mcpTools: boolean;
 }
 

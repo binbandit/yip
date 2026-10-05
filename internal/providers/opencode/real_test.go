@@ -48,7 +48,7 @@ func TestRealHandshake(t *testing.T) {
 				// not bridge execution or paid inference.
 				MCP: providers.MCPServer{Name: "yip", Command: "/usr/bin/true"},
 			}
-			launch := launchEnv(env, s.configDir, mode)
+			launch := launchEnv(env, s.configDir, mode, false)
 			resolved, err := command(ctx, exe, launch, "debug", "config")
 			if err != nil {
 				stop()

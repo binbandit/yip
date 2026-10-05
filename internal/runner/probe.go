@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -157,7 +158,9 @@ func (r *Runner) profiles(caps protocol.RunnerCapabilities) []protocol.Execution
 		}
 	}
 	out := []protocol.ExecutionProfile{
-		{Name: "native", Available: true, Summary: "Trusted native execution in a per-job git worktree under the runner's account, using each provider's own sandbox and permission controls. A worktree is not a sandbox."},
+		{Name: "native", Available: true, EngineerDrafts: slices.ContainsFunc(caps.Providers, func(p protocol.ProviderInstallation) bool {
+			return p.AuthState == protocol.AuthReady && p.Capabilities.EngineerDrafts
+		}), Summary: "Trusted native execution in a per-job git worktree under the runner's account, using each provider's own sandbox and permission controls. A worktree is not a sandbox."},
 		{Name: "readonly", Available: true, Summary: "Detached, read-only snapshot of the exact revision, with the provider in its read-only permission mode."},
 	}
 	container := protocol.ExecutionProfile{Name: "container", Available: false,

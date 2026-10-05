@@ -300,6 +300,26 @@ func (h *Hub) RemoveWorkspace(ctx context.Context, userID, nodeID, name string, 
 }
 
 func (h *Hub) StopNodeWork(ctx context.Context, userID, nodeID string) error {
+	if err := h.do(ctx, func(t *txn) error {
+		if err := h.requireWorkspaceOwner(ctx, t.tx, userID); err != nil {
+			return err
+		}
+		drafts, err := store.ActiveEngineerDrafts(ctx, t.tx)
+		if err != nil {
+			return err
+		}
+		for _, d := range drafts {
+			if d.NodeID == nodeID {
+				if err := h.stopEngineerDraft(ctx, t, &d, "Stopped from Machines"); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
 	runs, err := store.RunsOnNode(ctx, h.st.R(), nodeID)
 	if err != nil {
 		return err
@@ -321,6 +341,17 @@ func (h *Hub) RevokeNode(ctx context.Context, userID, nodeID string) error {
 		}
 		if err := store.RevokeNode(ctx, t.tx, nodeID); err != nil {
 			return err
+		}
+		drafts, err := store.ActiveEngineerDrafts(ctx, t.tx)
+		if err != nil {
+			return err
+		}
+		for _, d := range drafts {
+			if d.NodeID == nodeID {
+				if err := h.finishEngineerDraft(ctx, t, &d, protocol.RunTerminal{Outcome: protocol.OutcomeUnknown}); err != nil {
+					return err
+				}
+			}
 		}
 		runs, _ := store.RunsOnNode(ctx, t.tx, nodeID)
 		for _, r := range runs {

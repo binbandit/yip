@@ -113,7 +113,11 @@ func fakeCLI() int {
 		case acp.MethodSessionNew:
 			var params acp.NewSessionParams
 			_ = json.Unmarshal(msg.Params, &params)
-			if len(params.MCPServers) != 1 || params.MCPServers[0].Name != "yip" || (scenario != "skills" && len(params.MCPServers[0].Env) != 1) {
+			if scenario == "draft" {
+				if len(params.MCPServers) != 0 {
+					return 6
+				}
+			} else if len(params.MCPServers) != 1 || params.MCPServers[0].Name != "yip" || (scenario != "skills" && len(params.MCPServers[0].Env) != 1) {
 				return 6
 			}
 			if scenario == "skills" {
@@ -145,6 +149,16 @@ func fakeCLI() int {
 			}
 		case acp.MethodSessionPrompt:
 			promptID = msg.ID
+			if scenario == "draft" {
+				var permissions struct{ Permission map[string]string }
+				_ = json.Unmarshal([]byte(config), &permissions)
+				if len(permissions.Permission) != 1 || permissions.Permission["*"] != "deny" {
+					return 11
+				}
+				update(map[string]any{"sessionUpdate": "agent_message_chunk", "content": acp.TextBlock("tool-free draft")})
+				reply(msg.ID, acp.PromptResult{StopReason: acp.StopEndTurn})
+				continue
+			}
 			if scenario == "skills" {
 				update(map[string]any{"sessionUpdate": "agent_message_chunk", "content": acp.TextBlock("skills verified")})
 				reply(msg.ID, acp.PromptResult{StopReason: acp.StopEndTurn})
@@ -467,5 +481,45 @@ func TestBundledSkillsThroughSession(t *testing.T) {
 				t.Fatalf("%+v", result)
 			}
 		})
+	}
+}
+
+func TestEngineerDraftDeniesEveryTool(t *testing.T) {
+	env := launchEnv(nil, t.TempDir(), protocol.ModeConversation, true)
+	var cfg struct {
+		Permission map[string]string `json:"permission"`
+		Agent      map[string]struct {
+			Permission map[string]string `json:"permission"`
+		} `json:"agent"`
+	}
+	for _, value := range env {
+		if raw, ok := strings.CutPrefix(value, "OPENCODE_CONFIG_CONTENT="); ok {
+			if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for _, permissions := range []map[string]string{cfg.Permission, cfg.Agent["yip"].Permission} {
+		if len(permissions) != 1 || permissions["*"] != "deny" {
+			t.Fatalf("tools can execute: %+v", permissions)
+		}
+	}
+}
+
+func TestEngineerDraftSessionOmitsMCP(t *testing.T) {
+	a, spec, _ := fixture(t, "draft", protocol.ModeConversation)
+	spec.EngineerDraft = true
+	s, err := a.Start(context.Background(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range s.Events() {
+		if event.Approval != nil || event.Kind == providers.EventToolStarted {
+			t.Fatalf("draft exposed a tool: %+v", event)
+		}
+	}
+	result := s.Wait()
+	if result.Outcome != protocol.OutcomeSucceeded || result.FinalText != "tool-free draft" || !result.ExitConfirmed {
+		t.Fatalf("%+v", result)
 	}
 }

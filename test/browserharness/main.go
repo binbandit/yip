@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -109,6 +110,28 @@ func run() error {
 	}
 	adapter := New(*delay)
 	adapter.Script = func(ctx context.Context, id string) (json.RawMessage, error) {
+		if draft, err := store.GetEngineerDraft(ctx, h.Store().R(), id); err == nil {
+			output := `{"role":"Accessibility engineer","description":"Builds inclusive interfaces.","capabilityTags":["accessibility","ui"],"instructions":"Test keyboard navigation and report browser evidence."}`
+			if strings.Contains(draft.Request.Description, "[invalid draft]") {
+				output = `{"role":"Incomplete"}`
+			}
+			wait := "250ms"
+			if strings.Contains(draft.Request.Description, "[slow draft]") {
+				wait = "3s"
+			}
+			return json.Marshal(Script{Steps: []Step{{Sleep: wait}, {Final: output}}})
+		}
+		if draft, err := store.GetEngineerDraft(ctx, h.Store().R(), id); err == nil {
+			text := `{"role":"Accessibility engineer","description":"Builds inclusive interfaces and checks keyboard navigation.","capabilityTags":["accessibility","frontend"],"instructions":"Test keyboard and screen-reader behavior. Preserve established interface contracts."}`
+			if strings.Contains(draft.Request.Description, "malformed fixture") {
+				text = `{"role":"Incomplete"}`
+			}
+			delay := "800ms"
+			if strings.Contains(draft.Request.Description, "slow fixture") {
+				delay = "3s"
+			}
+			return json.Marshal(Script{Steps: []Step{{Sleep: delay}, {Final: text}}})
+		}
 		row, err := store.GetRun(ctx, h.Store().R(), id)
 		if err != nil {
 			return nil, err

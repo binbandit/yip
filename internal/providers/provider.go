@@ -102,7 +102,10 @@ type StartSpec struct {
 	// Mode is protocol.ModeEdit, ModeReadOnly, or ModeConversation. Adapters
 	// must enforce read-only with the provider's own permission/sandbox
 	// controls, or refuse to start (return an error wrapping ErrUnsupported).
-	Mode            string
+	Mode string
+	// EngineerDraft requires a fresh session with no native or MCP tools.
+	// Adapters without an enforced tool-free boundary must refuse it.
+	EngineerDraft   bool
 	Model           string
 	Instructions    string // engineer role, org and project rules
 	Prompt          string // the first user turn, built from the context manifest

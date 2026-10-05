@@ -494,6 +494,26 @@
       ],
       "type": "object"
     },
+    "CreateEngineerDraftRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderPreference"
+        }
+      },
+      "required": [
+        "description",
+        "nodeId",
+        "provider"
+      ],
+      "type": "object"
+    },
     "CreateEngineerRequest": {
       "additionalProperties": false,
       "properties": {
@@ -1147,6 +1167,88 @@
       ],
       "type": "object"
     },
+    "EngineerDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EngineerDraftFields"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderPreference"
+        },
+        "state": {
+          "enum": [
+            "created",
+            "offered",
+            "preparing",
+            "running",
+            "awaiting_input",
+            "stopping",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "unknown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "nodeId",
+        "provider",
+        "state",
+        "detail",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "EngineerDraftFields": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilityTags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "description",
+        "capabilityTags",
+        "instructions"
+      ],
+      "type": "object"
+    },
     "EngineerNote": {
       "additionalProperties": false,
       "properties": {
@@ -1389,6 +1491,9 @@
       "additionalProperties": false,
       "properties": {
         "available": {
+          "type": "boolean"
+        },
+        "engineerDrafts": {
           "type": "boolean"
         },
         "name": {
@@ -2744,6 +2849,9 @@
       "additionalProperties": false,
       "properties": {
         "activeSteering": {
+          "type": "boolean"
+        },
+        "engineerDrafts": {
           "type": "boolean"
         },
         "mcpTools": {
