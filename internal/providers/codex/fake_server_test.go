@@ -137,6 +137,10 @@ var chatgptAccount = map[string]any{"type": "chatgpt", "email": "dev@example.com
 // directory that does not exist.
 func (f *fake) configRead() {
 	m := f.expect("config/read")
+	if config := os.Getenv("YIP_CODEX_FAKE_GATEWAY_CONFIG"); config != "" {
+		f.respond(m.ID, map[string]any{"config": json.RawMessage(config), "layers": []any{}})
+		return
+	}
 	home := os.Getenv("YIP_CODEX_FAKE_HOME")
 	if home == "" {
 		home = f.cwd + "/../no-codex-home"
@@ -254,8 +258,8 @@ func runFake(scenario string, args []string) int {
 	switch scenario {
 	case "probe", "probe-rules":
 		f.handshake()
-		f.account(map[string]any{"type": "apiKey"}, true)
 		f.configRead()
+		f.account(map[string]any{"type": "apiKey"}, true)
 		m := f.expect("model/list")
 		f.respond(m.ID, map[string]any{"data": []map[string]any{
 			{"id": "gpt-a", "model": "gpt-a", "displayName": "GPT A", "description": "fast", "hidden": false, "isDefault": true, "defaultReasoningEffort": "medium", "supportedReasoningEfforts": []any{}},
@@ -267,10 +271,10 @@ func runFake(scenario string, args []string) int {
 		}, "nextCursor": nil})
 		f.drain()
 
-	case "probe-signedout":
+	case "probe-signedout", "probe-gateway":
 		f.handshake()
-		f.account(nil, true)
 		f.configRead()
+		f.account(nil, scenario != "probe-gateway")
 		m := f.expect("model/list")
 		f.respond(m.ID, map[string]any{"data": []any{}, "nextCursor": nil})
 		f.drain()

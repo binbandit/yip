@@ -88,7 +88,7 @@ func (a *Adapter) Label() string { return "Codex" }
 // envKeys are the provider-specific host variables added to the base
 // allowlist when the runner does not supply an explicit environment.
 // CODEX_HOME is honoured (never relocated) so Codex finds the user's own
-// sign-in; no API key variables are forwarded implicitly.
+// sign-in. Selected provider environment references are resolved separately.
 var envKeys = []string{"CODEX_HOME"}
 
 func (a *Adapter) resolve(override string) (string, error) {
@@ -167,9 +167,10 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 		inst.Limitations = append(inst.Limitations, fmt.Sprintf("Installed Codex %s differs from the tested version %s; protocol changes may break the adapter.", inst.Version, TestedVersion))
 	}
 
-	env := a.probeEnv
-	if env == nil {
-		env = providers.BaseEnv(envKeys)
+	env, err := a.providerEnv(ctx, exe, a.probeEnv)
+	if err != nil {
+		inst.AuthState, inst.AuthDetail = protocol.AuthError, err.Error()
+		return inst
 	}
 	// Run the probe from an empty directory so no project config is involved.
 	dir, err := os.MkdirTemp("", "yip-codex-probe-")
@@ -195,20 +196,20 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 		inst.AuthDetail = "codex app-server initialize failed: " + srv.describe(err)
 		return inst
 	}
-	var acct getAccountResponse
-	if err := srv.c.call(ctx, methodAccountRead, getAccountParams{RefreshToken: false}, &acct); err != nil {
-		inst.AuthState = protocol.AuthError
-		inst.AuthDetail = "account/read failed: " + srv.describe(err)
-	} else {
-		inst.AuthState, inst.AuthDetail, inst.Account, inst.Billing = classifyAccount(acct)
-	}
-
 	var cfg configReadResponse
 	if err := srv.c.call(ctx, methodConfigRead, configReadParams{Cwd: dir, IncludeLayers: true}, &cfg); err != nil {
-		inst.Limitations = append(inst.Limitations, "config/read failed: "+srv.describe(err))
+		inst.AuthDetail = "Could not inspect the effective model provider configuration."
+		return inst
 	} else if rules := ruleFiles(cfg.Layers); len(rules) > 0 {
 		inst.Capabilities.ReadOnly = false
 		inst.Limitations = append(inst.Limitations, "Read-only runs are unavailable: Codex exec-policy rules ("+strings.Join(rules, ", ")+") can run matching commands outside the sandbox without approval. Edit runs still use them.")
+	}
+	var acct getAccountResponse
+	if err := srv.c.call(ctx, methodAccountRead, getAccountParams{RefreshToken: false}, &acct); err != nil {
+		inst.AuthState = protocol.AuthError
+		inst.AuthDetail = "account/read failed; inspect the local harness configuration."
+	} else {
+		inst.AuthState, inst.AuthDetail, inst.Account, inst.Billing = classifyConfiguredAccount(acct, cfg, env)
 	}
 
 	models, err := listModels(ctx, srv.c)
@@ -427,10 +428,11 @@ func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (provider
 	if err != nil {
 		return nil, fmt.Errorf("codex: executable not found: %w", err)
 	}
-	env := spec.Env
-	if env == nil {
-		env = providers.BaseEnv(envKeys)
+	env, err := a.providerEnv(ctx, exe, spec.Env)
+	if err != nil {
+		return nil, err
 	}
+	spec.Env = env
 	srv, err := a.launch(ctx, exe, spec.Workdir, env)
 	if err != nil {
 		return nil, fmt.Errorf("codex: start app-server: %w", err)

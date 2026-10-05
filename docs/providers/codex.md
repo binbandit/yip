@@ -41,10 +41,66 @@ codex app-server --listen stdio:// \
 ```
 
 - **Working directory:** the run's `Workdir`. `thread/start` inherits it (see Startup boundary).
-- **Environment:** exactly `StartSpec.Env`, the runner's allowlist. When `Env` is nil, the adapter uses `providers.BaseEnv(["CODEX_HOME"])`. `CODEX_HOME` is honoured and never relocated. No API-key variables are added.
+- **Environment:** exactly `StartSpec.Env`, the runner's allowlist. When `Env` is nil, the adapter starts with `providers.BaseEnv(["CODEX_HOME"])`, then asks an isolated app-server for its effective configuration. Only the selected provider's `env_key` and `env_http_headers` references are added from the runner process environment. Configuration roots and process-loading variables cannot be imported through provider references. Explicit `Env` values are never augmented. `HOME` and `CODEX_HOME` are honoured and never relocated.
 - **Process group:** the process runs in its own group, via `providers.StartProcess`, so cancellation reaches every descendant, including MCP servers and shells.
 - **Secrets:** nothing secret is placed on argv. The yip MCP server definition and its environment (bridge token) travel over stdin inside `thread/start`'s `config`.
 - **Client identity:** `initialize` sends `clientInfo = {name: "yip", title: "yip", version: "0.1.0"}`. Per the Codex docs, `clientInfo.name` appears in OpenAI's compliance logs. After that the adapter sends the `initialized` notification.
+
+## Model gateways
+
+Custom providers use the harness's effective `config/read` result, including
+its system and user configuration precedence. YIP does not parse or merge TOML,
+open credential files, run shell profiles or create a credential store. Initial
+environment discovery runs in an empty directory so a repository cannot request
+additional runner secrets. Probe and execution use the same environment resolver.
+
+For example, a runner whose `CODEX_HOME/config.toml` contains:
+
+```toml
+model_provider = "work"
+model = "work-model"
+
+[model_providers.work]
+name = "Work gateway"
+base_url = "https://gateway.example.invalid/v1"
+env_key = "WORK_GATEWAY_KEY"
+```
+
+can use `WORK_GATEWAY_KEY` already exported to the runner process. An interactive
+shell export does not automatically reach a running service. A Docker worker
+still requires the existing explicit `--docker-env WORK_GATEWAY_KEY` import;
+its supplied environment is authoritative. An isolated home uses only the
+configuration visible inside that home.
+
+An installed executable is not proof of configuration. A selected provider whose
+required `env_key` is absent or blank is reported as needing configuration, and
+a run stops before starting a thread. Locally configured gateways are available
+for selection, with unknown billing and an explicit unverified status: neither
+credential validity, model access nor gateway reachability is established by a
+probe or a model catalogue. The workspace's API billing policy remains in force.
+Configuration values, endpoint URLs, headers and keys are not exposed as
+installation metadata.
+
+Named profiles need care with the pinned release: Codex 0.147.0 app-server starts
+with default loader overrides, so its CLI `--profile` does not select a named
+configuration layer. Legacy top-level `profile` is rejected by that release.
+Use a dedicated `CODEX_HOME` with the desired `config.toml` for this adapter;
+YIP does not guess a profile or enumerate every profile as available.
+
+This support is specific to this adapter. OpenCode's isolated launch currently
+replaces user configuration and checks stored sign-in, so an external gateway
+configuration or environment-only provider is not proof of availability there.
+Pi's current controlled SDK host excludes `models.json` and enumerates stored
+credential metadata, so custom providers and environment-only configuration are
+not discovered. A terminal harness working outside YIP does not demonstrate
+that its configuration reaches YIP's controlled execution environment.
+
+Sources checked: [configuration documentation](https://learn.chatgpt.com/docs/config-file/config-advanced),
+[0.147.0 configuration loader](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/config/src/loader/mod.rs),
+[app-server launch](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/cli/src/main.rs),
+and [provider account state](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/model-provider/src/provider.rs).
+Tests use synthetic configurations and a fake app-server process boundary;
+no account-backed gateway or model request was made.
 
 ## Session lifecycle
 
