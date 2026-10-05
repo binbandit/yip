@@ -61,6 +61,8 @@ jobs:
               ['.', ...unread, ':!web', ':!scripts', ':!.air.toml'],
               // The package embedding the web build, and the types `just schema` checks.
               ['web/embed.go', 'web/dist', 'web/src/lib/api/types.gen.ts'],
+              // The Go check also builds and starts the packaged hub.
+              ['packaging/container/Dockerfile.hub', 'packaging/container/compose.hub.yml', '.dockerignore', 'web', 'scripts/docker-smoke.sh'],
             ];
             const checks = [
               { job: 'go', name: 'Go', inputs: go },
@@ -161,6 +163,8 @@ jobs:
             || { echo "::error::Run 'just schema' and commit the result."; exit 1; }
       - name: Test (unit + integration)
         run: just test
+      - name: Build and start the Docker hub
+        run: sh scripts/docker-smoke.sh
       # Lets later runs of this pull request skip the check (see plan).
       - name: Record the pass
         if: needs.plan.outputs.go-key != ''
