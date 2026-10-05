@@ -51,6 +51,9 @@ type session struct {
 }
 
 func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (providers.Session, error) {
+	if spec.EngineerDraft && (spec.Mode != protocol.ModeConversation || spec.ResumeSessionID != "" || spec.InheritUserConfig) {
+		return nil, fmt.Errorf("%w: invalid engineer draft scope", providers.ErrUnsupported)
+	}
 	if spec.ResumeSessionID != "" {
 		return nil, fmt.Errorf("%w: OpenCode sessions are not resumed across isolated permission profiles", providers.ErrUnsupported)
 	}
@@ -104,7 +107,7 @@ func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (provider
 		pending: map[string]pendingPermission{}, tools: map[string]acp.ToolCall{},
 		started: map[string]bool{}, finished: map[string]bool{},
 	}
-	if err = s.launch(exe, spec, launchEnv(env, dir, spec.Mode)); err != nil {
+	if err = s.launch(exe, spec, launchEnv(env, dir, spec.Mode, spec.EngineerDraft)); err != nil {
 		stop()
 		os.RemoveAll(dir)
 		return nil, err
@@ -190,8 +193,12 @@ func (s *session) setup(ctx context.Context, spec providers.StartSpec) error {
 		bridge.Env = append(bridge.Env, acp.EnvVariable{Name: key, Value: spec.MCP.Env[key]})
 	}
 	var setup acp.SessionSetup
+	servers := []acp.MCPServerStdio{bridge}
+	if spec.EngineerDraft {
+		servers = []acp.MCPServerStdio{}
+	}
 	if err := s.conn.Call(ctx, acp.MethodSessionNew, acp.NewSessionParams{
-		Cwd: spec.Workdir, MCPServers: []acp.MCPServerStdio{bridge},
+		Cwd: spec.Workdir, MCPServers: servers,
 	}, &setup); err != nil {
 		return err
 	}

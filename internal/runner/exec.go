@@ -105,6 +105,7 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	r.mu.Unlock()
 	spec := providers.StartSpec{
 		RunID: m.RunID, Workdir: ws.Dir, Mode: m.Mode, Model: m.Model, Instructions: m.Instructions, Prompt: m.Prompt,
+		EngineerDraft:   m.EngineerDraft,
 		ResumeSessionID: m.ResumeSessionID, PermissionTool: bridge.PermissionPrompt,
 		MCP: providers.MCPServer{Name: "yip", Command: r.opts.BridgeExe, Args: []string{"bridge", "--mode", m.Mode},
 			Env: map[string]string{bridge.EnvSocket: r.paths.socketPath(), bridge.EnvToken: token}},
@@ -158,16 +159,23 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	for ev := range sess.Events() {
 		switch ev.Kind {
 		case providers.EventMessageDelta:
+			if m.EngineerDraft {
+				continue
+			}
 			delta.WriteString(ev.Text)
 			flush(false)
 		case providers.EventMessage:
 			flush(true)
 			delta.Reset()
 			if strings.TrimSpace(ev.Text) != "" {
+				text := ev.Text
 				if final.Len() > 0 {
-					final.WriteString("\n\n")
+					text = "\n\n" + text
 				}
-				final.WriteString(ev.Text)
+				if m.EngineerDraft {
+					text = text[:min(len(text), max(0, 24001-final.Len()))]
+				}
+				final.WriteString(text)
 				r.emit(m.RunID, ar.epoch, protocol.RunEvent{Kind: protocol.RunEvMessage, Text: truncate(ev.Text, 20000)})
 			}
 		case providers.EventApprovalRequest:
@@ -210,6 +218,9 @@ func (r *Runner) execute(parent context.Context, ar *activeRun) {
 	}
 	flush(true)
 	res := sess.Wait()
+	if m.EngineerDraft && len(res.FinalText) > 24000 {
+		res.FinalText = "invalid draft output: output exceeds the limit"
+	}
 	// The final text and error leave the machine like any event: redacted.
 	t := protocol.RunTerminal{Outcome: res.Outcome, FinalText: Redact(firstNonEmpty(strings.TrimSpace(res.FinalText), strings.TrimSpace(final.String()))),
 		Error: Redact(res.Error), VendorSessionID: res.VendorSessionID, Usage: res.Usage, ExitConfirmed: res.ExitConfirmed}
@@ -236,6 +247,9 @@ func (r *Runner) adapterApproval(ar *activeRun, sess providers.Session, req prov
 // requestApproval asks the hub's policy (and, for exceptional actions, the
 // owner) and blocks until decided or the run stops.
 func (r *Runner) requestApproval(ar *activeRun, requestID string, action protocol.ApprovalAction, raw json.RawMessage) protocol.ResolveApproval {
+	if ar.m.EngineerDraft {
+		return protocol.ResolveApproval{RequestID: requestID, Decision: "deny", Reason: "Actions are unavailable while drafting an engineer."}
+	}
 	if !ar.admit.Load() {
 		return protocol.ResolveApproval{RequestID: requestID, Decision: "deny", Reason: "the run is stopping"}
 	}

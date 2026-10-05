@@ -41,6 +41,9 @@ func (r *Runner) handleBridge(req bridge.LocalRequest) bridge.LocalResponse {
 	if runID == "" || ar == nil {
 		return bridge.LocalResponse{Error: apiErr("forbidden", "This tool session is not bound to an active run.")}
 	}
+	if ar.m.EngineerDraft {
+		return bridge.LocalResponse{Error: apiErr("forbidden", "Tools are unavailable while drafting an engineer.")}
+	}
 	if !ar.admit.Load() {
 		return bridge.LocalResponse{Error: apiErr("forbidden", "This run is stopping (its lease ended or it was cancelled); tool calls are no longer admitted.")}
 	}
