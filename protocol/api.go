@@ -75,6 +75,22 @@ type Preferences struct {
 	MutedRoomIDs []string `json:"mutedRoomIds,omitempty"`
 }
 
+// RoomOrderSection versions one user's order within a navigation section.
+type RoomOrderSection struct {
+	Version int64    `json:"version"`
+	RoomIDs []string `json:"roomIds"`
+}
+
+type RoomOrder struct {
+	Rooms RoomOrderSection `json:"rooms"`
+	DMs   RoomOrderSection `json:"dms"`
+}
+
+type RoomOrderUpdated struct {
+	Kind  string           `json:"kind"`
+	Order RoomOrderSection `json:"order"`
+}
+
 // ProviderPreference is an engineer's configured provider route.
 type ProviderPreference struct {
 	Provider  string `json:"provider"` // adapter identifier from the provider catalog
@@ -818,6 +834,7 @@ type Bootstrap struct {
 	CanManageWorkspace bool `json:"canManageWorkspace"`
 	// NodeNames includes removed machines for attribution in historical work.
 	NodeNames map[string]string `json:"nodeNames,omitempty"`
+	RoomOrder *RoomOrder        `json:"roomOrder,omitempty"`
 }
 
 // ProviderSummary aggregates provider readiness across machines.

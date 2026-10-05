@@ -39,6 +39,37 @@ func messageEventForViewer(ctx context.Context, q store.Q, event protocol.Event,
 	return event, err
 }
 
+// Personal order replay retains its revision, but never returns rooms the
+// viewer can no longer see or that have since been archived.
+func roomOrderEventForViewer(ctx context.Context, q store.Q, event protocol.Event, viewerID string) (protocol.Event, error) {
+	if event.Type != "room_order.updated" {
+		return event, nil
+	}
+	var payload protocol.RoomOrderUpdated
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return event, err
+	}
+	rooms, err := store.ListRoomsForUser(ctx, q, viewerID)
+	if err != nil {
+		return event, err
+	}
+	visible := make(map[string]bool, len(rooms))
+	for _, room := range rooms {
+		if !room.Archived && room.Kind == payload.Kind {
+			visible[room.ID] = true
+		}
+	}
+	ids := make([]string, 0, len(payload.Order.RoomIDs))
+	for _, id := range payload.Order.RoomIDs {
+		if visible[id] {
+			ids = append(ids, id)
+		}
+	}
+	payload.Order.RoomIDs = ids
+	event.Payload, err = json.Marshal(payload)
+	return event, err
+}
+
 // events streams committed events after the client's cursor (Last-Event-ID),
 // filtered to what the user may see, plus transient streaming updates. If the
 // cursor has aged out, it sends a reset instead of silently skipping history.
@@ -98,6 +129,8 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			return true
 		case strings.HasPrefix(vis, "room:"):
 			return rooms[strings.TrimPrefix(vis, "room:")]
+		case strings.HasPrefix(vis, "user:"):
+			return strings.TrimPrefix(vis, "user:") == user.ID
 		}
 		return false
 	}
@@ -122,6 +155,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				event, err := messageEventForViewer(ctx, q, e.Event, user.ID)
+				if err != nil {
+					return
+				}
+				event, err = roomOrderEventForViewer(ctx, q, event, user.ID)
 				if err != nil {
 					return
 				}

@@ -79,6 +79,8 @@ existing version-checked engineer PATCH and provider-profile PUT endpoints.
 | `POST /v1/session` / `DELETE /v1/session` | `SignInRequest` → sets cookie / sign out |
 | `GET /v1/bootstrap` | → `Bootstrap` (user, org, rooms with unread/mention counts, engineers, projects, nodes, provider summary, `cursor`, `csrfToken`, preferences) |
 | `PUT /v1/preferences` | `PreferencesRequest` → `Preferences` |
+| `GET /v1/room-order` | → `RoomOrder` with independent `rooms` and `dms` sections (`version`, `roomIds`) for the signed-in user in this workspace; also included in bootstrap |
+| `PUT /v1/room-order/{room\|dm}` | `UpdateRoomOrderRequest` (`version`, `roomIds`) → `RoomOrderSection`. Updates only that section with compare-and-swap; stale versions return 409. At most 2,000 unique IDs, each at most 128 bytes; every room must be active, in the chosen section, and accessible to the user. Empty IDs reset that section to the default order |
 | `PATCH /v1/profile` | `ProfileRequest` (`name`, 1–80 characters; whitespace is collapsed) → `User`. The handle can't be changed: it signs in and is how engineers mention you. Engineers use the new name from their next run |
 | `PUT/DELETE /v1/profile/avatar` | raw body: your profile picture (PNG, JPEG, GIF — animated too — or WebP; up to 10 MB and 8,192 px a side) → `User` with `avatarId` / remove it → `User`. The format is read from the bytes, never the declared type; anything else (SVG included) is refused |
 | `GET /v1/avatars/{id}` | a profile picture's bytes, served as its image type with a sandbox CSP and cached immutably (a new picture gets a new ID). Only pictures are served here |
@@ -152,6 +154,7 @@ Committed event types and their `payload`:
 |---|---|
 | `message.created`, `message.updated` | `Message` (updated covers reactions, thread counts, refs, edits, redaction) |
 | `room.created`, `room.updated` | `Room` |
+| `room_order.updated` | `RoomOrderUpdated` (`kind`, `order`); delivered only to the user who saved it. Replay retains the section version and filters rooms that are now archived or inaccessible |
 | `room.member_added`, `room.member_removed` | `{room, engineerId}` |
 | `read.updated` | `{roomId, seq}` |
 | `user.updated` | `User` (the owner renamed themselves or changed their picture) |
