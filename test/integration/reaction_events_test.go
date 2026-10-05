@@ -100,6 +100,16 @@ func TestReactionEventsAreViewerCorrectAfterHTTPAndReplay(t *testing.T) {
 	}
 	before := cursor()
 	m := e.post("Security", "react to me", nil, nil).Message
+	messageCursor := func() int64 {
+		t.Helper()
+		var seq int64
+		if err := e.hub.Store().R().QueryRowContext(e.ctx, `SELECT seq FROM events
+			WHERE room_id = ? AND type = 'message.updated' AND json_extract(payload, '$.id') = ?
+			ORDER BY seq DESC LIMIT 1`, room, m.ID).Scan(&seq); err != nil {
+			t.Fatal(err)
+		}
+		return seq
+	}
 	path := "/v1/messages/" + m.ID
 	var response protocol.Message
 	e.c.must("POST", path+"/reactions", protocol.ReactRequest{Emoji: "🎉"}, &response)
@@ -109,7 +119,7 @@ func TestReactionEventsAreViewerCorrectAfterHTTPAndReplay(t *testing.T) {
 		c    *client
 		mine bool
 	}{{e.c, true}, {viewer, false}} {
-		events := reactionEventsThrough(t, tc.c, before, cursor())
+		events := reactionEventsThrough(t, tc.c, before, messageCursor())
 		if len(events) != 2 {
 			t.Fatalf("expected message creation and reaction update, got %d", len(events))
 		}
@@ -140,7 +150,7 @@ func TestReactionEventsAreViewerCorrectAfterHTTPAndReplay(t *testing.T) {
 		c    *client
 		mine bool
 	}{{e.c, false}, {viewer, true}, {secondTab, false}} {
-		got := reactionEventsThrough(t, tc.c, before, cursor())
+		got := reactionEventsThrough(t, tc.c, before, messageCursor())
 		if len(got) != len(retained) {
 			t.Fatalf("replay length=%d; want %d", len(got), len(retained))
 		}
@@ -170,7 +180,7 @@ func TestReactionEventsAreViewerCorrectAfterHTTPAndReplay(t *testing.T) {
 	viewer.must("POST", path+"/reactions", protocol.ReactRequest{Emoji: "🎉", Remove: true}, &response)
 	check(response, 0, false)
 	for _, c := range []*client{e.c, viewer} {
-		for _, event := range reactionEventsThrough(t, c, before, cursor()) {
+		for _, event := range reactionEventsThrough(t, c, before, messageCursor()) {
 			var got protocol.Message
 			if err := json.Unmarshal(event.Payload, &got); err != nil {
 				t.Fatal(err)
@@ -183,12 +193,15 @@ func TestReactionEventsAreViewerCorrectAfterHTTPAndReplay(t *testing.T) {
 	hidden := e.post("Engineering", "private reaction", nil, nil).Message
 	e.c.must("POST", "/v1/messages/"+hidden.ID+"/reactions", protocol.ReactRequest{Emoji: "🎉"}, &response)
 	e.c.must("POST", path+"/reactions", protocol.ReactRequest{Emoji: "🎉"}, &response)
-	visible := reactionEventsThrough(t, viewer, before, cursor())
+	// A hidden event after the marker must not become the replay target.
+	e.c.must("POST", "/v1/messages/"+hidden.ID+"/reactions", protocol.ReactRequest{Emoji: "🎉", Remove: true}, &response)
+	visible := reactionEventsThrough(t, viewer, before, messageCursor())
 	if len(visible) != 1 || visible[0].RoomID != room {
 		t.Fatalf("viewer received events outside their rooms: %+v", visible)
 	}
 	e.c.must("DELETE", path, nil, nil)
-	for _, event := range reactionEventsThrough(t, viewer, 0, cursor()) {
+	e.c.must("POST", "/v1/messages/"+hidden.ID+"/reactions", protocol.ReactRequest{Emoji: "🎉"}, &response)
+	for _, event := range reactionEventsThrough(t, viewer, 0, messageCursor()) {
 		if event.Type != "message.created" && event.Type != "message.updated" {
 			continue
 		}
