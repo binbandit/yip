@@ -12,13 +12,17 @@ trap cleanup EXIT
 just docker up --build -d
 ready=false
 for attempt in $(seq 1 60); do
-    if curl --fail --silent http://127.0.0.1:7420/healthz > /dev/null; then
+    if curl --fail --silent --max-time 3 http://127.0.0.1:7420/healthz > /dev/null; then
         ready=true
         break
     fi
     sleep 1
 done
 [ "$ready" = true ] || { echo 'Hub did not become healthy' >&2; exit 1; }
-curl --fail --silent http://127.0.0.1:7420/ | grep -q '/assets/'
-curl --fail --silent http://127.0.0.1:7420/v1/setup | grep -q '"needsSetup":true'
+curl --fail --silent --max-time 3 http://127.0.0.1:7420/ | grep -q '/assets/'
+curl --fail --silent --max-time 3 http://127.0.0.1:7420/v1/setup | grep -q '"needsSetup":true'
 just docker exec -T hub yip version
+# Exercise literal arguments through just, Compose and the container process.
+literal='two words; $(exit 9)'
+actual=$(just --quiet docker exec -T hub printf '%s' "$literal")
+[ "$actual" = "$literal" ] || { echo 'Docker arguments changed in transit' >&2; exit 1; }

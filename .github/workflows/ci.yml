@@ -52,7 +52,7 @@ jobs:
             // The tracked files each check reads, as groups of git pathspecs.
             // Everything counts unless excluded, so new files are never missed.
             const unread = [
-              // No check reads these.
+              // Excluded from broad input groups; individual checks opt in below.
               ':!.github', ':!.mergify.yml', ':!docs', ':!packaging', ':!.dockerignore', ':!.gitignore', ':!README.md', ':!agents.md', ':!CLAUDE.md',
               // Local tooling: WebKit journeys, screenshots, simulations, LAN serving.
               ':!scripts/e2e', ':!scripts/screenshots', ':!scripts/simulation', ':!scripts/lan-dev.sh', ':!web/tests/webkit',
