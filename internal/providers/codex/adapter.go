@@ -117,7 +117,7 @@ func Capabilities() protocol.ProviderCapabilities {
 
 // Limitations are surfaced with every probe so the UI can explain them.
 var Limitations = []string{
-	"Codex still applies the user's own ~/.codex settings (model provider, profile, shell environment policy, AGENTS.md, skills). Repository .codex config is ignored; other MCP servers, hooks, plugins, apps and memories are disabled for yip runs.",
+	"Codex still applies the user's own ~/.codex settings (model provider, shell environment policy, AGENTS.md, skills). Repository .codex config is ignored; other MCP servers, hooks, plugins, apps and memories are disabled for yip runs.",
 	"Engineers cannot git commit from inside Codex's sandbox (.git is read-only), and network access is off unless a human approves an escalation.",
 	"Token usage is reported by Codex; dollar cost is not available.",
 	"Rate-limit reset times are shown only when Codex reports them.",

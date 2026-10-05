@@ -357,7 +357,7 @@ The adapter handles each of these as follows:
   - `$CODEX_HOME/AGENTS.md` (or `AGENTS.override.md`) always loads.
   - Repository `AGENTS.md` loads even in untrusted projects.
   - They are instructions, not execution authority, so the adapter lists them in a `status` event (from `instructionSources`) rather than suppressing them. `-c project_doc_max_bytes=0` would disable repository AGENTS.md if yip decides to deliver project rules only through `Instructions`.
-- **User settings stay in effect:** model provider and profile, `shell_environment_policy`, skills, and the built-in web search tool (Codex default `cached`). The shell inherits the app-server environment, which is exactly the runner's allowlist.
+- **User settings stay in effect:** model provider, `shell_environment_policy`, skills, and the built-in web search tool (Codex default `cached`). The shell inherits the app-server environment, which is exactly the runner's allowlist.
 - **Managed requirements and MDM:** these are organisation policy and may pin features or add managed hooks. The adapter reports managed hooks, but it cannot and does not override requirements.
 - **Codex's own state:** the adapter does not relocate `CODEX_HOME` and copies no credential files. Codex therefore uses the user's own sign-in and writes session rollouts and its state DB under `CODEX_HOME` as usual.
 
