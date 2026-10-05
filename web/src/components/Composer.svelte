@@ -10,14 +10,15 @@
   import { details } from '../lib/state/details.svelte';
   import { draftKey, loadDraft, saveDraft, clearDraft } from '../lib/state/drafts';
   import { filterCandidates, findMentionQuery, insertMention, projectsNamedIn, pruneSelected, resolveMentions, type MentionCandidate, type SelectedMention } from '../lib/util/mentions';
-  import { deliveryReceipt, jobStateLabel, waitingReasonLabel } from '../lib/util/labels';
-  import { isLiveJob, jobRunState, pendingReplies, workingInRoom, type PendingMessage } from '../lib/state/data';
+  import { deliveryReceipt, jobStateLabel } from '../lib/util/labels';
+  import { isLiveJob, type PendingMessage } from '../lib/state/data';
   import type { Mention } from '../lib/api/types.gen';
   import { api } from '../lib/api/endpoints';
   import { errorMessage } from '../lib/api/client';
   import Avatar from './Avatar.svelte';
   import StateIcon from './StateIcon.svelte';
   import Notice from './Notice.svelte';
+  import ReplyActivity from './ReplyActivity.svelte';
 
   interface Props {
     roomId: string;
@@ -120,46 +121,6 @@
       announcedReceipt = t;
       untrack(() => app.announce(t));
     }
-  });
-
-  // ---- live activity, as a group chat shows it ----
-  // One quiet line under the box: who is typing a reply, who is busy with
-  // work in this room, and anything that is holding a reply up. Engineers'
-  // intermediate output never streams into the conversation.
-  function names(ids: string[]): string {
-    const n = [...new Set(ids)].map((id) => app.engineerName(id));
-    if (n.length <= 2) return n.join(' and ');
-    return `${n[0]}, ${n[1]} and ${n.length - 2} more`;
-  }
-  const activity = $derived.by(() => {
-    const replies = pendingReplies(app.data, roomId, threadId ?? undefined);
-    const working = new Set(workingInRoom(app.data, roomId));
-    const typing: string[] = [];
-    const next: string[] = [];
-    const held: { text: string; tone: 'attention' }[] = [];
-    for (const j of replies) {
-      const name = app.engineerName(j.ownerId);
-      if (jobRunState(app.data, j) === 'unknown') {
-        held.push({ text: `${name}'s reply stopped reporting; its outcome isn't confirmed`, tone: 'attention' });
-      } else if (j.state === 'waiting') {
-        held.push({ text: `${name} will reply when possible — ${j.stateDetail || waitingReasonLabel(j.waitingReason)}`, tone: 'attention' });
-      } else if (j.state === 'running' || working.has(j.ownerId)) {
-        typing.push(j.ownerId);
-      } else {
-        next.push(j.ownerId);
-      }
-      working.delete(j.ownerId);
-    }
-    const busy = threadId ? [] : [...working];
-    const parts: { text: string; tone: 'accent' | 'attention'; dots?: boolean }[] = [];
-    if (typing.length) parts.push({ text: `${names(typing)} ${new Set(typing).size > 1 ? 'are' : 'is'} typing`, tone: 'accent', dots: true });
-    if (next.length) parts.push({ text: `${names(next)} will reply shortly`, tone: 'accent' });
-    if (busy.length) {
-      const job = busy.length === 1 ? Object.values(app.data.jobs).find((j) => j.ownerId === busy[0] && j.state === 'running' && j.source?.roomId === roomId && j.kind !== 'reply') : undefined;
-      parts.push({ text: job ? `${names(busy)} is working on ${job.title}` : `${names(busy)} ${busy.length > 1 ? 'are' : 'is'} working`, tone: 'accent' });
-    }
-    for (const h of held) parts.push(h);
-    return parts.slice(0, 2);
   });
 
   // ---- mention candidates ----
@@ -573,13 +534,8 @@
       <span class="tone-danger">{sendError}</span>
     {:else if note}
       <span class="receipt final"><StateIcon shape="check-filled" tone="success" size={12} />{note}</span>
-    {:else if activity.length}
-      <span class="activity truncate" aria-label="Engineer activity">
-        {#each activity as a, i (a.text)}
-          {#if i}<span class="sep" aria-hidden="true">·</span>{/if}
-          <span class:tone-attention={a.tone === 'attention'}>{a.text}{#if a.dots}<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>{/if}</span>
-        {/each}
-      </span>
+    {:else}
+      <ReplyActivity {roomId} {threadId} />
     {/if}
     <VisuallyHidden>{app.data.preferences.sendKey === 'mod-enter' ? 'Command or Control and Enter sends; Enter adds a new line.' : 'Enter sends; Shift and Enter adds a new line.'} Type @ to mention an engineer.</VisuallyHidden>
   </p>
@@ -803,44 +759,6 @@
     color: var(--color-text-primary);
     font-weight: var(--font-weight-medium);
   }
-  .activity {
-    display: block;
-  }
-  .sep {
-    margin: 0 var(--spacing-1-5);
-    opacity: 0.6;
-  }
-  /* The only looping motion in the app: someone is composing a reply. */
-  .dots {
-    display: inline-flex;
-    gap: 2px;
-    margin-left: 3px;
-    vertical-align: middle;
-  }
-  .dots i {
-    width: 3px;
-    height: 3px;
-    border-radius: var(--radius-full);
-    background: currentColor;
-    animation: blink 1.2s infinite ease-in-out;
-  }
-  .dots i:nth-child(2) {
-    animation-delay: 0.15s;
-  }
-  .dots i:nth-child(3) {
-    animation-delay: 0.3s;
-  }
-  @keyframes blink {
-    0%,
-    80%,
-    100% {
-      opacity: 0.25;
-    }
-    40% {
-      opacity: 1;
-    }
-  }
-
   @media (max-width: 768px) {
     .composer {
       padding: 0 var(--spacing-2) calc(var(--spacing-2) + env(safe-area-inset-bottom));

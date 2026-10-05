@@ -198,6 +198,7 @@ class AppState {
     window.addEventListener('offline', () => {
       this.online = false;
       this.connection = 'offline';
+      this.data.streams = {};
     });
     window.addEventListener('resize', () => {
       this.viewport = window.innerWidth;
@@ -321,9 +322,12 @@ class AppState {
     this.stream = new EventStream({
       cursor: () => this.data.lastSeq,
       onEvent: (ev) => this.onEvent(ev),
-      onTransient: (t) => applyTransient(this.data, t),
+      onTransient: (t) => { if (this.online && this.connection === 'live') applyTransient(this.data, t); },
       onReset: (cursor) => void this.onReset(cursor),
-      onState: (s) => (this.connection = s),
+      onState: (s) => {
+        this.connection = s;
+        if (s !== 'live') this.data.streams = {};
+      },
       onFatal: () => void this.verifySession(),
     });
     this.stream.start();
@@ -407,6 +411,7 @@ class AppState {
   }
 
   private async onReset(cursor: number): Promise<void> {
+    this.data.streams = {};
     this.data.lastSeq = Math.max(this.data.lastSeq, cursor);
     try {
       const b = await api.bootstrap();
