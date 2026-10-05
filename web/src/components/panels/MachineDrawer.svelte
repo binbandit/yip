@@ -35,13 +35,14 @@
   let missing = $state(false);
   onMount(() => {
     let alive = true;
-    const requestedAt = app.data.lastSeq;
+    const data = app.data;
+    const requestedAt = data.lastSeq;
     if (!app.data.nodes[nodeId])
       api
         .nodes()
         .then((ns) => {
           if (!alive) return;
-          replaceNodes(app.data, ns, requestedAt);
+          if (app.data === data) replaceNodes(data, ns, requestedAt);
           missing = !app.data.nodes[nodeId];
         })
         .catch(() => { if (alive) missing = true; });
@@ -86,10 +87,12 @@
 
   async function run() {
     if (!confirm) return;
+    const data = app.data;
     const { kind, id, name, ws } = confirm;
     if (kind === 'remove') {
       await api.removeNode(id);
-      removeNode(app.data, id);
+      if (app.data !== data) return;
+      removeNode(data, id);
       app.announce(`Removed ${name} from Machines. Its history and files are preserved.`);
       if (app.loc.panel?.kind === 'machine' && app.loc.panel.id === id) {
         app.closePanel();
@@ -100,18 +103,24 @@
     }
     if (!n || n.id !== id) throw new Error('This machine is no longer available. Close this dialog and refresh Machines.');
     if (kind === 'drain' || kind === 'undrain') {
-      mergeNode(app.data, await api.drainNode(id, kind === 'drain'));
+      const node = await api.drainNode(id, kind === 'drain');
+      if (app.data !== data) return;
+      mergeNode(data, node);
       app.announce(kind === 'drain' ? `${name} will finish its current work and start nothing new.` : `${name} takes new work again.`);
     } else if (kind === 'workspace' && ws) {
-      mergeNode(app.data, await api.removeWorkspace(id, ws.name, { confirm: ws.name, force: !ws.published }));
+      const node = await api.removeWorkspace(id, ws.name, { confirm: ws.name, force: !ws.published });
+      if (app.data !== data) return;
+      mergeNode(data, node);
       app.announce(`Deleted ${ws.name} from ${name}.`);
     } else if (kind === 'stop') {
       await api.stopNodeWork(n.id);
+      if (app.data !== data) return;
       app.announce(`Stopping the work running on ${name}.`);
     } else if (kind === 'revoke') {
       const node = n;
       await api.revokeNode(id);
-      mergeNode(app.data, { ...node, status: 'revoked', revokedAt: new Date().toISOString() });
+      if (app.data !== data) return;
+      mergeNode(data, { ...node, status: 'revoked', revokedAt: new Date().toISOString() });
       app.announce(`${name}'s access is revoked.`);
     }
   }
@@ -195,7 +204,7 @@
 <RightPanel title={n?.name ?? 'Machine'} {mode} wide onclose={() => app.closePanel()}>
   {#snippet subtitle()}{#if conn}{conn.label}{conn.meta ? ` · ${conn.meta}` : ''}{/if}{/snippet}
   {#if !n}
-    <div class="pad"><Text as="p" color="secondary">{missing || app.data.removedNodeIds[nodeId] ? 'This machine isn’t available.' : 'Loading…'}</Text></div>
+    <div class="pad"><Text as="p" color="secondary">{missing || app.data.removedNodeIds[nodeId] || app.data.nodeNames[nodeId] ? 'This machine isn’t available.' : 'Loading…'}</Text></div>
   {:else}
     <div class="tabs">
       <TabList value={tab} onChange={(v) => isTab(v) && app.setTab(v)} role="tablist" aria-label="Machine details" size="sm" hasDivider onfocusin={onTabFocus}>

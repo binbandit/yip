@@ -45,6 +45,40 @@ function key(el: Element, k: string) {
   flushSync();
 }
 
+function deferResponse(method: string, path: string) {
+  const fetch = globalThis.fetch;
+  let requested = false;
+  let bootstrap: Bootstrap | undefined;
+  let resolve!: (response: Response) => void;
+  const pending = new Promise<Response>((r) => { resolve = r; });
+  const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+  globalThis.fetch = ((input, init) => {
+    const requestedPath = new URL(String(input), 'http://localhost').pathname;
+    if (requestedPath === path && (init?.method ?? 'GET') === method) {
+      requested = true;
+      return pending;
+    }
+    if (bootstrap && requestedPath === '/v1/bootstrap') return Promise.resolve(json(bootstrap));
+    return fetch(input, init);
+  }) as typeof globalThis.fetch;
+  return {
+    requested: () => requested,
+    reply: (body: unknown) => resolve(json(body)),
+    async resetWithout(id: string) {
+      const epoch = app.resetEpoch;
+      bootstrap = { ...fixture<Bootstrap>('bootstrap.json'), cursor: app.data.lastSeq + 10,
+        nodes: Object.values(app.data.nodes).filter((n) => n.id !== id),
+        nodeNames: Object.fromEntries(machines.map((n) => [n.id, n.name])) };
+      FakeEventSource.latest().emit('reset', { cursor: bootstrap.cursor, reason: 'test reset' });
+      await waitFor(() => app.resetEpoch > epoch, 'fresh state after stream reset');
+    },
+    restore() {
+      resolve(json([]));
+      globalThis.fetch = fetch;
+    },
+  };
+}
+
 const codex = base.providers[0];
 const inst = (p: Partial<ProviderInstallation>): ProviderInstallation => ({ ...codex, limitations: [], ...p });
 const claudeNoRO = inst({
@@ -130,6 +164,34 @@ beforeEach(async () => {
 });
 
 describe('the Machines list', () => {
+  it.each(['machines', 'connections', 'drawer'])('ignores a delayed %s list response after removal and stream reset', async (view) => {
+    app.go({ name: 'engineers' });
+    await settle();
+    const snapshot = structuredClone(machines);
+    const delayed = deferResponse('GET', '/v1/nodes');
+    try {
+      if (view === 'drawer') {
+        delete app.data.nodes['n-laptop'];
+        app.openPanel({ kind: 'machine', id: 'n-laptop' });
+      } else {
+        app.navigate(`/${view}`);
+      }
+      await waitFor(delayed.requested, 'deferred machine list');
+      mergeNode(app.data, { ...snapshot[2], removedAt: ago(0) });
+      expect(app.data.nodes['n-laptop']).toBeUndefined();
+      await delayed.resetWithout('n-laptop');
+      expect(app.data.removedNodeIds['n-laptop']).toBeUndefined();
+      delayed.reply(snapshot);
+      await settle();
+      expect(app.data.nodes['n-laptop']).toBeUndefined();
+      expect(app.nodeName('n-laptop')).toBe(LONG);
+      if (view === 'drawer') expect(text()).toContain('This machine isn’t available.');
+    } finally {
+      delayed.restore();
+      app.closePanel();
+    }
+  });
+
   it('keeps connection, work and provider availability as separate facts on each row', () => {
     const studio = row('Studio mini');
     expect(studio.querySelector('h2')!.textContent).toBe('Studio mini');
@@ -352,6 +414,28 @@ describe('consequential actions', () => {
     await waitFor(() => !document.querySelector('dialog[open]'), 'the confirmation to close');
     return t;
   }
+
+  it.each(['drain', 'revoke'])('ignores a delayed %s response after the machine disappears during reset', async (kind) => {
+    const node = structuredClone(machines[0]);
+    const action = kind === 'drain' ? 'Pause new work' : 'Revoke access';
+    const delayed = deferResponse(kind === 'drain' ? 'POST' : 'DELETE', `/v1/nodes/${node.id}/${kind === 'drain' ? 'drain' : 'credential'}`);
+    try {
+      await overview(node.id);
+      byText('#machinepanel button', action)!.click();
+      await waitFor(() => document.querySelector('dialog[open]'), 'action confirmation');
+      byText('dialog button', action)!.click();
+      await waitFor(delayed.requested, 'deferred node action');
+      mergeNode(app.data, { ...node, removedAt: ago(0) });
+      await delayed.resetWithout(node.id);
+      delayed.reply(kind === 'drain' ? { ...node, draining: true } : { ok: true });
+      await waitFor(() => !document.querySelector('dialog[open]'), 'obsolete action completed');
+      expect(app.data.nodes[node.id]).toBeUndefined();
+      expect(app.nodeName(node.id)).toBe(node.name);
+    } finally {
+      delayed.restore();
+      app.closePanel();
+    }
+  });
 
   it('pauses new work in plain words, then resumes it, returning focus each time', async () => {
     await overview('n-studio');

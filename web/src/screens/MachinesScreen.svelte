@@ -19,11 +19,12 @@
 
   onMount(() => {
     let alive = true;
-    const requestedAt = app.data.lastSeq;
+    const data = app.data;
+    const requestedAt = data.lastSeq;
     api
       .nodes()
       .then((ns) => {
-        if (alive) replaceNodes(app.data, ns, requestedAt);
+        if (alive && app.data === data) replaceNodes(data, ns, requestedAt);
       })
       .catch(() => {});
     return () => { alive = false; };
