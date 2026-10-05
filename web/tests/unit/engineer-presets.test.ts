@@ -136,4 +136,32 @@ describe('engineer presets', () => {
     expect(close).toHaveBeenCalledOnce();
     expect(api.createEngineer).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { label: 'Chief Engineer', role: 'Chief engineer', tags: 'architecture, technical-direction, standards', purpose: 'across authorized projects', tools: ['knowledge_search', 'decision_propose', 'work_create'] },
+    { label: 'Principal Engineer', role: 'Principal engineer', tags: 'system-design, implementation, review, mentoring', purpose: 'complex implementation and design', tools: ['work_run_check', 'work_request_review'] },
+    { label: 'Engineering Manager', role: 'Engineering manager', tags: 'planning, delegation, coordination, delivery', purpose: 'owners, dependencies and progress', tools: ['work_create', 'work_status', 'work_request_help', 'work_update', 'work_wait', 'work_request_review'] },
+  ])('$label provides distinct responsibilities without changing authority or identity', async ({ label, role, tags, purpose, tools }) => {
+    choose(control('Starting point'), label);
+    expect(control('Role').value).toBe(role);
+    expect(control('Capabilities').value).toBe(tags);
+    expect(control("What they're for").value).toContain(purpose);
+    const instructions = control<HTMLTextAreaElement>('Standing instructions').value;
+    for (const tool of tools) expect(instructions).toContain(tool);
+    expect(instructions).toContain('approval requirements');
+    expect(instructions).toContain('independent peer review');
+    expect(instructions).toContain('extra authority');
+    expect(control('Name').value).toBe('');
+    expect(api.createEngineer).not.toHaveBeenCalled();
+    edit('Name', 'Sage');
+    edit('Role', `${role} for Atlas`);
+    edit('Standing instructions', `${instructions} Focus on Atlas.`);
+    submit();
+    await tick();
+    expect(api.createEngineer).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Sage', handle: 'sage', role: `${role} for Atlas`,
+      instructions: `${instructions} Focus on Atlas.`,
+      capabilityTags: tags.split(', '), provider: { provider: 'test-one' },
+    }));
+  });
 });

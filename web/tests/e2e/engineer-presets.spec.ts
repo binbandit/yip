@@ -19,10 +19,10 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     await startingPoint.focus();
     await page.keyboard.press('Enter');
     const options = page.getByRole('listbox').getByRole('option');
-    await expect(options).toHaveText(['Generalist', 'Frontend', 'Backend', 'Platform', 'QA', 'Security', 'Reviewer', 'Custom']);
+    await expect(options).toHaveText(['Generalist', 'Frontend', 'Backend', 'Platform', 'QA', 'Security', 'Reviewer', 'Chief Engineer', 'Principal Engineer', 'Engineering Manager', 'Custom']);
     await testInfo.attach('preset-dropdown', { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
     await page.keyboard.press('End');
-    await page.keyboard.press('ArrowUp');
+    for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowUp');
     await page.keyboard.press('Enter');
     await expect(startingPoint).toHaveText('Reviewer');
     await expect(dialog.getByLabel('Role', { exact: true })).toHaveValue('Code reviewer');
@@ -35,6 +35,18 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     await expect(dialog.getByLabel('Standing instructions')).toHaveValue('Check keyboard access and cite the changed source.');
     await dialog.getByRole('button', { name: 'Reset to preset' }).click();
     await expect(dialog.getByLabel('Standing instructions')).toHaveValue(/Reproduce the problem first/);
+
+    for (const [label, role, capability] of [
+      ['Chief Engineer', 'Chief engineer', 'technical-direction'],
+      ['Principal Engineer', 'Principal engineer', 'mentoring'],
+      ['Engineering Manager', 'Engineering manager', 'delegation'],
+    ]) {
+      await startingPoint.click();
+      await page.getByRole('option', { name: label, exact: true }).click();
+      await expect(dialog.getByLabel('Role', { exact: true })).toHaveValue(role);
+      await expect(dialog.getByLabel('Capabilities')).toHaveValue(new RegExp(capability));
+      await expect(dialog.getByLabel('Standing instructions')).toHaveValue(/independent peer review/);
+    }
 
     await startingPoint.click();
     await page.getByRole('option', { name: 'Custom', exact: true }).click();
