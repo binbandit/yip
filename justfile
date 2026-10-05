@@ -9,8 +9,12 @@ all: web build
 
 # install this checkout's CLI and refresh existing macOS user services
 [positional-arguments]
-install *args: all
-    exec ./bin/yip install "$@"
+install *args: web
+    sh scripts/install.sh "{{ ldflags }}" "$@"
+
+# verify install builds safely before any installed binary is replaced
+test-install:
+    node --test scripts/install.test.mjs
 
 # compile the yip binary (embeds web/dist if built)
 build:
