@@ -293,6 +293,9 @@
           "type": "array"
         },
         "context": {},
+        "engineerDraft": {
+          "type": "boolean"
+        },
         "engineerId": {
           "type": "string"
         },
@@ -388,6 +391,9 @@
       "additionalProperties": false,
       "properties": {
         "available": {
+          "type": "boolean"
+        },
+        "engineerDrafts": {
           "type": "boolean"
         },
         "name": {
@@ -718,6 +724,9 @@
       "additionalProperties": false,
       "properties": {
         "activeSteering": {
+          "type": "boolean"
+        },
+        "engineerDrafts": {
           "type": "boolean"
         },
         "mcpTools": {

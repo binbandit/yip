@@ -83,7 +83,7 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 		AuthDetail: "Deterministic scripted provider; no model or account is used.", Account: "local", Billing: protocol.BillingUnknown,
 		ProfileID: "codex:local", Tested: true, TestedVersion: "1",
 		Capabilities: protocol.ProviderCapabilities{StructuredEvents: true, ToolApprovals: true, SessionResume: false, ActiveSteering: true,
-			ReadOnly: true, MCPTools: true},
+			ReadOnly: true, MCPTools: true, EngineerDrafts: true},
 		Models:      []protocol.Model{{ID: "scripted", Label: "Scripted", Default: true}},
 		Limitations: []string{"Follows scripted demo and test workflows only; it cannot handle open-ended requests."},
 		UpdatedAt:   time.Now().UTC()}

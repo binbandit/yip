@@ -170,6 +170,7 @@ type RepoSpec struct {
 
 // ExecutionManifest is the pinned, immutable description of one run attempt.
 type ExecutionManifest struct {
+	EngineerDraft     bool            `json:"engineerDraft,omitempty"`
 	RunID             string          `json:"runId"`
 	JobID             string          `json:"jobId"`
 	Attempt           int             `json:"attempt"`

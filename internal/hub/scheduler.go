@@ -39,6 +39,7 @@ func (h *Hub) tick(ctx context.Context) {
 		return
 	}
 	h.expireLeases(ctx)
+	h.expireEngineerDrafts(ctx)
 	h.expireApprovals(ctx)
 	h.retryDue(ctx)
 	h.nodeHealth(ctx)
@@ -65,8 +66,12 @@ type schedCounts struct {
 }
 
 func (h *Hub) counts(ctx context.Context) (schedCounts, error) {
+	return h.countsWith(ctx, h.st.R())
+}
+
+func (h *Hub) countsWith(ctx context.Context, q store.Q) (schedCounts, error) {
 	c := schedCounts{engineer: map[string]int{}, profile: map[string]int{}, node: map[string]int{}}
-	runs, err := store.RunsInStates(ctx, h.st.R(), protocol.RunOffered, protocol.RunPreparing, protocol.RunRunning,
+	runs, err := store.RunsInStates(ctx, q, protocol.RunOffered, protocol.RunPreparing, protocol.RunRunning,
 		protocol.RunAwaitingInput, protocol.RunStopping)
 	if err != nil {
 		return c, err
@@ -75,6 +80,15 @@ func (h *Hub) counts(ctx context.Context) (schedCounts, error) {
 		c.engineer[r.EngineerID]++
 		c.profile[r.ProfileID]++
 		c.node[r.NodeID]++
+		c.org++
+	}
+	drafts, err := store.ActiveEngineerDrafts(ctx, q)
+	if err != nil {
+		return c, err
+	}
+	for _, d := range drafts {
+		c.profile[d.Provider.ProfileID]++
+		c.node[d.NodeID]++
 		c.org++
 	}
 	return c, nil
@@ -424,6 +438,13 @@ func (h *Hub) offer(ctx context.Context, r store.RunRow, j store.JobRow, p place
 		cur, err := store.GetRun(ctx, t.tx, r.ID)
 		if err != nil || cur.State != protocol.RunCreated {
 			return err
+		}
+		counts, err := h.countsWith(ctx, t.tx)
+		if err != nil {
+			return err
+		}
+		if counts.org >= h.lim.ActiveRunsPerOrg || counts.node[p.node.ID] >= max(1, p.node.Capacity.Slots) || counts.profile[p.inst.ProfileID] >= h.profileMax(ctx, p.inst.ProfileID) {
+			return nil
 		}
 		// Access may have changed since the run was queued: never build or
 		// send context for an engineer who no longer belongs here.

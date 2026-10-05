@@ -59,6 +59,11 @@ export async function createAgentSession(options) {
       async abort() { release?.(); },
       dispose() {},
       async prompt(prompt) {
+        if (prompt === "no-tools") {
+          if (options.tools.length || options.customTools.length) throw new Error("tools exposed to draft");
+          listener({ type: "message_end", message: { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "tool-free draft" }] } });
+          return;
+        }
         if (prompt === "error") throw new Error("fake provider failure");
         if (prompt === "crash") process.exit(9);
         listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Hello\u2028world" } });
