@@ -9,6 +9,8 @@
   import { engineerPresets } from '../lib/engineer-presets';
   import Dialog from './Dialog.svelte';
   import ProviderSelect from './ProviderSelect.svelte';
+  import EngineerDraftForm from './EngineerDraftForm.svelte';
+  import type { EngineerDraftFields } from '../lib/api/types.gen';
 
   interface Props {
     onclose: () => void;
@@ -26,6 +28,7 @@
   const readyProvider = app.data.providers.find((p) => p.readyNodes.length);
   let provider = $state(readyProvider?.provider ?? 'claude');
   let busy = $state(false);
+  let drafting = $state(false);
   let error = $state('');
   // Input hints TextInput forwards to its <input> but doesn't type.
   const handleHints = { autocapitalize: 'none', spellcheck: false };
@@ -60,8 +63,16 @@
         .replace(/^-+|-+$/g, '');
   });
 
+  function applyDraft(next: EngineerDraftFields, before: EngineerDraftFields) {
+    if (role === before.role) role = next.role;
+    if (description === before.description) description = next.description;
+    if (tags.split(',').map((t) => t.trim()).filter(Boolean).join(',') === before.capabilityTags.join(',')) tags = next.capabilityTags.join(', ');
+    if (instructions === before.instructions) instructions = next.instructions;
+  }
+
   async function create(e: SubmitEvent) {
     e.preventDefault();
+    if (busy || drafting) return;
     if (!name.trim() || !role.trim()) {
       error = 'Give the engineer a name and a role.';
       return;
@@ -108,6 +119,7 @@
         <div><Button label={preset === 'custom' ? 'Clear custom fields' : 'Reset to preset'} onclick={resetPreset} /></div>
       {/if}
     </div>
+    <EngineerDraftForm disabled={busy} fields={{ role, description, capabilityTags: tags.split(',').map((t) => t.trim()).filter(Boolean), instructions }} onapply={applyDraft} onbusy={(value) => (drafting = value)} />
     <TextInput label="Role" bind:value={role} placeholder="e.g. Platform engineer" width="100%" />
     <TextInput label="What they're for" bind:value={description} width="100%" />
     <TextInput label="Capabilities" bind:value={tags} description="Comma-separated; colleagues use these to choose reviewers." width="100%" />
@@ -120,7 +132,7 @@
   </form>
   {#snippet footer()}
     <Button label="Cancel" onclick={onclose} />
-    <Button label={busy ? 'Creating…' : 'Create engineer'} variant="primary" type="submit" form="new-eng" isLoading={busy} />
+    <Button label={busy ? 'Creating…' : 'Create engineer'} variant="primary" type="submit" form="new-eng" isLoading={busy} isDisabled={drafting || busy} />
   {/snippet}
 </Dialog>
 

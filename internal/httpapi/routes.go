@@ -47,6 +47,9 @@ func (s *Server) routes() {
 	a("PATCH /v1/messages/{id}", s.editMessage)
 	a("DELETE /v1/messages/{id}", s.deleteMessage)
 
+	a("POST /v1/engineer-drafts", s.createEngineerDraft)
+	a("GET /v1/engineer-drafts/{id}", s.getEngineerDraft)
+	a("DELETE /v1/engineer-drafts/{id}", s.cancelEngineerDraft)
 	a("GET /v1/engineers", s.listEngineers)
 	a("POST /v1/engineers", s.createEngineer)
 	a("GET /v1/engineers/{id}", s.getEngineer)

@@ -147,6 +147,12 @@ func buildLaunch(spec providers.StartSpec, tempRoot string) (*launchPlan, error)
 	if err != nil {
 		return nil, err
 	}
+	if spec.EngineerDraft {
+		if spec.Mode != protocol.ModeConversation || spec.ResumeSessionID != "" || spec.InheritUserConfig {
+			return nil, fmt.Errorf("%w: invalid engineer draft scope", providers.ErrUnsupported)
+		}
+		pol = toolPolicy{permissionMode: "dontAsk"}
+	}
 
 	dir, err := os.MkdirTemp(tempRoot, "yip-claude-")
 	if err != nil {
@@ -164,6 +170,9 @@ func buildLaunch(spec providers.StartSpec, tempRoot string) (*launchPlan, error)
 		e := cfg.MCPServers[mcpName]
 		e.Args = []string{}
 		cfg.MCPServers[mcpName] = e
+	}
+	if spec.EngineerDraft {
+		cfg.MCPServers = map[string]mcpServerEntry{}
 	}
 	raw, err := json.Marshal(cfg)
 	if err != nil {
@@ -199,6 +208,16 @@ func buildLaunch(spec providers.StartSpec, tempRoot string) (*launchPlan, error)
 		"--permission-mode=" + pol.permissionMode,
 		"--tools=" + strings.Join(pol.tools, ","),
 		"--allowedTools=" + strings.Join(pol.allowed, ","),
+	}
+	if spec.EngineerDraft {
+		filtered := args[:0]
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "--permission-prompt-tool=") || arg == "--permission-prompts=host" {
+				continue
+			}
+			filtered = append(filtered, arg)
+		}
+		args = filtered
 	}
 	if spec.InheritUserConfig && spec.Mode == protocol.ModeEdit {
 		filtered := args[:0]
