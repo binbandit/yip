@@ -1,4 +1,4 @@
-import { isTerminalRun, type DataState } from '../state/data';
+import { isCommittedResponse, isTerminalRun, type DataState } from '../state/data';
 import { waitingReasonLabel } from './labels';
 
 export const WRITING_FRESH_MS = 10_000;
@@ -14,7 +14,7 @@ function fresh(at: number, now: number, age: number): boolean {
 export function replyActivity(s: DataState, roomId: string, threadId: string | undefined, now: number): ReplyActivityGroup[] {
   const phases: Record<Phase, Set<string>> = { writing: new Set(), preparing: new Set(), waiting: new Set(), queued: new Set() };
   const waiting = new Map<string, string>();
-  const answered = new Set(Object.values(s.messages).map((m) => m.runId).filter(Boolean));
+  const answered = new Set(Object.values(s.messages).filter(isCommittedResponse).map((m) => m.runId).filter(Boolean));
   for (const j of Object.values(s.jobs)) {
     if (j.kind !== 'reply' || j.source.roomId !== roomId || (j.source.threadId ?? '') !== (threadId ?? '')) continue;
     if (!['queued', 'running', 'waiting'].includes(j.state)) continue;

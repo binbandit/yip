@@ -179,6 +179,32 @@ it('clears when the response is committed and ignores its delayed chunks', () =>
   expect(activity()).toBe('');
 });
 
+it.each(['question', 'approval', 'status'])('keeps continued output after a non-final %s message', (kind) => {
+  const run = reply();
+  show();
+  const message: Message = { id: kind, orgId: sample.job.orgId, runId: run.id, roomId, author: { kind: 'engineer', id: run.engineerId }, body: 'A non-final update', kind, seq: 1, revision: 1, createdAt: new Date(now).toISOString(), mentions: [], projectIds: [], refs: [], reactions: [] };
+  delta(run);
+  if (kind === 'approval') update({ ...run, state: 'awaiting_input' });
+  applyEvent(app.data, { type: 'message.created', sequence: app.data.lastSeq + 1, payload: message } as HubEvent);
+  flushSync();
+  if (kind !== 'approval') expect(activity()).toContain('Mira is writing a reply');
+  if (kind === 'approval') update({ ...run, state: 'running' });
+  delta(run, now + 1);
+  expect(activity()).toContain('Mira is writing a reply');
+});
+
+it('preserves newer writing when an older durable update arrives afterward', () => {
+  const run = reply();
+  show();
+  delta(run, now + 2);
+  applyEvent(app.data, { type: 'run.updated', sequence: app.data.lastSeq + 1, occurredAt: new Date(now - 1).toISOString(), payload: { ...run, lastActivityAt: new Date(now - 2).toISOString() } } as HubEvent);
+  flushSync();
+  expect(activity()).toContain('Mira is writing a reply');
+  applyEvent(app.data, { type: 'run.updated', sequence: app.data.lastSeq + 1, occurredAt: new Date(now + 3).toISOString(), payload: run } as HubEvent);
+  flushSync();
+  expect(activity()).toContain('Mira is preparing a reply');
+});
+
 it('rejects stale attempts, mismatched stream routing and revoked machines', () => {
   const run = reply();
   show();

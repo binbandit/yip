@@ -303,7 +303,7 @@ export function mergeRuns(s: DataState, runs: Run[] | null | undefined): void {
     const cur = s.runs[r.id];
     if (cur && isFinalRun(cur.state) && !isFinalRun(r.state)) continue;
     s.runs[r.id] = r;
-    if (isTerminalRun(r.state)) delete s.streams[r.id];
+    if (isTerminalRun(r.state) || r.state === 'stopping' || r.state === 'awaiting_input') delete s.streams[r.id];
   }
 }
 
@@ -440,8 +440,10 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
     case 'run.updated': {
       const r = asPayload<Run>(ev);
       s.runs[r.id] = r;
-      // A durable status/tool/message update supersedes a provisional delta.
-      delete s.streams[r.id];
+      // Durable updates and buffered transients may arrive out of order.
+      // Only newer activity (or a stop/wait) supersedes accepted writing.
+      const streamAt = Date.parse(s.streams[r.id]?.at ?? '');
+      if (isTerminalRun(r.state) || r.state === 'stopping' || r.state === 'awaiting_input' || Date.parse(ev.occurredAt) > streamAt || Date.parse(r.lastActivityAt ?? '') > streamAt) delete s.streams[r.id];
       bump(s.touched.jobs, r.jobId);
       break;
     }
@@ -550,7 +552,7 @@ function applyMessageCreated(s: DataState, raw: Message, viewingBottomRoomId: st
   const known = !!s.messages[m.id];
   upsertMessage(s, m);
   reconcilePending(s, m);
-  if (m.runId && s.streams[m.runId]) delete s.streams[m.runId];
+  if (m.runId && isCommittedResponse(m)) delete s.streams[m.runId];
 
   if (m.threadId) {
     const th = s.threads[m.threadId];
@@ -576,6 +578,11 @@ function applyMessageCreated(s: DataState, raw: Message, viewingBottomRoomId: st
 
 // ---- transient streaming ----
 
+/** Questions, permissions and progress messages can precede more output. */
+export function isCommittedResponse(m: Message): boolean {
+  return m.author.kind === 'engineer' && (m.kind === 'text' || m.kind === 'result');
+}
+
 export interface TransientStream {
   type: string;
   roomId?: string;
@@ -592,7 +599,7 @@ export function applyTransient(s: DataState, t: TransientStream): void {
   const run = s.runs[t.runId];
   if (run && (isTerminalRun(run.state) || run.state === 'stopping' || run.state === 'awaiting_input')) return;
   if (run && (run.destination.roomId !== t.roomId || (run.destination.threadId ?? '') !== (t.threadId ?? '') || run.engineerId !== t.engineerId || run.jobId !== t.jobId)) return;
-  if (Object.values(s.messages).some((m) => m.runId === t.runId)) return;
+  if (Object.values(s.messages).some((m) => m.runId === t.runId && isCommittedResponse(m))) return;
   const kind = t.payload?.kind ?? '';
   const text = t.payload?.text ?? '';
   const now = Date.now();
