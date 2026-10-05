@@ -172,9 +172,6 @@ func providerChecks(ctx context.Context, provs string) []check {
 		if inst.AuthDetail != "" {
 			detail += " (" + inst.AuthDetail + ")"
 		}
-		if !inst.Tested && inst.AuthState != "not_installed" {
-			detail += " · untested version"
-		}
 		cs = append(cs, check{inst.AuthState == "ready", a.Label(), detail})
 	}
 	return cs

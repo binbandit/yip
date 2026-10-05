@@ -232,6 +232,13 @@ func (f *fake) completeTurn(status string, turnErr any) {
 func runFake(scenario string, args []string) int {
 	for _, a := range args {
 		if a == "--version" {
+			if version := os.Getenv("YIP_TEST_VERSION"); version != "" {
+				if version == "unknown" {
+					return 1
+				}
+				fmt.Println(version)
+				return 0
+			}
 			fmt.Println("codex-cli 0.147.0")
 			return 0
 		}

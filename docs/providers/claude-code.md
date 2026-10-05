@@ -12,7 +12,7 @@ The adapter runs the **unmodified Claude Code CLI** as a subprocess and talks to
 | Verified locally against the binary | `claude --version`, `claude --help`, `claude auth --help`, `claude auth status --help` only |
 | Not run during development | any prompt, `auth status`, `auth login`, or other account-touching command |
 
-`Probe` compares the installed version with `TestedVersion` (a mismatch is reported as a limitation, `Tested=false`) and checks that every flag the adapter relies on appears in the installed binary's `--help`. If one is missing, capabilities are cleared and `Start` returns an error wrapping `providers.ErrUnsupported` instead of launching an unbounded session.
+`Probe` compares the installed version with `TestedVersion` (a mismatch leaves `Tested=false` in diagnostic metadata) and checks that every flag the adapter relies on appears in the installed binary's `--help`. If one is missing, capabilities are cleared and `Start` returns an error wrapping `providers.ErrUnsupported` instead of launching an unbounded session.
 
 ## Launch
 

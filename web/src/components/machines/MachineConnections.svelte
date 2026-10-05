@@ -104,10 +104,7 @@
               <MetadataListItem label="Reviews">
                 {p.readOnly ? 'Can run read-only reviews here.' : `Can’t run read-only reviews here${readOnlyReason(p.provider) ? `: ${readOnlyReason(p.provider)}` : '.'}`}
               </MetadataListItem>
-              <MetadataListItem label="Compatibility">
-                {p.compat}.
-                {#if !i?.tested}yip hasn’t been tested with this version, so runs may misbehave; the adapter notes in Diagnostics say what’s known.{/if}
-              </MetadataListItem>
+              <MetadataListItem label="Installation">{p.compat}</MetadataListItem>
               {#if prof && i?.authState === 'ready'}
                 <MetadataListItem label="Runs at once">
                   <div class="conc">

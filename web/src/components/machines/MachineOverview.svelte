@@ -38,7 +38,6 @@
       if (p.usable || p.pausedUntil) {
         if (!p.readOnly) out.push({ id: `ro-${p.provider}`, text: `${p.name} can’t run read-only reviews here`, icon: 'eye', tone: 'attention', tab: 'connections' });
       }
-      if (p.limits.includes('Untested version')) out.push({ id: `v-${p.provider}`, text: `${p.name} is a version yip hasn’t been tested with`, icon: 'info', tone: 'neutral', tab: 'connections' });
     }
     for (const f of facts) if (f.id !== 'session') out.push(f);
     return out.sort((a, b) => Number(a.tone !== 'attention') - Number(b.tone !== 'attention'));

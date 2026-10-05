@@ -156,16 +156,10 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 	}
 	inst.Path = exe
 	out, err := providers.RunVersion(ctx, exe, "--version")
-	if err != nil {
-		inst.AuthState = protocol.AuthError
-		inst.AuthDetail = "codex --version failed: " + err.Error()
-		return inst
+	if err == nil {
+		inst.Version = parseVersion(out)
 	}
-	inst.Version = parseVersion(out)
 	inst.Tested = inst.Version == TestedVersion
-	if !inst.Tested {
-		inst.Limitations = append(inst.Limitations, fmt.Sprintf("Installed Codex %s differs from the tested version %s; protocol changes may break the adapter.", inst.Version, TestedVersion))
-	}
 
 	env := a.probeEnv
 	if env == nil {

@@ -30,7 +30,11 @@ func fakeCLI() int {
 	scenario := os.Getenv("YIP_TEST_SCENARIO")
 	switch strings.Join(os.Args[1:], " ") {
 	case "--version":
-		if scenario == "old" {
+		if scenario == "unknown-version" {
+			return 1
+		} else if scenario == "new-version" {
+			fmt.Println("999.0.0")
+		} else if scenario == "old" {
 			fmt.Println("1.0.0")
 		} else {
 			fmt.Println("1.18.33")
@@ -101,7 +105,11 @@ func fakeCLI() int {
 				init.ClientInfo == nil || init.ClientInfo.Version == "" {
 				return 5
 			}
-			reply(msg.ID, acp.InitializeResult{ProtocolVersion: 1})
+			version := 1
+			if scenario == "bad-protocol" {
+				version = 999
+			}
+			reply(msg.ID, acp.InitializeResult{ProtocolVersion: version})
 		case acp.MethodSessionNew:
 			var params acp.NewSessionParams
 			_ = json.Unmarshal(msg.Params, &params)
@@ -219,7 +227,9 @@ func TestProbeSignInAndCapabilities(t *testing.T) {
 		{"bad-auth", protocol.AuthUnknown, protocol.BillingUnknown},
 		{"remote", protocol.AuthUnknown, protocol.BillingUnknown},
 		{"org", protocol.AuthUnknown, protocol.BillingUnknown},
-		{"old", protocol.AuthUnknown, protocol.BillingUnknown},
+		{"old", protocol.AuthReady, protocol.BillingSubscription},
+		{"new-version", protocol.AuthReady, protocol.BillingSubscription},
+		{"unknown-version", protocol.AuthReady, protocol.BillingSubscription},
 	} {
 		t.Run(tc.scenario, func(t *testing.T) {
 			a, _, _ := fixture(t, tc.scenario, protocol.ModeEdit)
@@ -314,8 +324,25 @@ func TestACPWorkflow(t *testing.T) {
 	}
 }
 
+func TestOtherVersionsRunWithCompatibleProtocol(t *testing.T) {
+	for _, scenario := range []string{"old", "new-version", "unknown-version"} {
+		t.Run(scenario, func(t *testing.T) {
+			a, spec, _ := fixture(t, scenario, protocol.ModeReadOnly)
+			s, err := a.Start(context.Background(), spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range s.Events() {
+			}
+			if result := s.Wait(); result.Outcome != protocol.OutcomeSucceeded || !result.ExitConfirmed {
+				t.Fatalf("%+v", result)
+			}
+		})
+	}
+}
+
 func TestUnsafeSetupRejected(t *testing.T) {
-	for _, scenario := range []string{"old", "remote", "org", "bad-auth", "bad-mode", "signedout"} {
+	for _, scenario := range []string{"bad-protocol", "remote", "org", "bad-auth", "bad-mode", "signedout"} {
 		t.Run(scenario, func(t *testing.T) {
 			a, spec, _ := fixture(t, scenario, protocol.ModeEdit)
 			if s, err := a.Start(context.Background(), spec); err == nil {
@@ -354,7 +381,7 @@ func TestOfficialInstallDirectoryAllowed(t *testing.T) {
 	if err := checkHomeExtensions(dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"dependencies":{"@opencode-ai/plugin":"1.18.33"}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"dependencies":{"@opencode-ai/plugin":"999.0.0"}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := checkHomeExtensions(dir); err != nil {
@@ -365,6 +392,24 @@ func TestOfficialInstallDirectoryAllowed(t *testing.T) {
 	}
 	if err := checkHomeExtensions(dir); !errors.Is(err, providers.ErrUnsupported) {
 		t.Fatal(err)
+	}
+}
+
+func TestDependencySourcesRemainRestricted(t *testing.T) {
+	for _, source := range []string{"file:/tmp/plugin", "https://example.test/plugin.tgz", "git+https://example.test/plugin", "npm:other@1.0.0"} {
+		t.Run(source, func(t *testing.T) {
+			dir := t.TempDir()
+			raw, err := json.Marshal(map[string]any{"dependencies": map[string]string{"@opencode-ai/plugin": source}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "package.json"), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := checkHomeExtensions(dir); !errors.Is(err, providers.ErrUnsupported) {
+				t.Fatalf("unsafe dependency source accepted: %v", err)
+			}
+		})
 	}
 }
 

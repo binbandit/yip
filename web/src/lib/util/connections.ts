@@ -19,13 +19,13 @@ const guides: Record<string, { description: string; installUrl: string; installC
     description: 'Run OpenCode with a model account connected through its own login.',
     installUrl: 'https://opencode.ai/docs/',
     installCommand: 'npm install -g opencode-ai@1.18.33',
-    installNote: 'yip supports this audited OpenCode version. Other versions are not enabled until their permission controls have been checked.',
+    installNote: 'Runs use an isolated agent with runner-controlled permissions.',
   },
   pi: {
     description: 'Run Pi Agent Harness with a model account you have connected in Pi.',
     installUrl: 'https://github.com/earendil-works/pi/tree/main/packages/coding-agent#quick-start',
     installCommand: 'npm install -g @earendil-works/pi-coding-agent@0.87.1',
-    installNote: 'Requires Node.js 22.19 or newer. yip supports Pi 0.87.1 and the older 0.73.1 package. Custom extensions and model configuration are not loaded in yip runs.',
+    installNote: 'Requires Node.js 22.19 or newer. Custom extensions and model configuration are not loaded in yip runs.',
   },
 };
 
