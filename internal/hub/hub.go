@@ -73,7 +73,7 @@ type Hub struct {
 	nodes *nodeRegistry
 	kick  chan struct{}
 
-	// mu guards excluded and failedCalls.
+	// mu guards excluded, failedCalls and lastPRPoll.
 	mu sync.Mutex
 	// excluded temporarily keeps a node out of scheduling for a run after
 	// the runner rejected an offer.
