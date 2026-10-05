@@ -84,9 +84,6 @@ func LoadIdentity(dir string) (Identity, error) {
 	if err := json.Unmarshal(b, &id); err != nil {
 		return id, err
 	}
-	if id.StateRoot != "" {
-		return id, errors.New("this is generated identity storage; use the owning runner state directory, not an identity-* subdirectory")
-	}
 	return id, nil
 }
 
@@ -122,8 +119,12 @@ func identityStateDir(dir string, id Identity) (string, error) {
 // same inode. Closing it releases the lock, including after a process crash.
 func lockState(dir string) (*os.File, error) {
 	if _, err := os.Stat((Paths{dir}).identity()); err == nil {
-		if _, err := LoadIdentity(dir); err != nil {
+		id, err := LoadIdentity(dir)
+		if err != nil {
 			return nil, err
+		}
+		if id.StateRoot != "" {
+			return nil, errors.New("this is generated identity storage; use the owning runner state directory, not an identity-* subdirectory")
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
@@ -233,7 +234,9 @@ func pair(ctx context.Context, dir, hubURL, fingerprint, token, name string, rep
 	}
 	id.PreviousNodeIDs = append(old.PreviousNodeIDs, old.NodeID)
 	id.PreviousStateDirs = append(old.PreviousStateDirs, old.StateDir)
-	id.DockerCleanupRequired = old.DockerCleanupRequired
+	// Older toolchain-only probes did not create staging directories. When
+	// Docker is installed, inspect prior labels even without that evidence.
+	id.DockerCleanupRequired = old.DockerCleanupRequired || dockerCLIAvailable()
 	active, err := identityStateDir(dir, old)
 	if err != nil {
 		return Identity{}, err

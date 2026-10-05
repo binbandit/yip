@@ -36,6 +36,11 @@ func dockerCommand(ctx context.Context, args ...string) *exec.Cmd {
 	return cmd
 }
 
+func dockerCLIAvailable() bool {
+	_, err := exec.LookPath("docker")
+	return err == nil
+}
+
 func (r *Runner) dockerReady(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()

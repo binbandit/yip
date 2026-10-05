@@ -844,7 +844,7 @@ func runCleanup(args []string) error {
 	name := flags.String("workspace", "", "workspace name from `yip runner workspaces`")
 	confirm := flags.String("confirm", "", "repeat the workspace name to confirm deletion")
 	_ = flags.Parse(args)
-	if *name == "" || *confirm != *name || strings.ContainsAny(*name, "/\\") {
+	if *name == "" || *name == "." || *name == ".." || *confirm != *name || strings.ContainsAny(*name, "/\\") {
 		return errors.New("choose a workspace with --workspace and repeat it with --confirm; this permanently deletes its files, including uncommitted work")
 	}
 	active, err := activeRunnerState(*state)

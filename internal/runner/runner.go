@@ -233,7 +233,17 @@ func (r *Runner) Run(ctx context.Context) error {
 	if current.NodeID != r.id.NodeID {
 		return errors.New("runner pairing changed during startup; start the runner again")
 	}
-	if r.opts.ExecutionProfile == "docker" || r.id.DockerCleanupRequired {
+	needsDockerCleanup := r.id.DockerCleanupRequired || (len(r.id.PreviousNodeIDs) > 0 && dockerCLIAvailable())
+	if needsDockerCleanup && !r.id.DockerCleanupRequired {
+		// Pairing and service startup can have different PATHs. Once Docker
+		// is discovered, retain the obligation even if a later start lacks it.
+		pending := r.id
+		pending.DockerCleanupRequired = true
+		if err := writeIdentity((Paths{r.opts.StateDir}).identity(), pending); err != nil {
+			return err
+		}
+	}
+	if r.opts.ExecutionProfile == "docker" || needsDockerCleanup {
 		cctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		err := dockerEngineReady(cctx)
 		if err == nil {

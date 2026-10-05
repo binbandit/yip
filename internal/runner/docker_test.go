@@ -242,7 +242,7 @@ esac`, log, old, older, old, older))
 }
 
 func TestReplacementNativeStartupRequiresDockerCleanup(t *testing.T) {
-	for _, scenario := range []string{"daemon unavailable", "inspection failed", "removal failed", "container remains", "unsafe previous storage", "imports removal failed", "removed"} {
+	for _, scenario := range []string{"daemon unavailable", "inspection failed", "removal failed", "container remains", "unsafe previous storage", "imports removal failed", "removed", "legacy removed", "legacy daemon unavailable"} {
 		t.Run(scenario, func(t *testing.T) {
 			if scenario == "imports removal failed" && os.Getuid() == 0 {
 				t.Skip("root can remove files through read-only directories")
@@ -261,6 +261,9 @@ func TestReplacementNativeStartupRequiresDockerCleanup(t *testing.T) {
 				t.Fatal(err)
 			}
 			id := Identity{NodeID: "new", HubURL: "https://127.0.0.1:1", PreviousNodeIDs: []string{"old"}, DockerCleanupRequired: true}
+			if strings.HasPrefix(scenario, "legacy ") {
+				id.DockerCleanupRequired = false
+			}
 			if scenario == "unsafe previous storage" {
 				if err := os.Symlink(t.TempDir(), filepath.Join(dir, "identity-old")); err != nil {
 					t.Fatal(err)
@@ -287,7 +290,7 @@ func TestReplacementNativeStartupRequiresDockerCleanup(t *testing.T) {
 			}
 			fakeDockerCLI(t, fmt.Sprintf(`
 case "$1" in
-info) [ %q != 'daemon unavailable' ] || exit 1; echo linux;;
+info) case %q in 'daemon unavailable'|'legacy daemon unavailable') exit 1;; esac; echo linux;;
 container)
   [ %q != 'inspection failed' ] || exit 1
   case "$*" in
@@ -296,7 +299,7 @@ container)
   exit 0;;
 rm)
   [ %q != 'removal failed' ] || exit 1
-  case %q in 'removed'|'unsafe previous storage'|'imports removal failed') rm %q;; esac;;
+  case %q in 'removed'|'legacy removed'|'unsafe previous storage'|'imports removal failed') rm %q;; esac;;
 *) exit 1;;
 esac`, scenario, scenario, old, scenario, scenario, old))
 			r, err := New(Options{StateDir: dir})
@@ -305,11 +308,12 @@ esac`, scenario, scenario, old, scenario, scenario, old))
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 			defer cancel()
-			if scenario == "removed" {
+			removed := scenario == "removed" || scenario == "legacy removed"
+			if removed {
 				go func() {
 					for ctx.Err() == nil {
 						current, err := LoadIdentity(dir)
-						if err == nil && !current.DockerCleanupRequired {
+						if err == nil && !current.DockerCleanupRequired && len(current.PreviousNodeIDs) == 0 {
 							cancel()
 							return
 						}
@@ -322,7 +326,7 @@ esac`, scenario, scenario, old, scenario, scenario, old))
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			if scenario == "removed" {
+			if removed {
 				if err != nil || current.DockerCleanupRequired || len(current.PreviousNodeIDs) != 0 {
 					t.Fatalf("confirmed cleanup did not clear its durable obligation: %+v, %v", current, err)
 				}

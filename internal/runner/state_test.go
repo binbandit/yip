@@ -118,3 +118,54 @@ func TestRePairRefusesLegacyRunnerAndUnsafeStatePath(t *testing.T) {
 		t.Fatal("accepted a symlink identity directory")
 	}
 }
+
+func TestRePairRecordsLegacyDockerWithoutImports(t *testing.T) {
+	fakeDockerCLI(t, "exit 1") // Installed but unavailable daemon; pairing records the obligation.
+	ca, err := auth.LoadOrCreateCA(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	key, csr, err := auth.NewNodeKeyAndCSR("old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, _, _, err := ca.SignNodeCSR(csr, "old", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SaveLocalIdentity(dir, Identity{NodeID: "old"}, key, cert, ca.CertPEM); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req protocol.PairRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+			return
+		}
+		cert, _, _, err := ca.SignNodeCSR([]byte(req.CSRPEM), "new", time.Hour)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(protocol.PairResponse{NodeID: "new", CertPEM: string(cert), CAPEM: string(ca.CertPEM)})
+	}))
+	srv.TLS, err = ca.ServerTLS([]string{"127.0.0.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	id, err := RePair(t.Context(), dir, srv.URL, ca.Fingerprint(), "synthetic-token", "new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !id.DockerCleanupRequired || len(id.PreviousNodeIDs) != 1 || id.PreviousNodeIDs[0] != "old" {
+		t.Fatalf("legacy Docker usage without imports must remain discoverable: %+v", id)
+	}
+	stored, err := LoadIdentity(dir)
+	if err != nil || !stored.DockerCleanupRequired {
+		t.Fatalf("cleanup obligation was not durable: %+v, %v", stored, err)
+	}
+}

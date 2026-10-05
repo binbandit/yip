@@ -20,6 +20,9 @@ import (
 
 func TestRevokedRunnerPairingHasExplicitRecovery(t *testing.T) {
 	e := newEnv(t, envOptions{})
+	// This fixture exercises a native-only host, independent of Docker or
+	// provider tools installed on the test machine.
+	t.Setenv("PATH", t.TempDir())
 	srv := httptest.NewUnstartedServer(httpapi.NewRunnerServer(e.hub, nil))
 	var err error
 	srv.TLS, err = e.hub.CA().ServerTLS([]string{"127.0.0.1"})
