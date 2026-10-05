@@ -703,6 +703,26 @@ func TestApprovalsAndQuestionsUnsupported(t *testing.T) {
 
 // ---- probe ----
 
+func TestProbeOtherVersions(t *testing.T) {
+	for _, version := range []string{"999.0.0", "unknown"} {
+		t.Run(version, func(t *testing.T) {
+			a, _ := newFakeAdapter(t, "probe", "YIP_TEST_VERSION="+version, envAuthJSON+`={"loggedIn":true,"authMethod":"api_key"}`)
+			a.opts.SkipAuthStatus = false
+			inst := a.Probe(context.Background())
+			wantVersion := version
+			if version == "unknown" {
+				wantVersion = ""
+			}
+			if inst.Version != wantVersion || inst.Tested || inst.TestedVersion != TestedVersion || inst.AuthState != protocol.AuthReady || !inst.Capabilities.ReadOnly {
+				t.Fatalf("probe: %+v", inst)
+			}
+			if strings.Contains(strings.Join(inst.Limitations, " "), "tested version") {
+				t.Fatalf("version warning: %v", inst.Limitations)
+			}
+		})
+	}
+}
+
 func TestProbeSubscription(t *testing.T) {
 	a, _ := newFakeAdapter(t, "probe", envAuthJSON+`={"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","email":"ada@example.com","orgName":"Ada's Org","subscriptionType":"max"}`)
 	a.opts.SkipAuthStatus = false

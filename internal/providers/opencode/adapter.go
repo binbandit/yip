@@ -52,6 +52,9 @@ var ansi = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
 var credentialCount = regexp.MustCompile(`(?m)(?:^|[^0-9])([0-9]+) credentials\s*$`)
 var credentialType = regexp.MustCompile(`(?m)\s(api|oauth)\s*$`)
 
+// Permit registry releases without allowing file, URL, git, or package aliases.
+var registryRelease = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
+
 // command never invokes a shell or inherits the ambient API environment.
 func command(ctx context.Context, exe string, env []string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -104,12 +107,6 @@ func envValue(env []string, key string) string {
 	return value
 }
 
-func supportedVersion(version string) bool {
-	// Permission isolation is audited against this release, not inferred from
-	// merely recognizing an ACP initialize response.
-	return strings.TrimPrefix(strings.TrimSpace(version), "v") == "1.18.33"
-}
-
 func authSummary(text string) (count int, err error) {
 	if strings.Contains(strings.ToLower(text), "wellknown") {
 		return 0, fmt.Errorf("opencode: remote-config sign-ins are not supported; use a normal provider sign-in in a dedicated local profile")
@@ -127,7 +124,6 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 		Provider: "opencode", AuthState: protocol.AuthUnknown, Billing: protocol.BillingUnknown,
 		Models: []protocol.Model{}, UpdatedAt: time.Now().UTC(),
 		Limitations: []string{
-			"Requires OpenCode 1.18.33; verified with a fake ACP process, not a paid live model.",
 			"Stored sign-in is not proof that a model subscription is valid. Billing depends on the selected provider.",
 			"Dedicated configuration; no remote/managed configuration, plugins, resume, active steering, or interactive questions.",
 			"Native shell, code execution, subagents and snapshots are disabled; use yip's runner-supervised check and publish tools.",
@@ -136,7 +132,7 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 	exe, err := a.resolve("")
 	if err != nil {
 		p.AuthState = protocol.AuthNotInstalled
-		p.AuthDetail = "Install OpenCode 1.18.33 from https://opencode.ai/docs/cli/, then run `opencode auth login` locally."
+		p.AuthDetail = "Install OpenCode from https://opencode.ai/docs/cli/, then run `opencode auth login` locally."
 		return p
 	}
 	p.Path = exe
@@ -146,9 +142,8 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 		return p
 	}
 	p.Version, err = command(ctx, exe, env, "--version")
-	if err != nil || !supportedVersion(p.Version) {
-		p.AuthDetail = "OpenCode 1.18.33 is required for the audited permission configuration."
-		return p
+	if err != nil {
+		p.Version = ""
 	}
 	p.Capabilities = protocol.ProviderCapabilities{
 		StructuredEvents: true, ToolApprovals: true, UsageTelemetry: true, ReadOnly: true, MCPTools: true,
@@ -243,7 +238,7 @@ func checkHomeExtensions(dir string) error {
 			if err == nil && json.Unmarshal(raw, &pkg) == nil && len(pkg) == 1 {
 				var deps map[string]string
 				if json.Unmarshal(pkg["dependencies"], &deps) == nil &&
-					len(deps) == 1 && deps["@opencode-ai/plugin"] == "1.18.33" {
+					len(deps) == 1 && registryRelease.MatchString(deps["@opencode-ai/plugin"]) {
 					continue
 				}
 			}

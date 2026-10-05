@@ -274,6 +274,14 @@ async function main() {
       tools: allTools.map(tool => tool.name), customTools: allTools,
     });
     session = created.session;
+    // Check the actual tool allowlist before sending any prompt.
+    const activeTools = session.getActiveToolNames();
+    const expectedTools = new Set(allTools.map(tool => tool.name));
+    if (activeTools.length !== expectedTools.size || activeTools.some(name => !expectedTools.has(name))) {
+      session.dispose();
+      await bridge.close();
+      throw new Error("Pi SDK did not apply the required tool allowlist");
+    }
     let finalText = "";
     let error = "";
     let input = 0, output = 0, cost = 0;

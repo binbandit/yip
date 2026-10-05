@@ -43,9 +43,9 @@ terminal scraper or an API-token extractor.
    with a temporary `XDG_CONFIG_HOME` and `OPENCODE_DISABLE_PROJECT_CONFIG=true`.
    It does not remove or rewrite your existing configuration.
 
-The exact version restriction is intentional: permission/configuration behavior
-was audited against this release. A different version is reported as unsupported,
-not assumed safe based on an ACP handshake alone.
+The installed version is reported for diagnostics. Other releases can run when
+they satisfy the same configuration isolation, ACP protocol, and controlled-agent
+requirements.
 
 ## Authentication and billing
 
@@ -53,8 +53,7 @@ Probe runs only supported CLI commands: `--version`, `auth list`, and (when
 credentials are present) `console orgs`. It never opens credential files.
 `ready` means **local provider credentials are configured**, not that a live
 model request or subscription entitlement was validated. Zero credentials means
-`needs_signin`; unrecognized output, unsafe configuration, and an unsupported
-version are not ready. ACP `authenticate` is not used as evidence of sign-in:
+`needs_signin`; unrecognized output and unsafe configuration are not ready. ACP `authenticate` is not used as evidence of sign-in:
 the audited implementation returns success without validating credentials.
 
 An API credential anywhere in the reported profile classifies the installation

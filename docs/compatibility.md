@@ -12,15 +12,14 @@ tests; their results and limits are recorded below.
 | Codex | Schema pin `codex-cli 0.147.0`; smoke run `0.157.1` | `codex app-server --listen stdio://` (JSON-RPC); bindings checked against the schema generated from the pin (`internal/providers/codex/schema/`) | Codex-managed ChatGPT sign-in (`subscription`) or the user's API key (`api`), read via `account/read` | **Passed 28 Sep.** MCP call, file edit, denied escalation and same-session resume through `TestRealCodex`. |
 | Claude Code | CLI pin `2.1.282`; smoke run `2.1.283` | Unmodified CLI: `-p --output-format stream-json --input-format stream-json`, yip MCP server only (`--strict-mcp-config`), permission prompts via `--permission-prompt-tool mcp__yip__permission_prompt` | User's own sign-in to the unmodified binary on each runner (`claude auth login`) → `subscription`; or an explicitly configured `ANTHROPIC_API_KEY` → `api`. Never inherited implicitly. | **Passed 28 Sep.** Required flags and MCP/Bash permission round trip through `TestRealHelpHasRequiredFlags` and `TestRealClaudeSmoke`. |
 | Cursor | none (not installed on the build machine) | `agent acp` (ACP v1) with Cursor's `cursor/ask_question` and `cursor/create_plan` extensions | Cursor CLI login on the runner (`agent login`); billing `unknown`. Stock runners do not forward host API-key variables. | **Not run; no installation available.** Probe reports `Tested=false`. `YIP_REAL_PROVIDER_TESTS=1 go test -v ./internal/providers/cursor/` |
-| OpenCode | `1.18.33` (other versions refused) | `opencode acp`, isolated `yip` agent and permissions | `opencode auth login`; local credential metadata from the CLI | **No account-backed inference.** Actual binary initialized sessions and selected the controlled agent in all three modes with an empty temporary home. [Adapter details](adapter-opencode.md). |
+| OpenCode | `1.18.33` | `opencode acp`, isolated `yip` agent and permissions | `opencode auth login`; local credential metadata from the CLI | **No account-backed inference.** Actual binary initialized sessions and selected the controlled agent in all three modes with an empty temporary home. [Adapter details](adapter-opencode.md). |
 | Pi Agent Harness | `@earendil-works/pi-coding-agent@0.87.1`; legacy `@mariozechner/pi-coding-agent@0.73.1` | Bundled Node SDK host, restricted native tools, stdio MCP bridge | `pi` then `/login`; SDK credential metadata | **No account-backed inference.** Both published SDKs checked with in-memory authentication for read-only tools and denied write/bash overrides. [Adapter details](adapter-pi.md). |
 
 ## Harness support limits
 
 OpenCode and Pi are agent harnesses, not subscriptions. Connect a model
 account using the harness's supported login route; then select the harness
-and model in yip. Open **Connections** for the supported installation
-versions and machine-specific setup steps.
+and model in yip. Open **Connections** for installation and machine-specific setup steps.
 
 Their ready state means **locally configured authentication**, not verified
 entitlement or a successful model request. API and mixed-account

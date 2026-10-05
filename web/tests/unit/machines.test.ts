@@ -147,10 +147,18 @@ describe('providers', () => {
     expect(providerStatus(provider(), { ...profile, pausedUntil: ago(1) }, n, NOW).word).toBe('Ready');
   });
 
-  it('flags an untested version and API billing succinctly', () => {
+  it('reports the version without warnings and retains API billing limits', () => {
     const s = providerStatus(provider({ version: '0.130.0', tested: false, testedVersion: '0.125.0', billing: 'api' }), undefined, n, NOW);
-    expect(s.limits).toEqual(['Untested version', 'API-billed']);
-    expect(s.compat).toBe('Version 0.130.0 · not tested with yip (tested: 0.125.0)');
+    expect(s.limits).toEqual(['API-billed']);
+    expect(s.compat).toBe('Version 0.130.0');
+    expect(s.usable).toBe(true);
+  });
+
+  it('keeps unknown versions usable and reports sign-in requirements without version warnings', () => {
+    const unknown = providerStatus(provider({ version: '', tested: false }), undefined, n, NOW);
+    expect(unknown).toMatchObject({ usable: true, compat: 'Version unknown', limits: [] });
+    const signedOut = providerStatus(provider({ tested: false, authState: 'needs_signin' }), undefined, n, NOW);
+    expect(signedOut).toMatchObject({ usable: false, word: 'Needs sign-in', limits: [] });
   });
 
   it('leaves providers that are not installed out of the availability summary', () => {

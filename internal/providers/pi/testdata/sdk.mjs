@@ -48,6 +48,9 @@ export async function createAgentSession(options) {
   let release;
   return {
     session: {
+      getActiveToolNames() {
+        return process.env.PI_TEST_EXTRA_TOOL ? [...options.tools, "unexpected_tool"] : options.tools;
+      },
       subscribe(fn) { listener = fn; },
       async steer(text) {
         if (text !== "continue") throw new Error("bad steer");

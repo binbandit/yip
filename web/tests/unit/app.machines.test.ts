@@ -137,7 +137,7 @@ describe('the Machines list', () => {
     expect(laptop.textContent).toContain('Offline');
     expect(laptop.textContent).toContain('Last heard 3h ago');
     expect(laptop.textContent).toContain('Nothing running');
-    expect(laptop.textContent).toMatch(/Claude Code\s*Allowance paused until .+ · No read-only reviews · Untested version/);
+    expect(laptop.textContent).toMatch(/Claude Code\s*Allowance paused until .+ · No read-only reviews/);
     expect(laptop.textContent).toContain('Low disk space: 1.4 GB free, so no new work');
     expect(laptop.textContent).not.toContain('asleep');
 
@@ -258,7 +258,8 @@ describe('machine details', () => {
     await waitFor(() => heads[0].getAttribute('aria-expanded') === 'true', 'Claude Code expanded');
     const claude = heads[0].closest('li')!;
     expect(claude.textContent).toContain('Can’t run read-only reviews here: Read-only runs are unavailable');
-    expect(claude.textContent).toContain('not tested with yip (tested: 2.0.14)');
+    expect(claude.textContent).toContain('Version 2.1.3');
+    expect(p.textContent).not.toMatch(/untested|not tested|hasn’t been tested/i);
     expect(claude.textContent).toMatch(/allowance ran out\. Its work waits until .+, then carries on by itself/);
     expect(claude.textContent).toContain('Shared by every machine signed in to me@example.com');
     choose(claude.querySelector<HTMLElement>('button[role=combobox]')!, '3');

@@ -74,10 +74,6 @@ func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (provider
 	if err = isolation(env); err != nil {
 		return nil, err
 	}
-	version, err := command(ctx, exe, env, "--version")
-	if err != nil || !supportedVersion(version) {
-		return nil, fmt.Errorf("%w: OpenCode 1.18.33 is required for audited permission isolation", providers.ErrUnsupported)
-	}
 	auth, err := command(ctx, exe, env, "auth", "list")
 	if err != nil {
 		return nil, fmt.Errorf("opencode: `opencode auth list` failed; run it locally to diagnose")

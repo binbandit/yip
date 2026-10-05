@@ -55,7 +55,7 @@ func Capabilities() protocol.ProviderCapabilities {
 }
 func Limitations() []string {
 	return []string{
-		"Requires Node.js 22.19+ and @earendil-works/pi-coding-agent 0.87.1 (or legacy @mariozechner/pi-coding-agent 0.73.1) installed with npm; other versions are refused.",
+		"Requires Node.js 22.19+ and @earendil-works/pi-coding-agent (or legacy @mariozechner/pi-coding-agent) installed with npm.",
 		"Pi is a harness, not a subscription. Run pi then /login on this runner; choose provider/model in yip.",
 		"Authentication readiness means locally configured, not remotely validated; probing never refreshes tokens or calls a model.",
 		"Current Pi discovery requires credentials configured with Pi /login; environment-only and custom-provider configurations are not enumerated.",
@@ -88,9 +88,9 @@ func (a *Adapter) env(override []string) []string {
 	return filtered
 }
 
-// Resolve only package metadata, never account files. A pinned SDK is required
-// because tool-allowlist semantics are a security boundary.
-func (a *Adapter) installation(override string) (exe, sdk, version string, err error) {
+// Resolve only package metadata, never account files. Validate the official
+// package identity and entry points before loading the SDK.
+func (a *Adapter) installation(override string) (exe, sdk, version, testedVersion string, err error) {
 	if override == "" {
 		override = a.opts.Executable
 	}
@@ -103,7 +103,7 @@ func (a *Adapter) installation(override string) (exe, sdk, version string, err e
 		err = e
 		return
 	}
-	// Both pinned npm layouts put the CLI at most three directories below
+	// Both supported npm layouts put the CLI at most three directories below
 	// the package root. Stop at the first manifest, including an unrelated or
 	// malformed one: it is not safe to search past a package boundary.
 	root := filepath.Dir(resolved)
@@ -128,15 +128,15 @@ func (a *Adapter) installation(override string) (exe, sdk, version string, err e
 		return
 	}
 	version = metadata.Version
-	current := metadata.Name == "@earendil-works/pi-coding-agent" && version == TestedVersion
-	legacy := metadata.Name == "@mariozechner/pi-coding-agent" && version == LegacyTestedVersion
+	current := metadata.Name == "@earendil-works/pi-coding-agent"
+	legacy := metadata.Name == "@mariozechner/pi-coding-agent"
 	if !current && !legacy {
-		err = fmt.Errorf("%w: require @earendil-works/pi-coding-agent@%s or @mariozechner/pi-coding-agent@%s, found %s@%s", providers.ErrUnsupported, TestedVersion, LegacyTestedVersion, metadata.Name, version)
+		err = fmt.Errorf("%w: require an official Pi npm package, found %s", providers.ErrUnsupported, metadata.Name)
 		return
 	}
-	cli := "dist/cli.js"
+	cli, testedVersion := "dist/cli.js", LegacyTestedVersion
 	if current {
-		cli = "dist/bundle/cli.js"
+		cli, testedVersion = "dist/bundle/cli.js", TestedVersion
 	}
 	if resolved != filepath.Join(root, filepath.FromSlash(cli)) || metadata.Bin.Pi != cli || metadata.Main != "./dist/index.js" {
 		err = fmt.Errorf("%w: unexpected Pi npm entry points", providers.ErrUnsupported)
@@ -164,7 +164,7 @@ func (a *Adapter) installation(override string) (exe, sdk, version string, err e
 }
 
 func (a *Adapter) launch(spec providers.StartSpec) (*session, error) {
-	_, sdk, _, err := a.installation(spec.Executable)
+	_, sdk, _, _, err := a.installation(spec.Executable)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +201,7 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 		Billing: protocol.BillingUnknown, Models: []protocol.Model{},
 		TestedVersion: TestedVersion, Limitations: Limitations(), UpdatedAt: time.Now().UTC(),
 	}
-	exe, _, version, err := a.installation("")
+	exe, _, version, testedVersion, err := a.installation("")
 	inst.Path, inst.Version = exe, version
 	if err != nil {
 		inst.AuthDetail = err.Error()
@@ -210,8 +210,8 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 		}
 		return inst
 	}
-	inst.Tested = true
-	inst.TestedVersion = version
+	inst.Tested = version == testedVersion
+	inst.TestedVersion = testedVersion
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	s, err := a.launch(providers.StartSpec{})
