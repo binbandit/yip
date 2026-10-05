@@ -134,11 +134,25 @@ func New(opts Options) (*Runner, error) {
 		}
 		opts.BridgeExe = exe
 	}
+	// Check the identity before opening the lock so an unpaired directory
+	// retains the useful pairing instructions in its error.
+	if _, err := LoadIdentity(opts.StateDir); err != nil {
+		return nil, err
+	}
+	lock, err := lockState(opts.StateDir)
+	if err != nil {
+		return nil, err
+	}
+	defer lock.Close()
 	id, err := LoadIdentity(opts.StateDir)
 	if err != nil {
 		return nil, err
 	}
-	p := Paths{opts.StateDir}
+	active, err := identityStateDir(opts.StateDir, id)
+	if err != nil {
+		return nil, err
+	}
+	p := Paths{active}
 	keyPEM, err := os.ReadFile(p.key())
 	if err != nil {
 		return nil, err
@@ -206,18 +220,52 @@ func (r *Runner) recoverJournal() {
 
 // Run connects to the hub and serves until ctx ends, reconnecting with backoff.
 func (r *Runner) Run(ctx context.Context) error {
-	if r.opts.ExecutionProfile == "docker" {
+	defer r.journal.Close()
+	lock, err := lockState(r.opts.StateDir)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	current, err := LoadIdentity(r.opts.StateDir)
+	if err != nil {
+		return err
+	}
+	if current.NodeID != r.id.NodeID {
+		return errors.New("runner pairing changed during startup; start the runner again")
+	}
+	needsDockerCleanup := r.id.DockerCleanupRequired || (len(r.id.PreviousNodeIDs) > 0 && dockerCLIAvailable())
+	if needsDockerCleanup && !r.id.DockerCleanupRequired {
+		// Pairing and service startup can have different PATHs. Once Docker
+		// is discovered, retain the obligation even if a later start lacks it.
+		pending := r.id
+		pending.DockerCleanupRequired = true
+		if err := writeIdentity((Paths{r.opts.StateDir}).identity(), pending); err != nil {
+			return err
+		}
+	}
+	if r.opts.ExecutionProfile == "docker" || needsDockerCleanup {
 		cctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		err := dockerEngineReady(cctx)
 		if err == nil {
 			err = r.reapDocker(cctx)
 		}
-		if err == nil {
+		if err == nil && r.opts.ExecutionProfile == "docker" {
 			err = r.dockerReady(cctx)
 		}
 		cancel()
 		if err != nil {
 			return err
+		}
+		// Clear predecessor ownership only after all matching containers are
+		// confirmed absent. A failed write leaves recovery blocked and retryable.
+		if len(r.id.PreviousNodeIDs) != 0 || r.id.DockerCleanupRequired {
+			clean := r.id
+			clean.PreviousNodeIDs = nil
+			clean.PreviousStateDirs = nil
+			clean.DockerCleanupRequired = false
+			if err := writeIdentity((Paths{r.opts.StateDir}).identity(), clean); err != nil {
+				return err
+			}
 		}
 	}
 	ln, err := r.listenBridge()
@@ -257,7 +305,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 }
 
-var errRevoked = errors.New("this machine's credential was revoked by the hub")
+var errRevoked = errors.New("this machine's credential was revoked by the hub; stop its service, then use a fresh pairing command with --replace from Machines → Add machine")
 
 func (r *Runner) listenBridge() (net.Listener, error) {
 	sock := r.paths.socketPath()

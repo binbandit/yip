@@ -2,6 +2,8 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,15 +12,17 @@ import (
 	"time"
 
 	"github.com/binbandit/yip/internal/agentconfig"
+	"github.com/binbandit/yip/internal/auth"
 	"github.com/binbandit/yip/internal/providers"
 	"github.com/binbandit/yip/internal/providers/codex"
 	"github.com/binbandit/yip/internal/providers/worker"
 	"github.com/binbandit/yip/protocol"
 )
 
-func dockerTestRunner() *Runner {
+func dockerTestRunner(t *testing.T) *Runner {
+	t.Helper()
 	return &Runner{opts: Options{ExecutionProfile: "docker", Docker: DockerOptions{Image: DefaultDockerImage}},
-		id: Identity{NodeID: "test-node"}}
+		id: Identity{NodeID: "test-node"}, paths: Paths{t.TempDir()}}
 }
 
 func fakeDockerCLI(t *testing.T, script string) {
@@ -33,7 +37,7 @@ func fakeDockerCLI(t *testing.T, script string) {
 }
 
 func TestDockerIsolationArguments(t *testing.T) {
-	r := dockerTestRunner()
+	r := dockerTestRunner(t)
 	ws, imports := t.TempDir(), t.TempDir()
 	if err := os.Mkdir(filepath.Join(ws, ".git"), 0o700); err != nil {
 		t.Fatal(err)
@@ -100,7 +104,7 @@ func TestDockerCleanupConfirmsDaemonState(t *testing.T) {
 }
 
 func TestDockerReadinessRejectsRemoteAndMissingImage(t *testing.T) {
-	r := dockerTestRunner()
+	r := dockerTestRunner(t)
 	t.Setenv("DOCKER_CONTEXT", "")
 	t.Setenv("DOCKER_HOST", "tcp://remote:2375")
 	if err := r.dockerReady(context.Background()); err == nil || !strings.Contains(err.Error(), "local") {
@@ -114,7 +118,7 @@ func TestDockerReadinessRejectsRemoteAndMissingImage(t *testing.T) {
 
 func TestDockerProbeDoesNotFallBackToHost(t *testing.T) {
 	fakeDockerCLI(t, "exit 1")
-	r := dockerTestRunner()
+	r := dockerTestRunner(t)
 	r.paths = Paths{Dir: t.TempDir()}
 	r.opts.Adapters = map[string]providers.Adapter{"codex": codex.New()}
 	caps := r.Probe(context.Background())
@@ -136,7 +140,7 @@ func TestDockerCreateFailureDrainsWhenCleanupUnknown(t *testing.T) {
 		t.Skip("root runner is rejected before container creation")
 	}
 	fakeDockerCLI(t, "exit 1")
-	r := dockerTestRunner()
+	r := dockerTestRunner(t)
 	_, err := r.createDocker(context.Background(), "", false, agentconfig.Snapshot{}, []string{"true"})
 	if err == nil || !r.draining || !r.uncertain.Load() {
 		t.Fatalf("uncertain startup did not fail closed: err=%v drained=%v uncertain=%v", err, r.draining, r.uncertain.Load())
@@ -148,7 +152,7 @@ func TestDockerToolchainProbeDrainsWhenCleanupUnknown(t *testing.T) {
 		t.Skip("root runner is rejected before container creation")
 	}
 	fakeDockerCLI(t, `case "$1" in create) exit 0;; start) echo '{"git":"container-git"}';; *) exit 1;; esac`)
-	r := dockerTestRunner()
+	r := dockerTestRunner(t)
 	if tools := r.dockerToolchains(t.Context()); len(tools) != 0 || !r.uncertain.Load() {
 		t.Fatalf("uncertain probe advertised tools: %v uncertain=%v", tools, r.uncertain.Load())
 	}
@@ -156,7 +160,7 @@ func TestDockerToolchainProbeDrainsWhenCleanupUnknown(t *testing.T) {
 
 func TestDockerRestartReapsStagedImports(t *testing.T) {
 	fakeDockerCLI(t, "exit 0")
-	r := dockerTestRunner()
+	r := dockerTestRunner(t)
 	r.paths = Paths{t.TempDir()}
 	dir, err := r.dockerStaging()
 	if err != nil {
@@ -173,13 +177,181 @@ func TestDockerRestartReapsStagedImports(t *testing.T) {
 	}
 }
 
+func TestReplacementReapsOnlyOwnedDockerContainers(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "docker.log")
+	old := filepath.Join(dir, "old-container")
+	older := filepath.Join(dir, "older-container")
+	unrelated := filepath.Join(dir, "unrelated-container")
+	workspace := filepath.Join(dir, "unpublished.txt")
+	for _, state := range []string{"", "identity-old"} {
+		imports := filepath.Join(dir, state, "container-imports")
+		if err := os.MkdirAll(imports, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(imports, "auth.json"), []byte("synthetic"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{old, older, unrelated, workspace} {
+		if err := os.WriteFile(path, []byte("preserve"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fakeDockerCLI(t, fmt.Sprintf(`
+printf '%%s\n' "$*" >> %q
+case "$1" in
+container)
+  case "$*" in
+    *label=dev.yip.runner=old) [ ! -e %q ] || echo old-container;;
+    *label=dev.yip.runner=older) [ ! -e %q ] || echo older-container;;
+  esac
+  exit 0;;
+rm)
+  case "$3" in
+    old-container) rm %q;;
+    older-container) rm %q;;
+    *) exit 1;;
+  esac;;
+*) exit 1;;
+esac`, log, old, older, old, older))
+	r := dockerTestRunner(t)
+	r.paths = Paths{dir}
+	r.opts.StateDir = dir
+	if err := json.Unmarshal([]byte(`{"nodeId":"new","previousNodeIds":["older","old"],"previousStateDirs":["","identity-old"]}`), &r.id); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.reapDocker(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{old, older} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("previous identity's container survived: %s", path)
+		}
+	}
+	for _, state := range []string{"", "identity-old"} {
+		if _, err := os.Stat(filepath.Join(dir, state, "container-imports")); !os.IsNotExist(err) {
+			t.Fatal("previous identity's temporary credential imports survived confirmed cleanup")
+		}
+	}
+	for _, path := range []string{unrelated, workspace} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != "preserve" {
+			t.Fatalf("unrelated container or unpublished work changed: %s, %v", path, err)
+		}
+	}
+}
+
+func TestReplacementNativeStartupRequiresDockerCleanup(t *testing.T) {
+	for _, scenario := range []string{"daemon unavailable", "inspection failed", "removal failed", "container remains", "unsafe previous storage", "imports removal failed", "removed", "legacy removed", "legacy daemon unavailable"} {
+		t.Run(scenario, func(t *testing.T) {
+			if scenario == "imports removal failed" && os.Getuid() == 0 {
+				t.Skip("root can remove files through read-only directories")
+			}
+			dir := t.TempDir()
+			ca, err := auth.LoadOrCreateCA(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			key, csr, err := auth.NewNodeKeyAndCSR("new")
+			if err != nil {
+				t.Fatal(err)
+			}
+			cert, _, _, err := ca.SignNodeCSR(csr, "new", time.Hour)
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := Identity{NodeID: "new", HubURL: "https://127.0.0.1:1", PreviousNodeIDs: []string{"old"}, DockerCleanupRequired: true}
+			if strings.HasPrefix(scenario, "legacy ") {
+				id.DockerCleanupRequired = false
+			}
+			if scenario == "unsafe previous storage" {
+				if err := os.Symlink(t.TempDir(), filepath.Join(dir, "identity-old")); err != nil {
+					t.Fatal(err)
+				}
+				id.PreviousStateDirs = []string{"identity-old"}
+			}
+			if scenario == "imports removal failed" {
+				oldState := filepath.Join(dir, "identity-old")
+				if err := os.MkdirAll(filepath.Join(oldState, "container-imports"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(oldState, 0500); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(oldState, 0700) })
+				id.PreviousStateDirs = []string{"identity-old"}
+			}
+			if _, err := SaveLocalIdentity(dir, id, key, cert, ca.CertPEM); err != nil {
+				t.Fatal(err)
+			}
+			old := filepath.Join(dir, "old-container")
+			if err := os.WriteFile(old, []byte("running"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			fakeDockerCLI(t, fmt.Sprintf(`
+case "$1" in
+info) case %q in 'daemon unavailable'|'legacy daemon unavailable') exit 1;; esac; echo linux;;
+container)
+  [ %q != 'inspection failed' ] || exit 1
+  case "$*" in
+    *label=dev.yip.runner=old) [ ! -e %q ] || echo old-container;;
+  esac
+  exit 0;;
+rm)
+  [ %q != 'removal failed' ] || exit 1
+  case %q in 'removed'|'legacy removed'|'unsafe previous storage'|'imports removal failed') rm %q;; esac;;
+*) exit 1;;
+esac`, scenario, scenario, old, scenario, scenario, old))
+			r, err := New(Options{StateDir: dir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			defer cancel()
+			removed := scenario == "removed" || scenario == "legacy removed"
+			if removed {
+				go func() {
+					for ctx.Err() == nil {
+						current, err := LoadIdentity(dir)
+						if err == nil && !current.DockerCleanupRequired && len(current.PreviousNodeIDs) == 0 {
+							cancel()
+							return
+						}
+						time.Sleep(time.Millisecond)
+					}
+				}()
+			}
+			err = r.Run(ctx)
+			current, readErr := LoadIdentity(dir)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if removed {
+				if err != nil || current.DockerCleanupRequired || len(current.PreviousNodeIDs) != 0 {
+					t.Fatalf("confirmed cleanup did not clear its durable obligation: %+v, %v", current, err)
+				}
+				if _, err := os.Stat(old); !os.IsNotExist(err) {
+					t.Fatal("old container survived native startup")
+				}
+			} else {
+				if err == nil || !current.DockerCleanupRequired || !slices.Equal(current.PreviousNodeIDs, []string{"old"}) {
+					t.Fatalf("uncertain cleanup must block startup and remain retryable: %+v, %v", current, err)
+				}
+				if r.bridgeLn != nil {
+					t.Fatal("runner admitted work before confirming old container cleanup")
+				}
+			}
+		})
+	}
+}
+
 // TestDockerImage is deliberately opt-in: it never imports real credentials,
 // downloads an image or starts a provider session.
 func TestDockerImage(t *testing.T) {
 	if os.Getenv("YIP_DOCKER_TESTS") != "1" {
 		t.Skip("set YIP_DOCKER_TESTS=1 after building packaging/container/Dockerfile.agent")
 	}
-	r := dockerTestRunner()
+	r := dockerTestRunner(t)
 	if image := os.Getenv("YIP_DOCKER_IMAGE"); image != "" {
 		r.opts.Docker.Image = image
 	}

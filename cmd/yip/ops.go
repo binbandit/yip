@@ -130,6 +130,10 @@ func runnerChecks(ctx context.Context, state, provs string) []check {
 		return append(cs, check{false, "identity", err.Error()})
 	}
 	cs = append(cs, check{true, "identity", id.Name + " (" + id.NodeID + ") → " + id.HubURL})
+	state, err = runner.ActiveStateDir(state)
+	if err != nil {
+		return append(cs, check{false, "state directory", err.Error()})
+	}
 	if b, err := os.ReadFile(filepath.Join(state, "node.pem")); err == nil {
 		if cert, err := auth.ParseCertPEM(b); err == nil {
 			left := time.Until(cert.NotAfter)
@@ -792,11 +796,23 @@ func runForge(args []string) error {
 
 // ---- runner workspaces ----
 
+func activeRunnerState(state string) (string, error) {
+	// Historical/unpaired directories can still be inspected explicitly.
+	if _, err := os.Stat(filepath.Join(state, "node.json")); os.IsNotExist(err) {
+		return state, nil
+	}
+	return runner.ActiveStateDir(state)
+}
+
 func runWorkspaces(args []string) error {
 	fs := flag.NewFlagSet("runner workspaces", flag.ExitOnError)
 	state := fs.String("state", defaultRunnerDir(), "runner state directory")
 	_ = fs.Parse(args)
-	dir := filepath.Join(*state, "work")
+	active, err := activeRunnerState(*state)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(active, "work")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -825,10 +841,14 @@ func runCleanup(args []string) error {
 	name := flags.String("workspace", "", "workspace name from `yip runner workspaces`")
 	confirm := flags.String("confirm", "", "repeat the workspace name to confirm deletion")
 	_ = flags.Parse(args)
-	if *name == "" || *confirm != *name || strings.ContainsAny(*name, "/\\") {
+	if *name == "" || *name == "." || *name == ".." || *confirm != *name || strings.ContainsAny(*name, "/\\") {
 		return errors.New("choose a workspace with --workspace and repeat it with --confirm; this permanently deletes its files, including uncommitted work")
 	}
-	p := filepath.Join(*state, "work", *name)
+	active, err := activeRunnerState(*state)
+	if err != nil {
+		return err
+	}
+	p := filepath.Join(active, "work", *name)
 	if _, err := os.Stat(p); err != nil {
 		return err
 	}
@@ -845,8 +865,8 @@ func runCleanup(args []string) error {
 	if err := os.RemoveAll(p); err != nil {
 		return err
 	}
-	_, _ = exec.Command("git", "-C", filepath.Join(*state, "replicas"), "worktree", "prune").Output()
-	for _, rep := range globReplicas(*state) {
+	_, _ = exec.Command("git", "-C", filepath.Join(active, "replicas"), "worktree", "prune").Output()
+	for _, rep := range globReplicas(active) {
 		_, _ = exec.Command("git", "-C", rep, "worktree", "prune").Output()
 	}
 	fmt.Println("Removed", p)
