@@ -67,7 +67,7 @@ set -eu
 "$YIP_TEST_REAL_GO" env -json GOOS GOARCH CGO_ENABLED GOPROXY GOPRIVATE GONOPROXY GONOSUMDB GOSUMDB > "$YIP_TEST_ROOT/go-env.json"
 [ "$YIP_TEST_FAIL" != go ]
 while [ "$#" -gt 0 ]; do
-    if [ "$1" = -o ]; then shift; printf 'synthetic Linux binary' > "$1"; exit 0; fi
+    if [ "$1" = -o ]; then shift; printf 'synthetic Linux binary' > "$1"; chmod 700 "$1"; exit 0; fi
     shift
 done
 exit 1
@@ -144,6 +144,10 @@ cp -R "$context" "$YIP_TEST_ROOT/sent-context"
 			files, err := os.ReadDir(filepath.Join(dir, "sent-context"))
 			if err != nil || len(files) != 2 || files[0].Name() != "Dockerfile" || files[1].Name() != "yip" {
 				t.Fatalf("build context must contain only runtime Dockerfile and binary: %v, %v", files, err)
+			}
+			binary, err := os.Stat(filepath.Join(dir, "sent-context", "yip"))
+			if err != nil || binary.Mode().Perm() != 0755 {
+				t.Fatalf("binary must be readable and executable by the container's non-root user: %v, %v", binary, err)
 			}
 			contextPath, _ := os.ReadFile(filepath.Join(dir, "context-path"))
 			if _, err := os.Stat(string(contextPath)); !os.IsNotExist(err) {

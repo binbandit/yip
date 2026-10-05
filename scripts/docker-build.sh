@@ -26,6 +26,9 @@ echo "Building the hub locally for $platform"
 CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath \
     -ldflags "-s -w -X github.com/binbandit/yip/internal/buildinfo.Version=${1:-0.1.0-dev}" \
     -o "$context/yip" ./cmd/yip
+# COPY preserves this mode; the runtime's non-root user must be able to execute
+# the distribution binary even when the caller builds with a restrictive umask.
+chmod 0755 "$context/yip"
 cp packaging/container/Dockerfile.hub-local "$context/Dockerfile"
 docker build --platform "$platform" --tag yip-hub:local "$context"
 echo 'Image ready. Run it with: just docker-run (or just docker-run -d)'

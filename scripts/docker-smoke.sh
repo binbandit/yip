@@ -35,7 +35,9 @@ just docker down
 
 # Local compilation must produce an executable for the Linux runtime, including
 # the actual web assets. Proxy settings stay with the host Go tool.
-VERSION=docker-local-smoke just docker-build
+# Work shells often restrict new files to their owner; the container uses a
+# separate non-root identity and must still be able to execute the binary.
+(umask 077; VERSION=docker-local-smoke just docker-build)
 image=$(docker image inspect --format '{{.Id}}' yip-hub:local)
 for tool in go npm; do
     printf '#!/bin/sh\necho "run unexpectedly tried to compile" >&2\nexit 99\n' > "$tools/$tool"
