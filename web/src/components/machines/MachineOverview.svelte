@@ -17,7 +17,7 @@
     work: CurrentWork[];
     providers: ProviderStatus[];
     facts: Fact[];
-    onrequest: (kind: 'drain' | 'undrain' | 'stop' | 'revoke') => void;
+    onrequest: (kind: 'drain' | 'undrain' | 'stop' | 'revoke' | 'remove') => void;
     ontab: (tab: FactTab) => void;
   }
   let { node: n, work, providers, facts, onrequest, ontab }: Props = $props();
@@ -172,6 +172,17 @@
         <p class="explain">Removes its credential: it can’t connect or run work until you pair it again.</p>
       </div>
       <Button label="Revoke access…" size="sm" variant="destructive" onclick={() => onrequest('revoke')} />
+    </div>
+  </section>
+{:else}
+  <section class="block actions" aria-labelledby="mo-actions">
+    <Heading level={3} id="mo-actions">Machine actions</Heading>
+    <div class="action">
+      <div>
+        <p class="action-title">Remove machine</p>
+        <p class="explain">Removes it from the machine list. Its history, workspaces and files stay intact.</p>
+      </div>
+      <Button label="Remove machine…" size="sm" variant="destructive" onclick={() => onrequest('remove')} />
     </div>
   </section>
 {/if}

@@ -5,12 +5,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import App from '../../src/App.svelte';
 import { app } from '../../src/lib/state/app.svelte';
+import { applyBootstrap, applyEvent, mergeNode } from '../../src/lib/state/data';
+import { details } from '../../src/lib/state/details.svelte';
 import { choose } from './controls';
 import { fixtureHub, FakeEventSource, fixture, type FakeHub } from './fakehub';
-import type { JobDetail, Node, ProviderInstallation, ProviderProfile, Run } from '../../src/lib/api/types.gen';
+import type { Bootstrap, Event, JobDetail, Node, ProviderInstallation, ProviderProfile, Run } from '../../src/lib/api/types.gen';
 
 let hub: FakeHub;
 let component: ReturnType<typeof mount>;
+let removalError = '';
+let hiddenNodeIds = new Set<string>();
 const codeDetail = fixture<JobDetail>('job-code.json');
 const base = fixture<Node[]>('nodes.json')[0];
 const MB = 1024 * 1024;
@@ -39,6 +43,40 @@ const row = (name: string) => byText('li.row', name)!;
 function key(el: Element, k: string) {
   el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
   flushSync();
+}
+
+function deferResponse(method: string, path: string) {
+  const fetch = globalThis.fetch;
+  let requested = false;
+  let bootstrap: Bootstrap | undefined;
+  let resolve!: (response: Response) => void;
+  const pending = new Promise<Response>((r) => { resolve = r; });
+  const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+  globalThis.fetch = ((input, init) => {
+    const requestedPath = new URL(String(input), 'http://localhost').pathname;
+    if (requestedPath === path && (init?.method ?? 'GET') === method) {
+      requested = true;
+      return pending;
+    }
+    if (bootstrap && requestedPath === '/v1/bootstrap') return Promise.resolve(json(bootstrap));
+    return fetch(input, init);
+  }) as typeof globalThis.fetch;
+  return {
+    requested: () => requested,
+    reply: (body: unknown) => resolve(json(body)),
+    async resetWithout(id: string) {
+      const epoch = app.resetEpoch;
+      bootstrap = { ...fixture<Bootstrap>('bootstrap.json'), cursor: app.data.lastSeq + 10,
+        nodes: Object.values(app.data.nodes).filter((n) => n.id !== id),
+        nodeNames: Object.fromEntries(machines.map((n) => [n.id, n.name])) };
+      FakeEventSource.latest().emit('reset', { cursor: bootstrap.cursor, reason: 'test reset' });
+      await waitFor(() => app.resetEpoch > epoch, 'fresh state after stream reset');
+    },
+    restore() {
+      resolve(json([]));
+      globalThis.fetch = fetch;
+    },
+  };
 }
 
 const codex = base.providers[0];
@@ -91,7 +129,7 @@ function load() {
 
 beforeAll(async () => {
   hub = fixtureHub();
-  hub.override('GET', /^\/v1\/nodes$/, () => ({ body: Object.values(app.data.nodes) }));
+  hub.override('GET', /^\/v1\/nodes$/, () => ({ body: Object.values(app.data.nodes).filter((n) => !hiddenNodeIds.has(n.id)) }));
   hub.override('GET', /^\/v1\/provider-profiles$/, () => ({ body: profiles }));
   hub.override('POST', /^\/v1\/nodes\/[^/]+\/drain$/, (c) => {
     const id = c.path.split('/')[3];
@@ -99,6 +137,9 @@ beforeAll(async () => {
   });
   hub.override('POST', /^\/v1\/nodes\/[^/]+\/stop$/, () => ({ body: { ok: true } }));
   hub.override('DELETE', /^\/v1\/nodes\/[^/]+\/credential$/, () => ({ body: { ok: true } }));
+  hub.override('DELETE', /^\/v1\/nodes\/[^/]+$/, () => removalError
+    ? { status: 409, body: { code: 'conflict', message: removalError, recoverable: true } }
+    : { body: { ok: true } });
   hub.override('PUT', /^\/v1\/provider-profiles\//, (c) => ({ body: { ...profiles[0], maxConcurrency: (c.body as { maxConcurrency: number }).maxConcurrency, pausedUntil: undefined } }));
   hub.override('POST', /^\/v1\/nodes\/[^/]+\/probe$/, () => ({ body: { ok: true } }));
   hub.install();
@@ -114,12 +155,43 @@ afterAll(() => unmount(component));
 beforeEach(async () => {
   app.go({ name: 'engineers' });
   await settle();
+  removalError = '';
+  hiddenNodeIds = new Set();
+  app.data.removedNodeIds = {};
   load();
   app.go({ name: 'machines' });
   await waitFor(() => document.querySelectorAll('li.row').length === 4, 'four machines');
 });
 
 describe('the Machines list', () => {
+  it.each(['machines', 'connections', 'drawer'])('ignores a delayed %s list response after removal and stream reset', async (view) => {
+    app.go({ name: 'engineers' });
+    await settle();
+    const snapshot = structuredClone(machines);
+    const delayed = deferResponse('GET', '/v1/nodes');
+    try {
+      if (view === 'drawer') {
+        delete app.data.nodes['n-laptop'];
+        app.openPanel({ kind: 'machine', id: 'n-laptop' });
+      } else {
+        app.navigate(`/${view}`);
+      }
+      await waitFor(delayed.requested, 'deferred machine list');
+      mergeNode(app.data, { ...snapshot[2], removedAt: ago(0) });
+      expect(app.data.nodes['n-laptop']).toBeUndefined();
+      await delayed.resetWithout('n-laptop');
+      expect(app.data.removedNodeIds['n-laptop']).toBeUndefined();
+      delayed.reply(snapshot);
+      await settle();
+      expect(app.data.nodes['n-laptop']).toBeUndefined();
+      expect(app.nodeName('n-laptop')).toBe(LONG);
+      if (view === 'drawer') expect(text()).toContain('This machine isn’t available.');
+    } finally {
+      delayed.restore();
+      app.closePanel();
+    }
+  });
+
   it('keeps connection, work and provider availability as separate facts on each row', () => {
     const studio = row('Studio mini');
     expect(studio.querySelector('h2')!.textContent).toBe('Studio mini');
@@ -184,6 +256,38 @@ describe('the Machines list', () => {
       expect([...document.querySelectorAll('[role=main] button')].filter((b) => b.textContent?.includes('Add machine')).length).toBe(1);
     } finally {
       machines.push(...saved);
+    }
+  });
+
+  it('keeps a live pairing when an earlier list request finally resolves', async () => {
+    app.go({ name: 'engineers' });
+    await settle();
+    const snapshot = structuredClone(machines);
+    const fetch = globalThis.fetch;
+    let resolve!: (response: Response) => void;
+    let requested = false;
+    const response = new Promise<Response>((r) => { resolve = r; });
+    globalThis.fetch = ((input, init) => {
+      const path = new URL(String(input), 'http://localhost').pathname;
+      if (path === '/v1/nodes' && (!init?.method || init.method === 'GET')) {
+        requested = true;
+        return response;
+      }
+      return fetch(input, init);
+    }) as typeof globalThis.fetch;
+    try {
+      app.go({ name: 'machines' });
+      await waitFor(() => requested, 'deferred list request');
+      applyEvent(app.data, { type: 'node.updated', sequence: app.data.lastSeq + 1,
+        payload: { ...base, id: 'new-pairing', name: 'New pairing' } } as Event);
+      await waitFor(() => row('New pairing'), 'live pairing');
+      resolve(new Response(JSON.stringify(snapshot), { headers: { 'content-type': 'application/json' } }));
+      await settle();
+      expect(row('New pairing')).toBeTruthy();
+      expect(Object.keys(app.data.nodes)).toHaveLength(5);
+    } finally {
+      resolve(new Response('[]', { headers: { 'content-type': 'application/json' } }));
+      globalThis.fetch = fetch;
     }
   });
 });
@@ -311,6 +415,28 @@ describe('consequential actions', () => {
     return t;
   }
 
+  it.each(['drain', 'revoke'])('ignores a delayed %s response after the machine disappears during reset', async (kind) => {
+    const node = structuredClone(machines[0]);
+    const action = kind === 'drain' ? 'Pause new work' : 'Revoke access';
+    const delayed = deferResponse(kind === 'drain' ? 'POST' : 'DELETE', `/v1/nodes/${node.id}/${kind === 'drain' ? 'drain' : 'credential'}`);
+    try {
+      await overview(node.id);
+      byText('#machinepanel button', action)!.click();
+      await waitFor(() => document.querySelector('dialog[open]'), 'action confirmation');
+      byText('dialog button', action)!.click();
+      await waitFor(delayed.requested, 'deferred node action');
+      mergeNode(app.data, { ...node, removedAt: ago(0) });
+      await delayed.resetWithout(node.id);
+      delayed.reply(kind === 'drain' ? { ...node, draining: true } : { ok: true });
+      await waitFor(() => !document.querySelector('dialog[open]'), 'obsolete action completed');
+      expect(app.data.nodes[node.id]).toBeUndefined();
+      expect(app.nodeName(node.id)).toBe(node.name);
+    } finally {
+      delayed.restore();
+      app.closePanel();
+    }
+  });
+
   it('pauses new work in plain words, then resumes it, returning focus each time', async () => {
     await overview('n-studio');
     const btn = byText('#machinepanel button', 'Pause new work') as HTMLButtonElement;
@@ -350,10 +476,11 @@ describe('consequential actions', () => {
     expect(r).toContain("Revoke Studio mini's access?");
     expect(r).toContain('Work it\'s running becomes “not confirmed”');
     expect(hub.last('DELETE', /\/credential$/)).toBeTruthy();
-    // The revoked machine has no actions left; focus stays in the panel.
+    // Revocation offers a separate removal action; focus stays in the panel.
     await waitFor(() => text().includes('Access revoked'), 'revoked');
     await waitFor(() => document.getElementById('machinepanel')?.contains(document.activeElement) || document.activeElement?.id === 'machinepanel', 'focus kept in the panel');
     expect(byText('#machinepanel button', 'Revoke access')).toBeUndefined();
+    expect(byText('#machinepanel button', 'Remove machine')).toBeTruthy();
     app.closePanel();
   });
 
@@ -366,6 +493,96 @@ describe('consequential actions', () => {
     await confirmWith('Cancel');
     expect(hub.calls.slice(before).filter((c) => c.method !== 'GET' && c.path.startsWith('/v1/nodes'))).toEqual([]);
     await waitFor(() => document.activeElement === btn, 'focus back');
+    app.closePanel();
+  });
+
+  async function revokedOverview() {
+    app.data.nodes['n-laptop'] = { ...app.data.nodes['n-laptop'], status: 'revoked', revokedAt: ago(2) };
+    await overview('n-laptop');
+    return byText('#machinepanel button', 'Remove machine') as HTMLButtonElement;
+  }
+
+  it('offers removal only after revocation and cancel preserves the row and its files', async () => {
+    await overview('n-laptop');
+    expect(byText('#machinepanel button', 'Remove machine')).toBeUndefined();
+    app.closePanel();
+    await settle();
+    const btn = await revokedOverview();
+    const before = hub.calls.length;
+    btn.focus();
+    btn.click();
+    const said = await confirmWith('Cancel');
+    expect(said).toContain(`Remove ${LONG} from Machines?`);
+    expect(said).toContain('Its runs, work history and reported workspaces stay on the hub');
+    expect(said).toContain('its local files stay on the machine');
+    expect(said).toContain('Its access stays revoked');
+    expect(hub.calls.slice(before).filter((c) => c.method === 'DELETE')).toEqual([]);
+    expect(row(LONG)).toBeTruthy();
+    await waitFor(() => document.activeElement === btn, 'focus after cancelling removal');
+    app.closePanel();
+  });
+
+  it('confirms removal, closes the drawer and leaves history intact', async () => {
+    (await revokedOverview()).click();
+    const job = app.data.jobs[codeDetail.job.id];
+    await confirmWith('Remove machine');
+    await waitFor(() => !row(LONG) && !document.querySelector('aside.panel'), 'row and drawer removed');
+    expect(hub.last('DELETE', /^\/v1\/nodes\/n-laptop$/)).toBeTruthy();
+    expect(app.data.jobs[codeDetail.job.id]).toEqual(job);
+    expect(app.data.nodes['n-studio']).toBeDefined();
+    await waitFor(() => document.activeElement?.hasAttribute('data-screen-title'), 'focus on Machines heading');
+  });
+
+  it('keeps removal errors in the confirmation and allows retry', async () => {
+    removalError = 'Revoke this machine’s access before removing it.';
+    (await revokedOverview()).click();
+    await waitFor(() => document.querySelector('dialog[open]'), 'confirmation');
+    byText('dialog button', 'Remove machine')!.click();
+    await waitFor(() => document.querySelector('dialog [role=alert]')?.textContent?.includes(removalError), 'error in dialog');
+    expect(row(LONG)).toBeTruthy();
+    removalError = '';
+    await confirmWith('Remove machine');
+    await waitFor(() => !row(LONG), 'successful retry');
+  });
+
+  it('can confirm an already-removed machine from a stale open dialog', async () => {
+    (await revokedOverview()).click();
+    await waitFor(() => document.querySelector('dialog[open]'), 'confirmation');
+    mergeNode(app.data, { ...app.data.nodes['n-laptop'], removedAt: ago(0) });
+    await waitFor(() => text().includes('This machine isn’t available.'), 'remote removal');
+    expect(document.querySelector('dialog[open]')).toBeTruthy();
+    await confirmWith('Remove machine');
+    expect(hub.last('DELETE', /^\/v1\/nodes\/n-laptop$/)).toBeTruthy();
+    expect(row(LONG)).toBeUndefined();
+  });
+
+  it('refreshing Machines discards a record removed while the view was away', async () => {
+    app.go({ name: 'engineers' });
+    await settle();
+    hiddenNodeIds.add('n-laptop');
+    app.go({ name: 'machines' });
+    await waitFor(() => row('Studio mini') && !row(LONG) && !app.data.nodes['n-laptop'], 'stale row discarded');
+    expect(app.data.nodes['n-laptop']).toBeUndefined();
+    expect(row('Studio mini')).toBeTruthy();
+  });
+
+  it('keeps the historical run machine label after removal and a fresh bootstrap', async () => {
+    const historical = structuredClone(codeDetail);
+    historical.runs = historical.runs.map((run) => ({ ...run, nodeId: 'n-laptop' }));
+    details.jobs[historical.job.id] = { data: historical, loading: false, touch: app.data.touched.jobs[historical.job.id] ?? 0 };
+    app.openPanel({ kind: 'job', id: historical.job.id }, 'runs');
+    await waitFor(() => byText('.runs .run', LONG), 'historical machine before removal');
+    mergeNode(app.data, { ...app.data.nodes['n-laptop'], status: 'revoked', revokedAt: ago(1), removedAt: ago(0) });
+    await settle();
+    expect(byText('.runs .run', LONG)).toBeTruthy();
+    expect(app.nodeName('n-laptop')).toBe(LONG);
+    expect(app.actorName({ kind: 'node', id: 'n-laptop' })).toBe(LONG);
+    app.data.nodeNames = {};
+    applyBootstrap(app.data, { ...fixture<Bootstrap>('bootstrap.json'), nodes: [], nodeNames: { 'n-laptop': LONG } });
+    await settle();
+    expect(app.data.nodes['n-laptop']).toBeUndefined();
+    expect(byText('.runs .run', LONG)).toBeTruthy();
+    expect(document.querySelector('.runs')?.textContent).not.toContain('Not assigned');
     app.closePanel();
   });
 });

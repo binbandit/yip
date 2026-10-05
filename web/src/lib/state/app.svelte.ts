@@ -796,7 +796,7 @@ class AppState {
       case 'engineer':
         return this.data.engineers[a.id]?.name ?? 'An engineer';
       case 'node':
-        return this.data.nodes[a.id]?.name ?? 'A machine';
+        return this.nodeName(a.id) || 'A machine';
       default:
         return 'yip';
     }
@@ -807,7 +807,7 @@ class AppState {
   }
 
   nodeName(id: string | undefined): string {
-    return (id && this.data.nodes[id]?.name) || '';
+    return (id && (this.data.nodes[id]?.name ?? this.data.nodeNames[id])) || '';
   }
 
   handleMentionsFor(m: Message): Map<string, { kind: string; id: string; label: string }> {

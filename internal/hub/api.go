@@ -41,6 +41,9 @@ func (h *Hub) Bootstrap(ctx context.Context, u store.UserRow, s store.Session) (
 	if b.Nodes, err = h.ListNodes(ctx); err != nil {
 		return b, err
 	}
+	if b.NodeNames, err = store.NodeNames(ctx, q); err != nil {
+		return b, err
+	}
 	b.Providers = h.providerSummary(b.Nodes)
 	if b.Preferences.Theme == "" {
 		b.Preferences.Theme = "system"

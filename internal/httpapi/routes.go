@@ -89,6 +89,7 @@ func (s *Server) routes() {
 	a("GET /v1/provider-profiles", s.providerProfiles)
 	a("PUT /v1/provider-profiles/{id}", s.putProviderProfile)
 	a("DELETE /v1/nodes/{id}/credential", s.revokeNode)
+	a("DELETE /v1/nodes/{id}", s.removeNode)
 
 	a("GET /v1/decisions", s.listDecisions)
 	a("POST /v1/decisions", s.createDecision)
@@ -625,6 +626,11 @@ func (s *Server) stopNode(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) revokeNode(w http.ResponseWriter, r *http.Request) {
 	err := s.hub.RevokeNode(r.Context(), userFrom(r).ID, r.PathValue("id"))
+	respond(s, w, r, map[string]bool{"ok": true}, err)
+}
+
+func (s *Server) removeNode(w http.ResponseWriter, r *http.Request) {
+	err := s.hub.RemoveNode(r.Context(), userFrom(r).ID, r.PathValue("id"))
 	respond(s, w, r, map[string]bool{"ok": true}, err)
 }
 

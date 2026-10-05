@@ -347,6 +347,33 @@ func (h *Hub) RevokeNode(ctx context.Context, userID, nodeID string) error {
 	return err
 }
 
+// RemoveNode removes an already-revoked machine from the list. Keep its row,
+// reported workspaces and credential so history and revocation remain intact.
+func (h *Hub) RemoveNode(ctx context.Context, userID, nodeID string) error {
+	return h.do(ctx, func(t *txn) error {
+		if err := h.requireWorkspaceOwner(ctx, t.tx, userID); err != nil {
+			return err
+		}
+		n, err := store.GetNode(ctx, t.tx, nodeID)
+		if err != nil {
+			return err
+		}
+		if n.RevokedAt == nil {
+			return domain.Conflict("Revoke this machine's access before removing it.")
+		}
+		if n.RemovedAt != nil {
+			return nil
+		}
+		if err := store.RemoveNode(ctx, t.tx, nodeID, h.now()); err != nil {
+			return err
+		}
+		if err := t.audit(userActor(userID), "owner", "node.remove", nodeID, "ok", n.Name); err != nil {
+			return err
+		}
+		return h.emitNode(ctx, t, nodeID)
+	})
+}
+
 // Diagnostics reports local operating health.
 func (h *Hub) Diagnostics(ctx context.Context) (protocol.Diagnostics, error) {
 	q := h.st.R()

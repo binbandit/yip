@@ -85,6 +85,12 @@ export interface DataState {
   engineers: Record<string, Engineer>;
   projects: Record<string, Project>;
   nodes: Record<string, Node>;
+  /** Historical attribution stays available independently of the visible list. */
+  nodeNames: Record<string, string>;
+  /** Latest node event, used to reconcile a list fetched before a live update. */
+  nodeUpdateSeq: Record<string, number>;
+  /** Removed identities cannot return through a delayed list or action response. */
+  removedNodeIds: Record<string, true>;
   /** Last capabilities-report event per machine, including reports with no providers. */
   nodeReportSeq: Record<string, number>;
   jobs: Record<string, Job>;
@@ -130,6 +136,9 @@ export function emptyState(): DataState {
     engineers: {},
     projects: {},
     nodes: {},
+    nodeNames: {},
+    nodeUpdateSeq: {},
+    removedNodeIds: {},
     nodeReportSeq: {},
     jobs: {},
     runs: {},
@@ -168,13 +177,35 @@ export function applyBootstrap(s: DataState, b: Bootstrap): void {
   s.rooms = byId(b.rooms);
   s.engineers = byId(b.engineers);
   s.projects = byId(b.projects);
-  s.nodes = byId(b.nodes);
+  Object.assign(s.nodeNames, b.nodeNames ?? {});
+  replaceNodes(s, b.nodes, b.cursor);
   s.bootCursor = b.cursor;
   s.lastSeq = Math.max(s.lastSeq, b.cursor);
 }
 
 export function newer(existing: { version: number } | undefined, incoming: { version: number }): boolean {
   return !existing || incoming.version >= existing.version;
+}
+
+export function removeNode(s: DataState, id: string): void {
+  if (s.nodes[id]) s.nodeNames[id] = s.nodes[id].name;
+  s.removedNodeIds[id] = true;
+  delete s.nodes[id];
+  delete s.nodeReportSeq[id];
+}
+
+export function mergeNode(s: DataState, node: Node): void {
+  s.nodeNames[node.id] = node.name;
+  if (node.removedAt) removeNode(s, node.id);
+  else if (!s.removedNodeIds[node.id]) s.nodes[node.id] = node;
+}
+
+/** Discard absent records while retaining events received after the request began. */
+export function replaceNodes(s: DataState, nodes: Node[], requestedAt = s.lastSeq): void {
+  const live = Object.values(s.nodes).filter((n) => (s.nodeUpdateSeq[n.id] ?? 0) > requestedAt);
+  s.nodes = {};
+  for (const node of nodes ?? []) mergeNode(s, node);
+  for (const node of live) mergeNode(s, node);
 }
 
 function bump(map: Record<string, number>, id: string | undefined): void {
@@ -469,8 +500,9 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
     }
     case 'node.updated': {
       const n = asPayload<Node & { capabilitiesReported?: boolean }>(ev);
-      s.nodes[n.id] = n;
-      if (n.capabilitiesReported) s.nodeReportSeq[n.id] = ev.sequence;
+      s.nodeUpdateSeq[n.id] = ev.sequence;
+      mergeNode(s, n);
+      if (n.capabilitiesReported && !s.removedNodeIds[n.id]) s.nodeReportSeq[n.id] = ev.sequence;
       break;
     }
     case 'pr.updated': {

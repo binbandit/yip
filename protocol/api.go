@@ -661,6 +661,8 @@ type Node struct {
 	LastActivity  string                 `json:"lastActivity,omitempty"`
 	CreatedAt     time.Time              `json:"createdAt"`
 	RevokedAt     *time.Time             `json:"revokedAt,omitempty"`
+	// RemovedAt hides an explicitly removed machine; its revoked identity and history remain.
+	RemovedAt *time.Time `json:"removedAt,omitempty"`
 	// Workspaces on the machine, as last reported, with the work they hold.
 	Workspaces []NodeWorkspace `json:"workspaces"`
 }
@@ -812,6 +814,8 @@ type Bootstrap struct {
 
 	// CanManageWorkspace is advisory; configuration mutations also check ownership.
 	CanManageWorkspace bool `json:"canManageWorkspace"`
+	// NodeNames includes removed machines for attribution in historical work.
+	NodeNames map[string]string `json:"nodeNames,omitempty"`
 }
 
 // ProviderSummary aggregates provider readiness across machines.
