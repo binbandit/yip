@@ -809,6 +809,9 @@ type Bootstrap struct {
 	ServerTime  time.Time         `json:"serverTime"`
 	Version     string            `json:"version"`
 	Providers   []ProviderSummary `json:"providers"`
+
+	// CanManageWorkspace is advisory; configuration mutations also check ownership.
+	CanManageWorkspace bool `json:"canManageWorkspace"`
 }
 
 // ProviderSummary aggregates provider readiness across machines.

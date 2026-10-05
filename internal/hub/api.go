@@ -20,6 +20,11 @@ func (h *Hub) Bootstrap(ctx context.Context, u store.UserRow, s store.Session) (
 	b := protocol.Bootstrap{User: u.User, Org: h.Org(), CSRFToken: s.CSRFToken, Preferences: u.Preferences, ServerTime: h.now(),
 		Version: h.cfg.Version}
 	var err error
+	owner, err := h.ownerID(ctx, q)
+	if err != nil {
+		return b, err
+	}
+	b.CanManageWorkspace = u.ID == owner
 	// The cursor is read first so no event committed after the snapshot is missed.
 	if b.Cursor, err = store.MaxEventSeq(ctx, q); err != nil {
 		return b, err

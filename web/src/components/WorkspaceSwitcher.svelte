@@ -95,6 +95,7 @@
         onClick: () => void app.refreshWorkspaces(),
       }] : []),
       { type: 'divider' },
+      { label: 'Workspace settings', onClick: () => { app.sidebarOpen = false; app.navigate('/settings/workspace'); } },
       { label: 'Create workspace', icon: plusIcon, onClick: openCreate },
     ]}
   />

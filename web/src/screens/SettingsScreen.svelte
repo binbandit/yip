@@ -102,6 +102,7 @@
 </script>
 
 <Screen title="Settings" subtitle="{app.me?.name} · @{app.me?.handle} · {app.data.org?.name}" width={760}>
+  {#snippet actions()}<Button label="Workspace settings" href={workspaceUrl('/settings/workspace')} />{/snippet}
   <div class="groups">
     <ScreenSection title="AI subscriptions" id="set-connections" class="group">
       <div class="body">

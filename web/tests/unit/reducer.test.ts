@@ -105,6 +105,7 @@ function ev(type: string, payload: unknown, extra: Partial<Event> = {}): Event {
 
 function boot(s: DataState, rooms: Room[] = [room('r1')], cursor = 100): void {
   const b: Bootstrap = {
+    canManageWorkspace: true,
     user: { id: ME, orgId: 'org', name: 'Brayden', handle: 'brayden', createdAt: '' },
     org: { id: 'org', name: 'Workspace', createdAt: '' },
     rooms,
