@@ -41,10 +41,69 @@ codex app-server --listen stdio:// \
 ```
 
 - **Working directory:** the run's `Workdir`. `thread/start` inherits it (see Startup boundary).
-- **Environment:** exactly `StartSpec.Env`, the runner's allowlist. When `Env` is nil, the adapter uses `providers.BaseEnv(["CODEX_HOME"])`. `CODEX_HOME` is honoured and never relocated. No API-key variables are added.
+- **Environment:** exactly `StartSpec.Env`, the runner's allowlist. When `Env` is nil, the adapter starts with `providers.BaseEnv(["CODEX_HOME"])`, then asks an isolated app-server for its effective configuration. Only the selected provider's `env_key` and `env_http_headers` references are added from the runner process environment. Configuration roots and process-loading variables cannot be imported through provider references. Explicit `Env` values are never augmented. `HOME` and `CODEX_HOME` are honoured and never relocated.
 - **Process group:** the process runs in its own group, via `providers.StartProcess`, so cancellation reaches every descendant, including MCP servers and shells.
 - **Secrets:** nothing secret is placed on argv. The yip MCP server definition and its environment (bridge token) travel over stdin inside `thread/start`'s `config`.
 - **Client identity:** `initialize` sends `clientInfo = {name: "yip", title: "yip", version: "0.1.0"}`. Per the Codex docs, `clientInfo.name` appears in OpenAI's compliance logs. After that the adapter sends the `initialized` notification.
+
+## Model gateways
+
+Custom providers use the harness's effective `config/read` result, including
+its system and user configuration precedence. YIP does not parse or merge TOML,
+open credential files, run shell profiles or create a credential store. Initial
+environment discovery runs in an empty directory so a repository cannot request
+additional runner secrets. Probe and execution use the same environment resolver.
+
+For example, a runner whose `CODEX_HOME/config.toml` contains:
+
+```toml
+model_provider = "work"
+model = "work-model"
+
+[model_providers.work]
+name = "Work gateway"
+base_url = "https://gateway.example.invalid/v1"
+env_key = "WORK_GATEWAY_KEY"
+```
+
+can use `WORK_GATEWAY_KEY` already exported to the runner process. An interactive
+shell export does not automatically reach a running service. A Docker worker
+still requires the existing explicit `--docker-env WORK_GATEWAY_KEY` import;
+its supplied environment is authoritative. An isolated home uses only the
+configuration visible inside that home.
+
+An installed executable is not proof of configuration. A selected provider whose
+required `env_key` is absent or blank is reported as needing configuration, and
+a run stops before starting a thread. Locally configured gateways are available
+for selection, with an explicit unverified status: neither
+credential validity, model access nor gateway reachability is established by a
+probe or a model catalogue. Gateways using environment credential references are
+classified as API-backed so the engineer's API billing permission remains in
+force; this does not establish the gateway's pricing. Providers with no such
+references retain their existing billing classification.
+Configuration values, endpoint URLs, headers and keys are not exposed as
+installation metadata.
+
+Named profiles need care with the pinned release: Codex 0.147.0 app-server starts
+with default loader overrides, so its CLI `--profile` does not select a named
+configuration layer. Legacy top-level `profile` is rejected by that release.
+Use a dedicated `CODEX_HOME` with the desired `config.toml` for this adapter;
+YIP does not guess a profile or enumerate every profile as available.
+
+This support is specific to this adapter. OpenCode's isolated launch currently
+replaces user configuration and checks stored sign-in, so an external gateway
+configuration or environment-only provider is not proof of availability there.
+Pi's current controlled SDK host excludes `models.json` and enumerates stored
+credential metadata, so custom providers and environment-only configuration are
+not discovered. A terminal harness working outside YIP does not demonstrate
+that its configuration reaches YIP's controlled execution environment.
+
+Sources checked: [configuration documentation](https://learn.chatgpt.com/docs/config-file/config-advanced),
+[0.147.0 configuration loader](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/config/src/loader/mod.rs),
+[app-server launch](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/cli/src/main.rs),
+and [provider account state](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/model-provider/src/provider.rs).
+Tests use synthetic configurations and a fake app-server process boundary;
+no account-backed gateway or model request was made.
 
 ## Session lifecycle
 
@@ -56,7 +115,7 @@ codex app-server --listen stdio:// \
 2. **Session**, asynchronous. Failures here become a `Result` with a typed outcome:
    1. `account/read {refreshToken: false}`.
       - If there is no account and `requiresOpenaiAuth` is true, the result is `auth_required` and no thread is started.
-      - The account also sets `Usage.Billing`.
+      - The account and selected provider configuration set `Usage.Billing`.
    2. `hooks/list {cwds: [Workdir]}`. Start is refused if any enabled, trusted, non-managed hook remains.
    3. `thread/start`, or `thread/resume {threadId: ResumeSessionID, cwd: Workdir}`. Both send:
       - `model` (omitted when empty, so Codex uses its default);
@@ -160,14 +219,15 @@ Every `tool_*` event carries `Data = {"itemId", "type", "status", "exitCode"?}`.
 
 ### Usage
 
-`Usage.InputTokens` and `Usage.OutputTokens` are Codex's `total.inputTokens` and `total.outputTokens`. They are **cumulative for this attempt**; each `usage` event carries the running total. On resume, Codex replays the stored thread's usage right after `thread/resume`. The adapter records that replay as a baseline and subtracts it, so only the attempt's own tokens are reported. `CostUSD` is never set. `Billing` comes from `account/read`:
+`Usage.InputTokens` and `Usage.OutputTokens` are Codex's `total.inputTokens` and `total.outputTokens`. They are **cumulative for this attempt**; each `usage` event carries the running total. On resume, Codex replays the stored thread's usage right after `thread/resume`. The adapter records that replay as a baseline and subtracts it, so only the attempt's own tokens are reported. `CostUSD` is never set. `Billing` comes from `account/read` and the selected provider configuration:
 
 | `account/read` result | `Billing` |
 |---|---|
 | ChatGPT sign-in | `subscription` |
 | API key | `api` |
 | Amazon Bedrock | `api` |
-| No account needed (custom model provider) | `unknown` |
+| Custom model provider with environment credential references | `api` (requires engineer permission; pricing unverified) |
+| No account needed, no environment credential references | `unknown` |
 
 ## Approvals
 
@@ -301,7 +361,7 @@ The adapter handles each of these as follows:
   - `$CODEX_HOME/AGENTS.md` (or `AGENTS.override.md`) always loads.
   - Repository `AGENTS.md` loads even in untrusted projects.
   - They are instructions, not execution authority, so the adapter lists them in a `status` event (from `instructionSources`) rather than suppressing them. `-c project_doc_max_bytes=0` would disable repository AGENTS.md if yip decides to deliver project rules only through `Instructions`.
-- **User settings stay in effect:** model provider and profile, `shell_environment_policy`, skills, and the built-in web search tool (Codex default `cached`). The shell inherits the app-server environment, which is exactly the runner's allowlist.
+- **User settings stay in effect:** model provider, `shell_environment_policy`, skills, and the built-in web search tool (Codex default `cached`). The shell inherits the app-server environment, which is exactly the runner's allowlist.
 - **Managed requirements and MDM:** these are organisation policy and may pin features or add managed hooks. The adapter reports managed hooks, but it cannot and does not override requirements.
 - **Codex's own state:** the adapter does not relocate `CODEX_HOME` and copies no credential files. Codex therefore uses the user's own sign-in and writes session rollouts and its state DB under `CODEX_HOME` as usual.
 

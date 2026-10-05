@@ -326,13 +326,12 @@ func (s *session) setup() (providers.Result, bool) {
 	if err := s.c.call(ctx, methodAccountRead, getAccountParams{RefreshToken: false}, &acct); err != nil {
 		return s.setupFailure("account/read", err), false
 	}
-	state, detail, _, billing := classifyAccount(acct)
+	state, detail, _, billing := classifyConfiguredAccount(acct, s.cfg, s.spec.Env)
 	s.mu.Lock()
 	s.billing = billing
 	s.mu.Unlock()
 	if state == protocol.AuthNeedsSignIn {
-		s.emit(providers.Event{Kind: providers.EventAuthRequired, Text: detail})
-		return providers.Result{Outcome: protocol.OutcomeAuthRequired, Error: "Codex is not signed in on this machine. " + detail}, false
+		return providers.Result{Outcome: protocol.OutcomeAuthRequired, Error: detail}, false
 	}
 
 	disable, err := s.inspectStartup(ctx)
@@ -804,10 +803,7 @@ func (s *session) finish(res providers.Result) {
 		case protocol.OutcomeRateLimited:
 			s.emit(providers.Event{Kind: providers.EventRateLimited, Text: res.Error, RetryAfter: res.RetryAfter})
 		case protocol.OutcomeAuthRequired:
-			// setup already emitted it for the sign-in check.
-			if !strings.HasPrefix(res.Error, "Codex is not signed in") {
-				s.emit(providers.Event{Kind: providers.EventAuthRequired, Text: res.Error})
-			}
+			s.emit(providers.Event{Kind: providers.EventAuthRequired, Text: res.Error})
 		case protocol.OutcomeFailed:
 			if res.Error != "" {
 				s.emit(providers.Event{Kind: providers.EventError, Text: res.Error})
