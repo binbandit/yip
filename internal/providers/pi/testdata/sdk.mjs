@@ -65,6 +65,19 @@ export async function createAgentSession(options) {
           const bash = options.customTools.find(t => t.name === "bash");
           await bash.execute("approval-1", { command: "echo safe" });
         }
+        if (prompt === "skills") {
+          const read = options.customTools.find(t => t.name === "yip_skill_read");
+          if (!read) throw new Error("skill_read was not discovered");
+          const docs = [];
+          for (const name of ["arena", "babysit-pr", "bro", "file-pr"]) {
+            const result = await read.execute(name, { name });
+            if (result.isError) throw new Error("skill read failed");
+            docs.push(JSON.parse(result.content[0].text));
+          }
+          listener({ type: "message_end", message: { role: "assistant", stopReason: "stop",
+            content: [{ type: "text", text: JSON.stringify(docs) }] } });
+          return;
+        }
         const bridge = options.customTools.find(t => t.name === "yip_list");
         if (!bridge) throw new Error("bridge tool missing");
         listener({ type: "tool_execution_start", toolName: bridge.name, toolCallId: "call" });

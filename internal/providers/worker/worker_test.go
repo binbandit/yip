@@ -20,6 +20,8 @@ import (
 	"github.com/binbandit/yip/internal/bridge"
 	"github.com/binbandit/yip/internal/providers"
 	"github.com/binbandit/yip/internal/providers/acp"
+	"github.com/binbandit/yip/internal/skills"
+	"github.com/binbandit/yip/internal/skilltest"
 	"github.com/binbandit/yip/protocol"
 )
 
@@ -191,6 +193,18 @@ func (s *testSession) run(spec providers.StartSpec) {
 		<-s.ctx.Done()
 		s.result.Outcome = protocol.OutcomeCancelled
 		s.result.ExitConfirmed = process.Terminate(time.Second)
+	case "skills":
+		// The worker replaces the host command with its container command; run
+		// that same stdio bridge from this test binary without requiring Docker.
+		spec.MCP.Command, spec.MCP.Args = os.Args[0], nil
+		spec.MCP.Env["YIP_SKILL_TEST_BRIDGE"] = spec.Mode
+		if !strings.Contains(spec.Instructions, skills.Revision) {
+			s.result.Error = "missing skill catalog"
+			return
+		}
+		if err := skilltest.Verify(spec.MCP); err != nil {
+			s.result.Error = err.Error()
+		}
 	case "interactive":
 		client, err := bridge.Dial(spec.MCP.Env[bridge.EnvSocket], spec.MCP.Env[bridge.EnvToken])
 		if err != nil {
@@ -749,6 +763,29 @@ func TestEventBudgetIncludesBlockedDelivery(t *testing.T) {
 				}
 			case <-time.After(stopGrace):
 				t.Fatal("blocked event delivery did not stop")
+			}
+		})
+	}
+}
+
+func TestBundledSkillsThroughWorkerTunnel(t *testing.T) {
+	for _, mode := range []string{"edit", "readonly", "conversation"} {
+		t.Run(mode, func(t *testing.T) {
+			spec := providers.StartSpec{Mode: mode, Prompt: "skills", Instructions: skills.Instructions(), MCP: providers.MCPServer{Env: map[string]string{bridge.EnvToken: "bound-run-token"}}}
+			s, err := Start(testContext(t), command(""), spec, func(req bridge.LocalRequest) bridge.LocalResponse {
+				if req.Token != "bound-run-token" {
+					return bridge.LocalResponse{Error: &protocol.APIError{Code: "forbidden"}}
+				}
+				return skilltest.Handle(req)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range s.Events() {
+			}
+			result := s.Wait()
+			if result.Error != "" || result.Outcome != protocol.OutcomeSucceeded || !result.ExitConfirmed {
+				t.Fatalf("%+v", result)
 			}
 		})
 	}

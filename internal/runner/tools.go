@@ -23,6 +23,7 @@ import (
 	"github.com/binbandit/yip/internal/bridge"
 	"github.com/binbandit/yip/internal/domain"
 	"github.com/binbandit/yip/internal/providers"
+	"github.com/binbandit/yip/internal/skills"
 	"github.com/binbandit/yip/protocol"
 )
 
@@ -54,6 +55,16 @@ func (r *Runner) handleBridge(req bridge.LocalRequest) bridge.LocalResponse {
 		err *protocol.APIError
 	)
 	switch req.Tool {
+	case bridge.SkillRead:
+		a, e := decodeArgs[bridge.SkillReadArgs](req.Args)
+		if e != nil {
+			return bridge.LocalResponse{Error: e}
+		}
+		doc, readErr := skills.Read(a.Name)
+		if readErr != nil {
+			return bridge.LocalResponse{Error: apiErr("invalid", "%s", readErr)}
+		}
+		res = doc
 	case bridge.WorkRunCheck:
 		res, err = r.toolRunCheck(ctx, ar, req.Args)
 	case bridge.WorkPublishRev:
