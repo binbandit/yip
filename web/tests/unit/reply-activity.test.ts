@@ -100,11 +100,12 @@ it.each(['succeeded', 'cancelled', 'failed', 'unknown', 'stopping'] as const)('c
   }
 });
 
-it('clears writing for tool/status updates and waiting for input', () => {
+it('clears writing for newer stream activity and waiting for input', () => {
   const run = reply();
   show();
   delta(run);
-  update({ ...run, lastActivity: 'Checking the repository', lastActivityAt: new Date(now + 1).toISOString() });
+  applyTransient(app.data, { type: 'run.stream', runId: run.id, roomId, jobId: run.jobId, engineerId: run.engineerId, payload: { kind: 'tool_started', at: new Date(now + 1).toISOString() } });
+  flushSync();
   expect(activity()).toContain('preparing');
   expect(activity()).not.toContain('writing');
   delta(run);
@@ -193,16 +194,30 @@ it.each(['question', 'approval', 'status'])('keeps continued output after a non-
   expect(activity()).toContain('Mira is writing a reply');
 });
 
-it('preserves newer writing when an older durable update arrives afterward', () => {
+it.each([-1000, 1000])('preserves writing across durable updates with %dms hub clock skew', (skew) => {
   const run = reply();
   show();
-  delta(run, now + 2);
-  applyEvent(app.data, { type: 'run.updated', sequence: app.data.lastSeq + 1, occurredAt: new Date(now - 1).toISOString(), payload: { ...run, lastActivityAt: new Date(now - 2).toISOString() } } as HubEvent);
+  delta(run);
+  applyEvent(app.data, { type: 'run.updated', sequence: app.data.lastSeq + 1, occurredAt: new Date(now + skew).toISOString(), payload: { ...run, lastActivityAt: new Date(now - 1).toISOString() } } as HubEvent);
   flushSync();
   expect(activity()).toContain('Mira is writing a reply');
-  applyEvent(app.data, { type: 'run.updated', sequence: app.data.lastSeq + 1, occurredAt: new Date(now + 3).toISOString(), payload: run } as HubEvent);
+  // work_update progress records the hub's clock in lastActivityAt too.
+  applyEvent(app.data, { type: 'run.updated', sequence: app.data.lastSeq + 1, occurredAt: new Date(now + skew + 1).toISOString(), payload: { ...run, lastActivityAt: new Date(now + skew).toISOString() } } as HubEvent);
+  flushSync();
+  expect(activity()).toContain('Mira is writing a reply');
+  delta(run, now + 1);
+  expect(activity()).toContain('Mira is writing a reply');
+  vi.advanceTimersByTime(11_000);
   flushSync();
   expect(activity()).toContain('Mira is preparing a reply');
+});
+
+it('accepts fresh runner output when hub progress has a later clock', () => {
+  const run = reply();
+  update({ ...run, lastActivity: 'Progress reported', lastActivityAt: new Date(now + 1000).toISOString() });
+  show();
+  delta(run);
+  expect(activity()).toContain('Mira is writing a reply');
 });
 
 it('rejects stale attempts, mismatched stream routing and revoked machines', () => {

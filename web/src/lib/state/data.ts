@@ -440,10 +440,10 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
     case 'run.updated': {
       const r = asPayload<Run>(ev);
       s.runs[r.id] = r;
-      // Durable updates and buffered transients may arrive out of order.
-      // Only newer activity (or a stop/wait) supersedes accepted writing.
-      const streamAt = Date.parse(s.streams[r.id]?.at ?? '');
-      if (isTerminalRun(r.state) || r.state === 'stopping' || r.state === 'awaiting_input' || Date.parse(ev.occurredAt) > streamAt || Date.parse(r.lastActivityAt ?? '') > streamAt) delete s.streams[r.id];
+      // Durable updates and buffered transients may arrive out of order, and
+      // their timestamps can come from different clocks. Keep accepted writing
+      // until its short expiry or an authoritative stop/wait/response boundary.
+      if (isTerminalRun(r.state) || r.state === 'stopping' || r.state === 'awaiting_input') delete s.streams[r.id];
       bump(s.touched.jobs, r.jobId);
       break;
     }
@@ -605,7 +605,6 @@ export function applyTransient(s: DataState, t: TransientStream): void {
   const now = Date.now();
   const at = t.payload?.at ? Date.parse(t.payload.at) : now;
   if (!Number.isFinite(at) || at < now - 10_000 || at > now + 5_000) return;
-  if (run?.lastActivityAt && at < Date.parse(run.lastActivityAt)) return;
   if (s.streams[t.runId] && at < Date.parse(s.streams[t.runId].at)) return;
   const cur = s.streams[t.runId] ?? {
     runId: t.runId,
