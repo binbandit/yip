@@ -28,7 +28,7 @@
 <header class="room-head">
   <div class="titles">
     <h1 id="room-title" data-screen-title tabindex="-1">
-      {#if room.kind === 'room'}<span class="hash" aria-hidden="true">{#if room.private}<Icon icon={Lock} size="sm" />{:else}#{/if}</span>{/if}{title}
+      {#if room.kind === 'room'}<span class="hash" class:lock={room.private} aria-hidden="true">{#if room.private}<Icon icon={Lock} size="sm" />{:else}#{/if}</span>{/if}{title}
     </h1>
     {#if room.private}<VisuallyHidden>, private</VisuallyHidden>{/if}
     <Text as="p" type="supporting" maxLines={1} class="purpose">
@@ -111,10 +111,13 @@
   }
   .hash {
     display: inline-flex;
-    vertical-align: -2px;
+    vertical-align: baseline;
     margin-right: var(--spacing-1);
     color: color-mix(in srgb, var(--color-text-primary) 45%, transparent);
     font-weight: var(--font-weight-medium);
+  }
+  .hash.lock {
+    vertical-align: -2px;
   }
   .titles :global(.purpose) {
     flex: 1 1 0;
