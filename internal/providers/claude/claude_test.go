@@ -765,6 +765,78 @@ func TestProbeAPIKeyAndSignedOut(t *testing.T) {
 	}
 }
 
+func TestProbeGatewayBearerBilling(t *testing.T) {
+	const credential = "ANTHROPIC_AUTH_TOKEN"
+	const ready = `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty","email":"saved@example.invalid"}`
+	for _, tc := range []struct {
+		name    string
+		env     []string
+		status  string
+		skip    bool
+		auth    string
+		billing string
+	}{
+		{"explicit bearer", []string{credential + "=synthetic-token"}, ready, false, protocol.AuthReady, protocol.BillingAPI},
+		{"unset", nil, ready, false, protocol.AuthReady, protocol.BillingSubscription},
+		{"empty", []string{credential + "="}, ready, false, protocol.AuthReady, protocol.BillingSubscription},
+		{"last empty wins", []string{credential + "=synthetic-token", credential + "="}, ready, false, protocol.AuthReady, protocol.BillingSubscription},
+		{"last token wins", []string{credential + "=", credential + "=synthetic-token"}, ready, false, protocol.AuthReady, protocol.BillingAPI},
+		{"managed sign-in required", []string{credential + "=synthetic-token"}, `{"loggedIn":false,"authMethod":"none","apiProvider":"gateway"}`, false, protocol.AuthNeedsSignIn, protocol.BillingUnknown},
+		{"invalid status", []string{credential + "=synthetic-token"}, "invalid", false, protocol.AuthUnknown, protocol.BillingAPI},
+		{"skipped status", []string{credential + "=synthetic-token"}, ready, true, protocol.AuthUnknown, protocol.BillingAPI},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _ := newFakeAdapter(t, "probe", append(tc.env, "HOME="+t.TempDir(), envAuthJSON+"="+tc.status)...)
+			a.opts.SkipAuthStatus = tc.skip
+			inst := a.Probe(t.Context())
+			if inst.AuthState != tc.auth || inst.Billing != tc.billing || a.probeBilling() != tc.billing {
+				t.Fatalf("auth=%s billing=%s cached=%s; want auth=%s billing=%s", inst.AuthState, inst.Billing, a.probeBilling(), tc.auth, tc.billing)
+			}
+			if tc.billing == protocol.BillingAPI && (inst.Account != "" || !strings.Contains(inst.AuthDetail, "unverified")) {
+				t.Fatalf("gateway metadata implies verified account or access: account=%q detail=%q", inst.Account, inst.AuthDetail)
+			}
+			if strings.Contains(inst.AuthDetail, "synthetic-token") {
+				t.Fatal("gateway credential leaked in metadata")
+			}
+		})
+	}
+}
+
+func TestGatewayBearerUsesOnlyEffectiveEnvironment(t *testing.T) {
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "host-token-must-not-be-imported")
+	a := NewAdapter()
+	if _, ok := envLookup(a.baseEnv(), "ANTHROPIC_AUTH_TOKEN"); ok {
+		t.Fatal("default environment imported a host gateway credential")
+	}
+	for _, tc := range []struct {
+		name string
+		env  []string
+		want string
+	}{
+		{"bearer override", []string{"ANTHROPIC_AUTH_TOKEN=synthetic-token"}, protocol.BillingAPI},
+		{"empty override", []string{"ANTHROPIC_AUTH_TOKEN=synthetic-token", "ANTHROPIC_AUTH_TOKEN="}, protocol.BillingSubscription},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, dir := newFakeAdapter(t, "basic", "HOME="+t.TempDir(), envAuthJSON+`={"loggedIn":true,"authMethod":"oauth_token"}`)
+			a.opts.SkipAuthStatus = false
+			if inst := a.Probe(t.Context()); inst.Billing != protocol.BillingSubscription {
+				t.Fatalf("initial billing=%s", inst.Billing)
+			}
+			spec := testSpec(t, protocol.ModeEdit)
+			spec.Env = append(a.opts.Env, tc.env...)
+			sess, err := a.Start(t.Context(), spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := &fakeRun{dir: dir, adapter: a, sess: sess, spec: spec}
+			r.collect(t, nil)
+			if r.result.Usage == nil || r.result.Usage.Billing != tc.want {
+				t.Fatalf("effective environment billing: %+v; want %s", r.result.Usage, tc.want)
+			}
+		})
+	}
+}
+
 func TestProbeRefusesVersionsMissingFlags(t *testing.T) {
 	a, _ := newFakeAdapter(t, "oldhelp")
 	inst := a.Probe(context.Background())
