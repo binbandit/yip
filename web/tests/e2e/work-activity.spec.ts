@@ -22,14 +22,15 @@ test('expanded work activity stays scoped, refreshes recorded facts and preserve
   const make = (id: string, name: string, threadId?: string): JobDetail => {
     const engineerId = api.engineer(name).id;
     const destination = { roomId, threadId };
-    const job = { ...sample.job, id, title: `Task ${id}`, kind: threadId ? 'reply' : 'code', state: 'running' as const, reviewerIds: [], ownerId: engineerId, source: destination, currentRunId: `${id}-run`, updatedAt: at, lastActivity: '', lastActivityAt: null };
+    const job = { ...sample.job, id, title: `Task ${id}`, kind: threadId ? 'reply' : 'code', state: 'running' as const, reviewerIds: [], ownerId: engineerId, source: destination, currentRunId: `${id}-run`, updatedAt: at, completedAt: undefined, lastActivity: '', lastActivityAt: null };
     const run = { ...sample.runs[0], id: job.currentRunId, jobId: id, engineerId, destination, state: 'running' as const, nodeId: '', createdAt: at, startedAt: new Date(Date.now() - 61_000).toISOString(), heartbeatAt: at, endedAt: undefined };
     return { ...sample, job, runs: [run], checks: [], approvals: [], reviews: [] };
   };
   const tasks = [make('room-read', 'Mira'), make('room-check', 'Oren'), make('first-thread', 'Pip', first.id), make('second-thread', 'Mira', second.id)];
+  tasks[2].runs[0].startedAt = new Date(Date.now() - 120_000).toISOString();
   const records = new Map<string, RunActivity[]>(tasks.map((d) => [d.runs[0].id, [{ runId: d.runs[0].id, seq: 1, kind: 'tool_started', tool: 'read', text: 'private-provider-text', data: { input: { file_path: `/private/repository/${d.job.id}.go`, token: 'private-token' }, prompt: 'private-prompt' }, at }]]));
   let activityRequests = 0;
-  await page.route('**/v1/runs', (route) => route.fulfill({ json: tasks.flatMap((d) => d.runs) }));
+  await page.route('**/v1/runs', (route) => route.fulfill({ json: tasks.flatMap((d) => d.runs.map((r) => d.job.id === 'first-thread' ? { ...r, heartbeatAt: new Date(Date.now() - 100_000).toISOString() } : r)) }));
   await page.route(`**/v1/rooms/${roomId}/work?*`, (route) => route.fulfill({ json: tasks.map((d) => ({ job: d.job, runState: d.runs[0].state })) }));
   for (const d of tasks) {
     await page.route(`**/v1/jobs/${d.job.id}`, (route) => route.fulfill({ json: d }));
@@ -53,6 +54,8 @@ test('expanded work activity stays scoped, refreshes recorded facts and preserve
   await threadWork.getByRole('button', { name: 'Engineer work', exact: false }).click();
   await threadWork.getByRole('button', { name: /Pip.*Task first-thread/ }).click();
   await expect(threadWork.getByText('Read file · first-thread.go · started')).toBeVisible();
+  await expect(threadWork.getByText('Running', { exact: true })).toBeVisible();
+  await expect(threadWork.getByText(/Last confirmed elapsed/)).toHaveCount(0);
   await expect(threadWork.getByText('Task second-thread')).toHaveCount(0);
   await expect(page.getByText(/private-provider-text|private-token|private-prompt|private\/repository/)).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('work-activity-desktop.png'), animations: 'disabled' });
@@ -70,8 +73,17 @@ test('expanded work activity stays scoped, refreshes recorded facts and preserve
   await expect(threadWork.getByLabel('Recorded activity')).toHaveCount(0);
   await stream('ready', {});
   await expect(threadWork.getByText('Run check · finished')).toBeVisible();
+  task.job = { ...task.job, state: 'cancelled', version: task.job.version + 1, updatedAt: new Date().toISOString() };
+  await stream('job.updated', { sequence: 1_000_001, type: 'job.updated', jobId: task.job.id, payload: task.job });
+  await expect(threadWork.getByText('Cancellation requested', { exact: true })).toBeVisible();
+  task.runs[0] = { ...task.runs[0], state: 'stopping' };
+  await stream('run.updated', { sequence: 1_000_002, type: 'run.updated', jobId: task.job.id, payload: task.runs[0] });
+  await expect(threadWork.getByText('Stopping', { exact: true })).toBeVisible();
+  task.runs[0] = { ...task.runs[0], state: 'unknown' };
+  await stream('run.updated', { sequence: 1_000_003, type: 'run.updated', jobId: task.job.id, payload: task.runs[0] });
+  await expect(threadWork.getByText('Outcome not confirmed', { exact: true })).toBeVisible();
   task.runs[0] = { ...task.runs[0], state: 'cancelled', endedAt: new Date().toISOString() };
-  await stream('run.updated', { sequence: 1_000_001, type: 'run.updated', jobId: task.job.id, payload: task.runs[0] });
+  await stream('run.updated', { sequence: 1_000_004, type: 'run.updated', jobId: task.job.id, payload: task.runs[0] });
   await expect(threadWork.getByText('Stopped', { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: testInfo.outputPath('work-activity-phone.png'), animations: 'disabled' });

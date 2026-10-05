@@ -23,17 +23,38 @@ export function isCurrentWorkRun(job: Job, run: Run | undefined): run is Run {
     && run.destination.roomId === job.source.roomId && (run.destination.threadId ?? '') === (job.source.threadId ?? '');
 }
 
+/** Combine current-attempt evidence without letting an older snapshot revive it. */
+export function currentWorkRun(job: Job, cached: Run | undefined, fetched: Run | undefined): Run | undefined {
+  const live = isCurrentWorkRun(job, cached) ? cached : undefined;
+  const saved = isCurrentWorkRun(job, fetched) ? fetched : undefined;
+  if (!live) return saved;
+  if (!saved) return live;
+  if (live.leaseEpoch !== saved.leaseEpoch) return live.leaseEpoch > saved.leaseEpoch ? live : saved;
+  if (live.nodeId !== saved.nodeId) return live;
+  // Within a lease, stop/unknown cannot return to executing. A confirmed
+  // journaled terminal may resolve unknown on reconnect, and must still win.
+  const closure = (r: Run) => r.state === 'unknown' ? 2 : r.state === 'stopping' ? 1 : isTerminalRun(r.state) ? 3 : 0;
+  const result = closure(saved) > closure(live) ? saved : live;
+  const liveAt = Date.parse(live.heartbeatAt ?? '');
+  const savedAt = Date.parse(saved.heartbeatAt ?? '');
+  const heartbeat = Number.isFinite(savedAt) && (!Number.isFinite(liveAt) || savedAt > liveAt) ? saved.heartbeatAt : live.heartbeatAt;
+  // Both heartbeat values come from hub lease renewal, unlike tool timestamps.
+  return heartbeat === result.heartbeatAt ? result : { ...result, heartbeatAt: heartbeat };
+}
+
 export function runIsFresh(run: Run, now: number): boolean {
   const at = Date.parse(run.heartbeatAt ?? run.startedAt ?? run.createdAt);
   return Number.isFinite(at) && at <= now + 5000 && now - at < 90_000;
 }
 
 export function workState(job: Job, run: Run | undefined, connected: boolean, now: number): string {
+  if (run?.state === 'stopping' || run?.state === 'unknown') return runStateLabel(run.state);
+  if (job.state === 'cancelled' && job.currentRunId && (!run || !isTerminalRun(run.state))) return 'Cancellation requested';
   if (['completed', 'cancelled', 'failed', 'review_ready'].includes(job.state)) return jobStateLabel(job);
   if (!connected) return 'Updates unavailable';
   if (job.state === 'waiting') return waitingReasonLabel(job.waitingReason);
   if (!run) return job.currentRunId ? 'Attempt details unavailable' : jobStateLabel(job);
-  if (isTerminalRun(run.state) || run.state === 'awaiting_input' || run.state === 'stopping') return runStateLabel(run.state);
+  if (isTerminalRun(run.state) || run.state === 'awaiting_input') return runStateLabel(run.state);
   return runIsFresh(run, now) ? runStateLabel(run.state) : `Last reported: ${runStateLabel(run.state).toLowerCase()}`;
 }
 

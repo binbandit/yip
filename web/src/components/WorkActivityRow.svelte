@@ -5,7 +5,7 @@
   import type { JobDetail } from '../lib/api/types.gen';
   import { app } from '../lib/state/app.svelte';
   import type { DataState } from '../lib/state/data';
-  import { attemptElapsed, inConversation, isCurrentWorkRun, permissionRequested, recordedActivity, recordedChecks, workState, type RecordedActivity } from '../lib/util/workActivity';
+  import { attemptElapsed, currentWorkRun, inConversation, isCurrentWorkRun, permissionRequested, recordedActivity, recordedChecks, workState, type RecordedActivity } from '../lib/util/workActivity';
   import { clock, fullTime } from '../lib/util/time';
 
   let { jobId, roomId, threadId, now }: { jobId: string; roomId: string; threadId?: string; now: number } = $props();
@@ -28,8 +28,7 @@
     document.addEventListener('visibilitychange', changed);
     return () => document.removeEventListener('visibilitychange', changed);
   });
-  const candidate = $derived(job?.currentRunId ? app.data.runs[job.currentRunId] ?? detail?.runs.find((r) => r.id === job.currentRunId) : undefined);
-  const run = $derived(job && isCurrentWorkRun(job, candidate) ? candidate : undefined);
+  const run = $derived(job ? currentWorkRun(job, app.data.runs[job.currentRunId ?? ''], detail?.runs.find((r) => r.id === job.currentRunId)) : undefined);
   const reporting = $derived(connected && (!run?.nodeId || app.data.nodes[run.nodeId]?.status === 'online'));
   const stateLabel = $derived(job ? workState(job, run, reporting, now) : '');
   const elapsed = $derived(attemptElapsed(run, reporting && !!job && ['queued', 'running', 'waiting'].includes(job.state), now));

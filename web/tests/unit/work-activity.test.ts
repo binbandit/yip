@@ -158,6 +158,39 @@ it('refreshes on reconnect without resurrecting a previous response', async () =
   expect(text()).not.toContain('private-check-output');
 });
 
+it.each(['expansion', 'reconnect'])('uses fetched current-attempt heartbeat evidence after %s', async (path) => {
+  const runId = `${sample.job.id}-run`;
+  const cached = { ...app.data.runs[runId], startedAt: new Date(now - 120_000).toISOString(), heartbeatAt: new Date(now - 100_000).toISOString() };
+  app.data.runs[runId] = cached;
+  vi.mocked(api.job).mockResolvedValue({ ...sample, job: app.data.jobs[sample.job.id], runs: [{ ...cached, heartbeatAt: new Date(now).toISOString() }], checks: [], approvals: [] });
+  show();
+  if (path === 'reconnect') app.connection = 'reconnecting';
+  await expand();
+  if (path === 'reconnect') {
+    app.connection = 'live';
+    flushSync();
+    await settle();
+  }
+  expect(document.querySelector('.work-row .state')?.textContent).toBe('Running');
+  expect(text()).toContain('Elapsed: 2m');
+  expect(text()).not.toContain('Last confirmed elapsed');
+});
+
+it.each(['stopping', 'unknown', 'cancelled'] as const)('does not revive streamed %s from a held older detail response', async (state) => {
+  const runId = `${sample.job.id}-run`;
+  const old = { ...sample, job: app.data.jobs[sample.job.id], runs: [{ ...app.data.runs[runId] }], checks: [], approvals: [] };
+  let resolve!: (detail: JobDetail) => void;
+  vi.mocked(api.job).mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+  show();
+  await expand();
+  app.data.runs[runId] = { ...app.data.runs[runId], state };
+  flushSync();
+  resolve(old);
+  await settle();
+  const expected = state === 'stopping' ? 'Stopping' : state === 'unknown' ? 'Outcome not confirmed' : 'Stopped';
+  expect(document.querySelector('.work-row .state')?.textContent).toBe(expected);
+});
+
 it('aborts a held GET on disconnect and allows the current reconnect fetch to finish', async () => {
   let heldSignal: AbortSignal | undefined;
   vi.mocked(api.runActivity).mockImplementationOnce((_job, _run, signal) => new Promise((_resolve, reject) => {

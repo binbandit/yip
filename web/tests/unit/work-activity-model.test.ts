@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { Approval, Check, JobDetail, RunActivity } from '../../src/lib/api/types.gen';
-import { attemptElapsed, inConversation, isCurrentWorkRun, permissionRequested, recordedActivity, recordedChecks, workState } from '../../src/lib/util/workActivity';
+import { attemptElapsed, currentWorkRun, inConversation, isCurrentWorkRun, permissionRequested, recordedActivity, recordedChecks, workState } from '../../src/lib/util/workActivity';
 import { fixture } from './fakehub';
 
 const d = fixture<JobDetail>('job-code.json');
@@ -52,6 +52,29 @@ it('shows authoritative waits without inventing provider thinking or progress', 
   expect(workState({ ...job, state: 'waiting', waitingReason: 'provider_sign_in' }, run, true, now)).toBe('Provider needs sign-in');
   expect(workState({ ...job, state: 'review_ready', requiresHumanReview: false }, run, true, now)).toBe('In review');
   expect(workState(job, { ...run, state: 'unknown' }, true, now)).toBe('Outcome not confirmed');
+});
+
+it.each(['stopping', 'unknown'] as const)('preserves a cancelled attempt that is %s', (state) => {
+  expect(workState({ ...job, state: 'cancelled' }, { ...run, state }, true, now)).toBe(state === 'stopping' ? 'Stopping' : 'Outcome not confirmed');
+});
+
+it('distinguishes cancellation requested from confirmed stopped or never started', () => {
+  expect(workState({ ...job, state: 'cancelled' }, run, true, now)).toBe('Cancellation requested');
+  expect(workState({ ...job, state: 'cancelled' }, undefined, true, now)).toBe('Cancellation requested');
+  expect(workState({ ...job, state: 'cancelled', currentRunId: undefined }, undefined, true, now)).toBe('Stopped');
+  expect(workState({ ...job, state: 'cancelled' }, { ...run, state: 'cancelled' }, true, now)).toBe('Stopped');
+});
+
+it('combines only matching-lease heartbeat evidence and permits confirmed outcomes to resolve unknown', () => {
+  const stale = { ...run, heartbeatAt: new Date(now - 100_000).toISOString() };
+  const fresh = { ...run, heartbeatAt: new Date(now).toISOString() };
+  expect(currentWorkRun(job, stale, fresh)?.heartbeatAt).toBe(fresh.heartbeatAt);
+  expect(currentWorkRun(job, fresh, stale)?.heartbeatAt).toBe(fresh.heartbeatAt);
+  expect(currentWorkRun(job, stale, { ...fresh, id: 'older-attempt' })?.heartbeatAt).toBe(stale.heartbeatAt);
+  expect(currentWorkRun(job, stale, { ...fresh, leaseEpoch: stale.leaseEpoch - 1 })?.heartbeatAt).toBe(stale.heartbeatAt);
+  expect(currentWorkRun(job, stale, { ...fresh, nodeId: 'other-node' })?.heartbeatAt).toBe(stale.heartbeatAt);
+  expect(currentWorkRun(job, { ...stale, state: 'unknown' }, { ...fresh, state: 'succeeded' })?.state).toBe('succeeded');
+  expect(currentWorkRun(job, { ...stale, state: 'succeeded' }, { ...fresh, state: 'unknown' })?.state).toBe('succeeded');
 });
 
 it('bounds elapsed evidence at disconnect, unknown outcome and terminal end', () => {
