@@ -569,7 +569,8 @@ describe('consequential actions', () => {
   it('keeps the historical run machine label after removal and a fresh bootstrap', async () => {
     const historical = structuredClone(codeDetail);
     historical.runs = historical.runs.map((run) => ({ ...run, nodeId: 'n-laptop' }));
-    details.jobs[historical.job.id] = { data: historical, loading: false, touch: app.data.touched.jobs[historical.job.id] ?? 0 };
+    hub.override('GET', new RegExp(`^/v1/jobs/${historical.job.id}$`), () => ({ body: structuredClone(historical) }));
+    await details.refreshJob(historical.job.id);
     app.openPanel({ kind: 'job', id: historical.job.id }, 'runs');
     await waitFor(() => byText('.runs .run', LONG), 'historical machine before removal');
     mergeNode(app.data, { ...app.data.nodes['n-laptop'], status: 'revoked', revokedAt: ago(1), removedAt: ago(0) });

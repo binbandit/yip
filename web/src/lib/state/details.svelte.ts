@@ -19,9 +19,21 @@ class Details {
   jobs = $state<Record<string, Entry<JobDetail>>>({});
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   private pendingFetch = new Set<string>();
+  private jobData = app.data;
+
+  private syncJobs(): void {
+    if (this.jobData === app.data) return;
+    this.jobData = app.data;
+    this.jobs = {};
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
+    // Old requests retain their own set, so their cleanup cannot unlock new ones.
+    this.pendingFetch = new Set();
+  }
 
   /** Ensure a job's detail is loaded and current with the given touch counter. */
   ensureJob(id: string, touch: number): void {
+    this.syncJobs();
     const e = this.jobs[id];
     if (e && (e.touch === touch || e.missing)) return;
     if (!e) {
@@ -30,11 +42,13 @@ class Details {
       return;
     }
     e.touch = touch;
+    const data = app.data;
     const prev = this.timers.get(id);
     if (prev) clearTimeout(prev);
     this.timers.set(
       id,
       setTimeout(() => {
+        if (app.data !== data) return;
         this.timers.delete(id);
         void this.fetchJob(id, touch);
       }, 350),
@@ -42,19 +56,24 @@ class Details {
   }
 
   async refreshJob(id: string): Promise<void> {
+    this.syncJobs();
     await this.fetchJob(id, this.jobs[id]?.touch ?? 0);
   }
 
   private async fetchJob(id: string, touch: number): Promise<void> {
-    if (this.pendingFetch.has(id)) return;
-    this.pendingFetch.add(id);
+    const data = app.data;
+    const requestedAt = data.lastSeq;
+    const pending = this.pendingFetch;
+    if (pending.has(id)) return;
+    pending.add(id);
     try {
       const d = await api.job(id);
+      if (app.data !== data) return;
       normalizeDetail(d);
       this.jobs[id] = { data: d, loading: false, touch };
       // Keep the shared stores current with what the detail tells us.
       if (newer(app.data.jobs[d.job.id], d.job)) app.data.jobs[d.job.id] = d.job;
-      mergeRuns(app.data, d.runs);
+      mergeRuns(data, d.runs, requestedAt);
       for (const a of d.artifacts) app.data.artifacts[a.id] = a;
       for (const r of d.reviews) {
         const c = app.data.reviews[r.id];
@@ -68,11 +87,12 @@ class Details {
         if (!(c && c.delivery !== 'pending' && i.delivery === 'pending')) app.data.inputs[i.id] = i;
       }
     } catch (err) {
+      if (app.data !== data) return;
       const missing = err instanceof ApiError && (err.status === 404 || err.status === 403);
       const prev = this.jobs[id];
       this.jobs[id] = { data: prev?.data, error: errorMessage(err), missing, loading: false, touch };
     } finally {
-      this.pendingFetch.delete(id);
+      pending.delete(id);
     }
   }
 
