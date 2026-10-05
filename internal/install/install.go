@@ -134,7 +134,7 @@ func (i *installer) run(source, binDir string) (result error) {
 			if err != nil {
 				return err
 			}
-			updated, disabled, err := updatePlist(original, label, destination, i.checkBinary)
+			updated, _, err := updatePlist(original, label, destination, i.checkBinary)
 			if err != nil {
 				return fmt.Errorf("refusing to replace %s: %w", path, err)
 			}
@@ -151,8 +151,9 @@ func (i *installer) run(source, binDir string) (result error) {
 			if err != nil {
 				return err
 			}
-			// Never activate an unloaded job, or a Disabled definition.
-			a.loaded = loaded && !disabled
+			// Disabled is only a plist default; launchctl can override it.
+			// Preserve those overrides and refresh exactly the loaded jobs.
+			a.loaded = loaded
 			agents = append(agents, a)
 		}
 	}
@@ -261,8 +262,8 @@ func (i *installer) loaded(a *agent) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	// launchctl reports an absent service as ESRCH (3) or bootstrap's
-	// BOOTSTRAP_UNKNOWN_SERVICE (113). Other failures are not absence.
+	// launchctl reports an absent service as ESRCH (3) or "Could not find
+	// specified service" (113). Other failures are not absence.
 	var exit interface{ ExitCode() int }
 	if errors.As(err, &exit) && (exit.ExitCode() == 113 || exit.ExitCode() == 3) {
 		return false, nil

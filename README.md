@@ -113,7 +113,8 @@ On macOS, installation also refreshes existing `dev.getyip.hub` and
 `dev.getyip.runner` XML plists in your `~/Library/LaunchAgents`. Their roles,
 arguments, data/state paths, environment, and log settings are preserved;
 only their executable paths change. Previously loaded services are stopped
-and restarted. Unloaded or disabled definitions stay inactive. Replacements
+and restarted. Unloaded services stay inactive, and launchctl's persisted
+enable/disable overrides are unchanged. Replacements
 are staged before stopping services, and a failed upgrade restores the old
 files and services when possible, reporting any recovery failure. Log in to
 the Mac's GUI session before upgrading an existing LaunchAgent.

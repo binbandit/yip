@@ -309,16 +309,38 @@ func TestUnsafeInputsFailBeforeServiceChanges(t *testing.T) {
 	}
 }
 
-func TestDisabledPlistStaysUnloaded(t *testing.T) {
-	f := newFixture(t)
-	path, data := f.service(t, "runner", false)
-	data = bytes.Replace(data, []byte("<key>RunAtLoad</key>"), []byte("<key>Disabled</key><true/><key>RunAtLoad</key>"), 1)
-	writeFixture(t, path, data, 0o640)
-	if err := f.i.run(f.source, ""); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.loaded) != 0 {
-		t.Fatalf("disabled service started: %q", f.commands)
+func TestLiveLoadedStateOverridesDisabledPlistDefault(t *testing.T) {
+	for _, loaded := range []bool{false, true} {
+		t.Run(fmt.Sprintf("loaded=%t", loaded), func(t *testing.T) {
+			f := newFixture(t)
+			path, data := f.service(t, "runner", loaded)
+			data = bytes.Replace(data, []byte("<key>RunAtLoad</key>"), []byte("<key>Disabled</key><true/><key>RunAtLoad</key>"), 1)
+			writeFixture(t, path, data, 0o640)
+			binDir := filepath.Join(f.i.home, "new bin")
+			if err := f.i.run(f.source, binDir); err != nil {
+				t.Fatal(err)
+			}
+			target := f.i.domain() + "/dev.getyip.runner"
+			want := [][]string{{"print", f.i.domain()}, {"print", target}}
+			if loaded {
+				want = append(want, []string{"bootout", target}, []string{"bootstrap", f.i.domain(), path}, []string{"kickstart", target})
+			}
+			if !reflect.DeepEqual(f.commands, want) || f.loaded[target] != loaded {
+				t.Fatalf("commands %q, loaded %v; want %q, loaded %v", f.commands, f.loaded, want, loaded)
+			}
+			updated, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, err := parsePlist(updated)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dict := &root.Nodes[0]
+			if dict.get("Disabled").XMLName.Local != "true" || dict.get("ProgramArguments").Nodes[0].Text != filepath.Join(binDir, "yip") {
+				t.Fatalf("updated definition lost its default or new executable: %s", updated)
+			}
+		})
 	}
 }
 
