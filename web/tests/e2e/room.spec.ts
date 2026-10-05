@@ -153,12 +153,20 @@ test.describe('composer', () => {
 
   test('the mention button starts a mention where the cursor is', async ({ app: page }) => {
     await openRoom(page, 'Security');
+    await page.clock.install();
     const box = composer(page);
     await box.fill('hello');
     await page.getByRole('button', { name: 'Mention someone' }).click();
     await expect(box).toHaveValue('hello @');
     await expect(box).toBeFocused();
-    await expect(page.getByRole('listbox', { name: 'People you can mention' })).toBeVisible();
+    // The click first blurs the input, then returns focus. Its earlier delayed
+    // dismissal must not close the newly opened suggestions.
+    await page.clock.runFor(200);
+    const list = page.getByRole('listbox', { name: 'People you can mention' });
+    await expect(list).toBeVisible();
+    await page.getByRole('button', { name: 'Mention someone' }).focus();
+    await page.clock.runFor(200);
+    await expect(list).toBeHidden();
   });
 
   test('a mentioned engineer replies and their name opens their profile', async ({ app: page }) => {

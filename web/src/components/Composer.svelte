@@ -45,6 +45,7 @@
   let note = $state('');
   let composing = false;
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  let mentionBlurTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ---- steering scope ----
   const scopeJobId = $derived(app.steer[rkey] ?? null);
@@ -164,6 +165,7 @@
     return () => {
       window.removeEventListener('pagehide', flushDraft);
       window.removeEventListener('yip:before-workspace-switch', flushDraft);
+      cancelMentionBlur();
       flushDraft();
     };
   });
@@ -189,6 +191,18 @@
     const q = findMentionQuery(body, textarea.selectionStart ?? body.length);
     if (q?.query !== query?.query || q?.start !== query?.start) activeIndex = 0;
     query = q;
+  }
+
+  function cancelMentionBlur() {
+    if (mentionBlurTimer) clearTimeout(mentionBlurTimer);
+    mentionBlurTimer = null;
+  }
+  function onMentionBlur() {
+    cancelMentionBlur();
+    mentionBlurTimer = setTimeout(() => {
+      mentionBlurTimer = null;
+      query = null;
+    }, 150);
   }
 
   // Naming a room project in the text adds it as a chip (spec §7: "Atlas
@@ -459,7 +473,8 @@
         onkeyup={(e) => (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') && updateQuery()}
         oncompositionstart={() => (composing = true)}
         oncompositionend={() => (composing = false)}
-        onblur={() => setTimeout(() => (query = null), 150)}
+        onfocus={cancelMentionBlur}
+        onblur={onMentionBlur}
       ></textarea>
     </div>
 
