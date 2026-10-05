@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +12,32 @@ import (
 	"github.com/binbandit/yip/internal/store"
 	"github.com/binbandit/yip/protocol"
 )
+
+// Message events retain their original content and revision, but reactions
+// have no revision and must reflect current counts and the receiving viewer.
+// Project the complete list so replay cannot resurrect a removed reaction.
+func messageEventForViewer(ctx context.Context, q store.Q, event protocol.Event, viewerID string) (protocol.Event, error) {
+	if event.Type != "message.created" && event.Type != "message.updated" {
+		return event, nil
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return event, err
+	}
+	var id string
+	if err := json.Unmarshal(payload["id"], &id); err != nil {
+		return event, err
+	}
+	reactions, err := store.MessageReactions(ctx, q, id, viewerID)
+	if err != nil {
+		return event, err
+	}
+	if payload["reactions"], err = json.Marshal(reactions); err != nil {
+		return event, err
+	}
+	event.Payload, err = json.Marshal(payload)
+	return event, err
+}
 
 // events streams committed events after the client's cursor (Last-Event-ID),
 // filtered to what the user may see, plus transient streaming updates. If the
@@ -94,7 +121,11 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 				if !visible(e.Visibility) {
 					continue
 				}
-				if !write(e.Sequence, e.Type, e.Event) {
+				event, err := messageEventForViewer(ctx, q, e.Event, user.ID)
+				if err != nil {
+					return
+				}
+				if !write(e.Sequence, e.Type, event) {
 					return
 				}
 			}

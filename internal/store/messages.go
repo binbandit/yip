@@ -12,6 +12,8 @@ import (
 const messageCols = `id, org_id, room_id, COALESCE(thread_id, ''), seq, author_kind, author_id, body, kind, refs, project_ids,
 	COALESCE(reply_to_id, ''), COALESCE(run_id, ''), COALESCE(job_id, ''), COALESCE(client_key, ''), revision, edited_at, deleted_at, created_at`
 
+const reactionSummaryCols = `emoji, COUNT(*), SUM(CASE WHEN actor_kind = 'user' AND actor_id = ? THEN 1 ELSE 0 END)`
+
 func scanMessage(s scanner) (protocol.Message, error) {
 	var m protocol.Message
 	var refs, projects, created string
@@ -78,6 +80,18 @@ func AppendMessageRefs(ctx context.Context, q Q, id string, refs ...protocol.Ref
 
 func GetMessage(ctx context.Context, q Q, id string) (protocol.Message, error) {
 	return getFilled(ctx, q, scanMessage, fillMessage, `SELECT `+messageCols+` FROM messages WHERE id = ?`, id)
+}
+
+// MessageReactions returns a complete current snapshot for one viewer.
+func MessageReactions(ctx context.Context, q Q, messageID, viewerID string) ([]protocol.ReactionSummary, error) {
+	return list(ctx, q, func(s scanner) (protocol.ReactionSummary, error) {
+		var r protocol.ReactionSummary
+		var mine int
+		err := s.Scan(&r.Emoji, &r.Count, &mine)
+		r.Mine = mine > 0
+		return r, err
+	}, `SELECT `+reactionSummaryCols+` FROM reactions WHERE message_id = ?
+		GROUP BY emoji ORDER BY MIN(created_at)`, viewerID, messageID)
 }
 
 // GetMessageByClientKey finds an earlier send with the same idempotency key.
@@ -174,7 +188,7 @@ func fillMessages(ctx context.Context, q Q, msgs []protocol.Message, viewerID st
 		r.Mine = mine > 0
 		idx[mid].Reactions = append(idx[mid].Reactions, r)
 		return nil
-	}, `SELECT message_id, emoji, COUNT(*), SUM(CASE WHEN actor_kind = 'user' AND actor_id = ? THEN 1 ELSE 0 END)
+	}, `SELECT message_id, `+reactionSummaryCols+`
 		FROM reactions WHERE message_id IN `+in+` GROUP BY message_id, emoji ORDER BY MIN(created_at)`, append([]any{viewerID}, idArgs...)...)
 	if err != nil {
 		return err
