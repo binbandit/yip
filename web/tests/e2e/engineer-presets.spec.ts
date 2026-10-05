@@ -20,7 +20,7 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     await page.keyboard.press('Enter');
     const options = page.getByRole('listbox').getByRole('option');
     await expect(options).toHaveText(['Generalist', 'Frontend', 'Backend', 'Platform', 'QA', 'Security', 'Reviewer', 'Custom']);
-    await testInfo.attach('preset-dropdown', { body: await page.screenshot(), contentType: 'image/png' });
+    await testInfo.attach('preset-dropdown', { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
     await page.keyboard.press('End');
     await page.keyboard.press('ArrowUp');
     await page.keyboard.press('Enter');
@@ -50,7 +50,7 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     await expect(dialog.getByLabel('Handle', { exact: true })).toHaveValue('ellis-team');
     await expect(provider).toHaveText(providerBefore!);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await testInfo.attach('customized-engineer', { body: await page.screenshot(), contentType: 'image/png' });
+    await testInfo.attach('customized-engineer', { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
 
     await dialog.getByRole('button', { name: 'Create engineer' }).click();
     await expect(page.getByRole('heading', { name: 'Ellis', level: 1 })).toBeVisible();
