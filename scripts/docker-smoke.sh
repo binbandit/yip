@@ -24,5 +24,5 @@ curl --fail --silent --max-time 3 http://127.0.0.1:7420/v1/setup | grep -q '"nee
 just docker exec -T hub yip version
 # Exercise literal arguments through just, Compose and the container process.
 literal='two words; $(exit 9)'
-actual=$(just --quiet docker exec -T hub printf '%s' "$literal")
+actual=$(just docker exec -T hub printf '%s' "$literal")
 [ "$actual" = "$literal" ] || { echo 'Docker arguments changed in transit' >&2; exit 1; }
