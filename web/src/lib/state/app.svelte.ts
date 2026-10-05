@@ -310,8 +310,11 @@ class AppState {
 
   /** Active attempts, for "working" indicators; run.* events keep them current. */
   async loadRuns(): Promise<void> {
+    const data = this.data;
+    const requestedAt = data.lastSeq;
     try {
-      mergeRuns(this.data, await api.runs());
+      const runs = await api.runs();
+      if (this.data === data) mergeRuns(data, runs, requestedAt);
     } catch {
       /* indicators fill in from events */
     }
