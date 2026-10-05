@@ -277,17 +277,13 @@ func (h *Hub) React(ctx context.Context, userID, messageID string, req protocol.
 		if msg, err = store.GetMessage(ctx, t.tx, messageID); err != nil {
 			return err
 		}
-		return t.emit(ev{Type: "message.updated", Actor: userActor(userID), Room: m.RoomID, Payload: msg})
-	})
-	if err == nil {
-		// Reactions are per-viewer; recompute "mine" for the caller.
-		msgs, _ := store.ListThread(ctx, h.st.R(), msg.ID, userID)
-		for _, m := range msgs {
-			if m.ID == msg.ID {
-				msg = m
-			}
+		if err := t.emit(ev{Type: "message.updated", Actor: userActor(userID), Room: m.RoomID, Payload: msg}); err != nil {
+			return err
 		}
-	}
+		// Personalize only the response; retained events stay viewer-neutral.
+		msg.Reactions, err = store.MessageReactions(ctx, t.tx, msg.ID, userID)
+		return err
+	})
 	return msg, err
 }
 
@@ -309,7 +305,11 @@ func (h *Hub) EditMessage(ctx context.Context, userID, messageID, body string) (
 		if msg, err = store.GetMessage(ctx, t.tx, messageID); err != nil {
 			return err
 		}
-		return t.emit(ev{Type: "message.updated", Actor: userActor(userID), Room: m.RoomID, Payload: msg})
+		if err := t.emit(ev{Type: "message.updated", Actor: userActor(userID), Room: m.RoomID, Payload: msg}); err != nil {
+			return err
+		}
+		msg.Reactions, err = store.MessageReactions(ctx, t.tx, msg.ID, userID)
+		return err
 	})
 	return msg, err
 }
