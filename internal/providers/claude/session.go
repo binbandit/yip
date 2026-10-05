@@ -116,7 +116,7 @@ func (a *Adapter) Start(ctx context.Context, spec providers.StartSpec) (provider
 	cmd.Stderr = stderrBuf
 
 	billing := a.probeBilling()
-	if hasAPIKey(env) {
+	if hasAPIKey(env) || hasGatewayBearer(env) {
 		billing = protocol.BillingAPI
 	}
 	s := &session{
