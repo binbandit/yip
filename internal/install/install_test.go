@@ -418,9 +418,11 @@ func TestUnloadedPersistentlyDisabledServiceStaysUnloaded(t *testing.T) {
 }
 
 func TestDisabledOutputParsingFailsClosed(t *testing.T) {
-	got, err := parseDisabled([]byte("disabled services = {\n\t\"dev.getyip.runner\" => false\n\t\"another.job\" => true\n}\n"))
-	if err != nil || !reflect.DeepEqual(got, map[string]bool{"dev.getyip.runner": false, "another.job": true}) {
-		t.Fatalf("overrides=%v, error=%v", got, err)
+	for _, states := range [][2]string{{"false", "true"}, {"enabled", "disabled"}} {
+		got, err := parseDisabled([]byte(fmt.Sprintf("disabled services = {\n\t\"dev.getyip.runner\" => %s\n\t\"another.job\" => %s\n}\n", states[0], states[1])))
+		if err != nil || !reflect.DeepEqual(got, map[string]bool{"dev.getyip.runner": false, "another.job": true}) {
+			t.Fatalf("overrides=%v, error=%v", got, err)
+		}
 	}
 	if got, err := parseDisabled([]byte("disabled services = {\n}\n")); err != nil || len(got) != 0 {
 		t.Fatalf("empty overrides=%v, error=%v", got, err)
@@ -438,6 +440,41 @@ func TestDisabledOutputParsingFailsClosed(t *testing.T) {
 				t.Fatalf("changed services before parsing activation state: %q", f.commands)
 			}
 		}
+	}
+}
+
+func TestModernActivationOverridesDuringUpgrade(t *testing.T) {
+	for _, state := range []string{"enabled", "disabled"} {
+		t.Run(state, func(t *testing.T) {
+			f := newFixture(t)
+			path, before := f.service(t, "runner", true)
+			before = bytes.Replace(before, []byte("<key>RunAtLoad</key>"), []byte("<key>Disabled</key><true/><key>RunAtLoad</key>"), 1)
+			writeFixture(t, path, before, 0o640)
+			f.overrides["dev.getyip.runner"] = state == "disabled"
+			f.i.disabled = func(domain string) (map[string]bool, error) {
+				f.commands = append(f.commands, []string{"print-disabled", domain})
+				return parseDisabled([]byte(fmt.Sprintf("disabled services = {\n\t\"other.job\" => disabled\n\t\"dev.getyip.runner\" => %s\n}\n", state)))
+			}
+			err := f.i.run(f.source, "")
+			target := f.i.domain() + "/dev.getyip.runner"
+			want := [][]string{{"print", f.i.domain()}, {"print", target}, {"print-disabled", f.i.domain()}}
+			if state == "disabled" {
+				if err == nil || !strings.Contains(err.Error(), "loaded but disabled") {
+					t.Fatalf("expected preflight refusal, got %v", err)
+				}
+				requireFile(t, path, before)
+				requireFile(t, f.old, []byte("yip-old"))
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				want = append(want, []string{"bootout", target}, []string{"bootstrap", f.i.domain(), path}, []string{"kickstart", target})
+				requireFile(t, f.old, []byte("yip-new"))
+			}
+			if !reflect.DeepEqual(f.commands, want) || !f.loaded[target] {
+				t.Fatalf("commands=%q, loaded=%v; want %q and loaded", f.commands, f.loaded, want)
+			}
+		})
 	}
 }
 

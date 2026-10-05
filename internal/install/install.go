@@ -73,7 +73,8 @@ func launchctlOutput(args ...string) ([]byte, error) {
 	return output, nil
 }
 
-var disabledEntry = regexp.MustCompile(`^"([^"\\]+)"\s*=>\s*(true|false)$`)
+// Older macOS versions use booleans; newer ones spell out enabled/disabled.
+var disabledEntry = regexp.MustCompile(`^"([^"\\]+)"\s*=>\s*(true|false|enabled|disabled)$`)
 
 func disabledServices(domain string) (map[string]bool, error) {
 	output, err := launchctlOutput("print-disabled", domain)
@@ -100,7 +101,7 @@ func parseDisabled(output []byte) (map[string]bool, error) {
 		if _, exists := result[entry[1]]; exists {
 			return nil, errors.New("duplicate launchctl disabled-service entry")
 		}
-		result[entry[1]] = entry[2] == "true"
+		result[entry[1]] = entry[2] == "true" || entry[2] == "disabled"
 	}
 	return result, nil
 }
