@@ -215,6 +215,13 @@ func hasAPIKey(env []string) bool {
 	return ok && v != ""
 }
 
+func hasGatewayBearer(env []string) bool {
+	v, ok := envLookup(env, "ANTHROPIC_AUTH_TOKEN")
+	return ok && v != ""
+}
+
+const gatewayBearerDetail = "Gateway bearer credential is configured; API billing permission is required. Reachability and pricing are unverified."
+
 func (a *Adapter) resolveExecutable(override string) (string, error) {
 	if override == "" {
 		override = a.opts.Executable
@@ -332,28 +339,35 @@ func (a *Adapter) Probe(ctx context.Context) protocol.ProviderInstallation {
 	}
 
 	apiKey := hasAPIKey(env)
-	if apiKey {
+	gatewayBearer := hasGatewayBearer(env)
+	if apiKey || gatewayBearer {
 		inst.Billing = protocol.BillingAPI
 	}
 	if a.opts.SkipAuthStatus {
 		if apiKey {
 			inst.AuthDetail = "ANTHROPIC_API_KEY is configured; Claude Code uses it in print mode (API billed)."
 		}
+		if gatewayBearer {
+			inst.AuthDetail = gatewayBearerDetail
+		}
 		return inst
 	}
 	raw, _ := runCommand(ctx, exe, env, "auth", "status", "--json")
-	applyAuthStatus(&inst, raw, apiKey)
+	applyAuthStatus(&inst, raw, apiKey, gatewayBearer)
 	return inst
 }
 
 // applyAuthStatus maps `claude auth status --json` output onto inst.
-func applyAuthStatus(inst *protocol.ProviderInstallation, raw string, apiKey bool) {
+func applyAuthStatus(inst *protocol.ProviderInstallation, raw string, apiKey, gatewayBearer bool) {
 	var st authStatus
 	if raw == "" || json.Unmarshal([]byte(raw), &st) != nil {
 		inst.AuthState = protocol.AuthUnknown
 		inst.AuthDetail = "Could not read `claude auth status --json` output."
-		if apiKey {
+		if apiKey || gatewayBearer {
 			inst.Billing = protocol.BillingAPI
+		}
+		if gatewayBearer {
+			inst.AuthDetail += " " + gatewayBearerDetail
 		}
 		return
 	}
@@ -391,6 +405,11 @@ func applyAuthStatus(inst *protocol.ProviderInstallation, raw string, apiKey boo
 	if apiKey {
 		inst.Billing = protocol.BillingAPI
 		inst.AuthDetail = "ANTHROPIC_API_KEY is configured; Claude Code uses it in print mode (API billed)."
+	}
+	if gatewayBearer {
+		inst.Billing = protocol.BillingAPI
+		inst.AuthDetail = gatewayBearerDetail
+		inst.Account = ""
 	}
 }
 
