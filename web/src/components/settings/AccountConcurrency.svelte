@@ -8,9 +8,10 @@
   import { billingLabel } from '../../lib/util/labels';
   import Notice from '../Notice.svelte';
 
-  let { profile, canEdit, onstate }: {
+  let { profile, canEdit, onstate, onsaved }: {
     profile: ProviderProfile;
     canEdit: boolean;
+    onsaved: (profile: ProviderProfile) => void;
     onstate: (dirty: boolean, busy: boolean) => void;
   } = $props();
   let saved = $state(untrack(() => profile));
@@ -20,6 +21,13 @@
   let complete = $state(false);
   const dirty = $derived(Number(limit) !== saved.maxConcurrency);
   $effect(() => onstate(dirty, busy));
+  $effect(() => {
+    if (!busy && !dirty && profile.maxConcurrency !== saved.maxConcurrency) {
+      saved = profile;
+      limit = String(profile.maxConcurrency);
+      complete = false;
+    }
+  });
 
   async function save(event: SubmitEvent) {
     event.preventDefault();
@@ -30,6 +38,7 @@
     try {
       saved = await api.setProviderConcurrency(saved.id, Number(limit));
       providerProfiles.replace(saved);
+      onsaved(saved);
       limit = String(saved.maxConcurrency);
       complete = true;
     } catch (err) {
@@ -42,7 +51,7 @@
 
 <form class="setting" aria-label="Concurrency for {saved.label}" aria-busy={busy} onsubmit={save}>
   <h3>{saved.label}</h3>
-  <Text as="p" type="supporting">{saved.provider} · {billingLabel(saved.billing)} · Saved limit: {saved.maxConcurrency}</Text>
+  <Text as="p" type="supporting">{saved.provider} · {billingLabel(saved.billing)} · Saved limit: {profile.maxConcurrency}</Text>
   <Selector label="Runs at once for {saved.label}" value={limit} options={Array.from({ length: 16 }, (_, i) => String(i + 1))}
     isDisabled={!canEdit || busy} width="100%" onChange={(value: string) => { limit = value; complete = false; }} />
   {#if error}<Notice tone="danger" role="alert">{error}</Notice>{/if}

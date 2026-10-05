@@ -190,8 +190,11 @@ func (h *Hub) SetProviderConcurrency(ctx context.Context, userID, profileID stri
 			return err
 		}
 		t.kickAfter()
-		return t.tx.QueryRowContext(ctx, `SELECT id, provider, label, billing, max_concurrency FROM provider_profiles WHERE id = ?`, profileID).
-			Scan(&out.ID, &out.Provider, &out.Label, &out.Billing, &out.MaxConcurrency)
+		if err := t.tx.QueryRowContext(ctx, `SELECT id, provider, label, billing, max_concurrency FROM provider_profiles WHERE id = ?`, profileID).
+			Scan(&out.ID, &out.Provider, &out.Label, &out.Billing, &out.MaxConcurrency); err != nil {
+			return err
+		}
+		return t.emit(ev{Type: "provider_profile.updated", Actor: userActor(userID), Payload: out})
 	})
 	return out, err
 }

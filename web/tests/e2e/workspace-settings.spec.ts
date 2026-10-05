@@ -156,3 +156,32 @@ test('workspace settings stay scoped to a child workspace and support empty stat
   await page.getByRole('button', { name: 'Workspace: Separate settings', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Workspace settings', exact: true })).toBeVisible();
 });
+
+test('another tab updates clean saved settings while dirty billing edits retain their version', async ({ app: page, context, api }) => {
+  await settingsLink(page).click();
+  const other = await context.newPage();
+  await other.goto('/settings/workspace');
+  const first = billingForm(page);
+  const second = billingForm(other);
+  await second.getByRole('switch').click();
+  await second.getByRole('button', { name: 'Save permission', exact: true }).click();
+  await expect(second.getByText('Permission saved.', { exact: true })).toBeVisible();
+  await expect(first.getByRole('switch')).toBeChecked();
+  await expect(first.getByText('Saved permission: API billing allowed.')).toBeVisible();
+  await first.getByRole('switch').click();
+  const current = (await api.req('GET', `/v1/engineers/${api.engineer('Mira').id}`)).engineer;
+  await api.req('PATCH', `/v1/engineers/${current.id}`, { version: current.version, provider: { ...current.provider, model: 'changed-in-another-tab' } });
+  await expect(first.getByRole('switch')).not.toBeChecked();
+  await first.getByRole('button', { name: 'Save permission', exact: true }).click();
+  await expect(first.getByRole('alert')).toContainText('changed since you opened it');
+  await first.getByRole('button', { name: 'Reload saved permission', exact: true }).click();
+  await expect(first.getByRole('switch')).toBeChecked();
+  const accounts = await api.req('GET', '/v1/provider-profiles');
+  const firstAccount = page.getByRole('form', { name: `Concurrency for ${accounts[0].label}`, exact: true });
+  const secondAccount = other.getByRole('form', { name: `Concurrency for ${accounts[0].label}`, exact: true });
+  await secondAccount.getByRole('combobox').click();
+  await other.getByRole('option', { name: '4', exact: true }).click();
+  await secondAccount.getByRole('button', { name: 'Save limit', exact: true }).click();
+  await expect(firstAccount.getByText(/Saved limit: 4/)).toBeVisible();
+  await other.close();
+});

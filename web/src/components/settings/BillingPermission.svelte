@@ -4,6 +4,7 @@
   import { api } from '../../lib/api/endpoints';
   import { ApiError, errorMessage } from '../../lib/api/client';
   import type { Engineer } from '../../lib/api/types.gen';
+  import { newer } from '../../lib/state/data';
   import { app } from '../../lib/state/app.svelte';
   import { workspaceUrl } from '../../lib/workspace';
   import Notice from '../Notice.svelte';
@@ -21,6 +22,13 @@
   let complete = $state(false);
   const dirty = $derived(allowed !== !!saved.provider.allowApiBilling);
   $effect(() => onstate(dirty, busy));
+  $effect(() => {
+    if (!busy && !dirty && engineer.version > saved.version) {
+      saved = engineer;
+      allowed = !!engineer.provider.allowApiBilling;
+      complete = false;
+    }
+  });
 
   function cancel() {
     allowed = !!saved.provider.allowApiBilling;
@@ -34,6 +42,7 @@
     error = '';
     try {
       saved = (await api.engineer(saved.id)).engineer;
+      if (newer(app.data.engineers[saved.id], saved)) app.data.engineers[saved.id] = saved;
       cancel();
     } catch (err) {
       error = errorMessage(err);
@@ -53,7 +62,7 @@
         version: saved.version,
         provider: { ...saved.provider, allowApiBilling: allowed },
       });
-      app.data.engineers[saved.id] = saved;
+      if (newer(app.data.engineers[saved.id], saved)) app.data.engineers[saved.id] = saved;
       allowed = !!saved.provider.allowApiBilling;
       complete = true;
     } catch (err) {
@@ -72,7 +81,7 @@
   </div>
   <Switch label="Allow API-billed runs for {saved.name}" value={allowed} isDisabled={!canEdit || busy} onChange={(value) => { allowed = value; complete = false; }}
     description="Permits this engineer to use API-billed accounts for their chosen provider and configured alternatives." />
-  <Text as="p" type="supporting">Saved permission: {saved.provider.allowApiBilling ? 'API billing allowed' : 'API billing blocked'}.</Text>
+  <Text as="p" type="supporting">Saved permission: {engineer.provider.allowApiBilling ? 'API billing allowed' : 'API billing blocked'}.</Text>
   {#if dirty && allowed}<Notice>Saving may let queued work start using paid API accounts. Usage is charged by the provider separately from a subscription. This is not a spending limit.</Notice>{/if}
   {#if dirty && !allowed}<Notice>Future runs will avoid accounts known to use API billing. Runs already in progress keep the permission they started with.</Notice>{/if}
   {#if error}<Notice tone="danger" role="alert">{error}</Notice>{/if}

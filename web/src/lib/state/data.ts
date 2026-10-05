@@ -106,7 +106,7 @@ export interface DataState {
   pending: Record<string, PendingMessage>;
   streams: Record<string, StreamPreview>;
   /** Monotonic counters views watch to refetch detail they hold locally. */
-  touched: { jobs: Record<string, number>; rooms: Record<string, number>; reviews: Record<string, number> };
+  touched: { profiles: number; jobs: Record<string, number>; rooms: Record<string, number>; reviews: Record<string, number> };
 }
 
 export const defaultPreferences: Preferences = {
@@ -148,7 +148,7 @@ export function emptyState(): DataState {
     threads: {},
     pending: {},
     streams: {},
-    touched: { jobs: {}, rooms: {}, reviews: {} },
+    touched: { profiles: 0, jobs: {}, rooms: {}, reviews: {} },
   };
 }
 
@@ -379,6 +379,9 @@ export function applyEvent(s: DataState, ev: Event, ctx: ApplyContext = {}): App
       if (s.user?.id === u.id) s.user = u;
       break;
     }
+    case 'provider_profile.updated':
+      s.touched.profiles++;
+      break;
     case 'engineer.created':
     case 'engineer.updated': {
       const e = asPayload<Engineer>(ev);

@@ -36,6 +36,7 @@ export const COMMITTED_TYPES = [
   'decision.created',
   'decision.updated',
   'node.updated',
+  'provider_profile.updated',
   'pr.updated',
   'run.stale_report',
   'org.created',

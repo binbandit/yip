@@ -168,6 +168,7 @@ Committed event types and their `payload`:
 | `permission.auto` | `{action, decision, reason}` (policy applied an existing grant) |
 | `decision.created`, `decision.updated` | `Decision` |
 | `node.updated` | `Node` |
+| `provider_profile.updated` | `ProviderProfile` (account concurrency changed; refresh the account list) |
 | `pr.updated` | `PullRequest` |
 | `run.stale_report` | diagnostic only |
 

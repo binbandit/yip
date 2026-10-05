@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { Button, Link, MetadataList, MetadataListItem, Text } from '@astryx-svelte/core';
   import { app } from '../lib/state/app.svelte';
   import { api } from '../lib/api/endpoints';
+  import { newer } from '../lib/state/data';
   import { errorMessage } from '../lib/api/client';
   import type { Bootstrap, ProviderProfile } from '../lib/api/types.gen';
   import { workspaceUrl } from '../lib/workspace';
@@ -14,12 +15,14 @@
 
   let saved = $state<Bootstrap | null>(null);
   let profiles = $state<ProviderProfile[]>([]);
+  let accountsError = $state('');
+  let accountRequest = 0;
   let loading = $state(true);
   let error = $state('');
   let edits = $state<Record<string, { dirty: boolean; busy: boolean }>>({});
   const dirty = $derived(Object.values(edits).some((edit) => edit.dirty));
   const busy = $derived(Object.values(edits).some((edit) => edit.busy));
-  const engineers = $derived([...(saved?.engineers ?? [])].sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name)));
+  const engineers = $derived(Object.values(app.data.engineers).sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name)));
 
   async function load() {
     loading = true;
@@ -27,6 +30,9 @@
     try {
       const [bootstrap, accounts] = await Promise.all([api.bootstrap(), api.providerProfiles()]);
       saved = bootstrap;
+      for (const engineer of bootstrap.engineers) {
+        if (newer(app.data.engineers[engineer.id], engineer)) app.data.engineers[engineer.id] = engineer;
+      }
       profiles = accounts;
       edits = {};
     } catch (err) {
@@ -37,6 +43,24 @@
     await tick();
     document.getElementById(window.location.hash.slice(1))?.scrollIntoView();
   }
+
+  async function refreshAccounts() {
+    const request = ++accountRequest;
+    try {
+      const accounts = await api.providerProfiles();
+      if (request !== accountRequest) return;
+      profiles = accounts;
+      accountsError = '';
+    } catch (err) {
+      if (request === accountRequest) accountsError = errorMessage(err);
+    }
+  }
+
+  $effect(() => {
+    void app.data.touched.profiles;
+    void app.resetEpoch;
+    if (!loading && saved) untrack(() => void refreshAccounts());
+  });
 
   onMount(() => {
     void load();
@@ -56,6 +80,7 @@
     };
     window.addEventListener('beforeunload', beforeUnload);
     return () => {
+      accountRequest++;
       if (app.beforeNavigate === guard) app.beforeNavigate = null;
       window.removeEventListener('beforeunload', beforeUnload);
     };
@@ -96,8 +121,12 @@
           <p>The number of runs each account can carry at once across this workspace’s machines. Runs share that account’s allowance; higher limits may consume it faster.</p>
           <Text as="p" type="supporting">This is a concurrency limit, not a spending cap or permission to use API billing. Machine slots and provider availability can reduce the number of active runs.</Text>
         </div>
+        {#if accountsError}
+          <Notice tone="danger" role="alert">Could not refresh account limits: {accountsError}</Notice>
+          <Button label="Retry account refresh" size="sm" onclick={refreshAccounts} />
+        {/if}
         {#each profiles as profile (profile.id)}
-          <AccountConcurrency {profile} canEdit={saved.canManageWorkspace} onstate={(dirty, busy) => { edits[`profile:${profile.id}`] = { dirty, busy }; }} />
+          <AccountConcurrency {profile} canEdit={saved.canManageWorkspace} onsaved={(value) => { profiles = profiles.map((item) => item.id === value.id ? value : item); void refreshAccounts(); }} onstate={(dirty, busy) => { edits[`profile:${profile.id}`] = { dirty, busy }; }} />
         {:else}
           <p class="empty">No accounts reported yet. <Link hasUnderline href={workspaceUrl('/connections')}>Connect a provider</Link> on a paired machine to see its account here.</p>
         {/each}
