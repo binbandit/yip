@@ -105,7 +105,9 @@ describe('app smoke (jsdom, recorded fixtures)', () => {
     // Revision stats come from JobDetail.revisions, not a diff download.
     expect(byText('.result', '3 files')).toBeTruthy();
     expect(byText('.result .add', '+28')).toBeTruthy();
-    expect(text()).toContain('Mira is working');
+    // A background attempt is not a conversational reply, and this stream
+    // has not reported ready; neither is evidence of someone composing.
+    expect(document.querySelector('[aria-label="Engineer activity"]')).toBeNull();
     expect(byText('.result', /Oren\s+approved/)).toBeTruthy();
     expect(byText('.result', 'requested changes on')).toBeTruthy();
     // Finished work is announced by its result card, not kept in the strip.

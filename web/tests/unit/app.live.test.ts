@@ -161,4 +161,33 @@ describe('live updates from a recorded stream', () => {
       app.data.preferences = { ...app.data.preferences, mutedRoomIds: [] };
     }
   });
+
+  it('discards provisional reply evidence across disconnect, offline, and reset', async () => {
+    const es = FakeEventSource.latest();
+    const chunk = { type: 'run.stream', roomId: sec, runId: 'live-reply', engineerId: boot.engineers[0].id, payload: { kind: 'message_delta', text: 'unfinished', at: new Date().toISOString() } };
+    es.emit('transient', chunk);
+    expect(app.data.streams['live-reply']).toBeDefined();
+    es.readyState = FakeEventSource.CONNECTING;
+    es.onerror?.(new Event('error'));
+    expect(app.connection).toBe('reconnecting');
+    expect(app.data.streams).toEqual({});
+    es.emit('transient', chunk);
+    expect(app.data.streams).toEqual({});
+    es.readyState = FakeEventSource.OPEN;
+    es.emit('ready', {});
+    expect(app.connection).toBe('live');
+    expect(app.data.streams).toEqual({});
+    es.emit('transient', chunk);
+    expect(app.data.streams['live-reply']).toBeDefined();
+    window.dispatchEvent(new Event('offline'));
+    expect(app.data.streams).toEqual({});
+    window.dispatchEvent(new Event('online'));
+    const reconnected = FakeEventSource.latest();
+    reconnected.emit('ready', {});
+    reconnected.emit('transient', chunk);
+    expect(app.data.streams['live-reply']).toBeDefined();
+    reconnected.emit('reset', { cursor: app.data.lastSeq });
+    expect(app.data.streams).toEqual({});
+    await settle();
+  });
 });
