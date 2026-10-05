@@ -118,6 +118,8 @@ enable/disable overrides are unchanged. Replacements
 are staged before stopping services, and a failed upgrade restores the old
 files and services when possible, reporting any recovery failure. Log in to
 the Mac's GUI session before upgrading an existing LaunchAgent.
+If a loaded service is also disabled, installation refuses before stopping
+it; resolve that service's activation state and try again.
 
 A first install leaves the role up to you: run `yip hub`, or follow
 `yip runner pair --help`. For background operation, use

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
@@ -24,7 +25,7 @@ func Install(source, binDir string, out io.Writer) error {
 		return err
 	}
 	i := installer{home: home, uid: os.Getuid(), goos: runtime.GOOS, path: os.Getenv("PATH"), out: out,
-		verify: verifyBinary, launchctl: launchctl, rename: os.Rename}
+		verify: verifyBinary, launchctl: launchctl, disabled: disabledServices, rename: os.Rename}
 	return i.run(source, binDir)
 }
 
@@ -34,6 +35,7 @@ type installer struct {
 	out              io.Writer
 	verify           func(string) error
 	launchctl        func(...string) error
+	disabled         func(string) (map[string]bool, error)
 	rename           func(string, string) error
 }
 
@@ -57,13 +59,50 @@ func verifyBinary(path string) error {
 }
 
 func launchctl(args ...string) error {
+	_, err := launchctlOutput(args...)
+	return err
+}
+
+func launchctlOutput(args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	output, err := exec.CommandContext(ctx, "/bin/launchctl", args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("launchctl %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+		return nil, fmt.Errorf("launchctl %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
-	return nil
+	return output, nil
+}
+
+var disabledEntry = regexp.MustCompile(`^"([^"\\]+)"\s*=>\s*(true|false)$`)
+
+func disabledServices(domain string) (map[string]bool, error) {
+	output, err := launchctlOutput("print-disabled", domain)
+	if err != nil {
+		return nil, err
+	}
+	return parseDisabled(output)
+}
+
+// print-disabled is the separate query for persisted activation overrides.
+// Refuse unfamiliar output rather than assuming a loaded job can be reloaded.
+// Never parse the diagnostic output of launchctl print.
+func parseDisabled(output []byte) (map[string]bool, error) {
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) < 2 || strings.TrimSpace(lines[0]) != "disabled services = {" || strings.TrimSpace(lines[len(lines)-1]) != "}" {
+		return nil, errors.New("unrecognized launchctl print-disabled output; cannot safely restart services")
+	}
+	result := map[string]bool{}
+	for _, line := range lines[1 : len(lines)-1] {
+		entry := disabledEntry.FindStringSubmatch(strings.TrimSpace(line))
+		if entry == nil {
+			return nil, errors.New("unrecognized launchctl disabled-service entry; cannot safely restart services")
+		}
+		if _, exists := result[entry[1]]; exists {
+			return nil, errors.New("duplicate launchctl disabled-service entry")
+		}
+		result[entry[1]] = entry[2] == "true"
+	}
+	return result, nil
 }
 
 func (i *installer) run(source, binDir string) (result error) {
@@ -120,6 +159,7 @@ func (i *installer) run(source, binDir string) (result error) {
 	}
 	files = append(files, file)
 	if i.goos == "darwin" {
+		var overrides map[string]bool
 		for _, role := range []string{"hub", "runner"} {
 			label := "dev.getyip." + role
 			path := filepath.Join(i.home, "Library", "LaunchAgents", label+".plist")
@@ -134,7 +174,7 @@ func (i *installer) run(source, binDir string) (result error) {
 			if err != nil {
 				return err
 			}
-			updated, _, err := updatePlist(original, label, destination, i.checkBinary)
+			updated, disabled, err := updatePlist(original, label, destination, i.checkBinary)
 			if err != nil {
 				return fmt.Errorf("refusing to replace %s: %w", path, err)
 			}
@@ -150,6 +190,20 @@ func (i *installer) run(source, binDir string) (result error) {
 			loaded, err := i.loaded(a)
 			if err != nil {
 				return err
+			}
+			if loaded {
+				if overrides == nil {
+					overrides, err = i.disabled(i.domain())
+					if err != nil {
+						return fmt.Errorf("cannot determine service activation overrides: %w", err)
+					}
+				}
+				if override, exists := overrides[label]; exists {
+					disabled = override
+				}
+				if disabled {
+					return fmt.Errorf("%s is loaded but disabled; resolve its activation state before installing (no services were stopped)", label)
+				}
 			}
 			// Disabled is only a plist default; launchctl can override it.
 			// Preserve those overrides and refresh exactly the loaded jobs.

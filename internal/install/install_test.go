@@ -23,6 +23,7 @@ type fixture struct {
 	output     bytes.Buffer
 	commands   [][]string
 	loaded     map[string]bool
+	overrides  map[string]bool
 	fail       func([]string) error
 	beforeStop func()
 }
@@ -32,7 +33,7 @@ func newFixture(t *testing.T) *fixture {
 	if os.Getuid() == 0 {
 		t.Skip("installer requires a normal user")
 	}
-	f := &fixture{loaded: map[string]bool{}}
+	f := &fixture{loaded: map[string]bool{}, overrides: map[string]bool{}}
 	f.i = installer{home: t.TempDir(), uid: os.Getuid(), goos: "darwin", out: &f.output, rename: os.Rename}
 	f.i.verify = func(path string) error {
 		data, err := os.ReadFile(path)
@@ -48,6 +49,16 @@ func newFixture(t *testing.T) *fixture {
 	f.old = filepath.Join(f.i.home, "existing bin", "yip")
 	f.i.path = filepath.Dir(f.old)
 	writeFixture(t, f.source, []byte("yip-new"), 0o755)
+	f.i.disabled = func(domain string) (map[string]bool, error) {
+		args := []string{"print-disabled", domain}
+		f.commands = append(f.commands, args)
+		if f.fail != nil {
+			if err := f.fail(args); err != nil {
+				return nil, err
+			}
+		}
+		return f.overrides, nil
+	}
 	f.i.launchctl = func(args ...string) error {
 		f.commands = append(f.commands, append([]string(nil), args...))
 		if f.fail != nil {
@@ -74,6 +85,9 @@ func newFixture(t *testing.T) *fixture {
 				t.Fatalf("unsafe bootstrap: %q", args)
 			}
 			label := strings.TrimSuffix(filepath.Base(args[2]), ".plist")
+			if f.overrides[label] {
+				return errors.New("service is persistently disabled")
+			}
 			f.loaded[f.i.domain()+"/"+label] = true
 		case "kickstart":
 			if len(args) != 2 || !f.loaded[args[1]] {
@@ -180,6 +194,7 @@ func TestUpgradePreservesSettingsAndExactServiceTargets(t *testing.T) {
 	}
 	want := [][]string{
 		{"print", f.i.domain()}, {"print", f.i.domain() + "/dev.getyip.hub"},
+		{"print-disabled", f.i.domain()},
 		{"print", f.i.domain()}, {"print", f.i.domain() + "/dev.getyip.runner"},
 		{"bootout", f.i.domain() + "/dev.getyip.hub"},
 		{"bootstrap", f.i.domain(), hub}, {"kickstart", f.i.domain() + "/dev.getyip.hub"},
@@ -239,7 +254,7 @@ func TestFailureRestoresFilesAndPreviouslyLoadedServices(t *testing.T) {
 }
 
 func TestUnsafeInputsFailBeforeServiceChanges(t *testing.T) {
-	for _, bad := range []string{"binary", "binary-symlink", "plist-symlink", "plist-permissions", "wrong-owner", "label", "role", "program", "malformed", "duplicate-key", "no-gui", "status-error", "locked", "user-locked", "permissions"} {
+	for _, bad := range []string{"binary", "binary-symlink", "plist-symlink", "plist-permissions", "wrong-owner", "label", "role", "program", "malformed", "duplicate-key", "no-gui", "status-error", "disabled-query", "locked", "user-locked", "permissions"} {
 		t.Run(bad, func(t *testing.T) {
 			f := newFixture(t)
 			path, original := f.service(t, "runner", true)
@@ -274,8 +289,11 @@ func TestUnsafeInputsFailBeforeServiceChanges(t *testing.T) {
 				data = []byte("not a plist")
 			case "duplicate-key":
 				data = bytes.Replace(data, []byte("<key>RunAtLoad</key>"), []byte("<key>Label</key>"), 1)
-			case "no-gui", "status-error":
+			case "no-gui", "status-error", "disabled-query":
 				f.fail = func(args []string) error {
+					if bad == "disabled-query" && args[0] == "print-disabled" {
+						return exitCode(1)
+					}
 					if args[0] == "print" && ((bad == "no-gui" && args[1] == f.i.domain()) || (bad == "status-error" && args[1] != f.i.domain())) {
 						return exitCode(1)
 					}
@@ -298,7 +316,7 @@ func TestUnsafeInputsFailBeforeServiceChanges(t *testing.T) {
 				t.Fatal("expected refusal")
 			}
 			for _, cmd := range f.commands {
-				if cmd[0] != "print" {
+				if cmd[0] != "print" && cmd[0] != "print-disabled" {
 					t.Fatalf("service changed before preflight passed: %q", f.commands)
 				}
 			}
@@ -314,6 +332,8 @@ func TestLiveLoadedStateOverridesDisabledPlistDefault(t *testing.T) {
 		t.Run(fmt.Sprintf("loaded=%t", loaded), func(t *testing.T) {
 			f := newFixture(t)
 			path, data := f.service(t, "runner", loaded)
+			// An explicit enable overrides the plist's Disabled default.
+			f.overrides["dev.getyip.runner"] = false
 			data = bytes.Replace(data, []byte("<key>RunAtLoad</key>"), []byte("<key>Disabled</key><true/><key>RunAtLoad</key>"), 1)
 			writeFixture(t, path, data, 0o640)
 			binDir := filepath.Join(f.i.home, "new bin")
@@ -323,7 +343,7 @@ func TestLiveLoadedStateOverridesDisabledPlistDefault(t *testing.T) {
 			target := f.i.domain() + "/dev.getyip.runner"
 			want := [][]string{{"print", f.i.domain()}, {"print", target}}
 			if loaded {
-				want = append(want, []string{"bootout", target}, []string{"bootstrap", f.i.domain(), path}, []string{"kickstart", target})
+				want = append(want, []string{"print-disabled", f.i.domain()}, []string{"bootout", target}, []string{"bootstrap", f.i.domain(), path}, []string{"kickstart", target})
 			}
 			if !reflect.DeepEqual(f.commands, want) || f.loaded[target] != loaded {
 				t.Fatalf("commands %q, loaded %v; want %q, loaded %v", f.commands, f.loaded, want, loaded)
@@ -352,6 +372,72 @@ func TestLinuxCopiesBinaryWithoutLaunchctl(t *testing.T) {
 	}
 	if len(f.commands) != 0 || !strings.Contains(f.output.String(), "systemd") {
 		t.Fatalf("commands %q, output %q", f.commands, &f.output)
+	}
+}
+
+func TestLoadedDisabledServiceRefusedBeforeStoppingAnything(t *testing.T) {
+	for _, persisted := range []bool{false, true} {
+		t.Run(fmt.Sprintf("persisted=%t", persisted), func(t *testing.T) {
+			f := newFixture(t)
+			hub, beforeHub := f.service(t, "hub", true)
+			runner, beforeRunner := f.service(t, "runner", true)
+			if persisted {
+				f.overrides["dev.getyip.runner"] = true
+			} else {
+				beforeRunner = bytes.Replace(beforeRunner, []byte("<key>RunAtLoad</key>"), []byte("<key>Disabled</key><true/><key>RunAtLoad</key>"), 1)
+				writeFixture(t, runner, beforeRunner, 0o640)
+			}
+			if err := f.i.run(f.source, ""); err == nil || !strings.Contains(err.Error(), "loaded but disabled") {
+				t.Fatalf("expected refusal before bootout, got %v", err)
+			}
+			requireFile(t, f.old, []byte("yip-old"))
+			requireFile(t, hub, beforeHub)
+			requireFile(t, runner, beforeRunner)
+			if len(f.loaded) != 2 {
+				t.Fatalf("lost previously loaded services: %v", f.loaded)
+			}
+			for _, cmd := range f.commands {
+				if cmd[0] != "print" && cmd[0] != "print-disabled" {
+					t.Fatalf("mutated service activation: %q", f.commands)
+				}
+			}
+		})
+	}
+}
+
+func TestUnloadedPersistentlyDisabledServiceStaysUnloaded(t *testing.T) {
+	f := newFixture(t)
+	f.service(t, "runner", false)
+	f.overrides["dev.getyip.runner"] = true
+	if err := f.i.run(f.source, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.loaded) != 0 || !f.overrides["dev.getyip.runner"] {
+		t.Fatalf("activation state changed: loaded=%v, overrides=%v", f.loaded, f.overrides)
+	}
+}
+
+func TestDisabledOutputParsingFailsClosed(t *testing.T) {
+	got, err := parseDisabled([]byte("disabled services = {\n\t\"dev.getyip.runner\" => false\n\t\"another.job\" => true\n}\n"))
+	if err != nil || !reflect.DeepEqual(got, map[string]bool{"dev.getyip.runner": false, "another.job": true}) {
+		t.Fatalf("overrides=%v, error=%v", got, err)
+	}
+	if got, err := parseDisabled([]byte("disabled services = {\n}\n")); err != nil || len(got) != 0 {
+		t.Fatalf("empty overrides=%v, error=%v", got, err)
+	}
+	for _, input := range []string{"", "{}", "disabled services = {\n\"x\" => unknown\n}", "disabled services = {\n\"x\" => true\n\"x\" => false\n}", "disabled services = {\n}\nextra"} {
+		f := newFixture(t)
+		f.service(t, "runner", true)
+		f.i.disabled = func(string) (map[string]bool, error) { return parseDisabled([]byte(input)) }
+		if err := f.i.run(f.source, ""); err == nil {
+			t.Fatalf("accepted ambiguous activation output %q", input)
+		}
+		requireFile(t, f.old, []byte("yip-old"))
+		for _, cmd := range f.commands {
+			if cmd[0] != "print" {
+				t.Fatalf("changed services before parsing activation state: %q", f.commands)
+			}
+		}
 	}
 }
 
