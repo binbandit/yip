@@ -393,12 +393,24 @@ func (r *Runner) session(ctx context.Context) error {
 	for _, f := range pend {
 		_ = r.sendRaw(c, f)
 	}
-	go r.heartbeats(cctx, c)
+	heartbeatsStarted := false
 	for {
-		_, data, err := c.Read(cctx)
+		// The hub answers every heartbeat, including when no work is running.
+		// A half-open socket may keep accepting writes indefinitely; bound
+		// inbound silence so Run can reconnect before ordinary leases expire.
+		readTimeout := 20 * time.Second
+		if heartbeatsStarted {
+			readTimeout = 3 * time.Duration(r.heartbeat.Load())
+		}
+		rctx, rcancel := context.WithTimeout(cctx, readTimeout)
+		_, data, err := c.Read(rctx)
+		rcancel()
 		if err != nil {
 			if websocket.CloseStatus(err) == websocket.StatusPolicyViolation && strings.Contains(err.Error(), "revoked") {
 				return errRevoked
+			}
+			if errors.Is(err, context.DeadlineExceeded) && cctx.Err() == nil {
+				return fmt.Errorf("hub did not respond within %s: %w", readTimeout, err)
 			}
 			return err
 		}
@@ -411,6 +423,12 @@ func (r *Runner) session(ctx context.Context) error {
 				return err
 			}
 			r.log.Warn("command failed", "type", f.Type, "run", f.RunID, "err", err)
+		}
+		if f.Type == protocol.CmdWelcome && !heartbeatsStarted {
+			// Welcome sets this connection's interval. Starting the ticker
+			// earlier would keep the old interval even after negotiation.
+			heartbeatsStarted = true
+			go r.heartbeats(cctx, c)
 		}
 	}
 }
