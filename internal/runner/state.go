@@ -11,17 +11,21 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/binbandit/yip/internal/auth"
 	"github.com/binbandit/yip/protocol"
@@ -34,6 +38,9 @@ type Identity struct {
 	HubURL      string `json:"hubUrl"`
 	Fingerprint string `json:"fingerprint"`
 	PairedAt    string `json:"pairedAt"`
+	// StateDir selects a fresh identity's storage without moving old worktrees.
+	// Empty is the original layout, whose files live alongside node.json.
+	StateDir string `json:"stateDir,omitempty"`
 }
 
 // Paths lays out a runner state directory.
@@ -70,16 +77,93 @@ func LoadIdentity(dir string) (Identity, error) {
 	return id, json.Unmarshal(b, &id)
 }
 
+// ActiveStateDir returns the active identity's credentials, journal and work
+// directory. Re-pairing leaves previous directories and their worktrees intact.
+func ActiveStateDir(dir string) (string, error) {
+	id, err := LoadIdentity(dir)
+	if err != nil {
+		return "", err
+	}
+	return identityStateDir(dir, id)
+}
+
+func identityStateDir(dir string, id Identity) (string, error) {
+	if id.StateDir == "" {
+		return dir, nil
+	}
+	if filepath.Base(id.StateDir) != id.StateDir || !strings.HasPrefix(id.StateDir, "identity-") {
+		return "", errors.New("invalid runner identity state directory")
+	}
+	p := filepath.Join(dir, id.StateDir)
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return "", err
+	}
+	if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("runner identity state must be a local directory")
+	}
+	return p, nil
+}
+
+// The lock is never unlinked: all runner and pairing processes must lock the
+// same inode. Closing it releases the lock, including after a process crash.
+func lockState(dir string) (*os.File, error) {
+	f, err := os.OpenFile(filepath.Join(dir, ".runner.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("runner state is in use; stop the runner service or wait for pairing to finish: %w", err)
+	}
+	return f, nil
+}
+
 // Pair generates this node's key locally, redeems the single-use enrollment
 // token against a hub whose CA fingerprint is pinned, and stores the issued
 // certificate. The private key never leaves this machine.
 func Pair(ctx context.Context, dir, hubURL, fingerprint, token, name string) (Identity, error) {
+	return pair(ctx, dir, hubURL, fingerprint, token, name, false)
+}
+
+// RePair explicitly enrolls a new node with a fresh token. It does not change
+// the revoked node's authority or reuse its journal, credentials or workspaces.
+func RePair(ctx context.Context, dir, hubURL, fingerprint, token, name string) (Identity, error) {
+	return pair(ctx, dir, hubURL, fingerprint, token, name, true)
+}
+
+func pair(ctx context.Context, dir, hubURL, fingerprint, token, name string, replace bool) (Identity, error) {
 	p := Paths{dir}
-	if _, err := os.Stat(p.identity()); err == nil {
-		return Identity{}, fmt.Errorf("%s is already paired; use a different --state directory or remove it after revoking the machine", dir)
-	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Identity{}, err
+	}
+	lock, err := lockState(dir)
+	if err != nil {
+		return Identity{}, err
+	}
+	defer lock.Close()
+	previous, err := os.ReadFile(p.identity())
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return Identity{}, err
+	}
+	if previous != nil {
+		if !replace {
+			return Identity{}, fmt.Errorf("%s is already paired; to reconnect after revocation, stop the runner and add --replace to a fresh pairing command from Machines → Add machine (previous work is preserved)", dir)
+		}
+		active, err := ActiveStateDir(dir)
+		if err != nil {
+			return Identity{}, err
+		}
+		// Older runner versions do not hold the state lock. Refuse replacement
+		// while their bridge socket is reachable too.
+		c, err := net.DialTimeout("unix", (Paths{active}).socketPath(), time.Second)
+		if err == nil {
+			c.Close()
+			return Identity{}, errors.New("stop the runner service before replacing its pairing")
+		}
+		if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, unix.ECONNREFUSED) {
+			return Identity{}, fmt.Errorf("cannot confirm that the previous runner is stopped: %w", err)
+		}
 	}
 	hubURL = strings.TrimRight(hubURL, "/")
 	if !strings.HasPrefix(hubURL, "https://") {
@@ -118,8 +202,35 @@ func Pair(ctx context.Context, dir, hubURL, fingerprint, token, name string) (Id
 	if err := json.Unmarshal(raw, &pr); err != nil {
 		return Identity{}, err
 	}
-	return saveIdentity(p, Identity{NodeID: pr.NodeID, Name: name, HubURL: hubURL, Fingerprint: fingerprint,
-		PairedAt: time.Now().UTC().Format(time.RFC3339)}, keyPEM, []byte(pr.CertPEM), []byte(pr.CAPEM))
+	id := Identity{NodeID: pr.NodeID, Name: name, HubURL: hubURL, Fingerprint: fingerprint,
+		PairedAt: time.Now().UTC().Format(time.RFC3339)}
+	if previous == nil {
+		return saveIdentity(p, id, keyPEM, []byte(pr.CertPEM), []byte(pr.CAPEM))
+	}
+	// Prepare a complete fresh identity before atomically switching node.json.
+	// Old paths stay stable, including Git worktree links and unpublished files.
+	fresh, err := os.MkdirTemp(dir, "identity-")
+	if err != nil {
+		return Identity{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.RemoveAll(fresh)
+		}
+	}()
+	if _, err := saveIdentity(Paths{fresh}, id, keyPEM, []byte(pr.CertPEM), []byte(pr.CAPEM)); err != nil {
+		return Identity{}, err
+	}
+	if err := os.WriteFile(filepath.Join(fresh, "previous-node.json"), previous, 0o600); err != nil {
+		return Identity{}, err
+	}
+	id.StateDir = filepath.Base(fresh)
+	if err := writeIdentity(p.identity(), id); err != nil {
+		return Identity{}, err
+	}
+	committed = true
+	return id, nil
 }
 
 // SaveLocalIdentity stores credentials obtained through in-process pairing.
@@ -139,6 +250,21 @@ func saveIdentity(p Paths, id Identity, keyPEM, certPEM, caPEM []byte) (Identity
 		return id, errors.New("the hub returned a CA that doesn't match the pinned fingerprint")
 	}
 	id.Fingerprint = auth.CertFingerprint(ca)
+	if _, err := auth.ClientTLS(caPEM, certPEM, keyPEM, ""); err != nil {
+		return id, fmt.Errorf("invalid pairing credentials: %w", err)
+	}
+	cert, err := auth.ParseCertPEM(certPEM)
+	if err != nil {
+		return id, err
+	}
+	if node, _ := auth.NodeIDFromCert(cert); node != id.NodeID || node == "" {
+		return id, errors.New("the hub returned a certificate for a different node")
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(ca)
+	if _, err := cert.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+		return id, fmt.Errorf("invalid pairing certificate: %w", err)
+	}
 	for _, f := range []struct {
 		path string
 		data []byte
@@ -148,6 +274,29 @@ func saveIdentity(p Paths, id Identity, keyPEM, certPEM, caPEM []byte) (Identity
 			return id, err
 		}
 	}
-	b, _ := json.MarshalIndent(id, "", "  ")
-	return id, os.WriteFile(p.identity(), b, 0o600)
+	return id, writeIdentity(p.identity(), id)
+}
+
+func writeIdentity(path string, id Identity) error {
+	b, err := json.MarshalIndent(id, "", "  ")
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".node-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }

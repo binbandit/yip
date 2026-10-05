@@ -144,6 +144,28 @@ available on the machine as `yip runner workspaces` / `yip runner cleanup`.
 Revoke a machine from Machines. It can't regain authority by replaying its
 queue; its in-flight runs are marked unknown until reconciled.
 
+### Reconnect a revoked machine
+
+Revocation intentionally leaves the runner's local files intact. To reconnect:
+
+1. Stop the runner process or its service. For the standard macOS LaunchAgent,
+   use `launchctl bootout gui/$(id -u)/dev.getyip.runner`.
+2. In **Machines → Add machine**, create a fresh enrollment token and copy its
+   pairing command. Add `--replace`, retaining the same `--state` directory if
+   you use one: `yip runner pair --replace --hub … --fingerprint … --token …`.
+3. Start the runner again with its usual command. For the standard macOS
+   LaunchAgent, use `launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/dev.getyip.runner.plist"`.
+
+This enrolls a new machine identity; it does not re-enable the revoked one.
+The fresh identity uses its own `identity-*` directory beneath the existing
+state directory. Previous credentials, journal, replicas and workspaces stay
+at their original paths, preserving unpublished work and Git worktree links.
+They are not replayed or exposed through the new identity. The previous
+identity metadata is saved as `previous-node.json` in the new directory.
+Invalid tokens, a wrong hub fingerprint or invalid returned credentials leave
+the active pairing unchanged. Replacement is refused while the runner is
+active; keep the service stopped until pairing finishes.
+
 ## Connections
 
 Open **Connections** (`/connections`) and choose a tool. Its guide (for

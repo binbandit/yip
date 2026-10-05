@@ -68,17 +68,25 @@ func runPair(args []string) error {
 	fp := fs.String("fingerprint", "", "hub CA fingerprint shown with the pairing command")
 	token := fs.String("token", "", "single-use enrollment token")
 	name := fs.String("name", "", "machine name (defaults to the hostname)")
+	replace := fs.Bool("replace", false, "replace the local pairing with a fresh enrollment; preserve previous work")
 	_ = fs.Parse(args)
 	if *hubURL == "" || *fp == "" || *token == "" {
 		return errors.New("--hub, --fingerprint, and --token are required (copy the command from Machines → Add machine)")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	id, err := runner.Pair(ctx, *state, *hubURL, *fp, *token, *name)
+	pair := runner.Pair
+	if *replace {
+		pair = runner.RePair
+	}
+	id, err := pair(ctx, *state, *hubURL, *fp, *token, *name)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("Paired %q as node %s.\nRun it with: yip runner --state %s\n", id.Name, id.NodeID, *state)
+	if id.StateDir != "" {
+		fmt.Printf("Previous state and workspaces were preserved in place. The new identity uses %s. Restart the runner service when ready.\n", filepath.Join(*state, id.StateDir))
+	}
 	return nil
 }
 
